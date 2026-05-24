@@ -66,7 +66,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                        Visibility="{x:Bind ViewModel.NormalBarVisibility, Mode=OneWay}">
                 <Button Content="↻" Command="{x:Bind ViewModel.RefreshCommand}" ToolTipService.ToolTip="Rescan" />
                 <Button Content="All On" Command="{x:Bind ViewModel.AllOnCommand}" />
                 <Button Content="All Off" Command="{x:Bind ViewModel.AllOffCommand}" />
@@ -77,10 +78,19 @@
                 <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
                 <Button Content="+ Add" Click="OnAddMods" />
                 <Button Content="Fetch metadata" Command="{x:Bind ViewModel.FetchMetadataCommand}" />
-                <Button Content="Load order" Click="OnLoadOrder" ToolTipService.ToolTip="Reorder mods" />
+                <Button Content="Unlock load order" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Reorder mods" />
                 <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
                 <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots" />
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Load-order mode: reorder controls replace the normal bar -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                        Visibility="{x:Bind ViewModel.LoadOrderVisibility, Mode=OneWay}">
+                <FontIcon Glyph="&#xE8CB;" FontSize="14" Foreground="{StaticResource ThemeAccent}" />
+                <TextBlock Text="Load order — drag rows or type a position." VerticalAlignment="Center" />
+                <Button Content="Apply order" Click="OnApplyOrder" Foreground="Black" Background="{StaticResource ThemeAccent}" />
+                <Button Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                 <ComboBox MinWidth="120" ToolTipService.ToolTip="Theme"
@@ -94,6 +104,10 @@
         <!-- Mod list -->
         <ListView Grid.Row="2" Padding="8,4"
                   ItemsSource="{x:Bind ViewModel.Mods, Mode=OneWay}" SelectionMode="None"
+                  CanReorderItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
+                  CanDragItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
+                  AllowDrop="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
+                  DragItemsCompleted="OnReorderCompleted"
                   Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ModRowViewModel">
@@ -106,17 +120,20 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Row graphic: CurseForge art when we have it, else a brand monogram -->
-                        <Grid Grid.Column="0" Width="40" Height="40" VerticalAlignment="Center">
+                        <!-- Icon cell: load-order number (editable) in reorder mode, else art/monogram -->
+                        <Grid Grid.Column="0" Width="48" Height="40" VerticalAlignment="Center">
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="6"
-                                    Visibility="{x:Bind MonogramVisibility}">
+                                    Visibility="{x:Bind MonogramVisibility, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Initial}" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="{StaticResource ThemeAccent}" />
                             </Border>
-                            <Border CornerRadius="6" Visibility="{x:Bind ThumbnailVisibility}">
+                            <Border CornerRadius="6" Visibility="{x:Bind ThumbnailVisibility, Mode=OneWay}">
                                 <Image Source="{x:Bind Thumbnail}" Stretch="UniformToFill" />
                             </Border>
+                            <NumberBox Value="{x:Bind OrderValue, Mode=OneWay}" ValueChanged="OnJump"
+                                       SpinButtonPlacementMode="Hidden" VerticalAlignment="Center" Width="48"
+                                       Visibility="{x:Bind OrderVisibility, Mode=OneWay}" />
                         </Grid>
 
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
@@ -148,11 +165,13 @@
                         </StackPanel>
 
                         <ToggleSwitch Grid.Column="3" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
-                                      VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent="" />
+                                      VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
+                                      Visibility="{x:Bind NormalVisibility, Mode=OneWay}" />
 
                         <Button Grid.Column="4" Click="OnUninstall" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
-                                ToolTipService.ToolTip="Uninstall (permanent)">
+                                ToolTipService.ToolTip="Uninstall (permanent)"
+                                Visibility="{x:Bind NormalVisibility, Mode=OneWay}">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
                         </Button>
                     </Grid>

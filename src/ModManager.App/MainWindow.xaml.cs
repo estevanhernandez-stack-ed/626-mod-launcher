@@ -69,12 +69,18 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
-    private async void OnLoadOrder(object sender, RoutedEventArgs e)
+    // ---------- inline load-order mode ----------
+
+    private async void OnUnlockLoadOrder(object sender, RoutedEventArgs e) => await ViewModel.EnterLoadOrderAsync();
+    private async void OnApplyOrder(object sender, RoutedEventArgs e) => await ViewModel.ApplyLoadOrderAsync();
+    private async void OnCancelOrder(object sender, RoutedEventArgs e) => await ViewModel.CancelLoadOrderAsync();
+
+    private void OnReorderCompleted(ListViewBase sender, DragItemsCompletedEventArgs args) => ViewModel.Renumber();
+
+    private void OnJump(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
-        var ctx = App.AppHost.Services.GetRequiredService<Services.LauncherService>().ActiveContext();
-        if (ctx is null) return;
-        var dialog = new LoadOrderDialog(ctx) { XamlRoot = Content.XamlRoot };
-        await dialog.ShowAsync();
+        if (sender.DataContext is not ModRowViewModel row || double.IsNaN(args.NewValue)) return;
+        ViewModel.MoveTo(row, (int)Math.Round(args.NewValue));
     }
 
     private async void OnProfiles(object sender, RoutedEventArgs e)

@@ -38,8 +38,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool isBusy;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LoadOrderVisibility))]
+    [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
+    private bool isLoadOrderMode;
+
     public Visibility GameVisibility => HasGame ? Visibility.Visible : Visibility.Collapsed;
     public Visibility EmptyVisibility => HasGame ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
     public MainViewModel(LauncherService svc, ThemeService themes)
     {
@@ -144,6 +151,61 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>
     public Task RefreshAsync() => ReloadModsAsync();
+
+    // ---------- inline load-order mode ----------
+
+    /// <summary>Enter load-order mode: show only enabled mods, in saved order, numbered + draggable.</summary>
+    public async Task EnterLoadOrderAsync()
+    {
+        if (_ctx is null || IsLoadOrderMode) return;
+        var orderKeys = await Scanner.GetLoadOrderAsync(_ctx);
+        var byKey = Mods.Where(m => m.Enabled)
+            .GroupBy(m => m.Mod.Name).ToDictionary(g => g.Key, g => g.First());
+        var ordered = orderKeys.Where(byKey.ContainsKey).Select(k => byKey[k]).ToList();
+        foreach (var r in ordered) r.InLoadOrder = true;
+        Mods = new ObservableCollection<ModRowViewModel>(ordered);
+        Renumber();
+        IsLoadOrderMode = true;
+        StatusText = "Drag to reorder, or type a position. Top loads first. Apply when done.";
+    }
+
+    public async Task ApplyLoadOrderAsync()
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            await Scanner.ApplyLoadOrderAsync(_ctx, Mods.Select(m => m.Mod.Name).ToList());
+            IsLoadOrderMode = false;
+            await ReloadModsAsync();
+            StatusText = "Load order applied.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    public async Task CancelLoadOrderAsync()
+    {
+        IsLoadOrderMode = false;
+        await ReloadModsAsync();
+    }
+
+    /// <summary>Move a row to a 1-based position (type-to-jump) and renumber.</summary>
+    public void MoveTo(ModRowViewModel row, int targetPosition)
+    {
+        var i = Mods.IndexOf(row);
+        if (i < 0) return;
+        var j = Math.Clamp(targetPosition - 1, 0, Mods.Count - 1);
+        if (i == j) return;
+        Mods.Move(i, j);
+        Renumber();
+    }
+
+    /// <summary>Re-stamp 1-based positions after any reorder (drag or jump).</summary>
+    public void Renumber()
+    {
+        for (var i = 0; i < Mods.Count; i++) Mods[i].OrderPosition = i + 1;
+    }
 
     [RelayCommand]
     private void Launch()

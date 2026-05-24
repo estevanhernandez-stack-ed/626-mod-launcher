@@ -19,6 +19,22 @@ public sealed partial class ModRowViewModel : ObservableObject
     [ObservableProperty] private bool enabled;
     [ObservableProperty] private bool isBusy;
 
+    // Load-order mode: show the position number (editable), hide the normal row controls/art.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OrderVisibility))]
+    [NotifyPropertyChangedFor(nameof(NormalVisibility))]
+    [NotifyPropertyChangedFor(nameof(MonogramVisibility))]
+    [NotifyPropertyChangedFor(nameof(ThumbnailVisibility))]
+    private bool inLoadOrder;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OrderValue))]
+    private int orderPosition;
+
+    public double OrderValue => OrderPosition;
+    public Visibility OrderVisibility => InLoadOrder ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility NormalVisibility => InLoadOrder ? Visibility.Collapsed : Visibility.Visible;
+
     public ModRowViewModel(Mod mod)
     {
         Mod = mod;
@@ -74,7 +90,7 @@ public sealed partial class ModRowViewModel : ObservableObject
         }
     }
 
-    public Visibility ThumbnailVisibility => Thumbnail is null ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility MonogramVisibility => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ThumbnailVisibility => !InLoadOrder && Thumbnail is not null ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility MonogramVisibility => !InLoadOrder && Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
     public string Initial => DisplayName.Length > 0 ? DisplayName[..1].ToUpperInvariant() : "?";
 }
