@@ -374,15 +374,20 @@ public sealed partial class MainViewModel : ObservableObject
         }
         if (DirectInjectBacked)
         {
-            // Direct-inject: extract/copy the drop into the game's exe folder, then re-detect.
+            // Direct-inject: extract/copy the drop into the game's exe folder, then re-detect so a
+            // newly-installed launcher (Seamless / Mod Engine 2) surfaces its Play button immediately
+            // — no manual re-scan. "Just install them" made literal.
             IsBusy = true;
             try
             {
                 var r = _direct.Install(_ctx.Game, paths);
-                await ReloadModsAsync(); // re-detect picks up the newly installed mod (also resets status)
+                if (r.Added.Count > 0) _svc.Redetect(_ctx.Game.Id); // pick up mod folders + launchers
+                await ReloadModsAsync();                            // rebuilds context: refreshed list + Play targets
+                var launcher = _ctx?.Game.LaunchTargets.Any(t => t.Kind == "exe") ?? false;
                 StatusText = r.Added.Count > 0
-                    ? $"Installed {r.Added.Count} file{(r.Added.Count == 1 ? "" : "s")} to the game folder"
-                      + (r.Skipped.Count > 0 ? $", skipped {r.Skipped.Count}." : ".")
+                    ? $"Installed {r.Added.Count} file{(r.Added.Count == 1 ? "" : "s")}"
+                      + (r.Skipped.Count > 0 ? $", skipped {r.Skipped.Count}" : "")
+                      + (launcher ? " — open the Play menu to launch with mods." : ".")
                     : r.Skipped.Count > 0
                         ? $"Nothing installed — skipped {r.Skipped.Count} (already present or unsafe path)."
                         : "Nothing installable in that drop.";
