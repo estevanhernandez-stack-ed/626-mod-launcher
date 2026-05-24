@@ -55,6 +55,12 @@
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72C;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
                             <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE74D;" />

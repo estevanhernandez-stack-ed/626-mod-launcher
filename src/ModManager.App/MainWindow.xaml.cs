@@ -141,6 +141,8 @@ public sealed partial class MainWindow : Window
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
     }
 
+    private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
+
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {
         var name = ViewModel.ActiveGame?.Name ?? "this game";

@@ -61,21 +61,35 @@ public sealed class LauncherService
     {
         var reg = LoadRegistry();
         var entry = EnginePresets.BuildGameEntry(input, reg.Games.Select(g => g.Id));
-
-        // Point the game at where its mods actually are — existing/sideloaded folders, or the
-        // correct Unreal project subfolder — so already-installed mods are detected on add.
-        var detected = ModLocator.Detect(entry.GameRoot, entry.Engine);
-        if (detected.Count > 0) entry.ModLocations = detected;
-
-        // Find how to launch with mods loaded (Mod Engine 2 / Seamless Co-op) plus vanilla Steam.
-        var launch = LaunchScan.Detect(entry.GameRoot, entry.Engine, entry.SteamAppId);
-        if (launch.Targets.Count > 0) entry.LaunchTargets = launch.Targets;
-        if (launch.ModEngineConfig is not null) entry.ModEngineConfig = launch.ModEngineConfig;
-
+        ApplyDetection(entry);
         reg = Registry.UpsertGame(reg, entry);
         reg.ActiveGameId = entry.Id; // a newly added game becomes active
         SaveRegistry(reg);
         return entry; // save folder is detected (Ludusavi-first) by the caller, async
+    }
+
+    /// <summary>Re-run mod-location + launcher detection for an existing game (e.g. after Mod
+    /// Engine 2 is installed, or for a game added before detection existed). Persists + returns it.</summary>
+    public GameEntry? Redetect(string gameId)
+    {
+        var reg = LoadRegistry();
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return null;
+        ApplyDetection(g);
+        SaveRegistry(reg);
+        return g;
+    }
+
+    // Point a game at where its mods actually live (existing/sideloaded folders, or the correct
+    // Unreal project subfolder) and at how to launch with mods (Mod Engine 2 / Seamless Co-op).
+    private static void ApplyDetection(GameEntry g)
+    {
+        var detected = ModLocator.Detect(g.GameRoot, g.Engine);
+        if (detected.Count > 0) g.ModLocations = detected;
+
+        var launch = LaunchScan.Detect(g.GameRoot, g.Engine, g.SteamAppId);
+        if (launch.Targets.Count > 0) g.LaunchTargets = launch.Targets;
+        if (launch.ModEngineConfig is not null) g.ModEngineConfig = launch.ModEngineConfig;
     }
 
     /// <summary>The launch target run by the primary Launch button (explicit default, else first).</summary>

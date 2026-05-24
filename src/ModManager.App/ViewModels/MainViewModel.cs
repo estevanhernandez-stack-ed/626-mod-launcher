@@ -17,10 +17,14 @@ public sealed record GameOption(string Id, string Name);
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly LauncherService _svc;
+    private readonly ModEngineService _me2;
     private readonly ThemeService _themes;
     private readonly LudusaviService _ludu;
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
+
+    // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
+    private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
 
     [ObservableProperty] private IReadOnlyList<Theme> themeOptions = Array.Empty<Theme>();
     [ObservableProperty] private Theme? selectedTheme;
@@ -49,9 +53,10 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ThemeService themes, LudusaviService ludu)
+    public MainViewModel(LauncherService svc, ModEngineService me2, ThemeService themes, LudusaviService ludu)
     {
         _svc = svc;
+        _me2 = me2;
         _themes = themes;
         _ludu = ludu;
         ThemeOptions = themes.Themes;
@@ -103,14 +108,23 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await Scanner.MigrateDataDirAsync(_ctx);
-            var list = await Scanner.ListWithClassAsync(_ctx);
+            // Mod Engine 2 games read their mods from the config (its mods[] decides what loads);
+            // everything else is a filesystem scan via the proven Scanner pipeline.
+            var list = ConfigBacked
+                ? _me2.ListMods(_ctx.Game)
+                : await ReloadFromScannerAsync();
             Mods = new ObservableCollection<ModRowViewModel>(list.Select(m => new ModRowViewModel(m)));
             GameRootText = _ctx.GameRoot;
             UpdateStatus();
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+    }
+
+    private async Task<IReadOnlyList<Mod>> ReloadFromScannerAsync()
+    {
+        await Scanner.MigrateDataDirAsync(_ctx!);
+        return await Scanner.ListWithClassAsync(_ctx!);
     }
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
@@ -123,7 +137,8 @@ public sealed partial class MainViewModel : ObservableObject
         row.IsBusy = true;
         try
         {
-            if (row.Enabled) await Scanner.EnableModAsync(row.Mod.Name, _ctx);
+            if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
+            else if (row.Enabled) await Scanner.EnableModAsync(row.Mod.Name, _ctx);
             else await Scanner.DisableModAsync(row.Mod.Name, _ctx);
             await ReloadModsAsync();
         }
@@ -136,15 +151,23 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task AllOn() => BulkAsync(() => Scanner.SetAllModsAsync(true, _ctx!));
+    private Task AllOn() => SetAllAsync(true);
 
     [RelayCommand]
-    private Task AllOff() => BulkAsync(() => Scanner.SetAllModsAsync(false, _ctx!));
+    private Task AllOff() => SetAllAsync(false);
+
+    private Task SetAllAsync(bool on) => BulkAsync(() =>
+    {
+        if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
+        return Scanner.SetAllModsAsync(on, _ctx!);
+    });
 
     [RelayCommand]
     private Task SetMode(string mode)
     {
         ActiveMode = mode;
+        // Mod Engine 2 mods have no MP/SP split — the mode buttons are a no-op for those games.
+        if (ConfigBacked) return Task.CompletedTask;
         return BulkAsync(() => Scanner.ApplyModeAsync(mode, _ctx!));
     }
 
@@ -160,10 +183,19 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task EnterLoadOrderAsync()
     {
         if (_ctx is null || IsLoadOrderMode) return;
-        var orderKeys = await Scanner.GetLoadOrderAsync(_ctx);
-        var byKey = Mods.Where(m => m.Enabled)
-            .GroupBy(m => m.Mod.Name).ToDictionary(g => g.Key, g => g.First());
-        var ordered = orderKeys.Where(byKey.ContainsKey).Select(k => byKey[k]).ToList();
+        List<ModRowViewModel> ordered;
+        if (ConfigBacked)
+        {
+            // The config's array order IS the load order — keep enabled mods in their current order.
+            ordered = Mods.Where(m => m.Enabled).ToList();
+        }
+        else
+        {
+            var orderKeys = await Scanner.GetLoadOrderAsync(_ctx);
+            var byKey = Mods.Where(m => m.Enabled)
+                .GroupBy(m => m.Mod.Name).ToDictionary(g => g.Key, g => g.First());
+            ordered = orderKeys.Where(byKey.ContainsKey).Select(k => byKey[k]).ToList();
+        }
         foreach (var r in ordered) r.InLoadOrder = true;
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
         Renumber();
@@ -177,7 +209,9 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await Scanner.ApplyLoadOrderAsync(_ctx, Mods.Select(m => m.Mod.Name).ToList());
+            var order = Mods.Select(m => m.Mod.Name).ToList();
+            if (ConfigBacked) _me2.Reorder(_ctx.Game, order);
+            else await Scanner.ApplyLoadOrderAsync(_ctx, order);
             IsLoadOrderMode = false;
             await ReloadModsAsync();
             StatusText = "Load order applied.";
@@ -249,6 +283,12 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
+        if (ConfigBacked)
+        {
+            // ME2 mods are folders registered in the config — drop-to-install isn't wired yet.
+            StatusText = "For Mod Engine 2 games, place the mod's folder under the ME2 'mod' folder, then add it in the config. Auto-install is coming.";
+            return;
+        }
         IsBusy = true;
         try
         {
@@ -289,6 +329,26 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>Re-scan the active game for mod folders + launchers (Mod Engine 2 / Seamless Co-op).
+    /// For games added before detection existed, or after a mod launcher was installed.</summary>
+    public async Task RedetectActiveAsync()
+    {
+        if (ActiveGame is null) return;
+        IsBusy = true;
+        try
+        {
+            var g = _svc.Redetect(ActiveGame.Id);
+            await ReloadModsAsync();
+            var found = g?.LaunchTargets.Count ?? 0;
+            StatusText = found > 0
+                ? $"Re-scan done — {found} launch option{(found == 1 ? "" : "s")} found"
+                + (g!.ModEngineConfig is not null ? ", Mod Engine 2 config linked." : ".")
+                : "Re-scan done — no mod launchers found.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
     /// <summary>Remove the active game from the launcher. Gated by a confirm dialog in the view.</summary>
     public async Task RemoveActiveGameAsync()
     {
@@ -311,7 +371,8 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await Scanner.UninstallModAsync(row.Mod.Name, _ctx);
+            if (ConfigBacked) _me2.Remove(_ctx.Game, row.Mod.Name);
+            else await Scanner.UninstallModAsync(row.Mod.Name, _ctx);
             StatusText = $"Uninstalled {row.DisplayName}.";
             await ReloadModsAsync();
         }

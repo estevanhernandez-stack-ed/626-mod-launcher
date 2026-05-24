@@ -24,10 +24,16 @@ public static class AtomicJson
         // Serialize FIRST. If the value can't be serialized (cycle, etc.) this throws here,
         // before we have touched the destination — a bad write can never corrupt good data.
         var json = JsonSerializer.Serialize(value, Options);
+        WriteTextAtomic(file, json);
+    }
+
+    /// <summary>Atomically write text (e.g. the Mod Engine 2 config toml): temp file, then rename.</summary>
+    public static void WriteTextAtomic(string file, string text)
+    {
         var tmp = file + ".tmp-" + Environment.ProcessId;
         try
         {
-            File.WriteAllText(tmp, json);
+            File.WriteAllText(tmp, text);
             File.Move(tmp, file, overwrite: true);
         }
         catch
