@@ -143,6 +143,65 @@ public sealed partial class MainWindow : Window
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
 
+    // The Launch Options manager: internal options the app runs ("Play this"); external options the
+    // user pastes into Steam (the exact string + Copy + plain-English steps).
+    private async void OnLaunchOptions(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel { Spacing = 12 };
+        var dialog = new ContentDialog
+        {
+            Title = "Launch options",
+            Content = new ScrollViewer { Content = panel, MaxHeight = 420 },
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+        };
+
+        var options = ViewModel.ActiveLaunchOptions;
+        if (options.Count == 0)
+            panel.Children.Add(new TextBlock { Text = "No researched launch options for this game yet.", TextWrapping = TextWrapping.Wrap });
+
+        foreach (var opt in options)
+        {
+            var card = new StackPanel { Spacing = 6 };
+            card.Children.Add(new TextBlock { Text = opt.Title, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            card.Children.Add(new TextBlock { Text = opt.Detail, TextWrapping = TextWrapping.Wrap, Opacity = 0.8 });
+
+            if (opt.Kind == ModManager.Core.LaunchOptionKind.Internal)
+            {
+                var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
+                run.Click += (_, _) => { dialog.Hide(); ViewModel.RunInternalOption(opt); };
+                card.Children.Add(run);
+            }
+            else
+            {
+                card.Children.Add(new TextBlock
+                {
+                    Text = "Add this in Steam → right-click the game → Properties → General → Launch Options:",
+                    TextWrapping = TextWrapping.Wrap, Opacity = 0.8,
+                });
+                card.Children.Add(new TextBox { Text = opt.SteamOptions ?? "", IsReadOnly = true, IsSpellCheckEnabled = false });
+                var copy = new Button { Content = "Copy" };
+                copy.Click += (_, _) =>
+                {
+                    var dp = new DataPackage();
+                    dp.SetText(opt.SteamOptions ?? "");
+                    Clipboard.SetContent(dp);
+                };
+                card.Children.Add(copy);
+            }
+
+            panel.Children.Add(new Border
+            {
+                Padding = new Thickness(12),
+                CornerRadius = new CornerRadius(6),
+                Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemePanel"],
+                Child = card,
+            });
+        }
+
+        await dialog.ShowAsync();
+    }
+
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {
         var name = ViewModel.ActiveGame?.Name ?? "this game";

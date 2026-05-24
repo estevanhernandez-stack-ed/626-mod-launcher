@@ -48,6 +48,12 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool isBusy;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LaunchHintVisibility))]
+    private bool launchNeedsAttention;
+
+    public Visibility LaunchHintVisibility => LaunchNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadOrderVisibility))]
     [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
     private bool isLoadOrderMode;
@@ -126,6 +132,7 @@ public sealed partial class MainViewModel : ObservableObject
             Mods = new ObservableCollection<ModRowViewModel>(
                 list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)));
             GameRootText = _ctx.GameRoot;
+            LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
             if (directInject)
                 StatusText = list.Count > 0
                     ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable (no Mod Engine 2)."
@@ -287,6 +294,22 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         try { _svc.Launch(target, _ctx.Game.GameRoot); }
         catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>The verified launch options for the active game (internal + external), for the dialog.</summary>
+    public IReadOnlyList<LaunchOption> ActiveLaunchOptions => LaunchOptions.For(_ctx?.Game.SteamAppId);
+
+    /// <summary>Run an internal launch option (the app starts the real exe directly).</summary>
+    public void RunInternalOption(LaunchOption opt)
+    {
+        if (_ctx is null || opt.Exe is null) return;
+        var root = _ctx.Game.GameRoot;
+        var target = new LaunchTarget(opt.Title, "exe", System.IO.Path.Combine(root, opt.Exe))
+        {
+            Args = opt.Args,
+            WorkingDir = opt.WorkingSubdir is null ? root : System.IO.Path.Combine(root, opt.WorkingSubdir),
+        };
+        LaunchTargetExplicit(target);
     }
 
     [RelayCommand]

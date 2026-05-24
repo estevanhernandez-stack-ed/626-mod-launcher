@@ -41,6 +41,20 @@ public static class LaunchScan
                 });
             }
 
+            // Verified internal launch options from the catalog (e.g. Elden Ring's offline-with-mods
+            // launch — run the real exe directly, no anti-cheat). Only added when the exe is present.
+            foreach (var opt in LaunchOptions.For(steamAppId).Where(o => o.Kind == LaunchOptionKind.Internal && o.Exe is not null))
+            {
+                var exeAbs = Path.Combine(gameRoot, opt.Exe!);
+                if (!File.Exists(exeAbs)) continue;
+                targets.Add(new LaunchTarget(opt.Title, "exe", exeAbs)
+                {
+                    Args = opt.Args,
+                    WorkingDir = opt.WorkingSubdir is null ? gameRoot : Path.Combine(gameRoot, opt.WorkingSubdir),
+                    IsDefault = targets.Count == 0,
+                });
+            }
+
             // Seamless Co-op (Elden Ring) ships its own launcher — vanilla play won't run it.
             var seamless = FindSeamless(gameRoot);
             if (seamless is not null)

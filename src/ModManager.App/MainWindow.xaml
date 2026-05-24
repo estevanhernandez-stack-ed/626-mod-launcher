@@ -115,6 +115,14 @@
                 <Button Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
+                        ToolTipService.ToolTip="This game needs a launch option for mods to load"
+                        Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" />
+                        <TextBlock Text="Launch options" />
+                    </StackPanel>
+                </Button>
                 <ComboBox MinWidth="120" ToolTipService.ToolTip="Theme"
                           ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
