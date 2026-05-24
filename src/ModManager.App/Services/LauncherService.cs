@@ -61,12 +61,10 @@ public sealed class LauncherService
     {
         var reg = LoadRegistry();
         var entry = EnginePresets.BuildGameEntry(input, reg.Games.Select(g => g.Id));
-        // Proactively find the save folder now, so it's ready before they ever open Saves.
-        entry.SaveDir = SaveLocator.Detect(entry.GameName, entry.Engine, entry.GameRoot);
         reg = Registry.UpsertGame(reg, entry);
         reg.ActiveGameId = entry.Id; // a newly added game becomes active
         SaveRegistry(reg);
-        return entry;
+        return entry; // save folder is detected (Ludusavi-first) by the caller, async
     }
 
     /// <summary>Launch the game via its configured target (steam:// url, then exe fallback).</summary>

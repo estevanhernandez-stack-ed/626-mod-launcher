@@ -29,6 +29,7 @@ public partial class App : Application
                 services.AddSingleton<LauncherService>();
                 services.AddSingleton<ThemeService>();
                 services.AddSingleton<SteamService>();
+                services.AddSingleton<LudusaviService>();
                 services.AddTransient<MainViewModel>();
             })
             .Build();

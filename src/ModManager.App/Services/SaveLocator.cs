@@ -11,6 +11,38 @@ namespace ModManager.App.Services;
 /// </summary>
 public static class SaveLocator
 {
+    /// <summary>
+    /// Authoritative-first: resolve the Ludusavi save templates for the Steam app id, then fall
+    /// back to the folder heuristics. Best-effort — anything missing degrades to the heuristic.
+    /// </summary>
+    public static async Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine, string? gameRoot, string? steamAppId)
+    {
+        if (!string.IsNullOrEmpty(steamAppId))
+        {
+            var tokens = WindowsTokens(gameRoot);
+            foreach (var template in await ludusavi.SaveTemplatesAsync(steamAppId))
+            {
+                var resolved = LudusaviPaths.Resolve(template, tokens);
+                if (resolved is null) continue;
+                try { if (Directory.Exists(resolved)) return resolved; } catch { /* skip */ }
+            }
+        }
+        return Detect(gameName, engine, gameRoot);
+    }
+
+    private static Dictionary<string, string> WindowsTokens(string? gameRoot) => new()
+    {
+        ["base"] = gameRoot ?? "",
+        ["home"] = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ["winLocalAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        ["winAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        ["winDocuments"] = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        ["winProgramData"] = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        ["winPublic"] = Environment.GetEnvironmentVariable("PUBLIC") ?? @"C:\Users\Public",
+        ["winDir"] = Environment.GetEnvironmentVariable("WINDIR") ?? @"C:\Windows",
+        ["osUserName"] = Environment.UserName,
+    };
+
     public static string? Detect(string gameName, string? engine, string? gameRoot)
     {
         var roots = new SaveLocations.SaveRoots(

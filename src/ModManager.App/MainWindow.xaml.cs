@@ -64,6 +64,15 @@ public sealed partial class MainWindow : Window
         var svc = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
         var ctx = svc.ActiveContext();
         if (ctx is null) return;
+
+        // Find the save folder (Ludusavi by Steam id, then heuristics) if it's unset or stale.
+        if (string.IsNullOrEmpty(ctx.SaveDir) || !System.IO.Directory.Exists(ctx.SaveDir))
+        {
+            var ludu = App.AppHost.Services.GetRequiredService<Services.LudusaviService>();
+            var dir = await Services.SaveLocator.DetectAsync(ludu, ctx.Game.GameName, ctx.Game.Engine, ctx.Game.GameRoot, ctx.Game.SteamAppId);
+            if (dir is not null) { svc.SetSaveDir(ctx.Game.Id, dir); ctx = svc.ActiveContext()!; }
+        }
+
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dialog = new SavesDialog(ctx, svc, hwnd) { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();

@@ -24,22 +24,8 @@ public sealed partial class SavesDialog : ContentDialog
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;
         _savesDir = ctx.SavesDir;
-        _saveDir = ctx.SaveDir;
-
-        // No folder set yet, or a previously-set one has gone missing: try to find it so the
-        // user never has to hunt. (Add Game already detects up front; this is the fallback for
-        // games added earlier, or whose save folder didn't exist until they'd played.)
-        if (string.IsNullOrEmpty(_saveDir) || !System.IO.Directory.Exists(_saveDir))
-        {
-            var detected = SaveLocator.Detect(ctx.Game.GameName, ctx.Game.Engine, ctx.Game.GameRoot);
-            if (detected is not null)
-            {
-                _saveDir = detected;
-                _svc.SetSaveDir(_gameId, detected);
-                StatusText.Text = "Save folder auto-detected — change it if that's not right.";
-            }
-        }
-
+        _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
+        if (!string.IsNullOrEmpty(_saveDir)) StatusText.Text = "Save folder ready.";
         FolderBox.Text = _saveDir ?? "";
         Refresh();
     }

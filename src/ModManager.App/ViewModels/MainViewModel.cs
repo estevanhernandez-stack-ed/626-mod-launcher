@@ -18,6 +18,7 @@ public sealed partial class MainViewModel : ObservableObject
 {
     private readonly LauncherService _svc;
     private readonly ThemeService _themes;
+    private readonly LudusaviService _ludu;
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
@@ -48,10 +49,11 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ThemeService themes)
+    public MainViewModel(LauncherService svc, ThemeService themes, LudusaviService ludu)
     {
         _svc = svc;
         _themes = themes;
+        _ludu = ludu;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -265,6 +267,9 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var entry = _svc.AddGame(input);
+            // Find the save folder up front (Ludusavi by Steam id, then heuristics).
+            var saveDir = await SaveLocator.DetectAsync(_ludu, entry.GameName, entry.Engine, entry.GameRoot, entry.SteamAppId);
+            if (saveDir is not null) _svc.SetSaveDir(entry.Id, saveDir);
             await LoadAsync();
             StatusText = $"Added {entry.GameName}.";
         }
