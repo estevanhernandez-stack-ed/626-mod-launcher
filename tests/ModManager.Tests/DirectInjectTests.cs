@@ -32,6 +32,14 @@ public class DirectInjectTests
         => Assert.Contains(Detect(new[] { "regulation.bin", "eldenring.exe" }, Array.Empty<string>()),
             x => x.Kind == "gameplay");
 
+    [Theory]
+    [InlineData("ultrawidescreenfix.dll")]
+    [InlineData("EldenRing_Ultrawide.dll")]
+    [InlineData("WidescreenFix.dll")]
+    public void Detects_widescreen_fix_dll_by_name_pattern(string file)
+        => Assert.Contains(Detect(new[] { file, "eldenring.exe" }, Array.Empty<string>()),
+            x => x.Kind == "display");
+
     [Fact]
     public void Vanilla_files_yield_nothing()
     {
