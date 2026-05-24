@@ -26,8 +26,10 @@ public sealed partial class SavesDialog : ContentDialog
         _savesDir = ctx.SavesDir;
         _saveDir = ctx.SaveDir;
 
-        // First open with no folder set: try to find it so the user never has to hunt.
-        if (string.IsNullOrEmpty(_saveDir))
+        // No folder set yet, or a previously-set one has gone missing: try to find it so the
+        // user never has to hunt. (Add Game already detects up front; this is the fallback for
+        // games added earlier, or whose save folder didn't exist until they'd played.)
+        if (string.IsNullOrEmpty(_saveDir) || !System.IO.Directory.Exists(_saveDir))
         {
             var detected = SaveLocator.Detect(ctx.Game.GameName, ctx.Game.Engine);
             if (detected is not null)
