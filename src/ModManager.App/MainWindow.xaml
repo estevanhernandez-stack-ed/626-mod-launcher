@@ -34,11 +34,25 @@
                 <Border Width="14" Height="14" Background="{StaticResource ThemeAccent}" CornerRadius="3" />
                 <TextBlock Text="626 Mod Launcher" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
-            <ComboBox Grid.Column="1" VerticalAlignment="Center" MinWidth="180"
-                      ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
-                      SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}"
-                      DisplayMemberPath="Name"
-                      Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                        Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
+                <ComboBox MinWidth="180"
+                          ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
+                          SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}"
+                          DisplayMemberPath="Name" />
+                <Button ToolTipService.ToolTip="Game options" Background="Transparent" BorderThickness="0">
+                    <FontIcon Glyph="&#xE712;" FontSize="14" />
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE74D;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
             <Button Grid.Column="3" Content="+ Game" VerticalAlignment="Center" Click="OnAddGame" />
             <Button Grid.Column="4" Content="▶ Launch" VerticalAlignment="Center"
                     Command="{x:Bind ViewModel.LaunchCommand}"

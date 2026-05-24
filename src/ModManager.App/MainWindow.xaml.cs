@@ -59,6 +59,23 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddGameAsync(dialog.BuildInput());
     }
 
+    private async void OnRemoveGame(object sender, RoutedEventArgs e)
+    {
+        var name = ViewModel.ActiveGame?.Name ?? "this game";
+        var dialog = new ContentDialog
+        {
+            Title = "Remove game?",
+            Content = $"Remove \"{name}\" from the launcher? Your mod files stay on disk — this only stops "
+                      + "managing it here. Any disabled mods remain in the launcher's data folder.",
+            PrimaryButtonText = "Remove",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.RemoveActiveGameAsync();
+    }
+
     // Gated uninstall: the destructive op is always behind an explicit confirm.
     private async void OnUninstall(object sender, RoutedEventArgs e)
     {

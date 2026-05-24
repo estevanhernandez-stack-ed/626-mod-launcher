@@ -200,6 +200,21 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>Remove the active game from the launcher. Gated by a confirm dialog in the view.</summary>
+    public async Task RemoveActiveGameAsync()
+    {
+        if (ActiveGame is null) return;
+        IsBusy = true;
+        try
+        {
+            _svc.RemoveGame(ActiveGame.Id);
+            await LoadAsync();
+            StatusText = "Removed game from the launcher.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
     /// <summary>Permanently uninstall a mod (deletes files). Gated by a confirm dialog in the view.</summary>
     public async Task UninstallAsync(ModRowViewModel row)
     {

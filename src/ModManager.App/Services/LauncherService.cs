@@ -43,6 +43,9 @@ public sealed class LauncherService
 
     public void SetActiveGame(string id) => SaveRegistry(Registry.SetActiveGame(LoadRegistry(), id));
 
+    /// <summary>Drop a game from the launcher's registry (its files + data on disk are untouched).</summary>
+    public void RemoveGame(string id) => SaveRegistry(Registry.RemoveGame(LoadRegistry(), id));
+
     /// <summary>Assemble a game entry from wizard input, persist it, and make it active.</summary>
     public GameEntry AddGame(GameInput input)
     {

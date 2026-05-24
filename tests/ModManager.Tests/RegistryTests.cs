@@ -64,4 +64,41 @@ public class RegistryTests
         r = Registry.UpsertGame(r, G("b"));
         Assert.Equal("b", Registry.SetActiveGame(r, "b").ActiveGameId);
     }
+
+    [Fact]
+    public void RemoveGame_drops_a_non_active_game_and_keeps_active()
+    {
+        var r = Registry.UpsertGame(Registry.UpsertGame(Registry.EmptyRegistry(), G("a")), G("b"));
+        r = Registry.RemoveGame(r, "b");
+        Assert.Single(r.Games);
+        Assert.Equal("a", r.Games[0].Id);
+        Assert.Equal("a", r.ActiveGameId);
+    }
+
+    [Fact]
+    public void RemoveGame_reassigns_active_when_the_active_game_is_removed()
+    {
+        var r = Registry.UpsertGame(Registry.UpsertGame(Registry.EmptyRegistry(), G("a")), G("b"));
+        r = Registry.RemoveGame(r, "a"); // 'a' was active (first added)
+        Assert.Single(r.Games);
+        Assert.Equal("b", r.ActiveGameId);
+    }
+
+    [Fact]
+    public void RemoveGame_last_game_clears_active()
+    {
+        var r = Registry.UpsertGame(Registry.EmptyRegistry(), G("a"));
+        r = Registry.RemoveGame(r, "a");
+        Assert.Empty(r.Games);
+        Assert.Null(r.ActiveGameId);
+    }
+
+    [Fact]
+    public void RemoveGame_unknown_id_is_a_noop()
+    {
+        var r = Registry.UpsertGame(Registry.EmptyRegistry(), G("a"));
+        r = Registry.RemoveGame(r, "nope");
+        Assert.Single(r.Games);
+        Assert.Equal("a", r.ActiveGameId);
+    }
 }

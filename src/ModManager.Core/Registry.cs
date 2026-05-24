@@ -34,4 +34,16 @@ public static class Registry
         if (!reg.Games.Any(x => x.Id == id)) return reg;
         return new GameRegistry { Version = reg.Version, ActiveGameId = id, Games = new List<GameEntry>(reg.Games) };
     }
+
+    /// <summary>
+    /// Drop a game from the registry. If it was active, the active selection moves to the first
+    /// remaining game (or null when none are left). Removing an unknown id is a no-op.
+    /// Does not touch the game's files or launcher data — re-adding restores it.
+    /// </summary>
+    public static GameRegistry RemoveGame(GameRegistry reg, string id)
+    {
+        var games = reg.Games.Where(g => g.Id != id).ToList();
+        var active = reg.ActiveGameId == id ? (games.Count > 0 ? games[0].Id : null) : reg.ActiveGameId;
+        return new GameRegistry { Version = reg.Version, ActiveGameId = active, Games = games };
+    }
 }
