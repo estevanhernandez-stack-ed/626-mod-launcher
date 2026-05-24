@@ -1,19 +1,23 @@
 namespace ModManager.Core;
 
-/// <summary>How a launch option is applied: the app runs it, or the user pastes it into Steam.</summary>
-public enum LaunchOptionKind { Internal, External }
+/// <summary>How a launch option is applied: the app runs it, the user pastes it into Steam, or the
+/// app reversibly toggles the game's anti-cheat so normal Play launches modded + offline.</summary>
+public enum LaunchOptionKind { Internal, External, AntiCheatToggle }
 
 /// <summary>
-/// One verified, plain-English launch option for a game. Internal options carry an exe/args the
-/// app runs directly; external options carry the <see cref="SteamOptions"/> string the user adds
-/// to Steam's Launch Options box. <see cref="Recommended"/> games get highlighted in the library.
+/// One verified, plain-English launch option for a game. Internal options carry an exe/args the app
+/// runs directly; external options carry the <see cref="SteamOptions"/> string the user adds to
+/// Steam; anti-cheat-toggle options carry the <see cref="Bootstrapper"/> + <see cref="RealExe"/> the
+/// reversible swap operates on. <see cref="Recommended"/> games get highlighted in the library.
 /// </summary>
 public sealed record LaunchOption(string Title, string Detail, LaunchOptionKind Kind)
 {
     public string? Exe { get; init; }           // internal: exe to run, relative to the game root
     public string? Args { get; init; }          // internal: process arguments
-    public string? WorkingSubdir { get; init; } // internal: working dir relative to the game root (e.g. "Game")
+    public string? WorkingSubdir { get; init; } // working dir / play subfolder relative to the game root (e.g. "Game")
     public string? SteamOptions { get; init; }  // external: the exact string to paste into Steam
+    public string? Bootstrapper { get; init; }  // anti-cheat toggle: the EAC bootstrapper exe (start_protected_game.exe)
+    public string? RealExe { get; init; }        // anti-cheat toggle: the real game exe to swap in
     public bool Recommended { get; init; }      // surface a "needs a launch option" highlight
 }
 
@@ -28,17 +32,20 @@ public static class LaunchOptions
     public static IReadOnlyList<LaunchOption> For(string? appId) => appId switch
     {
         // Elden Ring — verified on disk: Game\eldenring.exe behind start_protected_game.exe (EAC).
-        // Launching the exe directly starts the game with anti-cheat off so installed mods load.
+        // EAC blocks mods, and launching eldenring.exe directly does NOT bypass it — the proven
+        // method is a reversible swap (back up start_protected_game.exe, copy eldenring.exe in its
+        // place). Turn off to mod offline; turn back on for online. The swap is fully reversible.
         "1245620" => new[]
         {
             new LaunchOption(
-                "Play with mods — offline",
-                "Starts Elden Ring directly with EasyAntiCheat off, so your installed mods load. "
-                + "Stay offline — don't go into online multiplayer with anti-cheat off; use the normal "
-                + "Steam launch for online play.",
-                LaunchOptionKind.Internal)
+                "Anti-cheat (mods need it off)",
+                "Elden Ring's EasyAntiCheat blocks mods. Turn it OFF and your installed mods load when "
+                + "you press Play — but stay offline; don't go into online multiplayer with anti-cheat off. "
+                + "Turn it back ON before playing online. Fully reversible.",
+                LaunchOptionKind.AntiCheatToggle)
             {
-                Exe = System.IO.Path.Combine("Game", "eldenring.exe"),
+                Bootstrapper = "start_protected_game.exe",
+                RealExe = "eldenring.exe",
                 WorkingSubdir = "Game",
                 Recommended = true,
             },

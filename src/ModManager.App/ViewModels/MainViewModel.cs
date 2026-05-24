@@ -299,6 +299,32 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The verified launch options for the active game (internal + external), for the dialog.</summary>
     public IReadOnlyList<LaunchOption> ActiveLaunchOptions => LaunchOptions.For(_ctx?.Game.SteamAppId);
 
+    /// <summary>Current anti-cheat state for a toggle option on the active game.</summary>
+    public AntiCheatState AntiCheatStateOf(LaunchOption opt)
+    {
+        var folder = DirectInjectService.PlayFolder(_ctx?.Game.GameRoot);
+        return folder is null || opt.Bootstrapper is null
+            ? AntiCheatState.Unsupported
+            : AntiCheat.State(folder, opt.Bootstrapper);
+    }
+
+    /// <summary>Flip a game's anti-cheat (reversible swap); returns the resulting state.</summary>
+    public AntiCheatState SetAntiCheat(LaunchOption opt, bool turnOn)
+    {
+        var folder = DirectInjectService.PlayFolder(_ctx?.Game.GameRoot);
+        if (folder is null || opt.Bootstrapper is null || opt.RealExe is null) return AntiCheatState.Unsupported;
+        try
+        {
+            if (turnOn) AntiCheat.Enable(folder, opt.Bootstrapper);
+            else AntiCheat.Disable(folder, opt.Bootstrapper, opt.RealExe);
+            StatusText = turnOn
+                ? "Anti-cheat ON — Play launches normally (online OK)."
+                : "Anti-cheat OFF — press Play to start with mods, offline. Don't go online until you turn it back on.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        return AntiCheatStateOf(opt);
+    }
+
     /// <summary>Run an internal launch option (the app starts the real exe directly).</summary>
     public void RunInternalOption(LaunchOption opt)
     {

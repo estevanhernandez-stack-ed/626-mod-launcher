@@ -151,55 +151,84 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             Title = "Launch options",
-            Content = new ScrollViewer { Content = panel, MaxHeight = 420 },
+            Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
             CloseButtonText = "Close",
             XamlRoot = Content.XamlRoot,
         };
 
-        var options = ViewModel.ActiveLaunchOptions;
-        if (options.Count == 0)
-            panel.Children.Add(new TextBlock { Text = "No researched launch options for this game yet.", TextWrapping = TextWrapping.Wrap });
+        var panelBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemePanel"];
 
-        foreach (var opt in options)
+        void Build()
         {
-            var card = new StackPanel { Spacing = 6 };
-            card.Children.Add(new TextBlock { Text = opt.Title, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            card.Children.Add(new TextBlock { Text = opt.Detail, TextWrapping = TextWrapping.Wrap, Opacity = 0.8 });
+            panel.Children.Clear();
+            var options = ViewModel.ActiveLaunchOptions;
+            if (options.Count == 0)
+                panel.Children.Add(new TextBlock { Text = "No researched launch options for this game yet.", TextWrapping = TextWrapping.Wrap });
 
-            if (opt.Kind == ModManager.Core.LaunchOptionKind.Internal)
+            foreach (var opt in options)
             {
-                var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
-                run.Click += (_, _) => { dialog.Hide(); ViewModel.RunInternalOption(opt); };
-                card.Children.Add(run);
-            }
-            else
-            {
-                card.Children.Add(new TextBlock
-                {
-                    Text = "Add this in Steam → right-click the game → Properties → General → Launch Options:",
-                    TextWrapping = TextWrapping.Wrap, Opacity = 0.8,
-                });
-                card.Children.Add(new TextBox { Text = opt.SteamOptions ?? "", IsReadOnly = true, IsSpellCheckEnabled = false });
-                var copy = new Button { Content = "Copy" };
-                copy.Click += (_, _) =>
-                {
-                    var dp = new DataPackage();
-                    dp.SetText(opt.SteamOptions ?? "");
-                    Clipboard.SetContent(dp);
-                };
-                card.Children.Add(copy);
-            }
+                var card = new StackPanel { Spacing = 6 };
+                card.Children.Add(new TextBlock { Text = opt.Title, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                card.Children.Add(new TextBlock { Text = opt.Detail, TextWrapping = TextWrapping.Wrap, Opacity = 0.8 });
 
-            panel.Children.Add(new Border
-            {
-                Padding = new Thickness(12),
-                CornerRadius = new CornerRadius(6),
-                Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemePanel"],
-                Child = card,
-            });
+                switch (opt.Kind)
+                {
+                    case ModManager.Core.LaunchOptionKind.AntiCheatToggle:
+                        AddAntiCheatToggle(card, opt, Build);
+                        break;
+
+                    case ModManager.Core.LaunchOptionKind.Internal:
+                        var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
+                        run.Click += (_, _) => { dialog.Hide(); ViewModel.RunInternalOption(opt); };
+                        card.Children.Add(run);
+                        break;
+
+                    default: // External
+                        card.Children.Add(new TextBlock
+                        {
+                            Text = "Add this in Steam → right-click the game → Properties → General → Launch Options:",
+                            TextWrapping = TextWrapping.Wrap, Opacity = 0.8,
+                        });
+                        card.Children.Add(new TextBox { Text = opt.SteamOptions ?? "", IsReadOnly = true, IsSpellCheckEnabled = false });
+                        var copy = new Button { Content = "Copy" };
+                        copy.Click += (_, _) => { var dp = new DataPackage(); dp.SetText(opt.SteamOptions ?? ""); Clipboard.SetContent(dp); };
+                        card.Children.Add(copy);
+                        break;
+                }
+
+                panel.Children.Add(new Border { Padding = new Thickness(12), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = card });
+            }
         }
 
+        Build();
         await dialog.ShowAsync();
+    }
+
+    // Anti-cheat toggle card: shows current state and a button to flip it (reversible swap), then
+    // rebuilds the dialog in place so the new state shows. Off = press Play for modded + offline.
+    private void AddAntiCheatToggle(StackPanel card, ModManager.Core.LaunchOption opt, Action rebuild)
+    {
+        var state = ViewModel.AntiCheatStateOf(opt);
+        if (state == ModManager.Core.AntiCheatState.Unsupported)
+        {
+            card.Children.Add(new TextBlock { Text = "Couldn't find the game files to toggle anti-cheat.", Opacity = 0.8, TextWrapping = TextWrapping.Wrap });
+            return;
+        }
+
+        var on = state == ModManager.Core.AntiCheatState.On;
+        card.Children.Add(new TextBlock
+        {
+            Text = on ? "Anti-cheat is currently ON (online play, mods off)." : "Anti-cheat is currently OFF — press Play to start with mods, offline.",
+            Opacity = 0.9, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
+        });
+        var toggle = new Button
+        {
+            Content = on ? "Turn anti-cheat OFF (play modded)" : "Turn anti-cheat ON (play online)",
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black),
+            Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeAccent"],
+        };
+        toggle.Click += (_, _) => { ViewModel.SetAntiCheat(opt, turnOn: !on); rebuild(); };
+        card.Children.Add(toggle);
     }
 
     private async void OnRemoveGame(object sender, RoutedEventArgs e)

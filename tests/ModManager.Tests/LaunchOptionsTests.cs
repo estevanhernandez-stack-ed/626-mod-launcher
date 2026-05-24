@@ -8,15 +8,16 @@ namespace ModManager.Tests;
 public class LaunchOptionsTests
 {
     [Fact]
-    public void Elden_Ring_has_a_recommended_internal_offline_option()
+    public void Elden_Ring_has_a_recommended_anticheat_toggle()
     {
         var opts = LaunchOptions.For("1245620");
-        var offline = Assert.Single(opts);
-        Assert.Equal(LaunchOptionKind.Internal, offline.Kind);
-        Assert.True(offline.Recommended);                 // highlight: mods need it
-        Assert.Contains("eldenring.exe", offline.Exe);     // run the real exe directly (no EAC)
-        Assert.Equal("Game", offline.WorkingSubdir);       // FromSoft nests the exe under Game\
-        Assert.Contains("online", offline.Detail, StringComparison.OrdinalIgnoreCase); // warns about online
+        var ac = Assert.Single(opts);
+        Assert.Equal(LaunchOptionKind.AntiCheatToggle, ac.Kind);
+        Assert.True(ac.Recommended);                          // highlight: mods need it
+        Assert.Equal("start_protected_game.exe", ac.Bootstrapper); // the EAC bootstrapper to swap
+        Assert.Equal("eldenring.exe", ac.RealExe);            // the real exe swapped in
+        Assert.Equal("Game", ac.WorkingSubdir);               // FromSoft nests the exe under Game\
+        Assert.Contains("online", ac.Detail, StringComparison.OrdinalIgnoreCase); // warns about online
     }
 
     [Fact]
