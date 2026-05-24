@@ -59,6 +59,16 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddGameAsync(dialog.BuildInput());
     }
 
+    private async void OnSaves(object sender, RoutedEventArgs e)
+    {
+        var svc = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
+        var ctx = svc.ActiveContext();
+        if (ctx is null) return;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dialog = new SavesDialog(ctx, svc, hwnd) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+    }
+
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {
         var name = ViewModel.ActiveGame?.Name ?? "this game";

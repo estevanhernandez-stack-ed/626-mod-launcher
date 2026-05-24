@@ -77,6 +77,7 @@
                 <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
                 <Button Content="+ Add" Click="OnAddMods" />
                 <Button Content="Fetch metadata" Command="{x:Bind ViewModel.FetchMetadataCommand}" />
+                <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots" />
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" VerticalAlignment="Center" />
             </StackPanel>
             <ComboBox Grid.Column="1" VerticalAlignment="Center" MinWidth="120" ToolTipService.ToolTip="Theme"

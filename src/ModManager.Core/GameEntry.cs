@@ -24,6 +24,9 @@ public sealed class GameEntry
     public string? DataDir { get; set; }
     public int? CurseforgeGameId { get; set; }
     public string? ScanSubfolders { get; set; }
+
+    // where this game's saves live (for the built-in save manager)
+    public string? SaveDir { get; set; }
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>

@@ -46,6 +46,16 @@ public sealed class LauncherService
     /// <summary>Drop a game from the launcher's registry (its files + data on disk are untouched).</summary>
     public void RemoveGame(string id) => SaveRegistry(Registry.RemoveGame(LoadRegistry(), id));
 
+    /// <summary>Persist the configured save folder for a game (used by the save manager).</summary>
+    public void SetSaveDir(string gameId, string saveDir)
+    {
+        var reg = LoadRegistry();
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        g.SaveDir = saveDir;
+        SaveRegistry(reg);
+    }
+
     /// <summary>Assemble a game entry from wizard input, persist it, and make it active.</summary>
     public GameEntry AddGame(GameInput input)
     {
