@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.App.ViewModels;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 
 namespace ModManager.App;
@@ -47,5 +48,37 @@ public sealed partial class MainWindow : Window
         var files = await picker.PickMultipleFilesAsync();
         if (files is { Count: > 0 })
             await ViewModel.AddModsAsync(files.Select(f => f.Path).ToList());
+    }
+
+    // Gated uninstall: the destructive op is always behind an explicit confirm.
+    private async void OnUninstall(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        var dialog = new ContentDialog
+        {
+            Title = "Uninstall mod?",
+            Content = $"Permanently delete \"{row.DisplayName}\"? This removes the mod's files and can't be undone.",
+            PrimaryButtonText = "Uninstall",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.UninstallAsync(row);
+    }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        if (e.DragUIOverride is not null) e.DragUIOverride.Caption = "Install to active game";
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        var items = await e.DataView.GetStorageItemsAsync();
+        var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
+        if (paths.Count > 0) await ViewModel.AddModsAsync(paths);
     }
 }

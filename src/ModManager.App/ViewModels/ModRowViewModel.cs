@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using ModManager.Core;
 
 namespace ModManager.App.ViewModels;
@@ -55,4 +57,24 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string? ModUrl => Mod.ModUrl;
     public string? SourceUrl => Mod.Source;
     public string? DonateUrl => Mod.Donate;
+
+    // Row graphic: the builder's CurseForge art when we have it (honor them), else a monogram.
+    private ImageSource? _thumb;
+    private bool _thumbResolved;
+    public ImageSource? Thumbnail
+    {
+        get
+        {
+            if (!_thumbResolved)
+            {
+                _thumbResolved = true;
+                if (SafeUrl.IsHttpUrl(Mod.Image)) _thumb = new BitmapImage(new Uri(Mod.Image!));
+            }
+            return _thumb;
+        }
+    }
+
+    public Visibility ThumbnailVisibility => Thumbnail is null ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility MonogramVisibility => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
+    public string Initial => DisplayName.Length > 0 ? DisplayName[..1].ToUpperInvariant() : "?";
 }

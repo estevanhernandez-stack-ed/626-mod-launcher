@@ -144,7 +144,7 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>Intake dropped/picked paths, then fingerprint-identify the new files (best-effort).</summary>
+    /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
@@ -155,11 +155,31 @@ public sealed partial class MainViewModel : ObservableObject
             var identified = 0;
             if (r.Added.Count > 0)
             {
+                StatusText = $"Added {r.Added.Count} — fetching metadata…";
+                // Exact match first (fingerprint), then a name-search fallback — fingerprint
+                // misses repacked/local files, so this is how a dropped mod still gets metadata.
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
-                catch { /* lookup is best-effort; intake already succeeded */ }
+                catch { /* best-effort; intake already succeeded */ }
+                try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
+                catch { /* best-effort */ }
             }
             StatusText = $"Added {r.Added.Count}, skipped {r.Skipped.Count}"
                 + (identified > 0 ? $", identified {identified} on CurseForge" : "");
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Permanently uninstall a mod (deletes files). Gated by a confirm dialog in the view.</summary>
+    public async Task UninstallAsync(ModRowViewModel row)
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            await Scanner.UninstallModAsync(row.Mod.Name, _ctx);
+            StatusText = $"Uninstalled {row.DisplayName}.";
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }

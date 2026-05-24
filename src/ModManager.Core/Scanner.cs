@@ -233,6 +233,13 @@ public static class Scanner
 
     public static Task DisableModAsync(string name, GameContext c) { DisableMod(name, c); return Task.CompletedTask; }
     public static Task EnableModAsync(string name, GameContext c) { EnableMod(name, c); return Task.CompletedTask; }
+
+    /// <summary>
+    /// Permanently delete a mod — the one destructive op, gated by an explicit caller (the UI
+    /// confirms). Removes live files from every location + mirror AND any disabled holding
+    /// folder. Idempotent: unknown names are a no-op. Locked-file errors surface (game running).
+    /// </summary>
+    public static Task UninstallModAsync(string name, GameContext c) { UninstallMod(name, c); return Task.CompletedTask; }
     public static Task SetAllModsAsync(bool enabled, GameContext c) { SetAllMods(enabled, c); return Task.CompletedTask; }
     public static Task ApplyModeAsync(string mode, GameContext c) { ApplyMode(mode, c); return Task.CompletedTask; }
 
@@ -241,6 +248,28 @@ public static class Scanner
         var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (m is null || !m.Enabled) return;
         DisableEntry(m, c);
+    }
+
+    private static void UninstallMod(string name, GameContext c)
+    {
+        var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        if (m is not null)
+        {
+            var loc = LocByName(m.Location, c);
+            foreach (var f in m.Files)
+            {
+                DeletePath(Path.Combine(loc.Abs, f));
+                foreach (var mp in loc.Mirrors) DeletePath(Path.Combine(mp, f));
+            }
+        }
+        var held = Path.Combine(c.DisabledRoot, name);
+        if (Directory.Exists(held)) DeleteDir(held);
+    }
+
+    private static void DeletePath(string p)
+    {
+        if (Directory.Exists(p)) Directory.Delete(p, recursive: true);
+        else if (File.Exists(p)) File.Delete(p);
     }
 
     private static void DisableEntry(Mod m, GameContext c)
