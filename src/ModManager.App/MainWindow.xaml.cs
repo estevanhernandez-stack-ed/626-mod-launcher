@@ -77,6 +77,15 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    private async void OnProfiles(object sender, RoutedEventArgs e)
+    {
+        var ctx = App.AppHost.Services.GetRequiredService<Services.LauncherService>().ActiveContext();
+        if (ctx is null) return;
+        var dialog = new ProfilesDialog(ctx) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+        if (dialog.Changed) await ViewModel.RefreshAsync(); // a profile was applied
+    }
+
     private async void OnNewTheme(object sender, RoutedEventArgs e)
     {
         var themes = App.AppHost.Services.GetRequiredService<Services.ThemeService>();

@@ -78,6 +78,7 @@
                 <Button Content="+ Add" Click="OnAddMods" />
                 <Button Content="Fetch metadata" Command="{x:Bind ViewModel.FetchMetadataCommand}" />
                 <Button Content="Load order" Click="OnLoadOrder" ToolTipService.ToolTip="Reorder mods" />
+                <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
                 <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots" />
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" VerticalAlignment="Center" />
             </StackPanel>

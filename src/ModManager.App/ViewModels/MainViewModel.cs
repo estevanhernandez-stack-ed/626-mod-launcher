@@ -142,6 +142,9 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private Task Refresh() => ReloadModsAsync();
 
+    /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>
+    public Task RefreshAsync() => ReloadModsAsync();
+
     [RelayCommand]
     private void Launch()
     {
