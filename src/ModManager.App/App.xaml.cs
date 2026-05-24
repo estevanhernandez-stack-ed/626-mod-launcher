@@ -28,6 +28,7 @@ public partial class App : Application
                     new CurseForgeClient(sp.GetRequiredService<HttpClient>(), new CurseForgeOptions { BaseUrl = MetadataProxy }));
                 services.AddSingleton<LauncherService>();
                 services.AddSingleton<ModEngineService>();
+                services.AddSingleton<DirectInjectService>();
                 services.AddSingleton<ThemeService>();
                 services.AddSingleton<SteamService>();
                 services.AddSingleton<LudusaviService>();

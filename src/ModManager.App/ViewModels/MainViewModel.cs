@@ -18,6 +18,7 @@ public sealed partial class MainViewModel : ObservableObject
 {
     private readonly LauncherService _svc;
     private readonly ModEngineService _me2;
+    private readonly DirectInjectService _direct;
     private readonly ThemeService _themes;
     private readonly LudusaviService _ludu;
     private GameContext? _ctx;
@@ -25,6 +26,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
+
+    // FromSoft games without ME2: mods are direct-inject loose files (recognized + toggled by name).
+    private bool DirectInjectBacked => _ctx is not null && !ConfigBacked && _direct.Applies(_ctx.Game);
 
     [ObservableProperty] private IReadOnlyList<Theme> themeOptions = Array.Empty<Theme>();
     [ObservableProperty] private Theme? selectedTheme;
@@ -53,10 +57,11 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, ThemeService themes, LudusaviService ludu)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu)
     {
         _svc = svc;
         _me2 = me2;
+        _direct = direct;
         _themes = themes;
         _ludu = ludu;
         ThemeOptions = themes.Themes;
@@ -109,19 +114,21 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             // Three worlds: Mod Engine 2 games read their mods from the config; FromSoft games
-            // without ME2 are direct-inject (loose files next to the exe) — recognized read-only;
-            // everything else is a filesystem scan via the proven Scanner pipeline.
+            // without ME2 are direct-inject (loose files next to the exe) — toggled by name, never
+            // deleted; everything else is a filesystem scan via the proven Scanner pipeline.
             IReadOnlyList<Mod> list;
-            var readOnly = false;
+            var directInject = DirectInjectBacked;
             if (ConfigBacked) list = _me2.ListMods(_ctx.Game);
-            else if (_ctx.Game.Engine == "fromsoft") { list = DirectInjectScan.List(_ctx.Game); readOnly = true; }
+            else if (directInject) list = _direct.List(_ctx.Game);
             else list = await ReloadFromScannerAsync();
 
-            Mods = new ObservableCollection<ModRowViewModel>(list.Select(m => new ModRowViewModel(m, readOnly)));
+            // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
+            Mods = new ObservableCollection<ModRowViewModel>(
+                list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)));
             GameRootText = _ctx.GameRoot;
-            if (readOnly)
+            if (directInject)
                 StatusText = list.Count > 0
-                    ? $"Detected {list.Count} installed mod{(list.Count == 1 ? "" : "s")} (read-only — no Mod Engine 2 found)."
+                    ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable (no Mod Engine 2)."
                     : "No Mod Engine 2 and no recognized mods found. Install Mod Engine 2 to manage folder mods here.";
             else UpdateStatus();
         }
@@ -146,6 +153,7 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
+            else if (DirectInjectBacked) _direct.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (row.Enabled) await Scanner.EnableModAsync(row.Mod.Name, _ctx);
             else await Scanner.DisableModAsync(row.Mod.Name, _ctx);
             await ReloadModsAsync();
@@ -167,6 +175,11 @@ public sealed partial class MainViewModel : ObservableObject
     private Task SetAllAsync(bool on) => BulkAsync(() =>
     {
         if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
+        if (DirectInjectBacked)
+        {
+            foreach (var m in Mods.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
+            return Task.CompletedTask;
+        }
         return Scanner.SetAllModsAsync(on, _ctx!);
     });
 
@@ -174,8 +187,8 @@ public sealed partial class MainViewModel : ObservableObject
     private Task SetMode(string mode)
     {
         ActiveMode = mode;
-        // Mod Engine 2 mods have no MP/SP split — the mode buttons are a no-op for those games.
-        if (ConfigBacked) return Task.CompletedTask;
+        // No MP/SP split for Mod Engine 2 or direct-inject mods — the mode buttons are a no-op there.
+        if (ConfigBacked || DirectInjectBacked) return Task.CompletedTask;
         return BulkAsync(() => Scanner.ApplyModeAsync(mode, _ctx!));
     }
 
@@ -191,6 +204,12 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task EnterLoadOrderAsync()
     {
         if (_ctx is null || IsLoadOrderMode) return;
+        if (DirectInjectBacked)
+        {
+            // Direct-inject mods load independently — there's no priority order to arrange.
+            StatusText = "Load order doesn't apply to these mods — they load independently.";
+            return;
+        }
         List<ModRowViewModel> ordered;
         if (ConfigBacked)
         {

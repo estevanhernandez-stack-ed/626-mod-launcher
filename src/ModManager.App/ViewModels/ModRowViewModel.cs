@@ -28,11 +28,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ThumbnailVisibility))]
     private bool inLoadOrder;
 
-    // Read-only rows (detected direct-inject mods) render the toggle disabled and hide uninstall —
-    // we recognize them but don't manage their files yet.
-    private readonly bool _readOnly;
-    public bool CanToggle => !_readOnly;
-    public Visibility ManageVisibility => !InLoadOrder && CanToggle ? Visibility.Visible : Visibility.Collapsed;
+    // Toggling and uninstall are granted separately. Direct-inject mods can be toggled (reversible
+    // move) but not uninstalled here — we never delete loose files in the game's exe folder.
+    private readonly bool _canToggle;
+    private readonly bool _canUninstall;
+    public bool CanToggle => _canToggle;
+    public Visibility ManageVisibility => !InLoadOrder && _canUninstall ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OrderValue))]
@@ -42,11 +43,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Visibility OrderVisibility => InLoadOrder ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalVisibility => InLoadOrder ? Visibility.Collapsed : Visibility.Visible;
 
-    public ModRowViewModel(Mod mod, bool readOnly = false)
+    public ModRowViewModel(Mod mod, bool canToggle = true, bool canUninstall = true)
     {
         Mod = mod;
         enabled = mod.Enabled;
-        _readOnly = readOnly;
+        _canToggle = canToggle;
+        _canUninstall = canUninstall;
     }
 
     public string DisplayName => string.IsNullOrEmpty(Mod.DisplayName) ? Mod.Name : Mod.DisplayName;
