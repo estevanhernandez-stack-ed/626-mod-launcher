@@ -1,9 +1,21 @@
+using System.Net;
 using System.Text.Json;
 
 namespace ModManager.Core;
 
 /// <summary>A built HTTP request descriptor (no IO). The client layers the actual call on top.</summary>
 public sealed record ApiRequest(string Url, string Method, IReadOnlyDictionary<string, string> Headers, string? Body = null);
+
+/// <summary>An exact fingerprint match: the CurseForge mod id + the matched file fingerprint.</summary>
+public sealed record FingerprintMatch(int? ModId, long? Fingerprint);
+
+/// <summary>CurseForge game object (subset) — used to resolve a game id from its name.</summary>
+public sealed class CfGame
+{
+    public int? Id { get; set; }
+    public string? Name { get; set; }
+    public string? Slug { get; set; }
+}
 
 /// <summary>Options for CurseForge request building. BaseUrl points at the proxy in prod (no key).</summary>
 public sealed class CurseForgeOptions
@@ -118,5 +130,80 @@ public static class CurseForgeRequests
         return data.EnumerateArray()
             .Select(el => MapMod(el.Deserialize<CfMod>(CaseInsensitive)))
             .ToList();
+    }
+
+    public static ModMeta? MapModResponse(JsonElement json)
+        => json.ValueKind == JsonValueKind.Object && json.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+            ? MapMod(data.Deserialize<CfMod>(CaseInsensitive))
+            : null;
+
+    /// <summary>Search a game's mods by name. Hits are full mod objects (MapMod-able directly).</summary>
+    public static ApiRequest SearchRequest(int gameId, string query, CurseForgeOptions? opts = null)
+    {
+        opts ??= new CurseForgeOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        var pageSize = opts.PageSize ?? 10;
+        var qs = $"gameId={gameId}&searchFilter={WebUtility.UrlEncode(query)}&pageSize={pageSize}";
+        return new ApiRequest($"{baseUrl}/v1/mods/search?{qs}", "GET", Headers(opts.ApiKey, false));
+    }
+
+    public static IReadOnlyList<CfMod> ParseSearchResults(JsonElement json)
+    {
+        if (json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return Array.Empty<CfMod>();
+        return data.EnumerateArray()
+            .Select(el => el.Deserialize<CfMod>(CaseInsensitive) ?? new CfMod())
+            .ToList();
+    }
+
+    public static IReadOnlyList<CfGame> ParseGames(JsonElement json)
+    {
+        if (json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return Array.Empty<CfGame>();
+        return data.EnumerateArray()
+            .Select(el => el.Deserialize<CfGame>(CaseInsensitive) ?? new CfGame())
+            .ToList();
+    }
+
+    /// <summary>Games list (paged) — used to resolve a game's CurseForge id from its name.</summary>
+    public static ApiRequest GamesRequest(CurseForgeOptions? opts = null)
+    {
+        opts ??= new CurseForgeOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        var pageSize = opts.PageSize ?? 50;
+        var index = opts.Index ?? 0;
+        return new ApiRequest($"{baseUrl}/v1/games?pageSize={pageSize}&index={index}", "GET", Headers(opts.ApiKey, false));
+    }
+
+    private static string NormGame(string? s) => new string((s ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    public static int? FindGameId(IEnumerable<CfGame> games, string? gameName)
+    {
+        var want = NormGame(gameName);
+        if (want.Length == 0) return null;
+        foreach (var g in games)
+        {
+            if (NormGame(g.Name) == want || NormGame(g.Slug) == want) return g.Id;
+        }
+        return null;
+    }
+
+    public static IReadOnlyList<FingerprintMatch> ParseFingerprintMatches(JsonElement json)
+    {
+        if (json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("exactMatches", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return Array.Empty<FingerprintMatch>();
+
+        var outList = new List<FingerprintMatch>();
+        foreach (var m in arr.EnumerateArray())
+        {
+            int? modId = m.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Number ? idEl.GetInt32() : null;
+            long? fp = null;
+            if (m.TryGetProperty("file", out var f) && f.ValueKind == JsonValueKind.Object
+                && f.TryGetProperty("fileFingerprint", out var fpEl) && fpEl.ValueKind == JsonValueKind.Number)
+                fp = fpEl.GetInt64();
+            outList.Add(new FingerprintMatch(modId, fp));
+        }
+        return outList;
     }
 }
