@@ -1,21 +1,59 @@
+using System.IO;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using ModManager.Core;
 using Windows.UI;
+using CoreThemes = ModManager.Core.Themes;
 
 namespace ModManager.App.Services;
 
 /// <summary>
-/// Applies a Core <see cref="Theme"/> to the app's shared brushes. Because the brushes are
-/// single instances referenced via {StaticResource}, setting their Color re-themes the live
-/// UI with no reload. The 7 built-in themes come straight from Core; default is "626 Labs".
+/// Applies a Core <see cref="Theme"/> to the app's shared brushes (single instances referenced
+/// via {StaticResource}, so setting Color re-themes the live UI with no reload). Also loads
+/// user themes from the data dir and imports new ones (validated against the 15-color contract).
 /// </summary>
 public sealed class ThemeService
 {
-    public IReadOnlyList<Theme> Themes { get; } =
-        Core.Themes.BuildThemeList(Core.Themes.BuiltinThemes, Array.Empty<(string, RawTheme)>());
+    private List<Theme> _themes;
 
-    public Theme Default => Themes.FirstOrDefault(t => t.Id == "626-labs") ?? Themes[0];
+    public ThemeService() => _themes = BuildList();
+
+    public IReadOnlyList<Theme> Themes => _themes;
+    public Theme Default => _themes.FirstOrDefault(t => t.Id == "626-labs") ?? _themes[0];
+
+    private static string UserDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder", "themes");
+
+    private static List<Theme> BuildList()
+        => CoreThemes.BuildThemeList(CoreThemes.BuiltinThemes, LoadUserThemes()).ToList();
+
+    private static IEnumerable<(string Id, RawTheme Data)> LoadUserThemes()
+    {
+        var outList = new List<(string, RawTheme)>();
+        if (!Directory.Exists(UserDir)) return outList;
+        foreach (var f in Directory.GetFiles(UserDir, "*.json"))
+        {
+            try { outList.Add((Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), CoreThemes.ParseRawTheme(File.ReadAllText(f)))); }
+            catch { /* skip a bad theme file */ }
+        }
+        return outList;
+    }
+
+    public void Reload() => _themes = BuildList();
+
+    /// <summary>Validate + persist a theme from LLM-returned JSON; reload and return the new theme.</summary>
+    public Theme ImportUserTheme(string json)
+    {
+        var raw = CoreThemes.ParseRawTheme(json);
+        var name = raw.Tokens.TryGetValue("name", out var n) && !string.IsNullOrWhiteSpace(n) ? n : "Custom";
+        var id = EnginePresets.Slugify(name);
+        var normalized = CoreThemes.NormalizeTheme(id, raw)
+            ?? throw new InvalidOperationException("That JSON isn't a complete theme — it's missing required color fields.");
+        Directory.CreateDirectory(UserDir);
+        File.WriteAllText(Path.Combine(UserDir, id + ".json"), json);
+        Reload();
+        return _themes.FirstOrDefault(t => t.Id == id) ?? normalized;
+    }
 
     public void Apply(Theme t)
     {

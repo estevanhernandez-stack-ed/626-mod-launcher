@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ModManager.Core;
 
 /// <summary>Accent-glow descriptor: blur radius (px) + alpha (0 = no glow).</summary>
@@ -13,10 +15,12 @@ public sealed class RawTheme
 /// <summary>A validated theme: required fields present, optional defaults merged, id attached.</summary>
 public sealed class Theme
 {
-    public required string Id { get; init; }
-    public required IReadOnlyDictionary<string, string> Tokens { get; init; }
-    public required AccentBloom AccentBloom { get; init; }
-    public string Name => Tokens["name"];
+    // Defaulted (not 'required') so the WinUI XAML type-info generator can construct the type
+    // for binding; NormalizeTheme always sets all three.
+    public string Id { get; init; } = "";
+    public IReadOnlyDictionary<string, string> Tokens { get; init; } = new Dictionary<string, string>();
+    public AccentBloom AccentBloom { get; init; } = new(4, 0);
+    public string Name => Tokens.TryGetValue("name", out var n) ? n : "";
     public string this[string key] => Tokens[key];
 }
 
@@ -110,6 +114,31 @@ public static class Themes
         var g = Convert.ToInt32(n.Substring(2, 2), 16);
         var b = Convert.ToInt32(n.Substring(4, 2), 16);
         return $"rgba({r}, {g}, {b}, {alpha})";
+    }
+
+    /// <summary>Parse a theme JSON object (string color tokens + optional accent_bloom) into a RawTheme.</summary>
+    public static RawTheme ParseRawTheme(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var tokens = new Dictionary<string, string>();
+        AccentBloom? bloom = null;
+        if (doc.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.NameEquals("accent_bloom") && prop.Value.ValueKind == JsonValueKind.Object)
+                {
+                    var blur = prop.Value.TryGetProperty("blur", out var b) && b.ValueKind == JsonValueKind.Number ? b.GetDouble() : 4;
+                    var alpha = prop.Value.TryGetProperty("alpha", out var a) && a.ValueKind == JsonValueKind.Number ? a.GetDouble() : 0;
+                    bloom = new AccentBloom(blur, alpha);
+                }
+                else if (prop.Value.ValueKind == JsonValueKind.String)
+                {
+                    tokens[prop.Name] = prop.Value.GetString()!;
+                }
+            }
+        }
+        return new RawTheme { Tokens = tokens, AccentBloom = bloom };
     }
 
     /// <summary>Validate required fields, merge optional defaults, attach id, default tag tokens. Null if invalid.</summary>

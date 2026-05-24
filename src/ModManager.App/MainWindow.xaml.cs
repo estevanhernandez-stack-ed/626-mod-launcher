@@ -77,6 +77,14 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    private async void OnNewTheme(object sender, RoutedEventArgs e)
+    {
+        var themes = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
+        var dialog = new NewThemeDialog(themes) { XamlRoot = Content.XamlRoot };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && dialog.Imported is not null)
+            ViewModel.OnThemeImported(dialog.Imported);
+    }
+
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {
         var name = ViewModel.ActiveGame?.Name ?? "this game";

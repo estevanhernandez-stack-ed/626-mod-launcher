@@ -54,6 +54,13 @@ public sealed partial class MainViewModel : ObservableObject
         if (value is not null) _themes.Apply(value);
     }
 
+    /// <summary>Refresh the theme list after an import and select (apply) the new one.</summary>
+    public void OnThemeImported(Theme imported)
+    {
+        ThemeOptions = _themes.Themes;
+        SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == imported.Id) ?? imported;
+    }
+
     public async Task LoadAsync()
     {
         var reg = _svc.LoadRegistry();
