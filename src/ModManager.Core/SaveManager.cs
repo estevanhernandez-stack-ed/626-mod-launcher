@@ -38,6 +38,18 @@ public static partial class SaveManager
             .ToList();
     }
 
+    /// <summary>Recognized save files, labeled by the game's declared save types (profile-driven).</summary>
+    public static IReadOnlyList<SaveFile> ListSaveFiles(string saveDir, IReadOnlyList<SaveType> saveTypes)
+    {
+        if (!Directory.Exists(saveDir)) return Array.Empty<SaveFile>();
+        var byExt = saveTypes.ToDictionary(t => t.Extension, t => t.Label, StringComparer.OrdinalIgnoreCase);
+        return Directory.GetFiles(saveDir)
+            .Where(f => byExt.ContainsKey(System.IO.Path.GetExtension(f)))
+            .Select(f => new SaveFile(System.IO.Path.GetFileName(f), System.IO.Path.GetExtension(f), byExt[System.IO.Path.GetExtension(f)]))
+            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     /// <summary>
     /// Clone a save to another type — copy <paramref name="sourceFileName"/> to the same base name with
     /// <paramref name="targetExt"/> (e.g. ER0000.sl2 → ER0000.co2). The source is never touched; an

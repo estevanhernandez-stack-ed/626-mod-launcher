@@ -8,6 +8,7 @@ namespace ModManager.Tests;
 public class SaveCloneTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "mmb-sc-" + Guid.NewGuid().ToString("N"));
+    private static IReadOnlyList<SaveType> FromSoft => GameProfiles.Resolve("fromsoft", null).SaveTypes;
 
     public SaveCloneTests()
     {
@@ -20,7 +21,7 @@ public class SaveCloneTests : IDisposable
     [Fact]
     public void Lists_only_known_save_types_with_labels()
     {
-        var files = SaveManager.ListSaveFiles(_dir);
+        var files = SaveManager.ListSaveFiles(_dir, FromSoft);
         var f = Assert.Single(files);
         Assert.Equal("ER0000.sl2", f.Name);
         Assert.Equal("Vanilla", f.TypeLabel);
@@ -34,7 +35,7 @@ public class SaveCloneTests : IDisposable
         Assert.Equal("ER0000.co2", created);
         Assert.Equal("VANILLA", File.ReadAllText(Path.Combine(_dir, "ER0000.co2"))); // copied content
         Assert.Equal("VANILLA", File.ReadAllText(Path.Combine(_dir, "ER0000.sl2"))); // source intact
-        Assert.Contains(SaveManager.ListSaveFiles(_dir), x => x.TypeLabel == "Seamless Co-op");
+        Assert.Contains(SaveManager.ListSaveFiles(_dir, FromSoft), x => x.TypeLabel == "Seamless Co-op");
     }
 
     [Fact]
