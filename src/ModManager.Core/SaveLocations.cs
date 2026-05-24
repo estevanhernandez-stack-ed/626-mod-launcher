@@ -10,32 +10,44 @@ public static class SaveLocations
 {
     public sealed record SaveRoots(string Documents, string LocalAppData, string AppData);
 
-    public static IReadOnlyList<string> Guess(SaveRoots roots, string gameName, string? engine)
+    /// <param name="extraNames">
+    /// Extra project-name candidates beyond the display name — e.g. an Unreal game's internal
+    /// project folder ("R5" for Windrose), since UE saves under the project name, not the store name.
+    /// </param>
+    public static IReadOnlyList<string> Guess(SaveRoots roots, string gameName, string? engine, IEnumerable<string>? extraNames = null)
     {
-        var name = (gameName ?? "").Trim();
+        var names = new List<string> { (gameName ?? "").Trim() };
+        if (extraNames is not null) names.AddRange(extraNames.Select(n => (n ?? "").Trim()));
+        names = names.Where(n => n.Length > 0).Distinct().ToList();
+
+        var unknown = string.IsNullOrEmpty(engine);
         var c = new List<string>();
         void Add(params string[] parts) => c.Add(System.IO.Path.Combine(parts));
 
-        switch (engine)
+        foreach (var name in names)
         {
-            case "bethesda":
+            if (engine == "bethesda" || unknown)
+            {
                 Add(roots.Documents, "My Games", name, "Saves");
                 Add(roots.Documents, "My Games", name);
-                break;
-            case "ue-pak":
+            }
+            if (engine == "ue-pak" || unknown)
+            {
                 Add(roots.LocalAppData, name, "Saved", "SaveGames");
+                Add(roots.LocalAppData, name, "Saved", "SaveProfiles");
                 Add(roots.LocalAppData, name, "Saved");
-                break;
-            case "smapi":
+            }
+            if (engine == "smapi" || unknown)
+            {
                 Add(roots.AppData, "StardewValley", "Saves");
-                break;
-        }
+            }
 
-        // Generic fallbacks that catch most other games.
-        Add(roots.Documents, "My Games", name);
-        Add(roots.Documents, name);
-        Add(roots.AppData, name);
-        Add(roots.LocalAppData, name);
+            // Generic fallbacks that catch most other games.
+            Add(roots.Documents, "My Games", name);
+            Add(roots.Documents, name);
+            Add(roots.AppData, name);
+            Add(roots.LocalAppData, name);
+        }
 
         return c.Distinct().ToList();
     }

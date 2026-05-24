@@ -39,4 +39,22 @@ public class SaveLocationsTests
         var c = SaveLocations.Guess(Roots(), "Dup", "bethesda");
         Assert.Equal(c.Count, c.Distinct().Count());
     }
+
+    [Fact]
+    public void Unreal_covers_saveprofiles_and_extra_project_names()
+    {
+        // Windrose's real path: LocalAppData\R5\Saved\SaveProfiles — project name 'R5', not the Steam name.
+        var c = SaveLocations.Guess(Roots(), "Windrose", "ue-pak", new[] { "R5" });
+        Assert.Contains(@"C:\Users\mom\AppData\Local\R5\Saved\SaveProfiles", c);
+        Assert.Contains(@"C:\Users\mom\AppData\Local\R5\Saved\SaveGames", c);
+    }
+
+    [Fact]
+    public void Null_engine_still_tries_engine_patterns()
+    {
+        // Games added before we stored the engine: don't fall back to generic-only.
+        var c = SaveLocations.Guess(Roots(), "Windrose", null, new[] { "R5" });
+        Assert.Contains(@"C:\Users\mom\AppData\Local\R5\Saved\SaveProfiles", c);
+        Assert.Contains(@"C:\Users\mom\Documents\My Games\Windrose\Saves", c);
+    }
 }

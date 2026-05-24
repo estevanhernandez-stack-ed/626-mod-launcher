@@ -31,7 +31,7 @@ public sealed partial class SavesDialog : ContentDialog
         // games added earlier, or whose save folder didn't exist until they'd played.)
         if (string.IsNullOrEmpty(_saveDir) || !System.IO.Directory.Exists(_saveDir))
         {
-            var detected = SaveLocator.Detect(ctx.Game.GameName, ctx.Game.Engine);
+            var detected = SaveLocator.Detect(ctx.Game.GameName, ctx.Game.Engine, ctx.Game.GameRoot);
             if (detected is not null)
             {
                 _saveDir = detected;
