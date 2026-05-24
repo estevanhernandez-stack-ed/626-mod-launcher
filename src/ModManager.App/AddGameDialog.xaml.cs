@@ -16,20 +16,40 @@ public sealed partial class AddGameDialog : ContentDialog
     {
         InitializeComponent();
         _hwnd = hwnd;
+        // No default selection — a wrong default reads as "auto-detected" when it isn't.
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
-        EngineBox.SelectedIndex = 0;
 
         SteamGamesBox.ItemsSource = steamGames;
         if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
     }
 
-    // Pick a Steam game -> pre-fill name, folder, and app id. The user just picks the engine.
+    // Pick a Steam game -> pre-fill name, folder, app id, and auto-detect the engine.
     private void OnSteamSelected(object sender, SelectionChangedEventArgs e)
     {
         if (SteamGamesBox.SelectedItem is not SteamGame g) return;
         NameBox.Text = g.Name;
         FolderBox.Text = g.InstallDir;
         SteamBox.Text = g.AppId;
+        ApplyDetectedEngine();
+    }
+
+    // Probe the chosen folder and preselect the engine if we can tell. Leaves it on the
+    // "Select engine…" placeholder when we can't — so a guess never masquerades as detection.
+    private void ApplyDetectedEngine()
+    {
+        var key = EngineScan.Detect(FolderBox.Text);
+        var match = key is null
+            ? null
+            : (EngineBox.ItemsSource as IEnumerable<EngineOption>)?.FirstOrDefault(o => o.Key == key);
+        if (match is not null)
+        {
+            EngineBox.SelectedItem = match;
+            EngineHint.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            EngineHint.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void OnEngineChanged(object sender, SelectionChangedEventArgs e)
@@ -47,11 +67,13 @@ public sealed partial class AddGameDialog : ContentDialog
         if (folder is null) return;
         FolderBox.Text = folder.Path;
         if (string.IsNullOrWhiteSpace(NameBox.Text)) NameBox.Text = folder.Name;
+        ApplyDetectedEngine();
     }
 
     private void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(FolderBox.Text))
+        if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(FolderBox.Text)
+            || EngineBox.SelectedItem is not EngineOption)
         {
             ErrorText.Visibility = Visibility.Visible;
             args.Cancel = true; // keep the dialog open

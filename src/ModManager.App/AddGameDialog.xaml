@@ -17,8 +17,13 @@
                   DisplayMemberPath="Name" PlaceholderText="Pick an installed Steam game"
                   SelectionChanged="OnSteamSelected" />
         <TextBox x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
-        <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
-                  DisplayMemberPath="Label" SelectionChanged="OnEngineChanged" />
+        <StackPanel Spacing="2">
+            <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
+                      DisplayMemberPath="Label" PlaceholderText="Select engine…"
+                      SelectionChanged="OnEngineChanged" />
+            <TextBlock x:Name="EngineHint" Foreground="{StaticResource ThemeAccent}" FontSize="12"
+                       Visibility="Collapsed" Text="Auto-detected from the game folder — change if it's wrong." />
+        </StackPanel>
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -31,6 +36,6 @@
         <TextBox x:Name="ModPathBox" Header="Mod folder (relative to the game folder)" />
         <TextBox x:Name="SteamBox" Header="Steam App ID (optional — enables Launch)" />
         <TextBlock x:Name="ErrorText" Foreground="{StaticResource ThemeDanger}" Visibility="Collapsed"
-                   Text="Name and game folder are required." TextWrapping="Wrap" />
+                   Text="Name, game folder, and engine are required." TextWrapping="Wrap" />
     </StackPanel>
 </ContentDialog>
