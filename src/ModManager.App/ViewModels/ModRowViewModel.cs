@@ -23,9 +23,16 @@ public sealed partial class ModRowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OrderVisibility))]
     [NotifyPropertyChangedFor(nameof(NormalVisibility))]
+    [NotifyPropertyChangedFor(nameof(ManageVisibility))]
     [NotifyPropertyChangedFor(nameof(MonogramVisibility))]
     [NotifyPropertyChangedFor(nameof(ThumbnailVisibility))]
     private bool inLoadOrder;
+
+    // Read-only rows (detected direct-inject mods) render the toggle disabled and hide uninstall —
+    // we recognize them but don't manage their files yet.
+    private readonly bool _readOnly;
+    public bool CanToggle => !_readOnly;
+    public Visibility ManageVisibility => !InLoadOrder && CanToggle ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OrderValue))]
@@ -35,10 +42,11 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Visibility OrderVisibility => InLoadOrder ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalVisibility => InLoadOrder ? Visibility.Collapsed : Visibility.Visible;
 
-    public ModRowViewModel(Mod mod)
+    public ModRowViewModel(Mod mod, bool readOnly = false)
     {
         Mod = mod;
         enabled = mod.Enabled;
+        _readOnly = readOnly;
     }
 
     public string DisplayName => string.IsNullOrEmpty(Mod.DisplayName) ? Mod.Name : Mod.DisplayName;

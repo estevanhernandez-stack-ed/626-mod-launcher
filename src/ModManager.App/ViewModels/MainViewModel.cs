@@ -108,14 +108,22 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            // Mod Engine 2 games read their mods from the config (its mods[] decides what loads);
+            // Three worlds: Mod Engine 2 games read their mods from the config; FromSoft games
+            // without ME2 are direct-inject (loose files next to the exe) — recognized read-only;
             // everything else is a filesystem scan via the proven Scanner pipeline.
-            var list = ConfigBacked
-                ? _me2.ListMods(_ctx.Game)
-                : await ReloadFromScannerAsync();
-            Mods = new ObservableCollection<ModRowViewModel>(list.Select(m => new ModRowViewModel(m)));
+            IReadOnlyList<Mod> list;
+            var readOnly = false;
+            if (ConfigBacked) list = _me2.ListMods(_ctx.Game);
+            else if (_ctx.Game.Engine == "fromsoft") { list = DirectInjectScan.List(_ctx.Game); readOnly = true; }
+            else list = await ReloadFromScannerAsync();
+
+            Mods = new ObservableCollection<ModRowViewModel>(list.Select(m => new ModRowViewModel(m, readOnly)));
             GameRootText = _ctx.GameRoot;
-            UpdateStatus();
+            if (readOnly)
+                StatusText = list.Count > 0
+                    ? $"Detected {list.Count} installed mod{(list.Count == 1 ? "" : "s")} (read-only — no Mod Engine 2 found)."
+                    : "No Mod Engine 2 and no recognized mods found. Install Mod Engine 2 to manage folder mods here.";
+            else UpdateStatus();
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }

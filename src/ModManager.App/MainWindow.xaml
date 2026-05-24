@@ -187,13 +187,14 @@
                         </StackPanel>
 
                         <ToggleSwitch Grid.Column="3" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
+                                      IsEnabled="{x:Bind CanToggle}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
                                       Visibility="{x:Bind NormalVisibility, Mode=OneWay}" />
 
                         <Button Grid.Column="4" Click="OnUninstall" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
                                 ToolTipService.ToolTip="Uninstall (permanent)"
-                                Visibility="{x:Bind NormalVisibility, Mode=OneWay}">
+                                Visibility="{x:Bind ManageVisibility, Mode=OneWay}">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
                         </Button>
                     </Grid>
