@@ -27,6 +27,7 @@ public partial class App : Application
                 services.AddSingleton<ICurseForgeClient>(sp =>
                     new CurseForgeClient(sp.GetRequiredService<HttpClient>(), new CurseForgeOptions { BaseUrl = MetadataProxy }));
                 services.AddSingleton<LauncherService>();
+                services.AddSingleton<ThemeService>();
                 services.AddTransient<MainViewModel>();
             })
             .Build();

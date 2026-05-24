@@ -43,6 +43,17 @@ public sealed class LauncherService
 
     public void SetActiveGame(string id) => SaveRegistry(Registry.SetActiveGame(LoadRegistry(), id));
 
+    /// <summary>Assemble a game entry from wizard input, persist it, and make it active.</summary>
+    public GameEntry AddGame(GameInput input)
+    {
+        var reg = LoadRegistry();
+        var entry = EnginePresets.BuildGameEntry(input, reg.Games.Select(g => g.Id));
+        reg = Registry.UpsertGame(reg, entry);
+        reg.ActiveGameId = entry.Id; // a newly added game becomes active
+        SaveRegistry(reg);
+        return entry;
+    }
+
     /// <summary>Launch the game via its configured target (steam:// url, then exe fallback).</summary>
     public bool Launch(GameEntry game)
     {

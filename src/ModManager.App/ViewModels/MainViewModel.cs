@@ -17,8 +17,12 @@ public sealed record GameOption(string Id, string Name);
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly LauncherService _svc;
+    private readonly ThemeService _themes;
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
+
+    [ObservableProperty] private IReadOnlyList<Theme> themeOptions = Array.Empty<Theme>();
+    [ObservableProperty] private Theme? selectedTheme;
 
     [ObservableProperty] private ObservableCollection<GameOption> games = new();
     [ObservableProperty] private GameOption? activeGame;
@@ -37,7 +41,18 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility GameVisibility => HasGame ? Visibility.Visible : Visibility.Collapsed;
     public Visibility EmptyVisibility => HasGame ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc) => _svc = svc;
+    public MainViewModel(LauncherService svc, ThemeService themes)
+    {
+        _svc = svc;
+        _themes = themes;
+        ThemeOptions = themes.Themes;
+        SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
+    }
+
+    partial void OnSelectedThemeChanged(Theme? value)
+    {
+        if (value is not null) _themes.Apply(value);
+    }
 
     public async Task LoadAsync()
     {
@@ -166,6 +181,20 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Added {r.Added.Count}, skipped {r.Skipped.Count}"
                 + (identified > 0 ? $", identified {identified} on CurseForge" : "");
             await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Register a new game from the wizard, make it active, and load it.</summary>
+    public async Task AddGameAsync(GameInput input)
+    {
+        IsBusy = true;
+        try
+        {
+            var entry = _svc.AddGame(input);
+            await LoadAsync();
+            StatusText = $"Added {entry.GameName}.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }

@@ -50,6 +50,14 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddModsAsync(files.Select(f => f.Path).ToList());
     }
 
+    private async void OnAddGame(object sender, RoutedEventArgs e)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dialog = new AddGameDialog(hwnd) { XamlRoot = Content.XamlRoot };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.AddGameAsync(dialog.BuildInput());
+    }
+
     // Gated uninstall: the destructive op is always behind an explicit confirm.
     private async void OnUninstall(object sender, RoutedEventArgs e)
     {

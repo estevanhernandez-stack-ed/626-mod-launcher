@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.AddGameDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Add a game"
+    PrimaryButtonText="Add"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimary">
+
+    <StackPanel Spacing="12" Width="440">
+        <TextBox x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
+        <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
+                  DisplayMemberPath="Label" SelectionChanged="OnEngineChanged" />
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="FolderBox" Grid.Column="0" Header="Game folder"
+                     PlaceholderText="C:\...\steamapps\common\YourGame" />
+            <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" VerticalAlignment="Bottom" Click="OnBrowse" />
+        </Grid>
+        <TextBox x:Name="ModPathBox" Header="Mod folder (relative to the game folder)" />
+        <TextBox x:Name="SteamBox" Header="Steam App ID (optional — enables Launch)" />
+        <TextBlock x:Name="ErrorText" Foreground="{StaticResource ThemeDanger}" Visibility="Collapsed"
+                   Text="Name and game folder are required." TextWrapping="Wrap" />
+    </StackPanel>
+</ContentDialog>
