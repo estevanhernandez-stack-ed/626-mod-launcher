@@ -29,4 +29,29 @@ public class SteamParseTests
         Assert.Equal(2, paths.Count);
         Assert.Contains("SteamLibrary", paths[1]);
     }
+
+    [Fact]
+    public void ParseAppManifest_extracts_appid_name_installdir()
+    {
+        var acf = @"""AppState""
+{
+	""appid""		""1716740""
+	""name""		""Starfield""
+	""installdir""	""Starfield""
+	""StateFlags""	""4""
+}";
+        var m = SteamParse.ParseAppManifest(acf);
+        Assert.Equal("1716740", m.AppId);
+        Assert.Equal("Starfield", m.Name);
+        Assert.Equal("Starfield", m.InstallDir);
+    }
+
+    [Fact]
+    public void ParseAppManifest_missing_fields_are_null()
+    {
+        var m = SteamParse.ParseAppManifest("{}");
+        Assert.Null(m.AppId);
+        Assert.Null(m.Name);
+        Assert.Null(m.InstallDir);
+    }
 }

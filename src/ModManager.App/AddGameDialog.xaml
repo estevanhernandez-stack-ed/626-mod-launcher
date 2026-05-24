@@ -13,6 +13,9 @@
     PrimaryButtonClick="OnPrimary">
 
     <StackPanel Spacing="12" Width="440">
+        <ComboBox x:Name="SteamGamesBox" Header="Detect from Steam (optional)" HorizontalAlignment="Stretch"
+                  DisplayMemberPath="Name" PlaceholderText="Pick an installed Steam game"
+                  SelectionChanged="OnSteamSelected" />
         <TextBox x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
         <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
                   DisplayMemberPath="Label" SelectionChanged="OnEngineChanged" />

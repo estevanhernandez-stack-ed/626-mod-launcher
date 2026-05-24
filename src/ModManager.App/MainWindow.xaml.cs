@@ -53,7 +53,8 @@ public sealed partial class MainWindow : Window
     private async void OnAddGame(object sender, RoutedEventArgs e)
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dialog = new AddGameDialog(hwnd) { XamlRoot = Content.XamlRoot };
+        var steamGames = App.AppHost.Services.GetRequiredService<Services.SteamService>().InstalledGames();
+        var dialog = new AddGameDialog(hwnd, steamGames) { XamlRoot = Content.XamlRoot };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             await ViewModel.AddGameAsync(dialog.BuildInput());
     }

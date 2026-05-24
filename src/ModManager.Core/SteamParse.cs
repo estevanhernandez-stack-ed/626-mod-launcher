@@ -18,6 +18,15 @@ public static partial class SteamParse
     [GeneratedRegex("\"path\"\\s*\"([^\"]+)\"")]
     private static partial Regex PathRe();
 
+    [GeneratedRegex("\"appid\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
+    private static partial Regex AppIdKeyRe();
+
+    [GeneratedRegex("\"name\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
+    private static partial Regex NameKeyRe();
+
+    [GeneratedRegex("\"installdir\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
+    private static partial Regex InstallDirKeyRe();
+
     public static string? ParseAppId(string? launchUrl, string? steamAppId)
     {
         if (!string.IsNullOrEmpty(steamAppId)) return steamAppId;
@@ -31,4 +40,17 @@ public static partial class SteamParse
         => PathRe().Matches(vdfText ?? "")
             .Select(m => m.Groups[1].Value.Replace(@"\\", @"\"))
             .ToList();
+
+    /// <summary>The fields we need from a Steam appmanifest_*.acf (all optional).</summary>
+    public static AppManifest ParseAppManifest(string? acfText)
+    {
+        var s = acfText ?? "";
+        return new AppManifest(
+            AppIdKeyRe().Match(s) is { Success: true } a ? a.Groups[1].Value : null,
+            NameKeyRe().Match(s) is { Success: true } n ? n.Groups[1].Value : null,
+            InstallDirKeyRe().Match(s) is { Success: true } d ? d.Groups[1].Value : null);
+    }
 }
+
+/// <summary>Parsed fields from a Steam appmanifest (appid / name / installdir).</summary>
+public sealed record AppManifest(string? AppId, string? Name, string? InstallDir);

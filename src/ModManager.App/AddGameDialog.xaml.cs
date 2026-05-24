@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using ModManager.App.Services;
 using ModManager.Core;
 using Windows.Storage.Pickers;
 
@@ -11,12 +12,24 @@ public sealed partial class AddGameDialog : ContentDialog
 
     public sealed record EngineOption(string Key, string Label);
 
-    public AddGameDialog(IntPtr hwnd)
+    public AddGameDialog(IntPtr hwnd, IReadOnlyList<SteamGame> steamGames)
     {
         InitializeComponent();
         _hwnd = hwnd;
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
         EngineBox.SelectedIndex = 0;
+
+        SteamGamesBox.ItemsSource = steamGames;
+        if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
+    }
+
+    // Pick a Steam game -> pre-fill name, folder, and app id. The user just picks the engine.
+    private void OnSteamSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (SteamGamesBox.SelectedItem is not SteamGame g) return;
+        NameBox.Text = g.Name;
+        FolderBox.Text = g.InstallDir;
+        SteamBox.Text = g.AppId;
     }
 
     private void OnEngineChanged(object sender, SelectionChangedEventArgs e)
