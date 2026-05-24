@@ -9,6 +9,9 @@ namespace ModManager.App;
 /// <summary>A snapshot row prepared for display (title + "time · size").</summary>
 public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
 
+/// <summary>A save-file row: its name + type, and the "Clone to &lt;other type&gt;" action.</summary>
+public sealed record SaveFileRow(string Name, string TypeLabel, string CloneLabel, string TargetExt);
+
 public sealed partial class SavesDialog : ContentDialog
 {
     private readonly LauncherService _svc;
@@ -28,6 +31,7 @@ public sealed partial class SavesDialog : ContentDialog
         if (!string.IsNullOrEmpty(_saveDir)) StatusText.Text = "Save folder ready.";
         FolderBox.Text = _saveDir ?? "";
         Refresh();
+        RefreshSaveFiles();
     }
 
     private void Refresh()
@@ -42,6 +46,35 @@ public sealed partial class SavesDialog : ContentDialog
         BackupButton.IsEnabled = !string.IsNullOrEmpty(_saveDir);
     }
 
+    // Save files in the folder, each with a "Clone to <other type>" action (vanilla <-> Seamless).
+    private void RefreshSaveFiles()
+    {
+        var rows = (string.IsNullOrEmpty(_saveDir) ? Array.Empty<SaveFile>() : SaveManager.ListSaveFiles(_saveDir))
+            .Select(f =>
+            {
+                var targetExt = SaveManager.SaveTypes.Keys.FirstOrDefault(k => !string.Equals(k, f.Extension, StringComparison.OrdinalIgnoreCase));
+                var label = targetExt is null ? "" : "Clone to " + SaveManager.SaveTypes[targetExt];
+                return new SaveFileRow(f.Name, f.TypeLabel, label, targetExt ?? "");
+            })
+            .Where(r => r.TargetExt.Length > 0)
+            .ToList();
+        SaveFileList.ItemsSource = rows;
+        SaveFilesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnClone(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not SaveFileRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var created = SaveManager.CloneToType(_saveDir, row.Name, row.TargetExt);
+            StatusText.Text = $"Cloned {row.Name} → {created}. Your original is untouched.";
+            RefreshSaveFiles();
+        }
+        catch (Exception ex) { StatusText.Text = ex.Message; } // e.g. "a Seamless Co-op save already exists…"
+    }
+
     private async void OnChangeFolder(object sender, RoutedEventArgs e)
     {
         var picker = new FolderPicker();
@@ -53,6 +86,7 @@ public sealed partial class SavesDialog : ContentDialog
         FolderBox.Text = _saveDir;
         _svc.SetSaveDir(_gameId, _saveDir);
         Refresh();
+        RefreshSaveFiles();
     }
 
     private void OnBackup(object sender, RoutedEventArgs e)

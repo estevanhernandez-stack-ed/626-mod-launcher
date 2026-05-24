@@ -318,8 +318,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (turnOn) AntiCheat.Enable(folder, opt.Bootstrapper);
             else AntiCheat.Disable(folder, opt.Bootstrapper, opt.RealExe);
             StatusText = turnOn
-                ? "Anti-cheat ON — Play launches normally (online OK)."
-                : "Anti-cheat OFF — press Play to start with mods, offline. Don't go online until you turn it back on.";
+                ? "Anti-cheat ON — Play launches normally (official online OK)."
+                : "Anti-cheat OFF — press Play for mods. Avoid OFFICIAL online until you turn it back on (Seamless Co-op is fine).";
         }
         catch (Exception e) { StatusText = e.Message; }
         return AntiCheatStateOf(opt);

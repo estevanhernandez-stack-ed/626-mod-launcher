@@ -31,6 +31,27 @@
             <Button x:Name="BackupButton" Grid.Column="1" Content="Back up now" VerticalAlignment="Bottom" Click="OnBackup" />
         </Grid>
 
+        <TextBlock Text="Save files" FontWeight="SemiBold" />
+        <ListView x:Name="SaveFileList" MaxHeight="120" SelectionMode="None">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:SaveFileRow">
+                    <Grid ColumnSpacing="8" Padding="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind TypeLabel}" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="{x:Bind CloneLabel}" Click="OnClone" VerticalAlignment="Center"
+                                ToolTipService.ToolTip="Copy this save to the other type — safe, never overwrites" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <TextBlock x:Name="SaveFilesEmpty" Text="No save files detected in this folder." Opacity="0.6" FontSize="12" Visibility="Collapsed" />
+
         <TextBlock Text="Snapshots" FontWeight="SemiBold" />
         <ListView x:Name="SnapshotList" MaxHeight="260" SelectionMode="None">
             <ListView.ItemTemplate>

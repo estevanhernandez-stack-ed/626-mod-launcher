@@ -7,6 +7,9 @@ namespace ModManager.Core;
 /// <summary>One save snapshot: its zip path, label, when it was taken, and size.</summary>
 public sealed record SaveSnapshot(string Path, string FileName, string Label, DateTime TakenUtc, long SizeBytes);
 
+/// <summary>A recognized save file: its name, extension, and human label (Vanilla / Seamless Co-op).</summary>
+public sealed record SaveFile(string Name, string Extension, string TypeLabel);
+
 /// <summary>
 /// Built-in game-save snapshots. Backup zips the save folder to a timestamped archive kept
 /// outside the save folder; restore swaps the save contents back, snapshotting the current
@@ -16,6 +19,47 @@ public sealed record SaveSnapshot(string Path, string FileName, string Label, Da
 public static partial class SaveManager
 {
     private const string TimeFormat = "yyyyMMdd-HHmmss";
+
+    /// <summary>Known FromSoft save extensions and their plain-English type. Seamless Co-op invents .co2.</summary>
+    public static IReadOnlyDictionary<string, string> SaveTypes { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        [".sl2"] = "Vanilla",
+        [".co2"] = "Seamless Co-op",
+    };
+
+    /// <summary>Recognized save files in the folder, labeled by type (ignores .bak and unknown files).</summary>
+    public static IReadOnlyList<SaveFile> ListSaveFiles(string saveDir)
+    {
+        if (!Directory.Exists(saveDir)) return Array.Empty<SaveFile>();
+        return Directory.GetFiles(saveDir)
+            .Where(f => SaveTypes.ContainsKey(System.IO.Path.GetExtension(f)))
+            .Select(f => new SaveFile(System.IO.Path.GetFileName(f), System.IO.Path.GetExtension(f), SaveTypes[System.IO.Path.GetExtension(f)]))
+            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Clone a save to another type — copy <paramref name="sourceFileName"/> to the same base name with
+    /// <paramref name="targetExt"/> (e.g. ER0000.sl2 → ER0000.co2). The source is never touched; an
+    /// existing target is never overwritten unless <paramref name="overwrite"/> is set (the caller
+    /// snapshots first). Returns the new file name.
+    /// </summary>
+    public static string CloneToType(string saveDir, string sourceFileName, string targetExt, bool overwrite = false)
+    {
+        var src = System.IO.Path.Combine(saveDir, sourceFileName);
+        if (!File.Exists(src)) throw new FileNotFoundException($"Save not found: {sourceFileName}");
+        if (!targetExt.StartsWith('.')) targetExt = "." + targetExt;
+
+        var destName = System.IO.Path.GetFileNameWithoutExtension(sourceFileName) + targetExt;
+        var dest = System.IO.Path.Combine(saveDir, destName);
+        if (File.Exists(dest) && !overwrite)
+        {
+            var label = SaveTypes.TryGetValue(targetExt, out var l) ? l : targetExt;
+            throw new IOException($"A {label} save already exists ({destName}). Snapshot it first if you want to replace it.");
+        }
+        File.Copy(src, dest, overwrite);
+        return destName;
+    }
 
     [GeneratedRegex(@"^(\d{8}-\d{6})(?:__(.*))?$")]
     private static partial Regex NameRe();
