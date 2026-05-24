@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ModManager.Core;
 
@@ -41,6 +42,10 @@ public static class DirectInject
     private static Signature Sig(string name, string kind, string[]? files = null, string[]? dirs = null, string[]? contains = null)
         => new(name, kind, files ?? Array.Empty<string>(), dirs ?? Array.Empty<string>(), contains ?? Array.Empty<string>());
 
+    /// <summary>The catalog label for the bare DLL mod loader — hidden once its individual mods are listed.</summary>
+    public const string LoaderName = "DLL mod loader";
+    private const string ModsDir = "mods";
+
     private const string MetaFile = "__626mod.json";
 
     // AtomicJson writes camelCase (Electron-shared convention); read tolerant of casing.
@@ -72,6 +77,37 @@ public static class DirectInject
             found.Add(new DirectInjectMod(sig.Name, sig.Kind, entries[0], entries));
         }
         return found;
+    }
+
+    /// <summary>
+    /// The individual mods run by a DLL mod loader (techiew's): each DLL in its <c>mods\</c> folder
+    /// is its own mod, owning that DLL plus a same-named config folder if present. Entries are
+    /// relative to the play folder (<c>mods\Name.dll</c>) so the toggle moves them like any other.
+    /// </summary>
+    public static IReadOnlyList<DirectInjectMod> DetectLoaderMods(IEnumerable<string> modsFiles, IEnumerable<string> modsDirs)
+    {
+        var dirSet = new HashSet<string>((modsDirs ?? Enumerable.Empty<string>()).Select(Norm), StringComparer.OrdinalIgnoreCase);
+        var result = new List<DirectInjectMod>();
+        foreach (var f in (modsFiles ?? Enumerable.Empty<string>()).Select(Norm))
+        {
+            if (!f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) continue;
+            var stem = Path.GetFileNameWithoutExtension(f);
+            var entries = new List<string> { Path.Combine(ModsDir, f) };
+            if (dirSet.Contains(stem)) entries.Add(Path.Combine(ModsDir, stem)); // its config folder
+            result.Add(new DirectInjectMod(Prettify(stem), LoaderModKind(stem), entries[0], entries));
+        }
+        return result;
+    }
+
+    // "UltrawideFix" -> "Ultrawide Fix" (space before a capital that follows a lower/digit).
+    private static string Prettify(string name) => Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])", " ");
+
+    private static string LoaderModKind(string name)
+    {
+        var n = name.ToLowerInvariant();
+        if (n.Contains("ultrawide") || n.Contains("widescreen") || n.Contains("fov") || n.Contains("resolution")) return "display";
+        if (n.Contains("vignette") || n.Contains("chromatic") || n.Contains("bloom") || n.Contains("reshade")) return "graphics";
+        return "tweak";
     }
 
     /// <summary>Disable: move the mod's owned entries into a per-mod holding folder, then record what moved.

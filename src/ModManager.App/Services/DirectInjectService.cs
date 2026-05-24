@@ -17,13 +17,26 @@ public sealed class DirectInjectService
     public IReadOnlyList<Mod> List(GameEntry game)
     {
         var folder = PlayFolder(game.GameRoot);
-        var enabled = folder is null
-            ? Array.Empty<DirectInjectMod>()
-            : DirectInject.Detect(Names(folder, Directory.GetFiles), Names(folder, Directory.GetDirectories));
-
-        return enabled.Select(d => Row(d, enabled: true))
+        return Enabled(folder).Select(d => Row(d, enabled: true))
             .Concat(DirectInject.ListDisabled(Holding(game)).Select(d => Row(d, enabled: false)))
             .ToList();
+    }
+
+    // All currently-enabled direct-inject mods: top-level signatures PLUS the individual mods a DLL
+    // loader runs from its mods\ folder. When those are present the bare "DLL mod loader" row is
+    // dropped — it's represented by its contents.
+    private static IReadOnlyList<DirectInjectMod> Enabled(string? folder)
+    {
+        if (folder is null) return Array.Empty<DirectInjectMod>();
+        var top = DirectInject.Detect(Names(folder, Directory.GetFiles), Names(folder, Directory.GetDirectories));
+
+        var modsDir = Path.Combine(folder, "mods");
+        var loaderMods = Directory.Exists(modsDir)
+            ? DirectInject.DetectLoaderMods(Names(modsDir, Directory.GetFiles), Names(modsDir, Directory.GetDirectories))
+            : Array.Empty<DirectInjectMod>();
+
+        if (loaderMods.Count > 0) top = top.Where(m => m.Name != DirectInject.LoaderName).ToList();
+        return top.Concat(loaderMods).ToList();
     }
 
     /// <summary>Install dropped sources (zip/files/folders) into the game's exe folder.</summary>
@@ -40,8 +53,7 @@ public sealed class DirectInjectService
         var holding = Holding(game);
         if (enabled) { DirectInject.Enable(folder, holding, modName); return; }
 
-        var mod = DirectInject.Detect(Names(folder, Directory.GetFiles), Names(folder, Directory.GetDirectories))
-            .FirstOrDefault(m => m.Name == modName);
+        var mod = Enabled(folder).FirstOrDefault(m => m.Name == modName);
         if (mod is not null) DirectInject.Disable(folder, holding, mod);
     }
 
