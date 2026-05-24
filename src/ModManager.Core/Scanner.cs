@@ -56,6 +56,7 @@ public static class Scanner
             SavesDir = Path.Combine(dataDir, "saves"),
             ClassificationPath = Path.Combine(dataDir, "classification.json"),
             MetadataPath = Path.Combine(dataDir, "metadata.json"),
+            LoadOrderPath = Path.Combine(dataDir, "loadorder.json"),
             SaveDir = string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
             Exts = exts,
             FileRe = fileRe,
@@ -89,6 +90,7 @@ public static class Scanner
     private static string ModKey(string filename, GameContext c)
     {
         var baseName = c.FileRe.Replace(filename, "");
+        baseName = LoadOrderApply.StripPrefix(baseName); // ignore a launcher load-order prefix (NNNN__)
         return c.GroupingRule switch
         {
             "strip_underscore_p_suffix" => Regex.Replace(baseName, "_[Pp]$", ""),
@@ -418,6 +420,74 @@ public static class Scanner
             m.Variant = v.Tag;
         }
         return Metadata.MergeMetadata(mods, LoadMetadata(c));
+    }
+
+    // ---------- load order ----------
+
+    public static Task<IReadOnlyList<string>> GetLoadOrderAsync(GameContext c) => Task.FromResult(GetLoadOrder(c));
+    public static Task ApplyLoadOrderAsync(GameContext c, IReadOnlyList<string> orderedKeys) { ApplyLoadOrder(c, orderedKeys); return Task.CompletedTask; }
+    public static Task ResetLoadOrderAsync(GameContext c) { ResetLoadOrder(c); return Task.CompletedTask; }
+
+    private static IReadOnlyList<string> LoadSavedOrder(GameContext c)
+    {
+        try { return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(c.LoadOrderPath), Json) ?? new List<string>(); }
+        catch { return new List<string>(); }
+    }
+
+    private static void SaveLoadOrder(GameContext c, IReadOnlyList<string> keys)
+    {
+        Directory.CreateDirectory(c.DataDir);
+        AtomicJson.WriteJsonAtomic(c.LoadOrderPath, keys);
+    }
+
+    /// <summary>The saved order reconciled with the currently-enabled mods (new append, missing drop).</summary>
+    private static IReadOnlyList<string> GetLoadOrder(GameContext c)
+    {
+        var enabled = BuildModList(c).Where(m => m.Enabled).Select(m => m.Name);
+        return LoadOrder.Reconcile(LoadSavedOrder(c), enabled);
+    }
+
+    /// <summary>
+    /// Enforce load order for Unreal pak mods by prefixing each enabled mod's files with a
+    /// zero-padded index. Purely additive (reversible via <see cref="ResetLoadOrder"/>); modKey
+    /// ignores the prefix so identity/disable are unaffected. Persists the order.
+    /// </summary>
+    private static void ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
+    {
+        var byKey = BuildModList(c).Where(m => m.Enabled).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
+        var index = 0;
+        foreach (var key in orderedKeys)
+        {
+            if (!byKey.TryGetValue(key, out var m)) continue;
+            var loc = LocByName(m.Location, c);
+            foreach (var f in m.Files)
+            {
+                var dest = LoadOrderApply.WithOrder(f, index);
+                if (dest == f) continue;
+                var from = Path.Combine(loc.Abs, f);
+                var to = Path.Combine(loc.Abs, dest);
+                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
+            }
+            index++;
+        }
+        SaveLoadOrder(c, orderedKeys);
+    }
+
+    /// <summary>Strip launcher load-order prefixes from every location, restoring original names.</summary>
+    private static void ResetLoadOrder(GameContext c)
+    {
+        foreach (var loc in c.Locations)
+        {
+            foreach (var f in ListPakFiles(loc.Abs, c))
+            {
+                var stripped = LoadOrderApply.StripPrefix(f);
+                if (stripped == f) continue;
+                var from = Path.Combine(loc.Abs, f);
+                var to = Path.Combine(loc.Abs, stripped);
+                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
+            }
+        }
+        try { File.Delete(c.LoadOrderPath); } catch { /* nothing to clear */ }
     }
 
     // ---------- profiles ----------

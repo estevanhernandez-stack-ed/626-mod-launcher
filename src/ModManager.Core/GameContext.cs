@@ -20,6 +20,7 @@ public sealed class GameContext
     public required string SavesDir { get; init; }
     public required string ClassificationPath { get; init; }
     public required string MetadataPath { get; init; }
+    public required string LoadOrderPath { get; init; }
     public string? SaveDir { get; init; }
     public required IReadOnlyList<string> Exts { get; init; }
     public required Regex FileRe { get; init; }
