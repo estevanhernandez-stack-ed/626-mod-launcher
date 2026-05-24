@@ -209,11 +209,23 @@ public sealed partial class MainViewModel : ObservableObject
         for (var i = 0; i < Mods.Count; i++) Mods[i].OrderPosition = i + 1;
     }
 
+    /// <summary>The active game's launch targets (modded / alt-launcher / vanilla) for the dropdown.</summary>
+    public IReadOnlyList<LaunchTarget> LaunchTargets => _ctx?.Game.LaunchTargets ?? Array.Empty<LaunchTarget>();
+
     [RelayCommand]
     private void Launch()
     {
         if (_ctx is null) return;
-        if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game.";
+        try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
+        catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>Run a specific launch target chosen from the dropdown.</summary>
+    public void LaunchTargetExplicit(LaunchTarget target)
+    {
+        if (_ctx is null) return;
+        try { _svc.Launch(target, _ctx.Game.GameRoot); }
+        catch (Exception e) { StatusText = e.Message; }
     }
 
     [RelayCommand]

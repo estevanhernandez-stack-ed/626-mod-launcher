@@ -65,9 +65,14 @@
                 </Button>
             </StackPanel>
             <Button Grid.Column="3" Content="+ Game" VerticalAlignment="Center" Click="OnAddGame" />
-            <Button Grid.Column="4" Content="▶ Launch" VerticalAlignment="Center"
-                    Command="{x:Bind ViewModel.LaunchCommand}"
-                    Foreground="Black" Background="{StaticResource ThemeAccent}" />
+            <SplitButton Grid.Column="4" Content="▶ Launch" VerticalAlignment="Center"
+                         Command="{x:Bind ViewModel.LaunchCommand}"
+                         ToolTipService.ToolTip="Launch the default target — open the menu for vanilla / modded / alt launchers"
+                         Foreground="Black" Background="{StaticResource ThemeAccent}">
+                <SplitButton.Flyout>
+                    <MenuFlyout Placement="Bottom" Opening="OnLaunchMenuOpening" />
+                </SplitButton.Flyout>
+            </SplitButton>
         </Grid>
 
         <!-- Command bar -->

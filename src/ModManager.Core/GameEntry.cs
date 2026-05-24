@@ -6,6 +6,19 @@ public sealed record ModLocation(string Name, string Label, string Path)
     public IReadOnlyList<string> Mirrors { get; init; } = Array.Empty<string>();
 }
 
+/// <summary>
+/// One way to start a game. <see cref="Kind"/> is "steam" (Target is a steam:// url) or "exe"
+/// (Target is an executable path, optionally with <see cref="Args"/> + <see cref="WorkingDir"/>).
+/// FromSoft games get a Mod Engine 2 target so mods actually load; alt-launcher mods (Seamless
+/// Co-op) get their own. The default target is the primary Launch action.
+/// </summary>
+public sealed record LaunchTarget(string Label, string Kind, string Target)
+{
+    public string? Args { get; init; }
+    public string? WorkingDir { get; init; }
+    public bool IsDefault { get; init; }
+}
+
 /// <summary>A registered game: where it lives, how its mods are shaped, how to launch it.</summary>
 public sealed class GameEntry
 {
@@ -20,6 +33,11 @@ public sealed class GameEntry
     public string? SteamAppId { get; set; }
     public string? LaunchUrl { get; set; }
     public string? LaunchExe { get; set; }
+
+    // ways to start the game (vanilla + modded/alt launchers); empty falls back to LaunchUrl/exe
+    public IReadOnlyList<LaunchTarget> LaunchTargets { get; set; } = Array.Empty<LaunchTarget>();
+    // absolute path to the active Mod Engine 2 config toml, when one was detected (FromSoft)
+    public string? ModEngineConfig { get; set; }
 
     // mod-data placement + metadata resolution
     public string? DataDir { get; set; }

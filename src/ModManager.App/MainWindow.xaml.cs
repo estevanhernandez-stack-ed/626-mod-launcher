@@ -59,6 +59,28 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddGameAsync(dialog.BuildInput());
     }
 
+    // Populate the Launch dropdown from the active game's targets each time it opens, so it
+    // always reflects the current game (modded / Seamless Co-op / vanilla).
+    private void OnLaunchMenuOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout menu) return;
+        menu.Items.Clear();
+        foreach (var target in ViewModel.LaunchTargets)
+        {
+            var item = new MenuFlyoutItem { Text = target.Label, Tag = target };
+            item.Click += OnLaunchTargetClick;
+            menu.Items.Add(item);
+        }
+        if (menu.Items.Count == 0)
+            menu.Items.Add(new MenuFlyoutItem { Text = "No launch options for this game", IsEnabled = false });
+    }
+
+    private void OnLaunchTargetClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem { Tag: ModManager.Core.LaunchTarget target })
+            ViewModel.LaunchTargetExplicit(target);
+    }
+
     private async void OnSaves(object sender, RoutedEventArgs e)
     {
         var svc = App.AppHost.Services.GetRequiredService<Services.LauncherService>();

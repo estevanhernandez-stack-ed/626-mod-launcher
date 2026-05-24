@@ -67,17 +67,29 @@ public sealed class LauncherService
         var detected = ModLocator.Detect(entry.GameRoot, entry.Engine);
         if (detected.Count > 0) entry.ModLocations = detected;
 
+        // Find how to launch with mods loaded (Mod Engine 2 / Seamless Co-op) plus vanilla Steam.
+        var launch = LaunchScan.Detect(entry.GameRoot, entry.Engine, entry.SteamAppId);
+        if (launch.Targets.Count > 0) entry.LaunchTargets = launch.Targets;
+        if (launch.ModEngineConfig is not null) entry.ModEngineConfig = launch.ModEngineConfig;
+
         reg = Registry.UpsertGame(reg, entry);
         reg.ActiveGameId = entry.Id; // a newly added game becomes active
         SaveRegistry(reg);
         return entry; // save folder is detected (Ludusavi-first) by the caller, async
     }
 
-    /// <summary>Launch the game via its configured target (steam:// url, then exe fallback).</summary>
+    /// <summary>The launch target run by the primary Launch button (explicit default, else first).</summary>
+    public static LaunchTarget? DefaultTarget(GameEntry game)
+        => game.LaunchTargets.FirstOrDefault(t => t.IsDefault) ?? game.LaunchTargets.FirstOrDefault();
+
+    /// <summary>Launch the game's default target; falls back to the legacy steam:// / exe fields.</summary>
     public bool Launch(GameEntry game)
     {
-        var target = game.LaunchUrl ?? (string.IsNullOrEmpty(game.SteamAppId) ? null : $"steam://rungameid/{game.SteamAppId}");
-        if (target is not null) { Open(target); return true; }
+        var target = DefaultTarget(game);
+        if (target is not null) return Launch(target, game.GameRoot);
+
+        var legacy = game.LaunchUrl ?? (string.IsNullOrEmpty(game.SteamAppId) ? null : $"steam://rungameid/{game.SteamAppId}");
+        if (legacy is not null) { Open(legacy); return true; }
         if (!string.IsNullOrEmpty(game.LaunchExe))
         {
             var exe = Path.IsPathRooted(game.LaunchExe) ? game.LaunchExe : Path.Combine(game.GameRoot, game.LaunchExe);
@@ -85,6 +97,19 @@ public sealed class LauncherService
             return true;
         }
         return false;
+    }
+
+    /// <summary>Run a specific launch target — exe with args + working dir, or a steam:// url.</summary>
+    public bool Launch(LaunchTarget target, string? gameRoot = null)
+    {
+        var exe = target.Kind == "exe" && !Path.IsPathRooted(target.Target) && !string.IsNullOrEmpty(gameRoot)
+            ? Path.Combine(gameRoot, target.Target)
+            : target.Target;
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = true };
+        if (!string.IsNullOrEmpty(target.Args)) psi.Arguments = target.Args;
+        if (!string.IsNullOrEmpty(target.WorkingDir)) psi.WorkingDirectory = target.WorkingDir;
+        Process.Start(psi);
+        return true;
     }
 
     private static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
