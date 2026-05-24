@@ -61,6 +61,12 @@ public sealed class LauncherService
     {
         var reg = LoadRegistry();
         var entry = EnginePresets.BuildGameEntry(input, reg.Games.Select(g => g.Id));
+
+        // Point the game at where its mods actually are — existing/sideloaded folders, or the
+        // correct Unreal project subfolder — so already-installed mods are detected on add.
+        var detected = ModLocator.Detect(entry.GameRoot, entry.Engine);
+        if (detected.Count > 0) entry.ModLocations = detected;
+
         reg = Registry.UpsertGame(reg, entry);
         reg.ActiveGameId = entry.Id; // a newly added game becomes active
         SaveRegistry(reg);
