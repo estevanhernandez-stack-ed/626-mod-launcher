@@ -100,6 +100,16 @@ public sealed partial class MainWindow : Window
             ViewModel.OnThemeImported(dialog.Imported);
     }
 
+    private void OnFindMods(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem item || item.Tag is not string key) return;
+        var name = ViewModel.ActiveGame?.Name;
+        if (string.IsNullOrEmpty(name)) return;
+        var url = Services.ModSites.SearchUrl(key, name);
+        if (url is not null && ModManager.Core.SafeUrl.IsHttpUrl(url))
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {
         var name = ViewModel.ActiveGame?.Name ?? "this game";

@@ -44,6 +44,17 @@
                     <FontIcon Glyph="&#xE712;" FontSize="14" />
                     <Button.Flyout>
                         <MenuFlyout>
+                            <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE721;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Find mods on CurseForge" Tag="curseforge" Click="OnFindMods">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE721;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
                             <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE74D;" />
