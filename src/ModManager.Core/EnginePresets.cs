@@ -60,6 +60,7 @@ public static partial class EnginePresets
         {
             Id = id,
             GameName = name,
+            Engine = string.IsNullOrEmpty(input.Engine) ? "custom" : input.Engine,
             WindowTitle = input.WindowTitle ?? (name + " Mod Launcher"),
             GameRoot = input.GameRoot ?? "",
             FileExtensions = input.FileExtensions ?? preset.FileExtensions,

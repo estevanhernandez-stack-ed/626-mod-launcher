@@ -25,6 +25,19 @@ public sealed partial class SavesDialog : ContentDialog
         _gameId = ctx.Game.Id;
         _savesDir = ctx.SavesDir;
         _saveDir = ctx.SaveDir;
+
+        // First open with no folder set: try to find it so the user never has to hunt.
+        if (string.IsNullOrEmpty(_saveDir))
+        {
+            var detected = SaveLocator.Detect(ctx.Game.GameName, ctx.Game.Engine);
+            if (detected is not null)
+            {
+                _saveDir = detected;
+                _svc.SetSaveDir(_gameId, detected);
+                StatusText.Text = "Save folder auto-detected — change it if that's not right.";
+            }
+        }
+
         FolderBox.Text = _saveDir ?? "";
         Refresh();
     }

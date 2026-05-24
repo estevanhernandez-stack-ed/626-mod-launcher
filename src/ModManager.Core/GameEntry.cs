@@ -11,6 +11,7 @@ public sealed class GameEntry
 {
     public string Id { get; set; } = "";
     public string GameName { get; set; } = "";
+    public string? Engine { get; set; }
     public string? WindowTitle { get; set; }
     public string GameRoot { get; set; } = "";
     public IReadOnlyList<string> FileExtensions { get; set; } = Array.Empty<string>();
