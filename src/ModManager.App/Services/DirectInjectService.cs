@@ -26,6 +26,13 @@ public sealed class DirectInjectService
             .ToList();
     }
 
+    /// <summary>Install dropped sources (zip/files/folders) into the game's exe folder.</summary>
+    public IntakeResult Install(GameEntry game, IEnumerable<string> paths)
+    {
+        var folder = PlayFolder(game.GameRoot);
+        return folder is null ? new IntakeResult() : DirectInject.Install(folder, paths);
+    }
+
     public void SetEnabled(GameEntry game, string modName, bool enabled)
     {
         var folder = PlayFolder(game.GameRoot);

@@ -316,6 +316,25 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = "For Mod Engine 2 games, place the mod's folder under the ME2 'mod' folder, then add it in the config. Auto-install is coming.";
             return;
         }
+        if (DirectInjectBacked)
+        {
+            // Direct-inject: extract/copy the drop into the game's exe folder, then re-detect.
+            IsBusy = true;
+            try
+            {
+                var r = _direct.Install(_ctx.Game, paths);
+                await ReloadModsAsync(); // re-detect picks up the newly installed mod (also resets status)
+                StatusText = r.Added.Count > 0
+                    ? $"Installed {r.Added.Count} file{(r.Added.Count == 1 ? "" : "s")} to the game folder"
+                      + (r.Skipped.Count > 0 ? $", skipped {r.Skipped.Count}." : ".")
+                    : r.Skipped.Count > 0
+                        ? $"Nothing installed — skipped {r.Skipped.Count} (already present or unsafe path)."
+                        : "Nothing installable in that drop.";
+            }
+            catch (Exception e) { StatusText = e.Message; }
+            finally { IsBusy = false; }
+            return;
+        }
         IsBusy = true;
         try
         {

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 
 namespace ModManager.Core;
@@ -121,6 +122,118 @@ public static class DirectInject
         }
         try { File.Delete(Path.Combine(dir, MetaFile)); } catch { /* best effort */ }
         try { Directory.Delete(dir, recursive: true); } catch { /* may hold un-restored entries */ }
+    }
+
+    // ---------- install (drop a zip / files into the exe folder) ----------
+
+    /// <summary>
+    /// Install dropped sources into the game's exe folder: zips are extracted (a single wrapping
+    /// folder flattened), loose files/folders copied in. Path-traversal entries are refused and
+    /// existing files are never overwritten — both surfaced as skips. Mirrors the intake contract.
+    /// </summary>
+    public static IntakeResult Install(string playFolder, IEnumerable<string> sourcePaths)
+    {
+        var result = new IntakeResult();
+        Directory.CreateDirectory(playFolder);
+        foreach (var src in sourcePaths ?? Enumerable.Empty<string>())
+        {
+            try
+            {
+                if (Directory.Exists(src)) InstallDir(src, playFolder, result);
+                else if (src.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) InstallZip(src, playFolder, result);
+                else InstallFile(src, Path.GetFileName(src), playFolder, result);
+            }
+            catch (Exception e) { result.Skipped.Add(new SkippedItem(Path.GetFileName(src), e.Message)); }
+        }
+        return result;
+    }
+
+    /// <summary>The single top-level folder that wraps every zip entry (to flatten), or null when
+    /// files sit at the root, entries span multiple top folders, or the prefix is a traversal.</summary>
+    public static string? WrapperPrefix(IEnumerable<string> entryNames)
+    {
+        var names = (entryNames ?? Enumerable.Empty<string>())
+            .Select(n => n.Replace('\\', '/').TrimStart('/')).Where(n => n.Length > 0).ToList();
+        if (names.Count == 0) return null;
+        string? top = null;
+        foreach (var n in names)
+        {
+            var slash = n.IndexOf('/');
+            if (slash < 0) return null; // a root-level file — no single wrapper
+            var seg = n[..slash];
+            if (seg is "." or "..") return null; // never flatten a traversal
+            if (top is null) top = seg;
+            else if (!string.Equals(top, seg, StringComparison.OrdinalIgnoreCase)) return null;
+        }
+        return top;
+    }
+
+    /// <summary>A safe relative destination for a zip entry (wrapper stripped), or null for a
+    /// directory entry or any path that tries to escape via traversal / absolute / drive root.</summary>
+    public static string? SafeRelative(string entryName, string? stripPrefix)
+    {
+        var n = entryName.Replace('\\', '/').TrimStart('/');
+        if (n.Length == 0 || n.EndsWith("/")) return null; // directory entry
+        if (stripPrefix is not null)
+        {
+            var p = stripPrefix.TrimEnd('/') + "/";
+            if (n.StartsWith(p, StringComparison.OrdinalIgnoreCase)) n = n[p.Length..];
+        }
+        if (n.Length == 0) return null;
+        var segs = n.Split('/');
+        if (segs.Any(s => s is "" or "." or "..")) return null;     // traversal / empty segment
+        if (n.Length > 1 && n[1] == ':') return null;               // drive-rooted
+        return n.Replace('/', Path.DirectorySeparatorChar);
+    }
+
+    private static void InstallZip(string zipPath, string playFolder, IntakeResult result)
+    {
+        using var zip = ZipFile.OpenRead(zipPath);
+        var prefix = WrapperPrefix(zip.Entries.Select(e => e.FullName));
+        foreach (var entry in zip.Entries)
+        {
+            var rel = SafeRelative(entry.FullName, prefix);
+            if (rel is null)
+            {
+                if (!entry.FullName.EndsWith("/")) result.Skipped.Add(new SkippedItem(entry.FullName, "unsafe path"));
+                continue;
+            }
+            var dest = Path.Combine(playFolder, rel);
+            if (!IsUnder(playFolder, dest)) { result.Skipped.Add(new SkippedItem(rel, "unsafe path")); continue; }
+            if (Exists(dest)) { result.Skipped.Add(new SkippedItem(rel, "already present")); continue; }
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            entry.ExtractToFile(dest, overwrite: false);
+            result.Added.Add(rel);
+        }
+    }
+
+    private static void InstallFile(string src, string name, string playFolder, IntakeResult result)
+    {
+        var dest = Path.Combine(playFolder, name);
+        if (Exists(dest)) { result.Skipped.Add(new SkippedItem(name, "already present")); return; }
+        File.Copy(src, dest);
+        result.Added.Add(name);
+    }
+
+    private static void InstallDir(string src, string playFolder, IntakeResult result)
+    {
+        var destRoot = Path.Combine(playFolder, new DirectoryInfo(src).Name);
+        foreach (var file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(src, file);
+            var dest = Path.Combine(destRoot, rel);
+            if (!IsUnder(playFolder, dest)) { result.Skipped.Add(new SkippedItem(rel, "unsafe path")); continue; }
+            if (Exists(dest)) { result.Skipped.Add(new SkippedItem(rel, "already present")); continue; }
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.Copy(file, dest);
+            result.Added.Add(rel);
+        }
+    }
+
+    private static bool IsUnder(string root, string path)
+    {
+        var r = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(r, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>The currently-disabled direct-inject mods, read from holding-folder metadata.</summary>
