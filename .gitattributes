@@ -1,0 +1,8 @@
+# Normalize line endings — checkout native, commit LF.
+* text=auto
+
+*.cs text eol=lf
+*.csproj text eol=lf
+*.sln text eol=crlf
+*.json text eol=lf
+*.md text eol=lf
