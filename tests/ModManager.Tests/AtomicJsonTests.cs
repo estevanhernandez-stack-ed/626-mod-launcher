@@ -15,6 +15,21 @@ public class AtomicJsonTests
     }
 
     [Fact]
+    public void Writes_camelcase_property_names_for_cross_app_compat()
+    {
+        // The data files are shared with the Electron app, which uses camelCase. C# must match.
+        var dir = TmpDir();
+        var file = Path.Combine(dir, "meta.json");
+        AtomicJson.WriteJsonAtomic(file, new ModMeta { Title = "X", CurseforgeId = 5 });
+
+        var raw = File.ReadAllText(file);
+        Assert.Contains("\"title\"", raw);
+        Assert.Contains("\"curseforgeId\"", raw);
+        Assert.DoesNotContain("\"Title\"", raw);
+        Assert.DoesNotContain("\"CurseforgeId\"", raw);
+    }
+
+    [Fact]
     public void Writes_json_content_to_a_new_file()
     {
         var dir = TmpDir();

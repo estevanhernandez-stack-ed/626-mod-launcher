@@ -30,22 +30,26 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool HasDescription => !string.IsNullOrEmpty(Mod.Description);
     public Visibility DescriptionVisibility => HasDescription ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>Author credit line — visible attribution. "by Author · CurseForge · Source · N downloads".</summary>
-    public string Credit
-    {
-        get
-        {
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(Mod.Author)) parts.Add($"by {Mod.Author}");
-            if (!string.IsNullOrEmpty(Mod.ModUrl)) parts.Add("CurseForge");
-            if (!string.IsNullOrEmpty(Mod.Source)) parts.Add("Source");
-            if (Mod.Downloads is > 0) parts.Add($"{Mod.Downloads:N0} downloads");
-            return string.Join("  ·  ", parts);
-        }
-    }
+    // Author credit line — visible, clickable attribution (honor the builders). Each link opens
+    // in the browser via HyperlinkButton.NavigateUri; SafeUrl guards to http(s) only.
+    public string AuthorText => string.IsNullOrEmpty(Mod.Author) ? "" : $"by {Mod.Author}";
+    public Visibility AuthorVisibility => string.IsNullOrEmpty(Mod.Author) ? Visibility.Collapsed : Visibility.Visible;
 
-    public bool HasCredit => Mod.HasMeta && Credit.Length > 0;
-    public Visibility CreditVisibility => HasCredit ? Visibility.Visible : Visibility.Collapsed;
+    public Uri? ModUri => SafeUrl.IsHttpUrl(Mod.ModUrl) ? new Uri(Mod.ModUrl!) : null;
+    public Visibility ModUrlVisibility => ModUri is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public Uri? SourceUri => SafeUrl.IsHttpUrl(Mod.Source) ? new Uri(Mod.Source!) : null;
+    public Visibility SourceVisibility => SourceUri is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public Uri? DonateUri => SafeUrl.IsHttpUrl(Mod.Donate) ? new Uri(Mod.Donate!) : null;
+    public Visibility DonateVisibility => DonateUri is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public string DownloadsText => Mod.Downloads is > 0 ? $"{Mod.Downloads:N0} downloads" : "";
+    public Visibility DownloadsVisibility => Mod.Downloads is > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    private bool HasAnyCredit => !string.IsNullOrEmpty(Mod.Author) || ModUri is not null
+        || SourceUri is not null || DonateUri is not null || Mod.Downloads is > 0;
+    public Visibility CreditVisibility => Mod.HasMeta && HasAnyCredit ? Visibility.Visible : Visibility.Collapsed;
 
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;
@@ -53,10 +57,6 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Visibility VariantVisibility => HasVariant ? Visibility.Visible : Visibility.Collapsed;
     public string VariantChip => Mod.Variant ?? "";
     public string ClassChip => (Mod.Class ?? "both").ToUpperInvariant();
-
-    public string? ModUrl => Mod.ModUrl;
-    public string? SourceUrl => Mod.Source;
-    public string? DonateUrl => Mod.Donate;
 
     // Row graphic: the builder's CurseForge art when we have it (honor them), else a monogram.
     private ImageSource? _thumb;

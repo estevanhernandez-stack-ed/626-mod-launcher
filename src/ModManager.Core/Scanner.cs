@@ -12,7 +12,13 @@ namespace ModManager.Core;
 /// </summary>
 public static class Scanner
 {
-    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
+    // Reads tolerate either casing; writes stay camelCase for Electron-app interop on shared files.
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     // ---------- data dir + context (pure) ----------
 

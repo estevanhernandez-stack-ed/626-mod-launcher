@@ -95,8 +95,18 @@
                             <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
                             <TextBlock Text="{x:Bind Description}" Opacity="0.7" TextWrapping="Wrap" MaxLines="2"
                                        Visibility="{x:Bind DescriptionVisibility}" />
-                            <TextBlock Text="{x:Bind Credit}" Opacity="0.55" FontSize="12"
-                                       Visibility="{x:Bind CreditVisibility}" />
+                            <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{x:Bind CreditVisibility}">
+                                <TextBlock Text="{x:Bind AuthorText}" Opacity="0.55" FontSize="12" VerticalAlignment="Center"
+                                           Visibility="{x:Bind AuthorVisibility}" />
+                                <HyperlinkButton Content="CurseForge" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="12"
+                                                 Visibility="{x:Bind ModUrlVisibility}" />
+                                <HyperlinkButton Content="Source" NavigateUri="{x:Bind SourceUri}" Padding="6,0" FontSize="12"
+                                                 Visibility="{x:Bind SourceVisibility}" />
+                                <HyperlinkButton Content="Donate" NavigateUri="{x:Bind DonateUri}" Padding="6,0" FontSize="12"
+                                                 Foreground="{StaticResource Magenta626}" Visibility="{x:Bind DonateVisibility}" />
+                                <TextBlock Text="{x:Bind DownloadsText}" Opacity="0.55" FontSize="12" VerticalAlignment="Center"
+                                           Visibility="{x:Bind DownloadsVisibility}" />
+                            </StackPanel>
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

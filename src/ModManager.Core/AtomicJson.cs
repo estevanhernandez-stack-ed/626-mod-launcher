@@ -11,7 +11,13 @@ namespace ModManager.Core;
 /// </summary>
 public static class AtomicJson
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    // camelCase: the launcher's JSON state files are shared with the Electron app, which
+    // reads/writes camelCase. Staying camelCase keeps both apps reading the same data.
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     public static void WriteJsonAtomic<T>(string file, T value)
     {
