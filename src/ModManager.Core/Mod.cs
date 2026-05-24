@@ -26,7 +26,7 @@ public sealed class Mod
     public string? Source { get; set; }
     public string? Donate { get; set; }
     public string? Image { get; set; }
-    public int? Downloads { get; set; }
+    public long? Downloads { get; set; }
     public bool HasMeta { get; set; }
 }
 
@@ -41,5 +41,6 @@ public sealed class ModMeta
     public string? Source { get; set; }
     public string? Donate { get; set; }
     public string? Image { get; set; }
-    public int? Downloads { get; set; }
+    public long? Downloads { get; set; }
+    public int? CurseforgeId { get; set; }
 }

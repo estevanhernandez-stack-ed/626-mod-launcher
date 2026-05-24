@@ -74,7 +74,7 @@ public class MetadataTests
         Assert.Equal("https://github.com/mezz/JustEnoughItems", m.Source);
         Assert.Equal("https://buymeacoffee.com/mezz", m.Donate);
         Assert.Equal("https://media.forgecdn.net/x.png", m.Image);
-        Assert.Equal(999, m.Downloads);
+        Assert.Equal(999L, m.Downloads);
     }
 
     [Fact]
