@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/ModManager.App/ModManager.App.csproj">
+      <Platform Project="x64" />
+    </Project>
     <Project Path="src/ModManager.Core/ModManager.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">

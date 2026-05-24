@@ -1,0 +1,61 @@
+using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
+using ModManager.Core;
+
+namespace ModManager.App.Services;
+
+/// <summary>
+/// App-layer bridge to the pure Core: loads the games registry (shared with the Electron app
+/// at %APPDATA%\ModManagerBuilder), resolves the active game context, and owns the two bits of
+/// real integration the Core deliberately leaves out — registry IO location and game launch.
+/// </summary>
+public sealed class LauncherService
+{
+    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+
+    public ICurseForgeClient CurseForge { get; }
+
+    public LauncherService(ICurseForgeClient curseForge) => CurseForge = curseForge;
+
+    private static string DataRoot =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder");
+
+    private static string RegistryPath => Path.Combine(DataRoot, "games.json");
+
+    public GameRegistry LoadRegistry()
+    {
+        try { return JsonSerializer.Deserialize<GameRegistry>(File.ReadAllText(RegistryPath), Json) ?? Registry.EmptyRegistry(); }
+        catch { return Registry.EmptyRegistry(); }
+    }
+
+    public void SaveRegistry(GameRegistry reg)
+    {
+        Directory.CreateDirectory(DataRoot);
+        AtomicJson.WriteJsonAtomic(RegistryPath, reg);
+    }
+
+    public GameContext? ActiveContext()
+    {
+        var game = Registry.GetActiveGame(LoadRegistry());
+        return game is null ? null : Scanner.GameContext(game);
+    }
+
+    public void SetActiveGame(string id) => SaveRegistry(Registry.SetActiveGame(LoadRegistry(), id));
+
+    /// <summary>Launch the game via its configured target (steam:// url, then exe fallback).</summary>
+    public bool Launch(GameEntry game)
+    {
+        var target = game.LaunchUrl ?? (string.IsNullOrEmpty(game.SteamAppId) ? null : $"steam://rungameid/{game.SteamAppId}");
+        if (target is not null) { Open(target); return true; }
+        if (!string.IsNullOrEmpty(game.LaunchExe))
+        {
+            var exe = Path.IsPathRooted(game.LaunchExe) ? game.LaunchExe : Path.Combine(game.GameRoot, game.LaunchExe);
+            Open(exe);
+            return true;
+        }
+        return false;
+    }
+
+    private static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+}
