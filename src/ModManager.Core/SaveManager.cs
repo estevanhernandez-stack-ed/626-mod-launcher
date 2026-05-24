@@ -153,6 +153,15 @@ public static partial class SaveManager
         if (File.Exists(snapshotZip)) File.Delete(snapshotZip);
     }
 
+    /// <summary>Keep every user snapshot plus the newest <paramref name="keepLastAuto"/> auto snapshots;
+    /// delete older autos only. A user (non-auto) snapshot is never deleted.</summary>
+    public static void Prune(string snapshotsDir, int keepLastAuto)
+    {
+        if (keepLastAuto < 0) keepLastAuto = 0;
+        var autos = ListSnapshots(snapshotsDir).Where(s => s.IsAuto).ToList(); // ListSnapshots is newest-first
+        foreach (var old in autos.Skip(keepLastAuto)) Delete(old.Path);
+    }
+
     private static string SanitizeLabel(string? label)
     {
         if (string.IsNullOrWhiteSpace(label)) return "";

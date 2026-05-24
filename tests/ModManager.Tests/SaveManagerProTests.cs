@@ -32,4 +32,21 @@ public class SaveManagerProTests : IDisposable
         var sneaky = SaveManager.Backup(Save, Snaps, "auto-before-launch"); // user, not auto
         Assert.False(SaveManager.ListSnapshots(Snaps).Single(s => s.FileName == sneaky.FileName).IsAuto);
     }
+
+    [Fact]
+    public void Prune_keeps_all_user_and_newest_N_auto()
+    {
+        SaveManager.Backup(Save, Snaps, "keep me");        // user — must survive
+        for (var i = 0; i < 5; i++)
+        {
+            System.Threading.Thread.Sleep(50);             // distinct timestamps for ordering
+            SaveManager.Backup(Save, Snaps, "before-launch", auto: true);
+        }
+
+        SaveManager.Prune(Snaps, keepLastAuto: 2);
+
+        var left = SaveManager.ListSnapshots(Snaps);
+        Assert.Equal(1, left.Count(s => !s.IsAuto));       // user backup kept
+        Assert.Equal(2, left.Count(s => s.IsAuto));        // newest 2 autos kept
+    }
 }
