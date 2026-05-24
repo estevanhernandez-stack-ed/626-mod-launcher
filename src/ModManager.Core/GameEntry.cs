@@ -1,7 +1,10 @@
 namespace ModManager.Core;
 
-/// <summary>One mod-file location under a game root (name/label/relative path).</summary>
-public sealed record ModLocation(string Name, string Label, string Path);
+/// <summary>One mod-file location under a game root (name/label/relative path + optional mirrors).</summary>
+public sealed record ModLocation(string Name, string Label, string Path)
+{
+    public IReadOnlyList<string> Mirrors { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>A registered game: where it lives, how its mods are shaped, how to launch it.</summary>
 public sealed class GameEntry
@@ -16,6 +19,11 @@ public sealed class GameEntry
     public string? SteamAppId { get; set; }
     public string? LaunchUrl { get; set; }
     public string? LaunchExe { get; set; }
+
+    // mod-data placement + metadata resolution
+    public string? DataDir { get; set; }
+    public int? CurseforgeGameId { get; set; }
+    public string? ScanSubfolders { get; set; }
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>

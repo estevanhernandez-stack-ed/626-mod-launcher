@@ -16,6 +16,12 @@ public sealed class Mod
     public bool Enabled { get; set; }
     public bool OnServer { get; set; }
 
+    // scan placement
+    public string Location { get; set; } = "";
+    public List<string> Files { get; set; } = new();
+    public bool IsFolder { get; set; }
+    public bool HasVortexFolder { get; set; }
+
     // enrichment (from Metadata.MergeMetadata)
     public string DisplayName { get; set; } = "";
     public string BaseTitle { get; set; } = "";

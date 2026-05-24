@@ -4,6 +4,19 @@ using System.Text.Json;
 namespace ModManager.Core;
 
 /// <summary>
+/// CurseForge metadata operations the launcher depends on. Injected into Scanner so the
+/// metadata flows stay headless-testable (a fake stands in for the network).
+/// </summary>
+public interface ICurseForgeClient
+{
+    Task<ModMeta?> GetModAsync(int modId);
+    Task<IReadOnlyList<ModMeta>> GetModsAsync(IEnumerable<int> modIds);
+    Task<IReadOnlyList<CfMod>> SearchAsync(int gameId, string query);
+    Task<IReadOnlyList<FingerprintMatch>> GetFingerprintMatchesAsync(IEnumerable<long> fingerprints);
+    Task<int?> ResolveGameIdAsync(string gameName);
+}
+
+/// <summary>
 /// CurseForge metadata client (I/O). Pure request-building + mapping live in
 /// CurseForgeRequests. The HttpClient is injected, so this is testable without a real key,
 /// and BaseUrl/ApiKey are configurable so it works in both key-transport modes:
@@ -12,7 +25,7 @@ namespace ModManager.Core;
 /// Operating law #2: the key is never embedded here — it's passed in at runtime.
 /// Mirrors curseforge.js.
 /// </summary>
-public sealed class CurseForgeClient
+public sealed class CurseForgeClient : ICurseForgeClient
 {
     private readonly HttpClient _http;
     private readonly CurseForgeOptions _opts;
