@@ -69,6 +69,14 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    private async void OnLoadOrder(object sender, RoutedEventArgs e)
+    {
+        var ctx = App.AppHost.Services.GetRequiredService<Services.LauncherService>().ActiveContext();
+        if (ctx is null) return;
+        var dialog = new LoadOrderDialog(ctx) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+    }
+
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {
         var name = ViewModel.ActiveGame?.Name ?? "this game";
