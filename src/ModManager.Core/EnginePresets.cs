@@ -25,6 +25,8 @@ public static partial class EnginePresets
             "VPK addons under <game>/addons."),
         ["melonloader"] = new("MelonLoader (Unity)", new[] { "dll" }, "filename_no_ext", "Mods",
             "DLL mods in the Mods folder."),
+        ["fromsoft"] = new("FromSoftware (Mod Engine 2)", Array.Empty<string>(), "by_folder", "mod",
+            "Elden Ring / Dark Souls / Sekiro / Armored Core. Each mod is a folder under 'mod', loaded by Mod Engine 2."),
         ["custom"] = new("Custom (set manually)", new[] { "pak" }, "filename_no_ext", "mods",
             "Set the extensions, grouping, and mod folder yourself."),
     };

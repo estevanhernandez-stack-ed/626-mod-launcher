@@ -37,7 +37,9 @@ public sealed partial class AddGameDialog : ContentDialog
     // "Select engine…" placeholder when we can't — so a guess never masquerades as detection.
     private void ApplyDetectedEngine()
     {
-        var key = EngineScan.Detect(FolderBox.Text);
+        // Steam App ID is the most reliable signal (catches proprietary engines like FromSoft's
+        // that have no folder signature); fall back to scanning the game folder.
+        var key = KnownEngines.ByAppId(SteamBox.Text) ?? EngineScan.Detect(FolderBox.Text);
         var match = key is null
             ? null
             : (EngineBox.ItemsSource as IEnumerable<EngineOption>)?.FirstOrDefault(o => o.Key == key);
