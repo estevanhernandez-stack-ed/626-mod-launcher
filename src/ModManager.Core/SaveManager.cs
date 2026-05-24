@@ -4,8 +4,8 @@ using System.Text.RegularExpressions;
 
 namespace ModManager.Core;
 
-/// <summary>One save snapshot: its zip path, label, when it was taken, and size.</summary>
-public sealed record SaveSnapshot(string Path, string FileName, string Label, DateTime TakenUtc, long SizeBytes);
+/// <summary>One save snapshot: its zip path, label, when it was taken, size, and whether the app made it (auto).</summary>
+public sealed record SaveSnapshot(string Path, string FileName, string Label, DateTime TakenUtc, long SizeBytes, bool IsAuto);
 
 /// <summary>A recognized save file: its name, extension, and human label (Vanilla / Seamless Co-op).</summary>
 public sealed record SaveFile(string Name, string Extension, string TypeLabel);
@@ -76,7 +76,13 @@ public static partial class SaveManager
     [GeneratedRegex(@"^(\d{8}-\d{6})(?:__(.*))?$")]
     private static partial Regex NameRe();
 
-    public static SaveSnapshot Backup(string saveDir, string snapshotsDir, string? label = null)
+    // The app's own auto snapshots carry this reserved label prefix so retention can tell them from
+    // the user's deliberate backups. Reserved: user labels can never start with it (see Backup).
+    private const string AutoPrefix = "auto-";
+
+    private static bool IsAutoLabel(string label) => label.StartsWith(AutoPrefix, StringComparison.OrdinalIgnoreCase);
+
+    public static SaveSnapshot Backup(string saveDir, string snapshotsDir, string? label = null, bool auto = false)
     {
         if (!Directory.Exists(saveDir))
             throw new DirectoryNotFoundException($"Save folder not found: {saveDir}");
@@ -84,7 +90,13 @@ public static partial class SaveManager
         Directory.CreateDirectory(snapshotsDir);
         var takenUtc = DateTime.UtcNow;
         var stamp = takenUtc.ToString(TimeFormat, CultureInfo.InvariantCulture);
+
         var safe = SanitizeLabel(label);
+        // The auto- prefix is reserved for the app: strip it from a user's label so a user backup can
+        // never be misclassified as auto (and pruned). Only auto:true mints an auto snapshot.
+        while (safe.StartsWith(AutoPrefix, StringComparison.OrdinalIgnoreCase)) safe = safe[AutoPrefix.Length..];
+        if (auto) safe = AutoPrefix + (safe.Length > 0 ? safe : "snapshot");
+
         var fileName = safe.Length > 0 ? $"{stamp}__{safe}.zip" : $"{stamp}.zip";
         var path = System.IO.Path.Combine(snapshotsDir, fileName);
 
@@ -94,7 +106,7 @@ public static partial class SaveManager
             path = System.IO.Path.Combine(snapshotsDir, (safe.Length > 0 ? $"{stamp}__{safe}-{n}" : $"{stamp}-{n}") + ".zip");
 
         ZipFile.CreateFromDirectory(saveDir, path);
-        return new SaveSnapshot(path, System.IO.Path.GetFileName(path), safe, takenUtc, new FileInfo(path).Length);
+        return new SaveSnapshot(path, System.IO.Path.GetFileName(path), safe, takenUtc, new FileInfo(path).Length, IsAutoLabel(safe));
     }
 
     public static void Restore(string snapshotZip, string saveDir, string snapshotsDir)
@@ -102,9 +114,9 @@ public static partial class SaveManager
         if (!File.Exists(snapshotZip))
             throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
 
-        // Safety: snapshot the current save state before we overwrite it.
+        // Safety: snapshot the current save state before we overwrite it (auto-tagged).
         if (Directory.Exists(saveDir) && Directory.EnumerateFileSystemEntries(saveDir).Any())
-            Backup(saveDir, snapshotsDir, "before-restore");
+            Backup(saveDir, snapshotsDir, "before-restore", auto: true);
 
         Directory.CreateDirectory(saveDir);
         foreach (var f in Directory.GetFiles(saveDir)) File.Delete(f);
@@ -131,7 +143,7 @@ public static partial class SaveManager
                 taken = File.GetLastWriteTimeUtc(path);
                 label = name;
             }
-            outList.Add(new SaveSnapshot(path, System.IO.Path.GetFileName(path), label, taken, new FileInfo(path).Length));
+            outList.Add(new SaveSnapshot(path, System.IO.Path.GetFileName(path), label, taken, new FileInfo(path).Length, IsAutoLabel(label)));
         }
         return outList.OrderByDescending(s => s.TakenUtc).ThenByDescending(s => s.FileName, StringComparer.Ordinal).ToList();
     }
