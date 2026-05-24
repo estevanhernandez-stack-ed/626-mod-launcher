@@ -89,7 +89,7 @@ public static class LaunchScan
         return named ?? "config_eldenring.toml";
     }
 
-    private static string? FindSeamless(string gameRoot)
+    public static string? FindSeamless(string gameRoot)
     {
         // Known launcher names across Seamless Co-op versions, then any *seamless*.exe.
         foreach (var name in new[] { "launch_elden_ring_seamlesscoop.exe", "ersc_launcher.exe" })

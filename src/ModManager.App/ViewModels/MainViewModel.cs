@@ -54,6 +54,12 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LaunchHintVisibility => LaunchNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CoopHintVisibility))]
+    private bool coopLauncherMissing;
+
+    public Visibility CoopHintVisibility => CoopLauncherMissing ? Visibility.Visible : Visibility.Collapsed;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadOrderVisibility))]
     [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
     private bool isLoadOrderMode;
@@ -133,6 +139,7 @@ public sealed partial class MainViewModel : ObservableObject
                 list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)));
             GameRootText = _ctx.GameRoot;
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
+            CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
             if (directInject)
                 StatusText = list.Count > 0
                     ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable (no Mod Engine 2)."

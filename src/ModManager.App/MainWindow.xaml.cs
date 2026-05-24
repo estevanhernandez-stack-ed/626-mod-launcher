@@ -143,6 +143,27 @@ public sealed partial class MainWindow : Window
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
 
+    // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.
+    private async void OnCoopHint(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Seamless Co-op — launcher missing",
+            Content = new TextBlock
+            {
+                Text = "Seamless Co-op's mod files are installed, but its launcher "
+                       + "(launch_elden_ring_seamlesscoop.exe / ersc_launcher.exe) isn't here — and co-op only "
+                       + "starts through that launcher, not the bare DLL.\n\nDownload the full Seamless Co-op mod, "
+                       + "drop it on this window (or into the game folder), then Re-scan. A \"Play (Seamless Co-op)\" "
+                       + "option will appear, and everyone in your group sets the same password in ersc_settings.ini.",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            CloseButtonText = "Got it",
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
+    }
+
     // The Launch Options manager: internal options the app runs ("Play this"); external options the
     // user pastes into Steam (the exact string + Copy + plain-English steps).
     private async void OnLaunchOptions(object sender, RoutedEventArgs e)

@@ -115,6 +115,14 @@
                 <Button Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button Click="OnCoopHint" Background="Transparent" BorderThickness="0"
+                        ToolTipService.ToolTip="Seamless Co-op is installed but its launcher is missing — co-op needs the full mod"
+                        Visibility="{x:Bind ViewModel.CoopHintVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <TextBlock Text="Co-op needs its launcher" Foreground="{StaticResource ThemeDanger}" />
+                    </StackPanel>
+                </Button>
                 <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
                         ToolTipService.ToolTip="This game needs a launch option for mods to load"
                         Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
