@@ -1,0 +1,22 @@
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.suo
+
+# test + coverage
+[Tt]est[Rr]esults/
+*.trx
+coverage*.json
+coverage*.xml
+
+# secrets — never commit (the CurseForge key lives only in the Worker)
+*.secret
+.env
+appsettings.*.local.json

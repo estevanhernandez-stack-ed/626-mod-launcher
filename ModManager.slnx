@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ModManager.Core/ModManager.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ModManager.Tests/ModManager.Tests.csproj" />
+  </Folder>
+</Solution>
