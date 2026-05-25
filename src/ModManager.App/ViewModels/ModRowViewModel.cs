@@ -52,6 +52,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     }
 
     public string DisplayName => string.IsNullOrEmpty(Mod.DisplayName) ? Mod.Name : Mod.DisplayName;
+
+    // When metadata renames the mod, surface the underlying file key so two same-titled mods (e.g.
+    // FasterShips vs aaUltraFastShips, both "Faster Ships") are distinguishable at a glance.
+    public string FileTag => string.Equals(DisplayName, Mod.Name, StringComparison.OrdinalIgnoreCase) ? "" : Mod.Name;
+    public Visibility FileTagVisibility => string.IsNullOrEmpty(FileTag) ? Visibility.Collapsed : Visibility.Visible;
+
     public string? Description => Mod.Description;
     public bool HasDescription => !string.IsNullOrEmpty(Mod.Description);
     public Visibility DescriptionVisibility => HasDescription ? Visibility.Visible : Visibility.Collapsed;
@@ -80,6 +86,18 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Uri? ModUri => SafeUrl.IsHttpUrl(Mod.ModUrl) ? new Uri(Mod.ModUrl!) : null;
     public Visibility ModUrlVisibility => ModUri is null ? Visibility.Collapsed : Visibility.Visible;
 
+    // The page-link label reflects the ACTUAL host, not a hardcoded "CurseForge".
+    public string ModUrlLabel
+    {
+        get
+        {
+            var host = ModUri?.Host ?? "";
+            if (host.Contains("nexusmods", StringComparison.OrdinalIgnoreCase)) return "Nexus";
+            if (host.Contains("curseforge", StringComparison.OrdinalIgnoreCase)) return "CurseForge";
+            return "Mod page";
+        }
+    }
+
     public Uri? SourceUri => SafeUrl.IsHttpUrl(Mod.Source) ? new Uri(Mod.Source!) : null;
     public Visibility SourceVisibility => SourceUri is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -101,7 +119,9 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MpBadgeOpacity))]
     private MpRisk? mpOverride;
 
-    public MpRisk EffectiveMp => MpCompat.Effective(MpCompat.Infer(Mod.Class), MpOverride);
+    // Readme/description claim outranks the class hint ("unless the readme says otherwise"); a
+    // user override (set after testing) outranks both. Silence stays honest at "MP?".
+    public MpRisk EffectiveMp => MpCompat.Effective(MpCompat.InferAll(Mod.Class, Mod.Description), MpOverride);
     public string MpBadge => EffectiveMp switch
     {
         MpRisk.Safe => "MP-SAFE",
@@ -117,6 +137,10 @@ public sealed partial class ModRowViewModel : ObservableObject
     };
     public double MpBadgeOpacity => EffectiveMp == MpRisk.Unknown ? 0.5 : 1.0;
     private static Brush? Res(string key) => Application.Current.Resources.TryGetValue(key, out var v) ? v as Brush : null;
+
+    // Part of a multi-variant family (same mod page / _Nx base) — members sit adjacent + show a chip.
+    public bool InVariantGroup { get; init; }
+    public Visibility VariantGroupVisibility => InVariantGroup ? Visibility.Visible : Visibility.Collapsed;
 
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;

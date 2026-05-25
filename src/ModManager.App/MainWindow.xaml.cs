@@ -188,12 +188,16 @@ public sealed partial class MainWindow : Window
     // storing; shows the connected account + a Disconnect option.
     private async void OnNexus(object sender, RoutedEventArgs e)
     {
+        // Re-validate a stored key first so the account name + Premium/Free tag are current (and to
+        // populate premium for a connection saved before it was tracked). Offline-safe.
+        if (ViewModel.NexusConnected) await ViewModel.RefreshNexusAsync();
+
         var status = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.85,
             Text = ViewModel.NexusConnected
-                ? $"Connected as {ViewModel.NexusUser}. Paste a new key to switch, or disconnect."
+                ? $"Connected as {ViewModel.NexusAccountLine}. Paste a new key to switch, or disconnect."
                 : "Get your personal API key from nexusmods.com -> account settings -> API access, then paste it here.",
         };
         var keyBox = new PasswordBox { PlaceholderText = "Nexus personal API key", Width = 380 };
@@ -233,6 +237,23 @@ public sealed partial class MainWindow : Window
     }
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
+
+    // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
+    private async void OnNexusBackfill(object sender, RoutedEventArgs e)
+    {
+        var picker = new FolderPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        picker.FileTypeFilter.Add("*");
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null) return;
+        // Recurse — a downloads folder usually nests archives in per-mod subfolders.
+        var archives = System.IO.Directory.GetFiles(folder.Path, "*.*", System.IO.SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".7z", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        await ViewModel.BackfillNexusAsync(archives);
+    }
 
     // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.
     private async void OnCoopHint(object sender, RoutedEventArgs e)

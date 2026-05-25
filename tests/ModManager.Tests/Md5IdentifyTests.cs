@@ -76,4 +76,68 @@ public class Md5IdentifyTests
         Assert.Equal(0, r.Matched);
         Assert.Empty(Scanner.LoadMetadata(c));
     }
+
+    // Nexus indexes the md5 of the PUBLISHED ARCHIVE, not the extracted file — so identification
+    // must hash the dropped zip and apply the match to every mod key that zip contributes.
+    [Fact]
+    public async Task Md5IdentifyArchives_hashes_the_dropped_zip_and_applies_to_its_mod_keys()
+    {
+        var (_, c) = Fixture("windrose");
+        var zipPath = Path.Combine(TestSupport.TempDir("md5arch-"), "PirateDepot-1234.zip");
+        TestSupport.WriteZip(zipPath, ("cool.pak", "PAKBYTES"), ("readme.txt", "hi"));
+        var expectedArchiveMd5 = Md5Hash.OfFile(zipPath);
+
+        string? seenMd5 = null;
+        var fake = new FakeNexusClient((_, md5) =>
+        {
+            seenMd5 = md5;
+            return Task.FromResult<NexusMd5Match?>(new NexusMd5Match(123, new ModMeta { Title = "Pirate Depot", Author = "IceBox" }));
+        });
+
+        var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
+
+        Assert.Equal(expectedArchiveMd5, seenMd5);   // hashed the ARCHIVE, not the .pak inside
+        Assert.Equal(1, r.Matched);
+        var meta = Scanner.LoadMetadata(c);
+        Assert.Equal("Pirate Depot", meta[Variant.ParseVariant("cool").Base].Title);
+    }
+
+    // A Nexus archive-md5 match is exact provenance, so it overrides an existing CurseForge match
+    // (the collision CF was winning) — Nexus identity wins, CF fills only what Nexus lacks.
+    [Fact]
+    public async Task Md5IdentifyArchives_overrides_an_existing_curseforge_match()
+    {
+        var (_, c) = Fixture("windrose");
+        var zipPath = Path.Combine(TestSupport.TempDir("md5arch-"), "x.zip");
+        TestSupport.WriteZip(zipPath, ("cool.pak", "PAKBYTES"));
+        var key = Variant.ParseVariant("cool").Base;
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            [key] = new ModMeta { Title = "Cool (CF)", Url = "https://www.curseforge.com/windrose/mods/cool", Downloads = 999 },
+        });
+        var fake = new FakeNexusClient((_, _) => Task.FromResult<NexusMd5Match?>(
+            new NexusMd5Match(285, new ModMeta { Title = "Cool", Url = "https://www.nexusmods.com/windrose/mods/285", Author = "Kingtology" })));
+
+        await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
+
+        var meta = Scanner.LoadMetadata(c);
+        Assert.Equal("https://www.nexusmods.com/windrose/mods/285", meta[key].Url); // Nexus page wins
+        Assert.Equal("Kingtology", meta[key].Author);                              // Nexus author wins
+        Assert.Equal(999, meta[key].Downloads);                                    // CF fills what Nexus lacks
+    }
+
+    [Fact]
+    public async Task Md5IdentifyArchives_returns_zero_without_a_nexus_domain()
+    {
+        var (_, c) = Fixture(null);
+        var zipPath = Path.Combine(TestSupport.TempDir("md5arch-"), "x.zip");
+        TestSupport.WriteZip(zipPath, ("cool.pak", "PAKBYTES"));
+        var fake = new FakeNexusClient((_, _) =>
+            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(1, new ModMeta { Title = "X" })));
+
+        var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
+
+        Assert.Equal(0, r.Matched);
+        Assert.Empty(Scanner.LoadMetadata(c));
+    }
 }
