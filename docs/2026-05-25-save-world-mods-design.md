@@ -17,6 +17,28 @@
 | Classify at drop | **Auto-detect + confirm**, informed by the game's declared save layout (save types + `saveModPath`) plus a generic fallback. |
 | Structure | **Hybrid** — profile `saveModPath`/forbidden, with a built-in RocksDB default (Windrose OOTB). |
 
+## As shipped — v1 slice (2026-05-25)
+
+This PR lands the **safety-critical Core, fully tested + audited** — the irreversible-risk half:
+
+- `SaveModDetect` (pak-veto + Worlds/`<GUID>` / GUID-folder / save-type detection),
+  `SaveModInstaller` (`ResolveWorldsTarget` + `InstallWorld`/`ResetWorld`/`RemoveWorld` over
+  `SaveManager.Backup`), `SaveModStore` (GUID→name via `AtomicJson`), and `saveModPath` /
+  `saveModForbidden` threaded through `GameEntry` / `GameInput` / `BuildGameEntry` / profile / Add-Game.
+- **All three load-bearing invariants enforced + pinned by tests:** (1) never write a forbidden
+  game-managed folder (`RocksDB_v2`/`_Backups`) — template-first refusal *before* touching disk +
+  resolved-path defense-in-depth; (2) snapshot-first on every mutating op; (3) zip-slip guard on
+  extract.
+- **Security fix (mod-safety audit, CRITICAL):** `worldGuid` is attacker-influenced (it comes from a
+  dropped zip) and becomes a directory name — an unvalidated traversal value (`..\..\RocksDB_v2`)
+  could have made `RemoveWorld` delete the game-managed tree. Fixed with `RequireSafeGuid` (single
+  safe GUID segment) + `IsUnder` defense-in-depth on all three ops, pinned by `SaveModSecurityTests`.
+
+**Deferred (composes on this Core; needs a live Windrose save tree to smoke-test):** the App layer —
+the drop → detect → confirm → friendly-name → `InstallWorld` flow, and the save-mods management
+surface (list via `SaveModStore.Load`, Reset/Remove via the ready Core ops) in/near the Saves dialog,
+plus the Local-not-Cloud reminder.
+
 ## Spine: extend the save manager
 
 `SaveManager` already gives the reversible primitives — `Backup` (zip the save tree to a timestamped

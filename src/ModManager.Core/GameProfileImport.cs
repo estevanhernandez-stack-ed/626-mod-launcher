@@ -6,7 +6,8 @@ namespace ModManager.Core;
 public sealed record GameProfileDraft(
     string? Name, string? Engine, string? WindowTitle, string? SteamAppId,
     string? ModPath, IReadOnlyList<string>? FileExtensions, string? GroupingRule,
-    string? SaveRoot, string? SaveSubPath, string? RequiredLauncher, int? CurseforgeGameId);
+    string? SaveRoot, string? SaveSubPath, string? RequiredLauncher, int? CurseforgeGameId,
+    string? SaveModPath = null, IReadOnlyList<string>? SaveModForbidden = null);
 
 /// <summary>Result of loading a profile: a Draft (non-null only when Errors is empty) plus any errors.</summary>
 public sealed record ProfileImportResult(GameProfileDraft? Draft, IReadOnlyList<string> Errors);
