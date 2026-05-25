@@ -42,4 +42,23 @@
           Condition="Exists('$(OutDir)$(TargetName).pri')" />
   </Target>
 
+  <!--
+    Zero-prereq portable build: WinUI 3's native components depend on the Microsoft Visual C++
+    runtime, which self-contained publish does NOT bundle. On a clean machine without VC++ Redist
+    the app fails to load. Copy the redistributable VC143.CRT DLLs app-local (next to the exe) so
+    a friend can unzip and run with nothing pre-installed. Source: the VS 2022 redist folder (the
+    set Microsoft licenses for redistribution). x64 only for now (matches the win-x64 RID).
+  -->
+  <Target Name="BundleVCRuntime" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <ItemGroup>
+      <VCRedistCrtDll Include="$(ProgramFiles)\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(VCRedistCrtDll)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true"
+          Condition="'@(VCRedistCrtDll)' != ''" />
+    <Message Importance="high" Text="BundleVCRuntime: copied VC++ runtime DLLs into $(PublishDir)"
+             Condition="'@(VCRedistCrtDll)' != ''" />
+    <Warning Text="BundleVCRuntime: no VC143.CRT redist DLLs found under VS 2022; the portable build will require VC++ Redist x64 on the target machine."
+             Condition="'@(VCRedistCrtDll)' == ''" />
+  </Target>
+
 </Project>
