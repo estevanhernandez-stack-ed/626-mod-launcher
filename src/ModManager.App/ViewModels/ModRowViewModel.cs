@@ -80,6 +80,18 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Uri? ModUri => SafeUrl.IsHttpUrl(Mod.ModUrl) ? new Uri(Mod.ModUrl!) : null;
     public Visibility ModUrlVisibility => ModUri is null ? Visibility.Collapsed : Visibility.Visible;
 
+    // The page-link label reflects the ACTUAL host, not a hardcoded "CurseForge".
+    public string ModUrlLabel
+    {
+        get
+        {
+            var host = ModUri?.Host ?? "";
+            if (host.Contains("nexusmods", StringComparison.OrdinalIgnoreCase)) return "Nexus";
+            if (host.Contains("curseforge", StringComparison.OrdinalIgnoreCase)) return "CurseForge";
+            return "Mod page";
+        }
+    }
+
     public Uri? SourceUri => SafeUrl.IsHttpUrl(Mod.Source) ? new Uri(Mod.Source!) : null;
     public Visibility SourceVisibility => SourceUri is null ? Visibility.Collapsed : Visibility.Visible;
 

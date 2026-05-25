@@ -102,6 +102,30 @@ public class Md5IdentifyTests
         Assert.Equal("Pirate Depot", meta[Variant.ParseVariant("cool").Base].Title);
     }
 
+    // A Nexus archive-md5 match is exact provenance, so it overrides an existing CurseForge match
+    // (the collision CF was winning) — Nexus identity wins, CF fills only what Nexus lacks.
+    [Fact]
+    public async Task Md5IdentifyArchives_overrides_an_existing_curseforge_match()
+    {
+        var (_, c) = Fixture("windrose");
+        var zipPath = Path.Combine(TestSupport.TempDir("md5arch-"), "x.zip");
+        TestSupport.WriteZip(zipPath, ("cool.pak", "PAKBYTES"));
+        var key = Variant.ParseVariant("cool").Base;
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            [key] = new ModMeta { Title = "Cool (CF)", Url = "https://www.curseforge.com/windrose/mods/cool", Downloads = 999 },
+        });
+        var fake = new FakeNexusClient((_, _) => Task.FromResult<NexusMd5Match?>(
+            new NexusMd5Match(285, new ModMeta { Title = "Cool", Url = "https://www.nexusmods.com/windrose/mods/285", Author = "Kingtology" })));
+
+        await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
+
+        var meta = Scanner.LoadMetadata(c);
+        Assert.Equal("https://www.nexusmods.com/windrose/mods/285", meta[key].Url); // Nexus page wins
+        Assert.Equal("Kingtology", meta[key].Author);                              // Nexus author wins
+        Assert.Equal(999, meta[key].Downloads);                                    // CF fills what Nexus lacks
+    }
+
     [Fact]
     public async Task Md5IdentifyArchives_returns_zero_without_a_nexus_domain()
     {

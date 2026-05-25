@@ -198,7 +198,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{x:Bind CreditVisibility}">
                                 <TextBlock Text="{x:Bind AuthorText}" Opacity="0.55" FontSize="12" VerticalAlignment="Center"
                                            Visibility="{x:Bind AuthorVisibility}" />
-                                <HyperlinkButton Content="CurseForge" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="12"
+                                <HyperlinkButton Content="{x:Bind ModUrlLabel}" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="12"
                                                  Visibility="{x:Bind ModUrlVisibility}" />
                                 <HyperlinkButton Content="Source" NavigateUri="{x:Bind SourceUri}" Padding="6,0" FontSize="12"
                                                  Visibility="{x:Bind SourceVisibility}" />

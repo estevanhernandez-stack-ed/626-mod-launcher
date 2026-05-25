@@ -945,7 +945,11 @@ public static class Scanner
                 if (match?.Meta is null) continue;
                 foreach (var key in ZipModKeys(path, c))
                 {
-                    meta[key] = MergeMeta(match.Meta, meta.GetValueOrDefault(key));
+                    // A Nexus archive-md5 match is exact provenance (this file IS the Nexus upload),
+                    // so it is AUTHORITATIVE: Nexus identity (title/author/url/image) wins over any
+                    // existing CurseForge match; CF only fills the fields Nexus lacks (downloads,
+                    // source-code link). This is what makes backfill override a CF-won collision.
+                    meta[key] = MergeMeta(meta.GetValueOrDefault(key) ?? new ModMeta(), match.Meta);
                     matchedKeys.Add(key);
                 }
             }
