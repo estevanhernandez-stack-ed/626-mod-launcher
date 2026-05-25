@@ -13,8 +13,13 @@
 | Question | Decision |
 |---|---|
 | Source | **Capture at intake** (keep the dropped zip's README with the mod) **+ the CurseForge description** the app already fetches as fallback. Works for any mod type incl. bare paks; Nexus-ready. |
-| Display | **In-app, rendered markdown** (a CommunityToolkit markdown control) — render-only. |
-| Safety | Content is **attacker-controlled**: render to native controls only (no raw-HTML/script), **remote images off** (privacy), link clicks routed through the existing `SafeUrl` guard + user-initiated only. |
+| Display | **In-app, rendered markdown**, render-only. **Implemented with an in-house render-only renderer** (chosen 2026-05-25, Este) — NOT the CommunityToolkit Labs/preview markdown control: it adds a runtime UI dependency (supply-chain + binary size, against the "no deps casually" law) and carries build risk on net10/WinAppSDK 2.1.3. A pure `Markdown.Parse` (Core, tested) + a `ReadmeRenderer` that maps the parsed model to native `RichTextBlock` controls honors the same intent, is safer (no third-party markdown parser surface), and guarantees the build. |
+| Safety | Content is **attacker-controlled**: render to native controls only (no raw-HTML/script), **remote images off** (the model has no image span — images aren't rendered), link clicks routed through the existing `SafeUrl` guard (http(s) only; other schemes degrade to plain text). |
+
+## Scope shipped (v1)
+
+- **Standard Scanner intake path** (the dominant case — paks, CF mods, the Windrose mods): readme captured at intake, viewer wired on the mod row. DirectInject (FromSoft loose-file mods) readme capture/viewer is a fast-follow — the mechanism (`PickReadme`, the cache, `Markdown`, `ReadmeRenderer`) is all reusable; only the direct-inject row keying needs wiring.
+- **Renderer:** in-house. Pure parser `ModManager.Core.Markdown.Parse` (block/span model, flat, no nesting) + `ModManager.App.ReadmeRenderer` (blocks -> `RichTextBlock`). Links: real `Hyperlink` only for `SafeUrl.IsHttpUrl`, else plain text.
 
 ## Architecture (pure-core / thin-shell)
 
@@ -87,15 +92,30 @@ mod with a README, open it, confirm it renders, links gated, no remote fetch).
 ## Threat model
 
 Rendering mod-supplied markdown is a **new attack surface** (READMEs are attacker-controlled). The
-mitigations above (render-only, no remote images, `SafeUrl`-gated links) are the controls; add a
-note to [docs/security/threat-model.md] when this lands (a mod README is now parsed + rendered).
+mitigations above (render-only, no remote images, `SafeUrl`-gated links) are the controls.
 
-## File structure
+**As shipped (2026-05-25):** the in-house renderer *reduces* this surface vs. a third-party markdown
+control — there is no external parser to trust. Controls in place:
+- **Parse, don't execute:** `Markdown.Parse` (pure, tested) produces a typed block/span model; the
+  renderer only ever constructs native `Run`/`Hyperlink` controls — no HTML, no `NavigateToString`,
+  no script path.
+- **No remote fetch:** the model has no image span, so readme images are never loaded (privacy).
+- **Link scheme gate:** the parser captures URLs verbatim; `ReadmeRenderer` makes a clickable
+  `Hyperlink` only when `SafeUrl.IsHttpUrl` (http(s)), else renders the link as plain text — a
+  `javascript:`/`file:`/`steam:` readme link can't become clickable.
+- **Cache-write traversal:** readmes are extracted to `<dataDir>\readmes\<modKey>.<ext>`; the key is
+  basename-derived (`Path.GetFileName`) and guarded by `IsSafeKey` (rejects invalid filename chars),
+  with a negative test pinning that a zip-slip entry name can't escape the cache dir.
 
-- Create: `src/ModManager.Core/ReadmeCapture.cs` — `PickReadme`.
-- Modify: `src/ModManager.Core/Scanner.cs` — capture the readme during zip intake; resolve a mod's readme-cache path.
-- Modify: `src/ModManager.Core/DirectInject.cs` — same capture for the direct-inject zip path.
-- Create: `src/ModManager.App/ReadmeDialog.xaml` + `.xaml.cs` — markdown viewer (render-only).
-- Modify: `src/ModManager.App/MainWindow.xaml` + `.xaml.cs` — "Readme" affordance on the mod row.
-- Modify: `src/ModManager.App/ModManager.App.csproj` — add the markdown control package.
-- Tests: `tests/ModManager.Tests/ReadmeCaptureTests.cs`.
+(This repo has no standalone `docs/security/threat-model.md`; the threat note lives here with the design.)
+
+## File structure (as shipped)
+
+- Create: `src/ModManager.Core/ReadmeCapture.cs` — `PickReadme` (pure selection).
+- Create: `src/ModManager.Core/Markdown.cs` — pure markdown parser (block/span model).
+- Modify: `src/ModManager.Core/Scanner.cs` — `CaptureReadmes` at intake (wired into `AddMods` + `ExecuteIntake`), `ReadmePathFor`, `IsSafeKey`.
+- Create: `src/ModManager.App/ReadmeRenderer.cs` — in-house render-only renderer (parsed model -> `RichTextBlock`); no XAML dialog, no package.
+- Modify: `src/ModManager.App/MainWindow.xaml` + `.xaml.cs` — "Readme" affordance on the mod row + `OnShowReadme` (inline `ContentDialog`).
+- Modify: `src/ModManager.App/ViewModels/{ModRowViewModel,MainViewModel}.cs` — `ReadmeFilePath`/`ReadmeVisibility`/`GetReadmeMarkdown`, set from `ReadmePathFor`.
+- Tests: `tests/ModManager.Tests/{ReadmeCaptureTests, MarkdownTests, ReadmeIntakeTests}.cs`.
+- **Deferred:** `DirectInject` readme capture/viewer (mechanism reusable; only direct-inject row keying remains).

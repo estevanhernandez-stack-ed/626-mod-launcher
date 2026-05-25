@@ -156,6 +156,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <!-- Icon cell: load-order number (editable) in reorder mode, else art/monogram -->
@@ -202,12 +203,19 @@
                             </Border>
                         </StackPanel>
 
-                        <ToggleSwitch Grid.Column="3" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
+                        <Button Grid.Column="3" Click="OnShowReadme" VerticalAlignment="Center"
+                                Background="Transparent" BorderThickness="0"
+                                ToolTipService.ToolTip="Readme"
+                                Visibility="{x:Bind ReadmeVisibility, Mode=OneWay}">
+                            <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+                        </Button>
+
+                        <ToggleSwitch Grid.Column="4" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
                                       IsEnabled="{x:Bind CanToggle}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
                                       Visibility="{x:Bind NormalVisibility, Mode=OneWay}" />
 
-                        <Button Grid.Column="4" Click="OnUninstall" VerticalAlignment="Center"
+                        <Button Grid.Column="5" Click="OnUninstall" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
                                 ToolTipService.ToolTip="Uninstall (permanent)"
                                 Visibility="{x:Bind ManageVisibility, Mode=OneWay}">

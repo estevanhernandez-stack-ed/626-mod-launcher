@@ -56,6 +56,22 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool HasDescription => !string.IsNullOrEmpty(Mod.Description);
     public Visibility DescriptionVisibility => HasDescription ? Visibility.Visible : Visibility.Collapsed;
 
+    // Captured-at-intake readme file for this mod (set by the parent, which holds the GameContext).
+    // The "Readme" affordance shows when a captured readme OR a CurseForge description exists.
+    public string? ReadmeFilePath { get; init; }
+    public Visibility ReadmeVisibility => (ReadmeFilePath is not null || HasDescription) ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The markdown to show: captured readme file -> CurseForge description -> empty state.</summary>
+    public string GetReadmeMarkdown()
+    {
+        if (ReadmeFilePath is not null)
+        {
+            try { var t = System.IO.File.ReadAllText(ReadmeFilePath); if (!string.IsNullOrWhiteSpace(t)) return t; }
+            catch { /* fall through to the description / empty state */ }
+        }
+        return string.IsNullOrWhiteSpace(Mod.Description) ? "No readme available." : Mod.Description!;
+    }
+
     // Author credit line — visible, clickable attribution (honor the builders). Each link opens
     // in the browser via HyperlinkButton.NavigateUri; SafeUrl guards to http(s) only.
     public string AuthorText => string.IsNullOrEmpty(Mod.Author) ? "" : $"by {Mod.Author}";

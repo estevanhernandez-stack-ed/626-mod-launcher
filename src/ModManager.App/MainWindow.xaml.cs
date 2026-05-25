@@ -295,6 +295,21 @@ public sealed partial class MainWindow : Window
             await ViewModel.UninstallAsync(row);
     }
 
+    // Readme viewer: captured-at-intake readme -> CurseForge description -> empty state. Rendered
+    // to native controls only (no HTML/script), links gated through SafeUrl by the renderer.
+    private async void OnShowReadme(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        var dialog = new ContentDialog
+        {
+            Title = row.DisplayName,
+            Content = ReadmeRenderer.Build(row.GetReadmeMarkdown()),
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
+    }
+
     private void OnDragOver(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
