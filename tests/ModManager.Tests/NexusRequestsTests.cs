@@ -138,4 +138,48 @@ public class NexusRequestsTests
         using var doc = JsonDocument.Parse("""{ "mod": { "mod_id": 1 } }""");
         Assert.Null(NexusRequests.MapMd5Response("skyrim", doc.RootElement));
     }
+
+    [Fact]
+    public void ValidateRequest_builds_get_to_users_validate_with_apikey_header()
+    {
+        var r = NexusRequests.ValidateRequest(new NexusOptions { ApiKey = "KEY" });
+        Assert.Equal("GET", r.Method);
+        Assert.Equal("https://api.nexusmods.com/v1/users/validate.json", r.Url);
+        Assert.Equal("KEY", r.Headers["apikey"]);
+        Assert.Equal("application/json", r.Headers["Accept"]);
+    }
+
+    [Fact]
+    public void ValidateRequest_honors_custom_baseurl()
+    {
+        var r = NexusRequests.ValidateRequest(new NexusOptions { BaseUrl = "https://proxy.example" });
+        Assert.Equal("https://proxy.example/v1/users/validate.json", r.Url);
+    }
+
+    [Fact]
+    public void MapValidateResponse_maps_name_and_premium()
+    {
+        using var doc = JsonDocument.Parse("""{ "name": "SomeUser", "is_premium": true }""");
+        var u = NexusRequests.MapValidateResponse(doc.RootElement);
+        Assert.NotNull(u);
+        Assert.Equal("SomeUser", u!.Name);
+        Assert.True(u.IsPremium);
+    }
+
+    [Fact]
+    public void MapValidateResponse_tolerates_missing_fields()
+    {
+        using var doc = JsonDocument.Parse("{}");
+        var u = NexusRequests.MapValidateResponse(doc.RootElement);
+        Assert.NotNull(u);
+        Assert.Null(u!.Name);
+        Assert.False(u.IsPremium);
+    }
+
+    [Fact]
+    public void MapValidateResponse_returns_null_for_non_object()
+    {
+        using var doc = JsonDocument.Parse("[]");
+        Assert.Null(NexusRequests.MapValidateResponse(doc.RootElement));
+    }
 }
