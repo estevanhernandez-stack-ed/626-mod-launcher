@@ -27,4 +27,19 @@
     <ProjectReference Include="..\ModManager.Core\ModManager.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    WinUI 3 unpackaged publish gotcha: `dotnet publish` does not copy the app's compiled
+    resource index ($(TargetName).pri) into the publish folder. Without resources.pri next to
+    the exe, the WinUI resource manager can't resolve XAML at startup and the app dies with a
+    stowed exception (0xC000027B) in Microsoft.UI.Xaml.dll. Copy the PRI into publish as
+    resources.pri so the portable build actually launches on a machine that isn't the dev box.
+  -->
+  <Target Name="CopyPriToPublishOutput" AfterTargets="Publish">
+    <Copy SourceFiles="$(OutDir)$(TargetName).pri"
+          DestinationFiles="$(PublishDir)resources.pri"
+          OverwriteReadOnlyFiles="true"
+          SkipUnchangedFiles="false"
+          Condition="Exists('$(OutDir)$(TargetName).pri')" />
+  </Target>
+
 </Project>
