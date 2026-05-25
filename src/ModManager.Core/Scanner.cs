@@ -887,4 +887,39 @@ public static class Scanner
         SaveMetadata(c, meta);
         return new IdentifyResult(matchedKeys.Count);
     }
+
+    /// <summary>
+    /// Exact identification of just-dropped files by Nexus md5: hash each file, ask Nexus which
+    /// mod it is by md5_search, merge that metadata (curated/CF wins, Nexus fills the gaps). The
+    /// md5 twin of <see cref="FingerprintIdentifyAsync"/>. No fuzzy matching. Best-effort per file.
+    /// </summary>
+    public static async Task<IdentifyResult> Md5IdentifyAsync(GameContext c, INexusClient nexus, IEnumerable<string> fileNames)
+    {
+        var domain = c.Game.NexusGameDomain;
+        if (string.IsNullOrWhiteSpace(domain)) return new IdentifyResult(0); // no Nexus key for this game
+
+        var primary = c.Locations.FirstOrDefault();
+        var names = fileNames?.ToList();
+        if (primary is null || names is null || names.Count == 0) return new IdentifyResult(0);
+
+        var meta = LoadMetadata(c);
+        var matchedKeys = new HashSet<string>();
+        foreach (var name in names)
+        {
+            try
+            {
+                var md5 = Md5Hash.OfFile(Path.Combine(primary.Abs, name));
+                var key = Variant.ParseVariant(ModKey(name, c)).Base;
+                var match = await nexus.GetByMd5Async(domain, md5);
+                if (match?.Meta is not null)
+                {
+                    meta[key] = MergeMeta(match.Meta, meta.GetValueOrDefault(key));
+                    matchedKeys.Add(key);
+                }
+            }
+            catch { /* one bad file doesn't abort the batch */ }
+        }
+        SaveMetadata(c, meta);
+        return new IdentifyResult(matchedKeys.Count);
+    }
 }

@@ -184,6 +184,44 @@ public sealed partial class MainWindow : Window
             ViewModel.OnThemeImported(dialog.Imported);
     }
 
+    // Connect Nexus Mods with a personal API key (the user's own — never baked). Validates before
+    // storing; shows the connected account + a Disconnect option.
+    private async void OnNexus(object sender, RoutedEventArgs e)
+    {
+        var status = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.85,
+            Text = ViewModel.NexusConnected
+                ? $"Connected as {ViewModel.NexusUser}. Paste a new key to switch, or disconnect."
+                : "Get your personal API key from nexusmods.com -> account settings -> API access, then paste it here.",
+        };
+        var keyBox = new PasswordBox { PlaceholderText = "Nexus personal API key", Width = 380 };
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(status);
+        panel.Children.Add(keyBox);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Connect Nexus Mods",
+            Content = panel,
+            PrimaryButtonText = "Connect",
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+        };
+        if (ViewModel.NexusConnected) dialog.SecondaryButtonText = "Disconnect";
+
+        switch (await dialog.ShowAsync())
+        {
+            case ContentDialogResult.Primary:
+                if (!string.IsNullOrWhiteSpace(keyBox.Password)) await ViewModel.ConnectNexusAsync(keyBox.Password);
+                break;
+            case ContentDialogResult.Secondary:
+                ViewModel.DisconnectNexus();
+                break;
+        }
+    }
+
     private void OnFindMods(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not string key) return;

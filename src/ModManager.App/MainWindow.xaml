@@ -144,6 +144,7 @@
                           ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
                           DisplayMemberPath="Name" />
+                <Button Content="Nexus" Click="OnNexus" ToolTipService.ToolTip="Connect your Nexus Mods account (per-user API key) for metadata + md5 mod ID" />
                 <Button Content="+ Theme" Click="OnNewTheme" ToolTipService.ToolTip="Generate a theme with AI" />
             </StackPanel>
         </Grid>

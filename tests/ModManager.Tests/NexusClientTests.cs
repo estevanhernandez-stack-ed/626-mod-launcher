@@ -102,4 +102,40 @@ public class NexusClientTests
         Assert.Equal("https://proxy.example/v1/games/skyrim/mods/9.json", h.Calls[0].Url);
         Assert.Null(h.Calls[0].ApiKey);
     }
+
+    [Fact]
+    public async Task ValidateAsync_maps_a_200_body_to_user()
+    {
+        var h = new StubHandler(_ => (HttpStatusCode.OK,
+            """{"name":"SomeUser","is_premium":true}"""));
+        var client = Client(h, new NexusOptions { ApiKey = "K" });
+
+        var u = await client.ValidateAsync();
+
+        Assert.Equal("https://api.nexusmods.com/v1/users/validate.json", h.Calls[0].Url);
+        Assert.Equal("K", h.Calls[0].ApiKey);
+        Assert.NotNull(u);
+        Assert.Equal("SomeUser", u!.Name);
+        Assert.True(u.IsPremium);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_returns_null_on_401()
+    {
+        var h = new StubHandler(_ => (HttpStatusCode.Unauthorized, "{}"));
+        var client = Client(h, new NexusOptions { ApiKey = "BAD" });
+
+        var u = await client.ValidateAsync();
+
+        Assert.Null(u);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_throws_on_other_non_ok()
+    {
+        var h = new StubHandler(_ => (HttpStatusCode.InternalServerError, "{}"));
+        var client = Client(h, new NexusOptions { ApiKey = "K" });
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.ValidateAsync());
+    }
 }

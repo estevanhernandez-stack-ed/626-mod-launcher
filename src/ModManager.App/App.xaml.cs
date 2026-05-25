@@ -33,6 +33,7 @@ public partial class App : Application
                 services.AddSingleton<SteamService>();
                 services.AddSingleton<LudusaviService>();
                 services.AddSingleton<GameProfileResolver>();
+                services.AddSingleton<NexusService>();
                 services.AddTransient<MainViewModel>();
             })
             .Build();

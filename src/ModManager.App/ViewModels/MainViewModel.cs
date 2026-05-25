@@ -21,6 +21,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly DirectInjectService _direct;
     private readonly ThemeService _themes;
     private readonly LudusaviService _ludu;
+    private readonly NexusService _nexus;
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
@@ -95,13 +96,14 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus)
     {
         _svc = svc;
         _me2 = me2;
         _direct = direct;
         _themes = themes;
         _ludu = ludu;
+        _nexus = nexus;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -448,6 +450,31 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    // ---------- Nexus connection ----------
+
+    public bool NexusConnected => _nexus.IsConnected;
+    public string? NexusUser => _nexus.ConnectedUser;
+
+    /// <summary>Validate + store a pasted personal Nexus key (the user's own — never baked). Result via StatusText.</summary>
+    public async Task<bool> ConnectNexusAsync(string apiKey)
+    {
+        try
+        {
+            var user = await _nexus.ConnectAsync(apiKey);
+            StatusText = user is null
+                ? "Nexus key rejected — check it on your account's API access page."
+                : $"Connected to Nexus as {user}.";
+            return user is not null;
+        }
+        catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
+    }
+
+    public void DisconnectNexus()
+    {
+        _nexus.Disconnect();
+        StatusText = "Disconnected from Nexus.";
+    }
+
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
@@ -488,18 +515,22 @@ public sealed partial class MainViewModel : ObservableObject
             if (chosen is null) { StatusText = "Update cancelled."; return; }
             var r = Scanner.ExecuteIntake(plan, chosen, _ctx);
             var identified = 0;
+            var nexusIdentified = 0;
             if (r.Added.Count > 0)
             {
-                // Exact match first (fingerprint), then a name-search fallback — fingerprint
-                // misses repacked/local files, so this is how a dropped mod still gets metadata.
+                // Exact match first — CF fingerprint, then Nexus md5 (catches Nexus-only / repacked
+                // files the CF fingerprint misses) — then a name-search fallback. Exact wins over fuzzy.
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
                 catch { /* best-effort; intake already succeeded */ }
+                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyAsync(_ctx, _nexus.Client!, r.Added)).Matched; }
+                catch { /* best-effort; a Nexus miss / outage never fails intake */ }
                 try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                 catch { /* best-effort */ }
             }
             StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
-                + (identified > 0 ? $", identified {identified} on CurseForge" : "");
+                + (identified > 0 ? $", identified {identified} on CurseForge" : "")
+                + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }

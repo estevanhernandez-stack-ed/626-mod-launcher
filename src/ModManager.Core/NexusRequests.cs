@@ -12,6 +12,9 @@ public sealed class NexusOptions
 /// <summary>An md5_search hit: the Nexus mod id + the mapped metadata.</summary>
 public sealed record NexusMd5Match(int? ModId, ModMeta Meta);
 
+/// <summary>The validate.json identity: the account name + premium flag.</summary>
+public sealed record NexusUser(string? Name, bool IsPremium);
+
 /// <summary>
 /// Pure Nexus request-building + response-mapping. The real v1 API exposes only
 /// mod-details-by-id and md5 file lookup — there is NO name-search endpoint, so none is built.
@@ -37,6 +40,9 @@ public static class NexusRequests
     private static int? Int(JsonElement obj, string name)
         => obj.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Number ? el.GetInt32() : null;
 
+    private static bool Bool(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.True;
+
     public static ApiRequest ModRequest(string domain, int modId, NexusOptions? opts = null)
     {
         opts ??= new NexusOptions();
@@ -49,6 +55,14 @@ public static class NexusRequests
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
         return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/md5_search/{md5}.json", "GET", Headers(opts.ApiKey));
+    }
+
+    /// <summary>Verify the key + read the account identity: GET /v1/users/validate.json.</summary>
+    public static ApiRequest ValidateRequest(NexusOptions? opts = null)
+    {
+        opts ??= new NexusOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        return new ApiRequest($"{baseUrl}/v1/users/validate.json", "GET", Headers(opts.ApiKey));
     }
 
     /// <summary>Nexus mod object -> our metadata entry. Url is constructed from domain + mod_id.</summary>
@@ -72,6 +86,10 @@ public static class NexusRequests
     /// <summary>The GetMod response root IS the mod object. null if not an object.</summary>
     public static ModMeta? MapModResponse(string domain, JsonElement root)
         => root.ValueKind == JsonValueKind.Object ? MapMod(domain, root) : null;
+
+    /// <summary>validate.json body -> account identity. Tolerant of missing fields; null if not an object.</summary>
+    public static NexusUser? MapValidateResponse(JsonElement root)
+        => root.ValueKind == JsonValueKind.Object ? new NexusUser(Str(root, "name"), Bool(root, "is_premium")) : null;
 
     /// <summary>
     /// md5_search returns an array of { mod, file_details }. Take the first element, map its

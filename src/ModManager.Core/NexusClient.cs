@@ -11,6 +11,7 @@ public interface INexusClient
 {
     Task<ModMeta?> GetModAsync(string gameDomain, int modId);
     Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5);
+    Task<NexusUser?> ValidateAsync();
 }
 
 /// <summary>
@@ -68,5 +69,24 @@ public sealed class NexusClient : INexusClient
         await using var stream = await res.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
         return NexusRequests.MapMd5Response(gameDomain, doc.RootElement);
+    }
+
+    /// <summary>Verify the key + read the account name. 401 means a bad/expired key and returns null; other failures throw.</summary>
+    public async Task<NexusUser?> ValidateAsync()
+    {
+        var req = NexusRequests.ValidateRequest(_opts);
+        using var msg = new HttpRequestMessage(new HttpMethod(req.Method), req.Url);
+        foreach (var (k, v) in req.Headers)
+            msg.Headers.TryAddWithoutValidation(k, v);
+
+        using var res = await _http.SendAsync(msg);
+        if (res.StatusCode == HttpStatusCode.Unauthorized)
+            return null; // bad / expired key
+        if (!res.IsSuccessStatusCode)
+            throw new HttpRequestException($"Nexus request failed ({(int)res.StatusCode})");
+
+        await using var stream = await res.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        return NexusRequests.MapValidateResponse(doc.RootElement);
     }
 }
