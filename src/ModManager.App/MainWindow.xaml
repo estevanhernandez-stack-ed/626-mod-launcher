@@ -214,6 +214,12 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemePanel}"
+                                    BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
+                                    ToolTipService.ToolTip="Managed by another mod tool — shown read-only here"
+                                    Visibility="{x:Bind ManagedVisibility, Mode=OneWay}">
+                                <TextBlock Text="{x:Bind ManagedBadge}" FontFamily="Consolas" FontSize="11" Opacity="0.8" />
+                            </Border>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"
                                     Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">

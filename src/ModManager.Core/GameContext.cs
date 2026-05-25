@@ -3,7 +3,12 @@ using System.Text.RegularExpressions;
 namespace ModManager.Core;
 
 /// <summary>A mod location resolved to absolute paths (+ mirrors), with primary flag.</summary>
-public sealed record ModLocationCtx(string Name, string Label, string Abs, IReadOnlyList<string> Mirrors, bool Primary);
+public sealed record ModLocationCtx(string Name, string Label, string Abs, IReadOnlyList<string> Mirrors, bool Primary)
+{
+    // Resolved form ("files" | "folders") and the managing tool ("vortex"/...), if any.
+    public string Form { get; init; } = "files";
+    public string? Managed { get; init; }
+}
 
 /// <summary>
 /// A registry game entry resolved into an absolute working context: where mods live,

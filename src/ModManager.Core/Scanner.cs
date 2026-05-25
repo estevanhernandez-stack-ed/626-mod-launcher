@@ -43,12 +43,17 @@ public static class Scanner
         var dataDir = DataDirForGame(game);
         var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" }).Select(e => e.ToLowerInvariant()).ToList();
         var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
+        var defaultForm = game.GroupingRule == "by_folder" ? "folders" : "files";
         var locations = game.ModLocations.Select((loc, idx) => new ModLocationCtx(
             string.IsNullOrEmpty(loc.Name) ? "loc" + idx : loc.Name,
             string.IsNullOrEmpty(loc.Label) ? (string.IsNullOrEmpty(loc.Name) ? "Location " + idx : loc.Name) : loc.Label,
             Path.IsPathRooted(loc.Path) ? loc.Path : Path.Combine(gameRoot, loc.Path),
             loc.Mirrors.Select(m => Path.IsPathRooted(m) ? m : Path.Combine(gameRoot, m)).ToList(),
-            idx == 0)).ToList();
+            idx == 0)
+        {
+            Form = string.IsNullOrEmpty(loc.Form) ? defaultForm : loc.Form,
+            Managed = loc.Managed,
+        }).ToList();
         return new GameContext
         {
             Game = game,
@@ -124,33 +129,54 @@ public static class Scanner
 
     private static IReadOnlyList<Mod> BuildModList(GameContext c)
     {
-        if (c.GroupingRule == "by_folder") return BuildModListByFolder(c);
         var outMap = new Dictionary<string, Mod>();
+        // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
+        // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
         {
-            foreach (var f in ListPakFiles(loc.Abs, c))
+            if (loc.Form == "folders")
             {
-                var k = ModKey(f, c);
-                if (!outMap.TryGetValue(k, out var mod))
+                foreach (var f in ListSubfolders(loc.Abs))
                 {
-                    mod = new Mod { Name = k, Location = loc.Name, Enabled = true, IsFolder = false };
-                    outMap[k] = mod;
+                    if (outMap.ContainsKey(f)) continue;
+                    outMap[f] = new Mod
+                    {
+                        Name = f, Location = loc.Name, Enabled = true,
+                        Files = new List<string> { f }, OnServer = false, IsFolder = true, Managed = loc.Managed,
+                    };
                 }
-                mod.Files.Add(f);
+            }
+            else
+            {
+                foreach (var f in ListPakFiles(loc.Abs, c))
+                {
+                    var k = ModKey(f, c);
+                    if (!outMap.TryGetValue(k, out var mod))
+                    {
+                        mod = new Mod { Name = k, Location = loc.Name, Enabled = true, IsFolder = false, Managed = loc.Managed };
+                        outMap[k] = mod;
+                    }
+                    mod.Files.Add(f);
+                }
             }
         }
+        // OnServer (multiplayer mirror presence) is only meaningful for pak-file locations.
         foreach (var m in outMap.Values)
         {
+            if (m.IsFolder) continue;
             var loc = LocByName(m.Location, c);
             if (loc is null || loc.Mirrors.Count == 0) { m.OnServer = true; continue; }
             var mirrorFiles = new HashSet<string>();
             foreach (var mp in loc.Mirrors) foreach (var f in ListPakFiles(mp, c)) mirrorFiles.Add(f);
             m.OnServer = m.Files.Any(mirrorFiles.Contains);
         }
+        // The vortex-stash heuristic only applies to file locations — in a folder-form location the
+        // subfolders ARE the mods, so matching them against mod names would flag every mod as itself.
         if (c.ScanSubfolders == "warn")
         {
             foreach (var loc in c.Locations)
             {
+                if (loc.Form == "folders") continue;
                 foreach (var sub in ListSubfolders(loc.Abs))
                 {
                     var norm = Regex.Replace(Regex.Replace(sub, "^AAA-", ""), @"\s+", "").ToLowerInvariant();
@@ -166,25 +192,16 @@ public static class Scanner
         foreach (var d in ListDisabled(c))
         {
             if (outMap.ContainsKey(d.Name)) continue;
-            outMap[d.Name] = new Mod { Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(), IsFolder = false };
+            outMap[d.Name] = new Mod
+            {
+                Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(),
+                IsFolder = d.IsFolder, Managed = c.Locations.FirstOrDefault(l => l.Name == d.Location)?.Managed,
+            };
         }
         return outMap.Values.OrderBy(m => m.Name, StringComparer.Ordinal).ToList();
     }
 
-    private static IReadOnlyList<Mod> BuildModListByFolder(GameContext c)
-    {
-        var outMap = new Dictionary<string, Mod>();
-        foreach (var loc in c.Locations)
-            foreach (var f in ListSubfolders(loc.Abs))
-                if (!outMap.ContainsKey(f))
-                    outMap[f] = new Mod { Name = f, Location = loc.Name, Enabled = true, Files = new List<string> { f }, OnServer = false, IsFolder = true };
-        foreach (var d in ListDisabled(c))
-            if (!outMap.ContainsKey(d.Name))
-                outMap[d.Name] = new Mod { Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(), IsFolder = true };
-        return outMap.Values.OrderBy(m => m.Name, StringComparer.Ordinal).ToList();
-    }
-
-    private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files);
+    private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files, bool IsFolder);
 
     private sealed class DisabledMeta
     {
@@ -202,14 +219,15 @@ public static class Scanner
             var dir = Path.Combine(c.DisabledRoot, name);
             var location = c.Locations.Count > 0 ? c.Locations[0].Name : "";
             var hadOnServer = new Dictionary<string, bool>();
+            var isFolder = false;
             try
             {
                 var meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(dir, "meta.json")), Json);
-                if (meta is not null) { location = meta.Location ?? location; hadOnServer = meta.HadOnServer ?? hadOnServer; }
+                if (meta is not null) { location = meta.Location ?? location; hadOnServer = meta.HadOnServer ?? hadOnServer; isFolder = meta.IsFolder; }
             }
             catch { /* keep defaults */ }
             var files = SafeReadFiles(dir).Where(n => n != "meta.json").ToList();
-            result.Add(new DisabledEntry(name, location, hadOnServer, files));
+            result.Add(new DisabledEntry(name, location, hadOnServer, files, isFolder));
         }
         return result;
     }

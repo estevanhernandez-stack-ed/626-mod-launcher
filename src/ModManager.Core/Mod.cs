@@ -21,6 +21,8 @@ public sealed class Mod
     public List<string> Files { get; set; } = new();
     public bool IsFolder { get; set; }
     public bool HasVortexFolder { get; set; }
+    // Set when this mod lives in a location another tool manages (e.g. "vortex"): show read-only.
+    public string? Managed { get; set; }
 
     // enrichment (from Metadata.MergeMetadata)
     public string DisplayName { get; set; } = "";
