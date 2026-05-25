@@ -17,6 +17,13 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<MainViewModel>();
+        // The collision prompt is a view concern (dialog + XamlRoot) — the VM builds the plan and
+        // sequences intake, the window owns showing the dialog. null result = user cancelled.
+        ViewModel.ConfirmReplacements = async plan =>
+        {
+            var dialog = new UpdateModsDialog(plan) { XamlRoot = Content.XamlRoot };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary ? dialog.ChosenReplacements() : null;
+        };
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");

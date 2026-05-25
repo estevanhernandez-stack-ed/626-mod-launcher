@@ -24,6 +24,13 @@ public sealed partial class MainViewModel : ObservableObject
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
+    /// <summary>
+    /// Shows the collision prompt and returns the rel-paths to replace, or null if cancelled. The
+    /// view wires this (the dialog + XamlRoot live in the code-behind, not the VM). When unset,
+    /// intake replaces nothing — new files still install, collisions are left untouched.
+    /// </summary>
+    public Func<IntakePlan, Task<ISet<string>?>>? ConfirmReplacements { get; set; }
+
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
 
@@ -391,23 +398,21 @@ public sealed partial class MainViewModel : ObservableObject
         }
         if (DirectInjectBacked)
         {
-            // Direct-inject: extract/copy the drop into the game's exe folder, then re-detect so a
-            // newly-installed launcher (Seamless / Mod Engine 2) surfaces its Play button immediately
-            // — no manual re-scan. "Just install them" made literal.
+            // Direct-inject: plan the drop, confirm any collisions (replace keeps the old version,
+            // revertible), then execute into the game's exe folder. Re-detect so a newly-installed
+            // launcher (Seamless / Mod Engine 2) surfaces its Play button immediately — no manual
+            // re-scan. "Just install them" made literal.
             IsBusy = true;
             try
             {
-                var r = _direct.Install(_ctx.Game, paths);
-                if (r.Added.Count > 0) _svc.Redetect(_ctx.Game.Id); // pick up mod folders + launchers
-                await ReloadModsAsync();                            // rebuilds context: refreshed list + Play targets
-                var launcher = _ctx?.Game.LaunchTargets.Any(t => t.Kind == "exe") ?? false;
-                StatusText = r.Added.Count > 0
-                    ? $"Installed {r.Added.Count} file{(r.Added.Count == 1 ? "" : "s")}"
-                      + (r.Skipped.Count > 0 ? $", skipped {r.Skipped.Count}" : "")
-                      + (launcher ? " — open the Play menu to launch with mods." : ".")
-                    : r.Skipped.Count > 0
-                        ? $"Nothing installed — skipped {r.Skipped.Count} (already present or unsafe path)."
-                        : "Nothing installable in that drop.";
+                var plan = _direct.Plan(_ctx.Game, paths);
+                var chosen = await ConfirmReplacementsAsync(plan);
+                if (chosen is null) { StatusText = "Update cancelled."; return; }
+                var r = _direct.Execute(_ctx.Game, plan, chosen);
+                if (r.Added.Count > 0 || r.Updated.Count > 0) _svc.Redetect(_ctx.Game.Id); // pick up mod folders + launchers
+                await ReloadModsAsync();                                                    // rebuilds context: refreshed list + Play targets
+                StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
+                    + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : ".");
             }
             catch (Exception e) { StatusText = e.Message; }
             finally { IsBusy = false; }
@@ -416,11 +421,13 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var r = await Scanner.AddModsAsync(paths, _ctx);
+            var plan = Scanner.PlanIntake(paths, _ctx);
+            var chosen = await ConfirmReplacementsAsync(plan);
+            if (chosen is null) { StatusText = "Update cancelled."; return; }
+            var r = Scanner.ExecuteIntake(plan, chosen, _ctx);
             var identified = 0;
             if (r.Added.Count > 0)
             {
-                StatusText = $"Added {r.Added.Count} — fetching metadata…";
                 // Exact match first (fingerprint), then a name-search fallback — fingerprint
                 // misses repacked/local files, so this is how a dropped mod still gets metadata.
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
@@ -428,12 +435,22 @@ public sealed partial class MainViewModel : ObservableObject
                 try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                 catch { /* best-effort */ }
             }
-            StatusText = $"Added {r.Added.Count}, skipped {r.Skipped.Count}"
+            StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
+                + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
                 + (identified > 0 ? $", identified {identified} on CurseForge" : "");
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>Show the collision prompt for a plan and return the rel-paths to replace; null means
+    /// the user cancelled. No collisions → replace nothing (adds-only); no view wired → same.</summary>
+    private async Task<ISet<string>?> ConfirmReplacementsAsync(IntakePlan plan)
+    {
+        if (plan.Collisions.Count == 0) return new HashSet<string>();
+        if (ConfirmReplacements is null) return new HashSet<string>();
+        return await ConfirmReplacements(plan);
     }
 
     /// <summary>Register a new game from the wizard, make it active, and load it. When the wizard already

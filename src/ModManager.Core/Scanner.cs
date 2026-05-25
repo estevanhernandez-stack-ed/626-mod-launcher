@@ -618,6 +618,100 @@ public static class Scanner
         return result;
     }
 
+    /// <summary>The absolute destination a placed file would take (primary mod location), and its rel key.</summary>
+    private static (string Abs, string Rel) DestFor(string fileName, GameContext c)
+    {
+        var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
+        return (Path.Combine(primary.Abs, fileName), fileName);
+    }
+
+    /// <summary>Classify a drop into add / collision / unsafe without writing anything.</summary>
+    public static IntakePlan PlanIntake(IEnumerable<string> paths, GameContext c)
+    {
+        var add = new List<IntakeItem>();
+        var collisions = new List<IntakeCollision>();
+        var unsafeItems = new List<SkippedItem>();
+
+        foreach (var p in ExpandPaths(paths, c))
+        {
+            var kind = Intake.ClassifyDrop(p, c.Exts);
+            if (kind == "skip") { unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "not a mod file")); continue; }
+            if (kind == "mod")
+            {
+                var name = Path.GetFileName(p);
+                var (abs, rel) = DestFor(name, c);
+                if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, p));
+                else add.Add(new IntakeItem(name, rel, p));
+            }
+            else if (kind == "zip")
+            {
+                using var zip = System.IO.Compression.ZipFile.OpenRead(p);
+                foreach (var entry in zip.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+                    if (Intake.ClassifyDrop(entry.FullName, c.Exts) != "mod") continue;
+                    var name = Path.GetFileName(entry.FullName);
+                    var (abs, rel) = DestFor(name, c);
+                    var incoming = $"{p}!{entry.FullName}";
+                    if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, incoming));
+                    else if (!add.Any(a => a.RelPath == rel)) add.Add(new IntakeItem(name, rel, incoming));
+                }
+            }
+        }
+        return new IntakePlan(add, collisions, unsafeItems);
+    }
+
+    /// <summary>Copy a planned source — a loose file path, or "zipPath!entryName" — to dest (overwrite allowed).</summary>
+    private static void CopyPlanned(string incoming, string destAbs)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
+        var bang = incoming.IndexOf('!');
+        if (bang < 0) { File.Copy(incoming, destAbs, overwrite: true); return; }
+        using var zip = System.IO.Compression.ZipFile.OpenRead(incoming[..bang]);
+        var entry = zip.GetEntry(incoming[(bang + 1)..]) ?? throw new FileNotFoundException($"Zip entry gone: {incoming}");
+        entry.ExtractToFile(destAbs, overwrite: true);
+    }
+
+    /// <summary>Execute a plan: install new files, back-up-then-replace chosen collisions, skip the rest.</summary>
+    public static IntakeResult ExecuteIntake(IntakePlan plan, ISet<string> replaceRelPaths, GameContext c)
+    {
+        var result = new IntakeResult();
+        foreach (var u in plan.Unsafe) result.Skipped.Add(u);
+
+        var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
+        Directory.CreateDirectory(primary.Abs);
+        string? batch = null;
+        string Batch() => batch ??= ReplacedStore.NewBatch(Path.Combine(c.DataDir, "replaced"));
+
+        foreach (var item in plan.ToAdd)
+        {
+            try { CopyPlanned(item.IncomingSource, Path.Combine(primary.Abs, item.RelPath)); result.Added.Add(item.RelPath); }
+            catch (Exception e) { result.Skipped.Add(new SkippedItem(item.Name, e.Message)); }
+        }
+        var manifest = new List<ReplacedStore.ReplacedEntry>();
+        foreach (var col in plan.Collisions)
+        {
+            if (!replaceRelPaths.Contains(col.RelPath)) { result.Skipped.Add(new SkippedItem(col.Name, "kept existing")); continue; }
+            string? backupPath = null;
+            try
+            {
+                backupPath = ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
+                CopyPlanned(col.IncomingSource, col.ExistingPath);
+                manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow));
+                result.Updated.Add(col.RelPath);
+            }
+            catch (Exception e)
+            {
+                // roll back the partial move so the original is never left missing
+                try { if (backupPath != null && File.Exists(backupPath) && !File.Exists(col.ExistingPath)) File.Move(backupPath, col.ExistingPath); }
+                catch { /* best effort */ }
+                result.Skipped.Add(new SkippedItem(col.Name, e.Message));
+            }
+        }
+        if (batch != null && manifest.Count > 0) ReplacedStore.WriteManifest(batch, manifest);
+        return result;
+    }
+
     // ---------- metadata refresh (network client injected) ----------
 
     private static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)
