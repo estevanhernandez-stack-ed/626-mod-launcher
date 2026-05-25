@@ -143,7 +143,10 @@ public sealed partial class MainViewModel : ObservableObject
 
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
             Mods = new ObservableCollection<ModRowViewModel>(
-                list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)));
+                list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)
+                {
+                    ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
+                }));
             GameRootText = _ctx.GameRoot;
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
