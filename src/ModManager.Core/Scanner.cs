@@ -134,6 +134,14 @@ public static class Scanner
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
         {
+            // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
+            // (Stage 2 will pass loaderCanConduct=true when a loader adapter claims an unowned folder.)
+            var owner = ToolOwnership.Detect(loc.Abs);
+            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: false);
+            var readOnly = posture == Posture.Coexist;
+            var managedLabel = owner?.ToString().ToLowerInvariant()
+                ?? (readOnly ? loc.Managed : null);
+
             if (loc.Form == "folders")
             {
                 foreach (var f in ListSubfolders(loc.Abs))
@@ -141,8 +149,8 @@ public static class Scanner
                     if (outMap.ContainsKey(f)) continue;
                     outMap[f] = new Mod
                     {
-                        Name = f, Location = loc.Name, Enabled = true,
-                        Files = new List<string> { f }, OnServer = false, IsFolder = true, Managed = loc.Managed,
+                        Name = f, Location = loc.Name, Enabled = true, Files = new List<string> { f },
+                        OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
                     };
                 }
             }
@@ -153,7 +161,11 @@ public static class Scanner
                     var k = ModKey(f, c);
                     if (!outMap.TryGetValue(k, out var mod))
                     {
-                        mod = new Mod { Name = k, Location = loc.Name, Enabled = true, IsFolder = false, Managed = loc.Managed };
+                        mod = new Mod
+                        {
+                            Name = k, Location = loc.Name, Enabled = true, IsFolder = false,
+                            Managed = managedLabel, ReadOnly = readOnly,
+                        };
                         outMap[k] = mod;
                     }
                     mod.Files.Add(f);
