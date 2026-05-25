@@ -317,6 +317,9 @@ public static class Scanner
 
     private static void DisableEntry(Mod m, GameContext c)
     {
+        // Owned mods are read-only — another tool manages their files. Skip, not error: this
+        // is called from bulk loops (SetAllMods, ApplyMode, LoadProfile) where owned = expected.
+        if (m.ReadOnly) return;
         var loc = LocByName(m.Location, c);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
@@ -366,6 +369,10 @@ public static class Scanner
         catch { return; }
         if (meta is null) return;
         var loc = LocByName(meta.Location, c);
+        // If the target location is currently owned by another tool, leave it alone — the
+        // meta.json records where this mod came from; restoring into an owned folder would
+        // corrupt the external tool's deployment manifest.
+        if (ToolOwnership.Detect(loc.Abs) is not null) return;
         var hadOnServer = meta.HadOnServer ?? new Dictionary<string, bool>();
         Directory.CreateDirectory(loc.Abs);
         foreach (var mp in loc.Mirrors) Directory.CreateDirectory(mp);
@@ -514,6 +521,9 @@ public static class Scanner
     {
         foreach (var loc in c.Locations)
         {
+            // Never rename files inside a folder owned by another tool — even if a prefix
+            // exists there (written externally), renaming it would corrupt the tool's manifest.
+            if (ToolOwnership.Detect(loc.Abs) is not null) continue;
             StripPrefixesIn(loc.Abs, c);
             foreach (var mp in loc.Mirrors) StripPrefixesIn(mp, c);
         }

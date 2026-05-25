@@ -130,4 +130,52 @@ public class ScannerLoadOrderTests
         var order = await Scanner.GetLoadOrderAsync(c);
         Assert.Equal(new[] { "b", "a", "c" }, order.ToArray());
     }
+
+    /// <summary>
+    /// ResetLoadOrder must NOT rename files inside a Vortex-owned folder even when those files
+    /// carry a launcher load-order prefix. Files in non-owned locations ARE stripped as usual.
+    /// </summary>
+    [Fact]
+    public async Task ResetLoadOrder_skips_owned_locations_leaves_prefixed_files_intact()
+    {
+        var root = TestSupport.TempDir("loadorder-owned-");
+        var gameRoot = Path.Combine(root, "game");
+
+        // Owned location: has a Vortex deployment marker. The prefix was written externally —
+        // our tool must never rename inside here.
+        var ownedDir = Path.Combine(gameRoot, "ownedMods");
+        Directory.CreateDirectory(ownedDir);
+        File.WriteAllText(Path.Combine(ownedDir, "vortex.deployment.x.json"), "{}"); // ownership marker
+        File.WriteAllText(Path.Combine(ownedDir, "0010__OwnedThing.pak"), "OWNED");
+
+        // Normal location: a launcher-prefixed file that SHOULD be stripped.
+        var normalDir = Path.Combine(gameRoot, "normalMods");
+        Directory.CreateDirectory(normalDir);
+        File.WriteAllText(Path.Combine(normalDir, "0020__MyMod.pak"), "MINE");
+
+        var c = Scanner.GameContext(new GameEntry
+        {
+            Id = "t", GameName = "T", GameRoot = gameRoot,
+            ModLocations = new[]
+            {
+                new ModLocation("owned",  "Owned",  "ownedMods"),
+                new ModLocation("normal", "Normal", "normalMods"),
+            },
+            FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
+        });
+
+        await Scanner.ResetLoadOrderAsync(c);
+
+        // Owned folder: prefix must NOT have been stripped — file name unchanged.
+        Assert.True(File.Exists(Path.Combine(ownedDir, "0010__OwnedThing.pak")),
+            "ResetLoadOrder must not rename a file inside an owned (Vortex-managed) folder.");
+        Assert.False(File.Exists(Path.Combine(ownedDir, "OwnedThing.pak")),
+            "ResetLoadOrder must not create the stripped filename inside an owned folder.");
+
+        // Normal folder: prefix SHOULD have been stripped.
+        Assert.True(File.Exists(Path.Combine(normalDir, "MyMod.pak")),
+            "ResetLoadOrder must strip the prefix from a non-owned location's files.");
+        Assert.False(File.Exists(Path.Combine(normalDir, "0020__MyMod.pak")),
+            "ResetLoadOrder must remove the prefixed filename from a non-owned location.");
+    }
 }
