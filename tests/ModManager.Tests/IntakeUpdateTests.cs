@@ -215,4 +215,55 @@ public class IntakeUpdateTests
         Assert.Contains("ersc.dll", json); // relPath/originalPath recorded
         try { Directory.Delete(root, true); } catch { }
     }
+
+    [Fact]
+    public void TwoPhaseIntake_skips_all_and_writes_nothing_when_primary_is_owned()
+    {
+        // Arrange: primary location owned by Vortex (marker file present).
+        var root = Path.Combine(Path.GetTempPath(), "mmb-own-" + Guid.NewGuid().ToString("N"));
+        var ctx = FlatCtx(root, "dll");
+        var mods = ctx.Locations[0].Abs;
+
+        // Plant the Vortex ownership marker.
+        File.WriteAllText(Path.Combine(mods, "__folder_managed_by_vortex"), "");
+
+        // A pre-existing file that must not be backed up or overwritten.
+        var existingFile = Path.Combine(mods, "existing.dll");
+        File.WriteAllText(existingFile, "ORIGINAL");
+
+        // A brand-new file that must not be written into the owned folder.
+        var drop = Path.Combine(root, "drop");
+        Directory.CreateDirectory(drop);
+        File.WriteAllText(Path.Combine(drop, "existing.dll"), "COLLISION");
+        File.WriteAllText(Path.Combine(drop, "fresh.dll"), "NEW");
+
+        // Act: run the real two-phase flow the UI uses.
+        var plan = Scanner.PlanIntake(
+            new[] { Path.Combine(drop, "existing.dll"), Path.Combine(drop, "fresh.dll") }, ctx);
+        var result = Scanner.ExecuteIntake(plan, new HashSet<string> { "existing.dll" }, ctx);
+
+        // (a) No backup was created anywhere under the data dir.
+        var anyBackups = Directory.Exists(ctx.DataDir)
+            ? Directory.GetFiles(ctx.DataDir, "*", SearchOption.AllDirectories)
+                .Where(f => !f.Contains("__folder_managed_by_vortex"))
+                .ToArray()
+            : Array.Empty<string>();
+        Assert.Empty(anyBackups);
+
+        // (b) The pre-existing owned file is byte-for-byte unchanged.
+        Assert.Equal("ORIGINAL", File.ReadAllText(existingFile));
+
+        // (c) The new file was NOT written into the owned folder.
+        Assert.False(File.Exists(Path.Combine(mods, "fresh.dll")));
+
+        // (d) Both items reported as Skipped with the managed-location reason.
+        Assert.Empty(result.Added);
+        Assert.Empty(result.Updated);
+        Assert.Contains(result.Skipped, s =>
+            s.Name == "existing.dll" && s.Reason == "location is managed by another tool");
+        Assert.Contains(result.Skipped, s =>
+            s.Name == "fresh.dll" && s.Reason == "location is managed by another tool");
+
+        try { Directory.Delete(root, true); } catch { }
+    }
 }

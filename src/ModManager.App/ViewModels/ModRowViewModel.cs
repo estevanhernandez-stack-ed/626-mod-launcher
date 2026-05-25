@@ -142,6 +142,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool InVariantGroup { get; init; }
     public Visibility VariantGroupVisibility => InVariantGroup ? Visibility.Visible : Visibility.Collapsed;
 
+    // Another tool (e.g. Vortex) manages this mod's folder — we surface it read-only with a badge
+    // so the picture is complete, but the toggle is disabled and there's no uninstall (honor the law).
+    public bool IsManaged => !string.IsNullOrEmpty(Mod.Managed);
+    public Visibility ManagedVisibility => IsManaged ? Visibility.Visible : Visibility.Collapsed;
+    public string ManagedBadge => string.IsNullOrEmpty(Mod.Managed) ? "" : Mod.Managed.ToUpperInvariant();
+
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;
     public bool HasVariant => !string.IsNullOrEmpty(Mod.Variant);

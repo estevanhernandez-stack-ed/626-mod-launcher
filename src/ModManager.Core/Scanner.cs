@@ -43,12 +43,17 @@ public static class Scanner
         var dataDir = DataDirForGame(game);
         var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" }).Select(e => e.ToLowerInvariant()).ToList();
         var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
+        var defaultForm = game.GroupingRule == "by_folder" ? "folders" : "files";
         var locations = game.ModLocations.Select((loc, idx) => new ModLocationCtx(
             string.IsNullOrEmpty(loc.Name) ? "loc" + idx : loc.Name,
             string.IsNullOrEmpty(loc.Label) ? (string.IsNullOrEmpty(loc.Name) ? "Location " + idx : loc.Name) : loc.Label,
             Path.IsPathRooted(loc.Path) ? loc.Path : Path.Combine(gameRoot, loc.Path),
             loc.Mirrors.Select(m => Path.IsPathRooted(m) ? m : Path.Combine(gameRoot, m)).ToList(),
-            idx == 0)).ToList();
+            idx == 0)
+        {
+            Form = string.IsNullOrEmpty(loc.Form) ? defaultForm : loc.Form,
+            Managed = loc.Managed,
+        }).ToList();
         return new GameContext
         {
             Game = game,
@@ -124,33 +129,66 @@ public static class Scanner
 
     private static IReadOnlyList<Mod> BuildModList(GameContext c)
     {
-        if (c.GroupingRule == "by_folder") return BuildModListByFolder(c);
         var outMap = new Dictionary<string, Mod>();
+        // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
+        // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
         {
-            foreach (var f in ListPakFiles(loc.Abs, c))
+            // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
+            // (Stage 2 will pass loaderCanConduct=true when a loader adapter claims an unowned folder.)
+            var owner = ToolOwnership.Detect(loc.Abs);
+            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: false);
+            var readOnly = posture == Posture.Coexist;
+            var managedLabel = owner?.ToString().ToLowerInvariant()
+                ?? (readOnly ? loc.Managed : null);
+
+            if (loc.Form == "folders")
             {
-                var k = ModKey(f, c);
-                if (!outMap.TryGetValue(k, out var mod))
+                foreach (var f in ListSubfolders(loc.Abs))
                 {
-                    mod = new Mod { Name = k, Location = loc.Name, Enabled = true, IsFolder = false };
-                    outMap[k] = mod;
+                    if (outMap.ContainsKey(f)) continue;
+                    outMap[f] = new Mod
+                    {
+                        Name = f, Location = loc.Name, Enabled = true, Files = new List<string> { f },
+                        OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
+                    };
                 }
-                mod.Files.Add(f);
+            }
+            else
+            {
+                foreach (var f in ListPakFiles(loc.Abs, c))
+                {
+                    var k = ModKey(f, c);
+                    if (!outMap.TryGetValue(k, out var mod))
+                    {
+                        mod = new Mod
+                        {
+                            Name = k, Location = loc.Name, Enabled = true, IsFolder = false,
+                            Managed = managedLabel, ReadOnly = readOnly,
+                        };
+                        outMap[k] = mod;
+                    }
+                    mod.Files.Add(f);
+                }
             }
         }
+        // OnServer (multiplayer mirror presence) is only meaningful for pak-file locations.
         foreach (var m in outMap.Values)
         {
+            if (m.IsFolder) continue;
             var loc = LocByName(m.Location, c);
             if (loc is null || loc.Mirrors.Count == 0) { m.OnServer = true; continue; }
             var mirrorFiles = new HashSet<string>();
             foreach (var mp in loc.Mirrors) foreach (var f in ListPakFiles(mp, c)) mirrorFiles.Add(f);
             m.OnServer = m.Files.Any(mirrorFiles.Contains);
         }
+        // The vortex-stash heuristic only applies to file locations — in a folder-form location the
+        // subfolders ARE the mods, so matching them against mod names would flag every mod as itself.
         if (c.ScanSubfolders == "warn")
         {
             foreach (var loc in c.Locations)
             {
+                if (loc.Form == "folders") continue;
                 foreach (var sub in ListSubfolders(loc.Abs))
                 {
                     var norm = Regex.Replace(Regex.Replace(sub, "^AAA-", ""), @"\s+", "").ToLowerInvariant();
@@ -166,25 +204,16 @@ public static class Scanner
         foreach (var d in ListDisabled(c))
         {
             if (outMap.ContainsKey(d.Name)) continue;
-            outMap[d.Name] = new Mod { Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(), IsFolder = false };
+            outMap[d.Name] = new Mod
+            {
+                Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(),
+                IsFolder = d.IsFolder, Managed = c.Locations.FirstOrDefault(l => l.Name == d.Location)?.Managed,
+            };
         }
         return outMap.Values.OrderBy(m => m.Name, StringComparer.Ordinal).ToList();
     }
 
-    private static IReadOnlyList<Mod> BuildModListByFolder(GameContext c)
-    {
-        var outMap = new Dictionary<string, Mod>();
-        foreach (var loc in c.Locations)
-            foreach (var f in ListSubfolders(loc.Abs))
-                if (!outMap.ContainsKey(f))
-                    outMap[f] = new Mod { Name = f, Location = loc.Name, Enabled = true, Files = new List<string> { f }, OnServer = false, IsFolder = true };
-        foreach (var d in ListDisabled(c))
-            if (!outMap.ContainsKey(d.Name))
-                outMap[d.Name] = new Mod { Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(), IsFolder = true };
-        return outMap.Values.OrderBy(m => m.Name, StringComparer.Ordinal).ToList();
-    }
-
-    private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files);
+    private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files, bool IsFolder);
 
     private sealed class DisabledMeta
     {
@@ -202,14 +231,15 @@ public static class Scanner
             var dir = Path.Combine(c.DisabledRoot, name);
             var location = c.Locations.Count > 0 ? c.Locations[0].Name : "";
             var hadOnServer = new Dictionary<string, bool>();
+            var isFolder = false;
             try
             {
                 var meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(dir, "meta.json")), Json);
-                if (meta is not null) { location = meta.Location ?? location; hadOnServer = meta.HadOnServer ?? hadOnServer; }
+                if (meta is not null) { location = meta.Location ?? location; hadOnServer = meta.HadOnServer ?? hadOnServer; isFolder = meta.IsFolder; }
             }
             catch { /* keep defaults */ }
             var files = SafeReadFiles(dir).Where(n => n != "meta.json").ToList();
-            result.Add(new DisabledEntry(name, location, hadOnServer, files));
+            result.Add(new DisabledEntry(name, location, hadOnServer, files, isFolder));
         }
         return result;
     }
@@ -268,6 +298,12 @@ public static class Scanner
         var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (m is not null)
         {
+            // Owned mods (Vortex/MO2-managed) must never be deleted by this launcher.
+            // Uninstall is a single, explicit, destructive op — throw so the caller can surface
+            // a clear message rather than silently succeeding or producing a false toast.
+            if (m.ReadOnly)
+                throw new InvalidOperationException($"\"{name}\" is managed by another tool — uninstall it there.");
+
             var loc = LocByName(m.Location, c);
             foreach (var f in m.Files)
             {
@@ -287,6 +323,9 @@ public static class Scanner
 
     private static void DisableEntry(Mod m, GameContext c)
     {
+        // Owned mods are read-only — another tool manages their files. Skip, not error: this
+        // is called from bulk loops (SetAllMods, ApplyMode, LoadProfile) where owned = expected.
+        if (m.ReadOnly) return;
         var loc = LocByName(m.Location, c);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
@@ -336,6 +375,10 @@ public static class Scanner
         catch { return; }
         if (meta is null) return;
         var loc = LocByName(meta.Location, c);
+        // If the target location is currently owned by another tool, leave it alone — the
+        // meta.json records where this mod came from; restoring into an owned folder would
+        // corrupt the external tool's deployment manifest.
+        if (ToolOwnership.Detect(loc.Abs) is not null) return;
         var hadOnServer = meta.HadOnServer ?? new Dictionary<string, bool>();
         Directory.CreateDirectory(loc.Abs);
         foreach (var mp in loc.Mirrors) Directory.CreateDirectory(mp);
@@ -367,6 +410,7 @@ public static class Scanner
     {
         foreach (var m in BuildModList(c))
         {
+            if (m.ReadOnly) continue; // never mutate a folder another tool owns
             if (m.Enabled == enabled) continue;
             if (enabled) EnableMod(m.Name, c); else DisableEntry(m, c);
         }
@@ -376,6 +420,7 @@ public static class Scanner
     {
         foreach (var m in ListWithClass(c))
         {
+            if (m.ReadOnly) continue; // never mutate a folder another tool owns
             var want = Classification.ModeFilter(mode, m.Class ?? "both");
             if (m.Enabled && !want) DisableEntry(m, c);
             else if (!m.Enabled && want) EnableMod(m.Name, c);
@@ -457,7 +502,7 @@ public static class Scanner
     /// </summary>
     private static void ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
     {
-        var byKey = BuildModList(c).Where(m => m.Enabled).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
+        var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
         var index = 0;
         foreach (var key in orderedKeys)
         {
@@ -482,6 +527,9 @@ public static class Scanner
     {
         foreach (var loc in c.Locations)
         {
+            // Never rename files inside a folder owned by another tool — even if a prefix
+            // exists there (written externally), renaming it would corrupt the tool's manifest.
+            if (ToolOwnership.Detect(loc.Abs) is not null) continue;
             StripPrefixesIn(loc.Abs, c);
             foreach (var mp in loc.Mirrors) StripPrefixesIn(mp, c);
         }
@@ -656,6 +704,18 @@ public static class Scanner
     {
         var pathList = (paths ?? Enumerable.Empty<string>()).ToList();
         var result = new IntakeResult();
+
+        // Guard: if the primary location is managed by another tool (Vortex/MO2), writing into
+        // it would corrupt that tool's deployment manifest. Skip every dropped item with a clear
+        // reason — do NOT write a single file into the owned folder.
+        var primaryLoc = c.Locations.FirstOrDefault();
+        if (primaryLoc is not null && ToolOwnership.Detect(primaryLoc.Abs) is not null)
+        {
+            foreach (var p in ExpandPaths(pathList, c))
+                result.Skipped.Add(new SkippedItem(Path.GetFileName(p), "location is managed by another tool"));
+            return result;
+        }
+
         foreach (var p in ExpandPaths(pathList, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
@@ -707,6 +767,16 @@ public static class Scanner
         var collisions = new List<IntakeCollision>();
         var unsafeItems = new List<SkippedItem>();
 
+        // Guard: if the primary location is owned by another tool (Vortex/MO2), mark every
+        // incoming item as unsafe so the plan carries nothing to copy and the UI shows skips.
+        var primaryLoc = c.Locations.FirstOrDefault();
+        if (primaryLoc is not null && ToolOwnership.Detect(primaryLoc.Abs) is not null)
+        {
+            foreach (var p in ExpandPaths(paths, c))
+                unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "location is managed by another tool"));
+            return new IntakePlan(add, collisions, unsafeItems);
+        }
+
         foreach (var p in ExpandPaths(paths, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
@@ -752,6 +822,19 @@ public static class Scanner
         foreach (var u in plan.Unsafe) result.Skipped.Add(u);
 
         var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
+
+        // Defensive guard: if the primary is owned, write nothing. PlanIntake already routes all
+        // items into plan.Unsafe, so this only fires when ExecuteIntake is called directly with a
+        // hand-constructed plan that bypasses PlanIntake.
+        if (ToolOwnership.Detect(primary.Abs) is not null)
+        {
+            foreach (var item in plan.ToAdd)
+                result.Skipped.Add(new SkippedItem(item.Name, "location is managed by another tool"));
+            foreach (var col in plan.Collisions)
+                result.Skipped.Add(new SkippedItem(col.Name, "location is managed by another tool"));
+            return result;
+        }
+
         Directory.CreateDirectory(primary.Abs);
         string? batch = null;
         string Batch() => batch ??= ReplacedStore.NewBatch(Path.Combine(c.DataDir, "replaced"));

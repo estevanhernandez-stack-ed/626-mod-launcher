@@ -4,6 +4,15 @@ namespace ModManager.Core;
 public sealed record ModLocation(string Name, string Label, string Path)
 {
     public IReadOnlyList<string> Mirrors { get; init; } = Array.Empty<string>();
+
+    // How mods are shaped in this folder: "files" (pak files grouped by filename — the default) or
+    // "folders" (one folder per mod, e.g. UE4SS Lua/script mods). Null falls back to the game's
+    // grouping rule ("by_folder" -> folders, else files).
+    public string? Form { get; init; }
+
+    // When set (e.g. "vortex" / "mo2"), another tool owns this folder: surface its mods read-only
+    // and never toggle/uninstall/move them. Honors the "don't touch Vortex-managed folders" law.
+    public string? Managed { get; init; }
 }
 
 /// <summary>
