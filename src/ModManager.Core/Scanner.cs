@@ -298,6 +298,12 @@ public static class Scanner
         var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (m is not null)
         {
+            // Owned mods (Vortex/MO2-managed) must never be deleted by this launcher.
+            // Uninstall is a single, explicit, destructive op — throw so the caller can surface
+            // a clear message rather than silently succeeding or producing a false toast.
+            if (m.ReadOnly)
+                throw new InvalidOperationException($"\"{name}\" is managed by another tool — uninstall it there.");
+
             var loc = LocByName(m.Location, c);
             foreach (var f in m.Files)
             {
@@ -698,6 +704,18 @@ public static class Scanner
     {
         var pathList = (paths ?? Enumerable.Empty<string>()).ToList();
         var result = new IntakeResult();
+
+        // Guard: if the primary location is managed by another tool (Vortex/MO2), writing into
+        // it would corrupt that tool's deployment manifest. Skip every dropped item with a clear
+        // reason — do NOT write a single file into the owned folder.
+        var primaryLoc = c.Locations.FirstOrDefault();
+        if (primaryLoc is not null && ToolOwnership.Detect(primaryLoc.Abs) is not null)
+        {
+            foreach (var p in ExpandPaths(pathList, c))
+                result.Skipped.Add(new SkippedItem(Path.GetFileName(p), "location is managed by another tool"));
+            return result;
+        }
+
         foreach (var p in ExpandPaths(pathList, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);

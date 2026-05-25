@@ -96,4 +96,24 @@ public class ScannerIntakeTests
         var r = await Scanner.AddModsAsync(new[] { txt }, c);
         Assert.Contains(r.Skipped, s => s.Name == "notes.txt");
     }
+
+    [Fact]
+    public async Task AddMods_skips_and_does_not_write_when_primary_location_is_owned()
+    {
+        // Arrange: make the primary (first) location owned by Vortex.
+        var (_, modsDir, src, c) = Fixture();
+        File.WriteAllText(Path.Combine(modsDir, "__folder_managed_by_vortex"), "");
+        var srcFile = Path.Combine(src, "fresh.pak");
+        File.WriteAllText(srcFile, "CONTENT");
+
+        // Act.
+        var r = await Scanner.AddModsAsync(new[] { srcFile }, c);
+
+        // The file must NOT have been copied into the owned folder.
+        Assert.False(File.Exists(Path.Combine(modsDir, "fresh.pak")));
+        // It must appear as a skip with a reason that calls out managed/owned.
+        Assert.Contains(r.Skipped, s => s.Name == "fresh.pak");
+        var skip = r.Skipped.First(s => s.Name == "fresh.pak");
+        Assert.Contains("managed", skip.Reason, StringComparison.OrdinalIgnoreCase);
+    }
 }

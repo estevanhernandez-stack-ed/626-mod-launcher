@@ -55,4 +55,19 @@ public class ScannerUninstallTests
         await Scanner.UninstallModAsync("nope", c); // no throw
         Assert.True(File.Exists(Path.Combine(primary, "cool.pak")));
     }
+
+    [Fact]
+    public async Task Uninstall_throws_for_an_owned_mod_and_leaves_files_intact()
+    {
+        // Arrange: make the primary location owned by Vortex so the mod gets ReadOnly=true.
+        var (primary, _, c) = Setup();
+        File.WriteAllText(Path.Combine(primary, "__folder_managed_by_vortex"), "");
+
+        // Act + Assert: must throw, not silently succeed.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Scanner.UninstallModAsync("cool", c));
+
+        // The file must still exist — nothing was deleted.
+        Assert.True(File.Exists(Path.Combine(primary, "cool.pak")));
+    }
 }
