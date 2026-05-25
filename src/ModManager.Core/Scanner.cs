@@ -331,6 +331,12 @@ public static class Scanner
         // Owned mods are read-only — another tool manages their files. Skip, not error: this
         // is called from bulk loops (SetAllMods, ApplyMode, LoadProfile) where owned = expected.
         if (m.ReadOnly) return;
+        // Loader-driven mods (e.g. UE4SS Conductor): flip the manifest, no file moves.
+        if (m.Loader == "ue4ss")
+        {
+            Ue4ssManifest.SetEnabled(LocByName(m.Location, c).Abs, m.Name, enabled: false);
+            return;
+        }
         var loc = LocByName(m.Location, c);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
@@ -374,6 +380,15 @@ public static class Scanner
 
     private static void EnableMod(string name, GameContext c)
     {
+        // Loader-driven mods (e.g. UE4SS Conductor) are never moved to the disabled holding folder;
+        // their enable state lives in the manifest. Key on m.Loader for symmetry with DisableEntry.
+        var live = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        if (live?.Loader == "ue4ss")
+        {
+            Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true);
+            return;
+        }
+
         var src = Path.Combine(c.DisabledRoot, name);
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }

@@ -13,9 +13,13 @@ public class Ue4ssScanTests
         Directory.CreateDirectory(Path.Combine(mods, "Off"));
         File.WriteAllText(Path.Combine(mods, "mods.txt"), "On : 1\nOff : 0\n");
         if (owned) File.WriteAllText(Path.Combine(mods, "vortex.deployment.x.json"), "{}");
+        // Use a DataDir under root so each test's disabled/profiles dirs are isolated
+        // (the default DataDir resolves to the PARENT of root/_626mods/t, which is shared
+        // across all tests using id="t" in the same Temp folder).
         return Scanner.GameContext(new GameEntry
         {
             Id = "t", GameName = "T", GameRoot = root,
+            DataDir = Path.Combine(root, "_data"),
             FileExtensions = new[] { "pak" }, GroupingRule = "strip_underscore_p_suffix",
             ModLocations = new[] { new ModLocation("ue4ss", "UE4SS", "ue4ss/Mods") { Form = "folders" } },
         });
