@@ -19,8 +19,27 @@ public sealed partial class AddGameDialog : ContentDialog
         // No default selection — a wrong default reads as "auto-detected" when it isn't.
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
 
+        PopularGamesBox.ItemsSource = PopularGames.All;
+
         SteamGamesBox.ItemsSource = steamGames;
         if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
+    }
+
+    // Pick a curated game -> pre-fill name, engine, mod folder, and app id. Leaves the game
+    // folder for the user to point at their install. Manual entry still works unchanged.
+    private void OnPopularSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (PopularGamesBox.SelectedItem is not PopularGame g) return;
+        NameBox.Text = g.Name;
+        // Select the matching engine option. This fires OnEngineChanged, which seeds ModPathBox
+        // from the engine preset's default — we then override with the game-specific path below.
+        if ((EngineBox.ItemsSource as IEnumerable<EngineOption>)?.FirstOrDefault(o => o.Key == g.Engine) is { } match)
+        {
+            EngineBox.SelectedItem = match;
+            EngineHint.Visibility = Visibility.Collapsed; // this is a curated pick, not folder auto-detection
+        }
+        ModPathBox.Text = g.ModPath;
+        SteamBox.Text = g.SteamAppId;
     }
 
     // Pick a Steam game -> pre-fill name, folder, app id, and auto-detect the engine.
