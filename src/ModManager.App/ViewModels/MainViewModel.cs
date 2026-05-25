@@ -170,7 +170,7 @@ public sealed partial class MainViewModel : ObservableObject
             var rows = new List<ModRowViewModel>();
             foreach (var fam in VariantGroups.Group(list))
                 foreach (var m in fam.Members)
-                    rows.Add(new ModRowViewModel(m, canToggle: m.Managed is null, canUninstall: !directInject && m.Managed is null)
+                    rows.Add(new ModRowViewModel(m, canToggle: !m.ReadOnly, canUninstall: !directInject && !m.ReadOnly)
                     {
                         ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
                         MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
