@@ -31,9 +31,15 @@
             <Button x:Name="BackupButton" Grid.Column="1" Content="Back up now" VerticalAlignment="Bottom" Click="OnBackup" />
         </Grid>
 
-        <CheckBox x:Name="AutoBackupCheck" Content="Auto-backup before launch"
-                  Checked="OnAutoBackupChanged" Unchecked="OnAutoBackupChanged"
-                  ToolTipService.ToolTip="Snapshot the save automatically each time you press Play (older auto snapshots are pruned; your named backups are kept)." />
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <CheckBox x:Name="AutoBackupCheck" Content="Auto-backup before launch"
+                      Checked="OnAutoBackupChanged" Unchecked="OnAutoBackupChanged"
+                      ToolTipService.ToolTip="Snapshot the save automatically each time you press Play (older auto snapshots are pruned; your named backups are kept)." />
+            <TextBlock Text="keep" VerticalAlignment="Center" Opacity="0.7" />
+            <NumberBox x:Name="KeepBox" Minimum="1" Maximum="999" SpinButtonPlacementMode="Compact"
+                       Width="120" ValueChanged="OnKeepChanged" VerticalAlignment="Center"
+                       ToolTipService.ToolTip="How many auto snapshots to keep before pruning the oldest. Your named backups are never pruned." />
+        </StackPanel>
 
         <TextBlock Text="Save files" FontWeight="SemiBold" />
         <ListView x:Name="SaveFileList" MaxHeight="168" SelectionMode="None">

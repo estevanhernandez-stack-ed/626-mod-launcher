@@ -46,4 +46,15 @@ public class SaveCloneTests : IDisposable
         Assert.Throws<IOException>(() => SaveManager.CloneToType(_dir, "ER0000.sl2", ".co2"));
         Assert.Equal("COOP-PROGRESS", File.ReadAllText(Path.Combine(_dir, "ER0000.co2"))); // untouched
     }
+
+    [Fact]
+    public void Clone_with_overwrite_replaces_the_target()
+    {
+        File.WriteAllText(Path.Combine(_dir, "ER0000.co2"), "OLD");
+
+        var created = SaveManager.CloneToType(_dir, "ER0000.sl2", ".co2", overwrite: true);
+
+        Assert.Equal("ER0000.co2", created);
+        Assert.Equal("VANILLA", File.ReadAllText(Path.Combine(_dir, "ER0000.co2"))); // replaced from source
+    }
 }

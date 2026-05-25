@@ -9,8 +9,8 @@ namespace ModManager.App;
 /// <summary>A snapshot row prepared for display (title + "time · size").</summary>
 public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
 
-/// <summary>One "clone to" choice for a save file: the menu label + the target extension.</summary>
-public sealed record SaveCloneTarget(string Label, string Ext);
+/// <summary>One "clone to" choice for a save file: the target type's label + extension.</summary>
+public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>
 public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets);
@@ -23,6 +23,7 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly string _savesDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
     private string? _saveDir;
+    private bool _loaded; // suppress persist during initial control setup
 
     public SavesDialog(GameContext ctx, LauncherService svc, IntPtr hwnd)
     {
@@ -34,10 +35,12 @@ public sealed partial class SavesDialog : ContentDialog
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
         _saveTypes = GameProfiles.Resolve(ctx.Game.Engine, ctx.Game.SteamAppId).SaveTypes;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
+        KeepBox.Value = ctx.Game.SaveAutoKeep ?? 25;
         if (!string.IsNullOrEmpty(_saveDir)) StatusText.Text = "Save folder ready.";
         FolderBox.Text = _saveDir ?? "";
         Refresh();
         RefreshSaveFiles();
+        _loaded = true;
     }
 
     private void Refresh()
@@ -58,7 +61,7 @@ public sealed partial class SavesDialog : ContentDialog
         var rows = (string.IsNullOrEmpty(_saveDir) ? Array.Empty<SaveFile>() : SaveManager.ListSaveFiles(_saveDir, _saveTypes))
             .Select(f => new SaveFileRow(f.Name, f.TypeLabel,
                 _saveTypes.Where(t => !string.Equals(t.Extension, f.Extension, StringComparison.OrdinalIgnoreCase))
-                          .Select(t => new SaveCloneTarget("Clone to " + t.Label, t.Extension)).ToList()))
+                          .Select(t => new SaveCloneTarget(t.Label, t.Extension)).ToList()))
             .ToList();
         SaveFileList.ItemsSource = rows;
         SaveFilesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -68,9 +71,17 @@ public sealed partial class SavesDialog : ContentDialog
     {
         if (sender is not MenuFlyout menu || menu.Target?.DataContext is not SaveFileRow row) return;
         menu.Items.Clear();
+        var baseName = System.IO.Path.GetFileNameWithoutExtension(row.Name);
         foreach (var t in row.Targets)
         {
-            var item = new MenuFlyoutItem { Text = t.Label, Tag = (row.Name, t.Ext) };
+            // If the target type already exists, the action becomes a gated "Replace" that snapshots
+            // first — clearly labeled, reversible. Otherwise it's a plain clone.
+            var exists = !string.IsNullOrEmpty(_saveDir) && File.Exists(System.IO.Path.Combine(_saveDir, baseName + t.Ext));
+            var item = new MenuFlyoutItem
+            {
+                Text = exists ? $"Replace {t.TypeLabel} (snapshots first)" : $"Clone to {t.TypeLabel}",
+                Tag = (row.Name, t.Ext, exists),
+            };
             item.Click += OnCloneTo;
             menu.Items.Add(item);
         }
@@ -79,15 +90,26 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void OnCloneTo(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyoutItem { Tag: ValueTuple<string, string> pair }) return;
+        if (sender is not MenuFlyoutItem { Tag: ValueTuple<string, string, bool> t }) return;
+        var (name, ext, replace) = t;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
         try
         {
-            var created = SaveManager.CloneToType(_saveDir, pair.Item1, pair.Item2);
-            StatusText.Text = $"Cloned {pair.Item1} → {created}. Your original is untouched.";
+            if (replace)
+            {
+                SaveManager.Backup(_saveDir, _savesDir, "before-clone", auto: true); // reversible
+                var created = SaveManager.CloneToType(_saveDir, name, ext, overwrite: true);
+                StatusText.Text = $"Snapshotted, then replaced → {created}.";
+                Refresh();
+            }
+            else
+            {
+                var created = SaveManager.CloneToType(_saveDir, name, ext);
+                StatusText.Text = $"Cloned {name} → {created}. Your original is untouched.";
+            }
             RefreshSaveFiles();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; } // e.g. "a Reforged save already exists…"
+        catch (Exception ex) { StatusText.Text = ex.Message; }
     }
 
     private void OnRestoreTypeOpening(object sender, object e)
@@ -116,8 +138,15 @@ public sealed partial class SavesDialog : ContentDialog
         catch (Exception ex) { StatusText.Text = ex.Message; }
     }
 
-    private void OnAutoBackupChanged(object sender, RoutedEventArgs e)
-        => _svc.SetAutoBackup(_gameId, AutoBackupCheck.IsChecked == true, 25);
+    private void OnAutoBackupChanged(object sender, RoutedEventArgs e) => PersistAutoBackup();
+    private void OnKeepChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) => PersistAutoBackup();
+
+    private void PersistAutoBackup()
+    {
+        if (!_loaded) return;
+        var keep = double.IsNaN(KeepBox.Value) ? 25 : (int)Math.Clamp(KeepBox.Value, 1, 999);
+        _svc.SetAutoBackup(_gameId, AutoBackupCheck.IsChecked == true, keep);
+    }
 
     private async void OnChangeFolder(object sender, RoutedEventArgs e)
     {
