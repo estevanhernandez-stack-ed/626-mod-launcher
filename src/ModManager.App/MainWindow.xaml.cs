@@ -19,6 +19,8 @@ public sealed partial class MainWindow : Window
         ViewModel = App.AppHost.Services.GetRequiredService<MainViewModel>();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+        if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         Activated += OnFirstActivated;
     }
 
