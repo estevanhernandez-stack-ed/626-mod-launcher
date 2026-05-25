@@ -184,6 +184,50 @@ public static class DirectInject
         return result;
     }
 
+    /// <summary>Classify a drop against the play folder into add / collision / unsafe — no writes.</summary>
+    public static IntakePlan Plan(string playFolder, IEnumerable<string> sourcePaths)
+    {
+        var add = new List<IntakeItem>();
+        var collisions = new List<IntakeCollision>();
+        var unsafeItems = new List<SkippedItem>();
+
+        void Consider(string rel, string existingAbsDir, string incoming)
+        {
+            var dest = Path.Combine(existingAbsDir, rel);
+            if (!IsUnder(playFolder, dest)) { unsafeItems.Add(new SkippedItem(rel, "unsafe path")); return; }
+            var name = Path.GetFileName(rel);
+            if (Exists(dest)) collisions.Add(new IntakeCollision(name, rel, dest, incoming));
+            else add.Add(new IntakeItem(name, rel, incoming));
+        }
+
+        foreach (var src in sourcePaths ?? Enumerable.Empty<string>())
+        {
+            try
+            {
+                if (Directory.Exists(src))
+                {
+                    var baseName = new DirectoryInfo(src).Name;
+                    foreach (var file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+                        Consider(Path.Combine(baseName, Path.GetRelativePath(src, file)), playFolder, file);
+                }
+                else if (src.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var zip = ZipFile.OpenRead(src);
+                    var prefix = WrapperPrefix(zip.Entries.Select(e => e.FullName));
+                    foreach (var entry in zip.Entries)
+                    {
+                        var rel = SafeRelative(entry.FullName, prefix);
+                        if (rel is null) { if (!entry.FullName.EndsWith("/")) unsafeItems.Add(new SkippedItem(entry.FullName, "unsafe path")); continue; }
+                        Consider(rel, playFolder, $"{src}!{entry.FullName}");
+                    }
+                }
+                else Consider(Path.GetFileName(src), playFolder, src);
+            }
+            catch (Exception e) { unsafeItems.Add(new SkippedItem(Path.GetFileName(src), e.Message)); }
+        }
+        return new IntakePlan(add, collisions, unsafeItems);
+    }
+
     /// <summary>The single top-level folder that wraps every zip entry (to flatten), or null when
     /// files sit at the root, entries span multiple top folders, or the prefix is a traversal.</summary>
     public static string? WrapperPrefix(IEnumerable<string> entryNames)

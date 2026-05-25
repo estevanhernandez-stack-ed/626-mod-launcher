@@ -104,4 +104,24 @@ public class IntakeUpdateTests
         Assert.True(backups.Length == 1 && File.ReadAllText(backups[0]) == "OLD");
         try { Directory.Delete(root, true); } catch { }
     }
+
+    [Fact]
+    public void DirectInject_Plan_splits_new_from_colliding_in_play_folder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-dip-" + Guid.NewGuid().ToString("N"));
+        var play = Path.Combine(root, "game"); Directory.CreateDirectory(play);
+        File.WriteAllText(Path.Combine(play, "ersc.dll"), "OLD");
+
+        var zipPath = Path.Combine(root, "seamless.zip");
+        using (var z = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            z.CreateEntry("ersc.dll").Open().Dispose();
+            z.CreateEntry("launch_elden_ring_seamlesscoop.exe").Open().Dispose();
+        }
+
+        var plan = DirectInject.Plan(play, new[] { zipPath });
+        Assert.Contains(plan.Collisions, c => c.RelPath.Equals("ersc.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(plan.ToAdd, a => a.RelPath.EndsWith("seamlesscoop.exe", StringComparison.OrdinalIgnoreCase));
+        try { Directory.Delete(root, true); } catch { }
+    }
 }
