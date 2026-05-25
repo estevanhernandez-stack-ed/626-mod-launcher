@@ -77,6 +77,31 @@ public sealed partial class ModRowViewModel : ObservableObject
         || SourceUri is not null || DonateUri is not null || Mod.Downloads is > 0;
     public Visibility CreditVisibility => Mod.HasMeta && HasAnyCredit ? Visibility.Visible : Visibility.Collapsed;
 
+    // MP-safety: effective = the user's override (if any) over the class-inferred risk. The badge
+    // doubles as the set-override affordance, so it's always shown (faint "MP?" when we make no claim).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MpBadge))]
+    [NotifyPropertyChangedFor(nameof(MpBadgeBrush))]
+    [NotifyPropertyChangedFor(nameof(MpBadgeOpacity))]
+    private MpRisk? mpOverride;
+
+    public MpRisk EffectiveMp => MpCompat.Effective(MpCompat.Infer(Mod.Class), MpOverride);
+    public string MpBadge => EffectiveMp switch
+    {
+        MpRisk.Safe => "MP-SAFE",
+        MpRisk.Risky => "MP-RISKY",
+        MpRisk.SpOnly => "SP-ONLY",
+        _ => "MP?",
+    };
+    public Brush? MpBadgeBrush => EffectiveMp switch
+    {
+        MpRisk.Safe => Res("ThemeAccent"),
+        MpRisk.Risky or MpRisk.SpOnly => Res("ThemeDanger"),
+        _ => Res("ThemeInkSoft"),
+    };
+    public double MpBadgeOpacity => EffectiveMp == MpRisk.Unknown ? 0.5 : 1.0;
+    private static Brush? Res(string key) => Application.Current.Resources.TryGetValue(key, out var v) ? v as Brush : null;
+
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;
     public bool HasVariant => !string.IsNullOrEmpty(Mod.Variant);
