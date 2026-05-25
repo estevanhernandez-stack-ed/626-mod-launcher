@@ -49,4 +49,32 @@ public class SaveManagerProTests : IDisposable
         Assert.Equal(1, left.Count(s => !s.IsAuto));       // user backup kept
         Assert.Equal(2, left.Count(s => s.IsAuto));        // newest 2 autos kept
     }
+
+    [Fact]
+    public void TypesInSnapshot_reports_declared_types_present()
+    {
+        File.WriteAllText(Path.Combine(Save, "ER0000.co2"), "C"); // Seamless save also present
+        var snap = SaveManager.Backup(Save, Snaps, "two types");
+        var types = GameProfiles.Resolve("fromsoft", null).SaveTypes;
+
+        var present = SaveManager.TypesInSnapshot(snap.Path, types).Select(t => t.Extension).ToList();
+        Assert.Contains(".sl2", present);
+        Assert.Contains(".co2", present);
+        Assert.DoesNotContain(".err", present); // not in the save folder
+    }
+
+    [Fact]
+    public void RestoreType_restores_only_the_chosen_type_and_snapshots_first()
+    {
+        File.WriteAllText(Path.Combine(Save, "ER0000.co2"), "COOP-OLD");
+        var snap = SaveManager.Backup(Save, Snaps, "checkpoint");
+        File.WriteAllText(Path.Combine(Save, "ER0000.co2"), "COOP-NEW");    // co2 changed
+        File.WriteAllText(Path.Combine(Save, "ER0000.sl2"), "VANILLA-NEW"); // sl2 changed
+
+        SaveManager.RestoreType(snap.Path, Save, Snaps, ".co2");
+
+        Assert.Equal("COOP-OLD", File.ReadAllText(Path.Combine(Save, "ER0000.co2")));    // co2 rolled back
+        Assert.Equal("VANILLA-NEW", File.ReadAllText(Path.Combine(Save, "ER0000.sl2"))); // sl2 untouched
+        Assert.Contains(SaveManager.ListSnapshots(Snaps), s => s.IsAuto);                // snapshotted first
+    }
 }

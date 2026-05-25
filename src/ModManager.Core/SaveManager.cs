@@ -100,10 +100,10 @@ public static partial class SaveManager
         var fileName = safe.Length > 0 ? $"{stamp}__{safe}.zip" : $"{stamp}.zip";
         var path = System.IO.Path.Combine(snapshotsDir, fileName);
 
-        // A clashing name (same second) would throw; make it unique.
+        // A clashing name (same second) would throw; make it unique. n++ each try or this loops forever.
         var n = 1;
         while (File.Exists(path))
-            path = System.IO.Path.Combine(snapshotsDir, (safe.Length > 0 ? $"{stamp}__{safe}-{n}" : $"{stamp}-{n}") + ".zip");
+            path = System.IO.Path.Combine(snapshotsDir, (safe.Length > 0 ? $"{stamp}__{safe}-{n++}" : $"{stamp}-{n++}") + ".zip");
 
         ZipFile.CreateFromDirectory(saveDir, path);
         return new SaveSnapshot(path, System.IO.Path.GetFileName(path), safe, takenUtc, new FileInfo(path).Length, IsAutoLabel(safe));
@@ -160,6 +160,36 @@ public static partial class SaveManager
         if (keepLastAuto < 0) keepLastAuto = 0;
         var autos = ListSnapshots(snapshotsDir).Where(s => s.IsAuto).ToList(); // ListSnapshots is newest-first
         foreach (var old in autos.Skip(keepLastAuto)) Delete(old.Path);
+    }
+
+    /// <summary>The declared save types that actually appear inside a snapshot zip.</summary>
+    public static IReadOnlyList<SaveType> TypesInSnapshot(string snapshotZip, IReadOnlyList<SaveType> saveTypes)
+    {
+        if (!File.Exists(snapshotZip)) return Array.Empty<SaveType>();
+        using var zip = ZipFile.OpenRead(snapshotZip);
+        var exts = new HashSet<string>(zip.Entries.Select(e => System.IO.Path.GetExtension(e.FullName)), StringComparer.OrdinalIgnoreCase);
+        return saveTypes.Where(t => exts.Contains(t.Extension)).ToList();
+    }
+
+    /// <summary>Restore only files of <paramref name="extension"/> from a snapshot, leaving other save
+    /// types in place. Snapshots current state first (auto) so it stays reversible.</summary>
+    public static void RestoreType(string snapshotZip, string saveDir, string snapshotsDir, string extension)
+    {
+        if (!File.Exists(snapshotZip)) throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
+
+        if (Directory.Exists(saveDir) && Directory.EnumerateFileSystemEntries(saveDir).Any())
+            Backup(saveDir, snapshotsDir, "before-restore", auto: true);
+
+        Directory.CreateDirectory(saveDir);
+        using var zip = ZipFile.OpenRead(snapshotZip);
+        foreach (var entry in zip.Entries)
+        {
+            if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
+            if (!string.Equals(System.IO.Path.GetExtension(entry.FullName), extension, StringComparison.OrdinalIgnoreCase)) continue;
+            var dest = System.IO.Path.Combine(saveDir, entry.FullName);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest)!);
+            entry.ExtractToFile(dest, overwrite: true);
+        }
     }
 
     private static string SanitizeLabel(string? label)
