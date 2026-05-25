@@ -176,7 +176,7 @@ public sealed partial class MainViewModel : ObservableObject
                     var folderAbs = m.IsFolder
                         ? System.IO.Path.Combine(Scanner.LocByName(m.Location, _ctx!).Abs, m.Name)
                         : "";
-                    rows.Add(new ModRowViewModel(m, canToggle: !m.ReadOnly, canUninstall: !directInject && !m.ReadOnly)
+                    rows.Add(new ModRowViewModel(m, canToggle: !m.ReadOnly || m.Loader == "ue4ss", canUninstall: !directInject && !m.ReadOnly)
                     {
                         ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
                         MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
@@ -217,9 +217,13 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (DirectInjectBacked) _direct.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
-            else if (row.Enabled) await Scanner.EnableModAsync(row.Mod.Name, _ctx);
-            else await Scanner.DisableModAsync(row.Mod.Name, _ctx);
+            else await Scanner.SetLoaderModEnabledAsync(row.Mod.Name, row.Enabled, _ctx);
+            // Warn when toggling an owned UE4SS mod — manifest flip succeeded, but the managing
+            // tool may overwrite it on its next deploy (mirrors the config edit-with-warning rule).
+            var wasOwnedUe4ss = row.Mod.ReadOnly && row.Mod.Loader == "ue4ss";
             await ReloadModsAsync();
+            if (wasOwnedUe4ss && !string.IsNullOrEmpty(row.Mod.Managed))
+                StatusText = $"Toggled {row.Mod.Name} via UE4SS — managed by {row.Mod.Managed.ToUpperInvariant()}, may be overwritten on its next deploy.";
         }
         catch (Exception e)
         {
