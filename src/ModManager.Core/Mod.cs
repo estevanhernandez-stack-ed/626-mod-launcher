@@ -25,6 +25,9 @@ public sealed class Mod
     public string? Managed { get; set; }
     // True when this mod's location is owned by another tool (Coexist posture): the row is read-only.
     public bool ReadOnly { get; set; }
+    // Set to a loader id ("ue4ss") when this mod's enable state is driven through a loader manifest
+    // (Conductor posture) rather than by moving files. Null = file-move model.
+    public string? Loader { get; set; }
 
     // enrichment (from Metadata.MergeMetadata)
     public string DisplayName { get; set; } = "";

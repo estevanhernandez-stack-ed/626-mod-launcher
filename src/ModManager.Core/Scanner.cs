@@ -135,9 +135,10 @@ public static class Scanner
         foreach (var loc in c.Locations)
         {
             // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
-            // (Stage 2 will pass loaderCanConduct=true when a loader adapter claims an unowned folder.)
+            // A UE4SS folder with a manifest is a loader-driven location: it can Conduct when unowned.
             var owner = ToolOwnership.Detect(loc.Abs);
-            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: false);
+            var isUe4ss = loc.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(loc.Abs);
+            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: isUe4ss);
             var readOnly = posture == Posture.Coexist;
             var managedLabel = owner?.ToString().ToLowerInvariant()
                 ?? (readOnly ? loc.Managed : null);
@@ -147,10 +148,14 @@ public static class Scanner
                 foreach (var f in ListSubfolders(loc.Abs))
                 {
                     if (outMap.ContainsKey(f)) continue;
+                    // Reading the manifest is non-mutating, so we surface true state even in an
+                    // owned folder. Loader-drive (writing) is granted only where Conductor (unowned).
+                    var enabled = isUe4ss ? Ue4ssManifest.IsEnabled(loc.Abs, f) : true;
                     outMap[f] = new Mod
                     {
-                        Name = f, Location = loc.Name, Enabled = true, Files = new List<string> { f },
+                        Name = f, Location = loc.Name, Enabled = enabled, Files = new List<string> { f },
                         OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
+                        Loader = (isUe4ss && posture == Posture.Conductor) ? "ue4ss" : null,
                     };
                 }
             }
@@ -326,6 +331,13 @@ public static class Scanner
         // Owned mods are read-only — another tool manages their files. Skip, not error: this
         // is called from bulk loops (SetAllMods, ApplyMode, LoadProfile) where owned = expected.
         if (m.ReadOnly) return;
+        // Loader-driven mods (e.g. UE4SS Conductor): flip the manifest, no file moves.
+        if (m.Loader == "ue4ss")
+        {
+            try { Ue4ssManifest.SetEnabled(LocByName(m.Location, c).Abs, m.Name, enabled: false); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e); }
+            return;
+        }
         var loc = LocByName(m.Location, c);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
@@ -369,6 +381,16 @@ public static class Scanner
 
     private static void EnableMod(string name, GameContext c)
     {
+        // Loader-driven mods (e.g. UE4SS Conductor) are never moved to the disabled holding folder;
+        // their enable state lives in the manifest. Key on m.Loader for symmetry with DisableEntry.
+        var live = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        if (live?.Loader == "ue4ss")
+        {
+            try { Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e); }
+            return;
+        }
+
         var src = Path.Combine(c.DisabledRoot, name);
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }
