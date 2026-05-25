@@ -206,9 +206,17 @@ public static class DirectInject
             {
                 if (Directory.Exists(src))
                 {
+                    // Treat the dropped folder's own name as a single wrapper (like a zip's wrapping
+                    // folder) and strip it, so its CONTENTS install relative to the target — never
+                    // nested under "SomeMod v1.2\". Inner subfolders are preserved.
                     var baseName = new DirectoryInfo(src).Name;
                     foreach (var file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
-                        Consider(Path.Combine(baseName, Path.GetRelativePath(src, file)), playFolder, file);
+                    {
+                        var entryName = baseName + "/" + Path.GetRelativePath(src, file).Replace('\\', '/');
+                        var rel = SafeRelative(entryName, baseName);
+                        if (rel is null) { unsafeItems.Add(new SkippedItem(entryName, "unsafe path")); continue; }
+                        Consider(rel, playFolder, file);
+                    }
                 }
                 else if (src.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 {
@@ -345,11 +353,15 @@ public static class DirectInject
 
     private static void InstallDir(string src, string playFolder, IntakeResult result)
     {
-        var destRoot = Path.Combine(playFolder, new DirectoryInfo(src).Name);
+        // Strip the dropped folder's own name (the single wrapper, like a zip) so its contents
+        // install relative to the play folder — not nested under "SomeMod\". Inner folders survive.
+        var baseName = new DirectoryInfo(src).Name;
         foreach (var file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
         {
-            var rel = Path.GetRelativePath(src, file);
-            var dest = Path.Combine(destRoot, rel);
+            var entryName = baseName + "/" + Path.GetRelativePath(src, file).Replace('\\', '/');
+            var rel = SafeRelative(entryName, baseName);
+            if (rel is null) { result.Skipped.Add(new SkippedItem(entryName, "unsafe path")); continue; }
+            var dest = Path.Combine(playFolder, rel);
             if (!IsUnder(playFolder, dest)) { result.Skipped.Add(new SkippedItem(rel, "unsafe path")); continue; }
             if (Exists(dest)) { result.Skipped.Add(new SkippedItem(rel, "already present")); continue; }
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
