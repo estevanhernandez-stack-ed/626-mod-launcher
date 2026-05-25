@@ -75,6 +75,7 @@ public static partial class EnginePresets
             entry.LaunchUrl = "steam://rungameid/" + input.SteamAppId;
         }
         if (!string.IsNullOrEmpty(input.LaunchExe)) entry.LaunchExe = input.LaunchExe;
+        if (!string.IsNullOrEmpty(input.RequiredLauncher)) entry.RequiredLauncher = input.RequiredLauncher;
         return entry;
     }
 }

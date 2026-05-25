@@ -47,6 +47,9 @@ public sealed class GameEntry
     // where this game's saves live (for the built-in save manager)
     public string? SaveDir { get; set; }
 
+    // relative path (under GameRoot) to the launcher that must be used when modded (e.g. Seamless Co-op)
+    public string? RequiredLauncher { get; set; }
+
     // auto-backup-before-launch opt-in + how many auto snapshots to retain (null = unlimited)
     public bool AutoBackupOnLaunch { get; set; }
     public int? SaveAutoKeep { get; set; } = 25;
@@ -73,6 +76,9 @@ public sealed class GameInput
     public string? WindowTitle { get; init; }
     public IReadOnlyList<string>? FileExtensions { get; init; }
     public string? GroupingRule { get; init; }
+    public string? SaveRoot { get; init; }
+    public string? SaveSubPath { get; init; }
+    public string? RequiredLauncher { get; init; }
 }
 
 /// <summary>An engine preset: the mod-folder layout / extensions / grouping for an engine.</summary>

@@ -70,4 +70,14 @@ public class GameProfileImportTests
             e => e.Contains("steamAppId", StringComparison.OrdinalIgnoreCase));
         Assert.Empty(GameProfileImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"AppData","saveSubPath":"X" }""").Errors);
     }
+
+    [Fact]
+    public void BuildGameEntry_carries_the_required_launcher()
+    {
+        var input = new GameInput { Name = "Elden Ring", Engine = "fromsoft", GameRoot = @"C:\game",
+            RequiredLauncher = "Game/ersc_launcher.exe" };
+        var entry = EnginePresets.BuildGameEntry(input, existingIds: null);
+        Assert.Equal("Game/ersc_launcher.exe", entry.RequiredLauncher);
+        Assert.Equal("fromsoft", entry.Engine);
+    }
 }
