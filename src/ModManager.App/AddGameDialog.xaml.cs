@@ -1,7 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using ModManager.App.Services;
 using ModManager.Core;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 
 namespace ModManager.App;
@@ -9,6 +12,12 @@ namespace ModManager.App;
 public sealed partial class AddGameDialog : ContentDialog
 {
     private readonly IntPtr _hwnd;
+
+    // Resolved save folder from an "Add with AI" apply, stashed for the register path to persist.
+    private string? _resolvedSaveDir;
+
+    /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
+    public string? ResolvedSaveDir => _resolvedSaveDir;
 
     public sealed record EngineOption(string Key, string Label);
 
@@ -21,8 +30,71 @@ public sealed partial class AddGameDialog : ContentDialog
 
         PopularGamesBox.ItemsSource = PopularGames.All;
 
+        // Save-root enum values for the picker. Set in code, not XAML (literal-bool/SelectedItem-in-markup
+        // parse gotcha on this WinUI build).
+        SaveRootBox.ItemsSource = GameProfileImport.SaveRoots;
+
         SteamGamesBox.ItemsSource = steamGames;
         if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
+    }
+
+    // Copy the agent prompt for the typed game name to the clipboard. Mirrors NewThemeDialog's flow.
+    private void OnCopyProfilePrompt(object sender, RoutedEventArgs e)
+    {
+        var pkg = new DataPackage();
+        pkg.SetText(GameProfilePrompt.Build(AiGameNameBox.Text));
+        Clipboard.SetContent(pkg);
+        ShowProfileStatus("Prompt copied — run it in your agent, then paste the JSON back here.", "ThemeAccent");
+    }
+
+    // Parse + validate the pasted JSON, resolve it to machine paths, and pre-fill the wizard fields.
+    private async void OnApplyProfile(object sender, RoutedEventArgs e)
+    {
+        var result = GameProfileImport.Load(AiJsonBox.Text ?? "");
+        if (result.Draft is null)
+        {
+            ShowProfileStatus(string.Join("  ", result.Errors), "ThemeDanger");
+            return;
+        }
+        var d = result.Draft;
+
+        // Resolve + verify on disk (read-only). No browse attempted here — pass null so Steam detection runs.
+        var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
+        var resolved = await resolver.ResolveAsync(d, browsedGameRoot: null);
+
+        // Pre-fill the familiar wizard fields.
+        NameBox.Text = d.Name ?? "";
+        SelectEngine(d.Engine);                 // selects the matching EngineBox item (fires OnEngineChanged)
+        if (!string.IsNullOrEmpty(d.ModPath)) ModPathBox.Text = d.ModPath;
+        if (!string.IsNullOrEmpty(d.SteamAppId)) SteamBox.Text = d.SteamAppId;
+        SaveRootBox.SelectedItem = d.SaveRoot;  // SaveRoots are strings, so the enum value round-trips
+        SaveSubPathBox.Text = d.SaveSubPath ?? "";
+        RequiredLauncherBox.Text = d.RequiredLauncher ?? "";
+        if (!string.IsNullOrEmpty(resolved.GameRoot)) FolderBox.Text = resolved.GameRoot; // resolved install path
+
+        // Show the pass/warn/missing checks inline.
+        var summary = string.Join("   ", resolved.Checks.Select(c =>
+            $"{(c.Status == ResolveStatus.Pass ? "OK" : "!")} {c.Label}"));
+        ShowProfileStatus($"Profile applied. {summary}", "ThemeAccent");
+        _resolvedSaveDir = resolved.SaveDir; // stash for register
+    }
+
+    // Select the EngineBox item whose key matches — same mechanism the popular-games quick-pick uses.
+    private void SelectEngine(string? engineKey)
+    {
+        if (string.IsNullOrEmpty(engineKey)) return;
+        if ((EngineBox.ItemsSource as IEnumerable<EngineOption>)?.FirstOrDefault(o => o.Key == engineKey) is { } match)
+        {
+            EngineBox.SelectedItem = match;
+            EngineHint.Visibility = Visibility.Collapsed; // applied from a profile, not folder auto-detection
+        }
+    }
+
+    private void ShowProfileStatus(string message, string brushKey)
+    {
+        ProfileStatus.Text = message;
+        if (Application.Current.Resources.TryGetValue(brushKey, out var v) && v is Brush b) ProfileStatus.Foreground = b;
+        ProfileStatus.Visibility = Visibility.Visible;
     }
 
     // Pick a curated game -> pre-fill name, engine, mod folder, and app id. Leaves the game
@@ -109,5 +181,8 @@ public sealed partial class AddGameDialog : ContentDialog
         GameRoot = FolderBox.Text.Trim(),
         ModPath = string.IsNullOrWhiteSpace(ModPathBox.Text) ? null : ModPathBox.Text.Trim(),
         SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim(),
+        SaveRoot = SaveRootBox.SelectedItem as string,
+        SaveSubPath = string.IsNullOrWhiteSpace(SaveSubPathBox.Text) ? null : SaveSubPathBox.Text.Trim(),
+        RequiredLauncher = string.IsNullOrWhiteSpace(RequiredLauncherBox.Text) ? null : RequiredLauncherBox.Text.Trim(),
     };
 }
