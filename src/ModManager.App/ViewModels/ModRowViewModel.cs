@@ -119,7 +119,9 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MpBadgeOpacity))]
     private MpRisk? mpOverride;
 
-    public MpRisk EffectiveMp => MpCompat.Effective(MpCompat.Infer(Mod.Class), MpOverride);
+    // Readme/description claim outranks the class hint ("unless the readme says otherwise"); a
+    // user override (set after testing) outranks both. Silence stays honest at "MP?".
+    public MpRisk EffectiveMp => MpCompat.Effective(MpCompat.InferAll(Mod.Class, Mod.Description), MpOverride);
     public string MpBadge => EffectiveMp switch
     {
         MpRisk.Safe => "MP-SAFE",

@@ -42,6 +42,62 @@ public class MpCompatTests
     public void Infer_unrecognized_is_unknown(string? modClass)
         => Assert.Equal(MpRisk.Unknown, MpCompat.Infer(modClass));
 
+    // ---- InferFromText (readme / description) ------------------------------
+    // The honest default is "MP?". The one place we promote past it without guessing is when
+    // the author states compatibility outright in the readme/description. Explicit only.
+
+    [Theory]
+    [InlineData("This mod is multiplayer safe.")]
+    [InlineData("Works in multiplayer with friends.")]
+    [InlineData("Co-op compatible, tested on a dedicated server.")]
+    [InlineData("Fully server-side, safe for multiplayer.")]
+    public void InferFromText_explicit_mp_safe_is_safe(string text)
+        => Assert.Equal(MpRisk.Safe, MpCompat.InferFromText(text));
+
+    [Theory]
+    [InlineData("Single player only.")]
+    [InlineData("This is singleplayer only, will not work in multiplayer.")]
+    [InlineData("Multiplayer not supported.")]
+    public void InferFromText_explicit_sp_only_is_sponly(string text)
+        => Assert.Equal(MpRisk.SpOnly, MpCompat.InferFromText(text));
+
+    [Theory]
+    [InlineData("Using this online may get you banned.")]
+    [InlineData("Triggers Easy Anti-Cheat, do not use in multiplayer.")]
+    [InlineData("This will get you banned on official servers.")]
+    public void InferFromText_ban_or_anticheat_warnings_are_risky(string text)
+        => Assert.Equal(MpRisk.Risky, MpCompat.InferFromText(text));
+
+    [Fact]
+    public void InferFromText_is_case_insensitive()
+        => Assert.Equal(MpRisk.Safe, MpCompat.InferFromText("MULTIPLAYER SAFE"));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Adds faster ships and more loot.")]
+    [InlineData("Hang the banner over the abandoned urban district.")] // no bare "ban" false-positive
+    public void InferFromText_no_explicit_claim_is_unknown(string? text)
+        => Assert.Equal(MpRisk.Unknown, MpCompat.InferFromText(text));
+
+    // ---- InferAll (readme outranks class) ----------------------------------
+
+    [Fact]
+    public void InferAll_readme_safe_beats_class_risky()
+        => Assert.Equal(MpRisk.Safe, MpCompat.InferAll("gameplay", "This mod is multiplayer safe."));
+
+    [Fact]
+    public void InferAll_readme_sponly_beats_class_safe()
+        => Assert.Equal(MpRisk.SpOnly, MpCompat.InferAll("graphics", "Single player only."));
+
+    [Fact]
+    public void InferAll_falls_back_to_class_when_text_silent()
+        => Assert.Equal(MpRisk.Risky, MpCompat.InferAll("gameplay", "Adds faster ships."));
+
+    [Fact]
+    public void InferAll_unknown_when_both_silent()
+        => Assert.Equal(MpRisk.Unknown, MpCompat.InferAll("both", "Adds faster ships."));
+
     // ---- Effective ---------------------------------------------------------
 
     [Fact]
