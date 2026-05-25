@@ -618,6 +618,49 @@ public static class Scanner
         return result;
     }
 
+    /// <summary>The absolute destination a placed file would take (primary mod location), and its rel key.</summary>
+    private static (string Abs, string Rel) DestFor(string fileName, GameContext c)
+    {
+        var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
+        return (Path.Combine(primary.Abs, fileName), fileName);
+    }
+
+    /// <summary>Classify a drop into add / collision / unsafe without writing anything.</summary>
+    public static IntakePlan PlanIntake(IEnumerable<string> paths, GameContext c)
+    {
+        var add = new List<IntakeItem>();
+        var collisions = new List<IntakeCollision>();
+        var unsafeItems = new List<SkippedItem>();
+
+        foreach (var p in ExpandPaths(paths, c))
+        {
+            var kind = Intake.ClassifyDrop(p, c.Exts);
+            if (kind == "skip") { unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "not a mod file")); continue; }
+            if (kind == "mod")
+            {
+                var name = Path.GetFileName(p);
+                var (abs, rel) = DestFor(name, c);
+                if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, p));
+                else add.Add(new IntakeItem(name, rel, p));
+            }
+            else if (kind == "zip")
+            {
+                using var zip = System.IO.Compression.ZipFile.OpenRead(p);
+                foreach (var entry in zip.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+                    if (Intake.ClassifyDrop(entry.FullName, c.Exts) != "mod") continue;
+                    var name = Path.GetFileName(entry.FullName);
+                    var (abs, rel) = DestFor(name, c);
+                    var incoming = $"{p}!{entry.FullName}";
+                    if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, incoming));
+                    else if (!add.Any(a => a.RelPath == rel)) add.Add(new IntakeItem(name, rel, incoming));
+                }
+            }
+        }
+        return new IntakePlan(add, collisions, unsafeItems);
+    }
+
     // ---------- metadata refresh (network client injected) ----------
 
     private static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)

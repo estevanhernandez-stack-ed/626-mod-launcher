@@ -35,4 +35,45 @@ public class IntakeUpdateTests
         Assert.Equal("OLD", File.ReadAllText(saved));
         try { Directory.Delete(root, true); } catch { }
     }
+
+    private static GameContext FlatCtx(string root, params string[] exts)
+    {
+        var mods = Path.Combine(root, "mods");
+        Directory.CreateDirectory(mods);
+        return new GameContext
+        {
+            Game = new GameEntry { Id = "test", GameName = "Test Game", GameRoot = root },
+            GameRoot = root,
+            DataDir = Path.Combine(root, "_data"),
+            DisabledRoot = Path.Combine(root, "_data", "disabled"),
+            ProfilesDir = Path.Combine(root, "_data", "profiles"),
+            SavesDir = Path.Combine(root, "_data", "saves"),
+            ClassificationPath = Path.Combine(root, "_data", "classification.json"),
+            MetadataPath = Path.Combine(root, "_data", "metadata.json"),
+            LoadOrderPath = Path.Combine(root, "_data", "loadorder.json"),
+            Exts = exts,
+            FileRe = new System.Text.RegularExpressions.Regex(".*"),
+            Locations = new[] { new ModLocationCtx("mods", "Mods", mods, Array.Empty<string>(), true) },
+            GroupingRule = "",
+            ScanSubfolders = "",
+        };
+    }
+
+    [Fact]
+    public void Scanner_PlanIntake_splits_new_from_colliding()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-sp-" + Guid.NewGuid().ToString("N"));
+        var ctx = FlatCtx(root, "dll");
+        File.WriteAllText(Path.Combine(ctx.Locations[0].Abs, "old.dll"), "INSTALLED");
+        var drop = Path.Combine(root, "drop");
+        Directory.CreateDirectory(drop);
+        File.WriteAllText(Path.Combine(drop, "old.dll"), "NEWVER");
+        File.WriteAllText(Path.Combine(drop, "fresh.dll"), "NEW");
+
+        var plan = Scanner.PlanIntake(new[] { Path.Combine(drop, "old.dll"), Path.Combine(drop, "fresh.dll") }, ctx);
+
+        Assert.Contains(plan.ToAdd, a => a.RelPath == "fresh.dll");
+        Assert.Contains(plan.Collisions, c => c.Name == "old.dll");
+        try { Directory.Delete(root, true); } catch { }
+    }
 }
