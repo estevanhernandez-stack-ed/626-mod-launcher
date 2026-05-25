@@ -247,10 +247,12 @@ public sealed partial class MainWindow : Window
         var folder = await picker.PickSingleFolderAsync();
         if (folder is null) return;
         // Recurse — a downloads folder usually nests archives in per-mod subfolders.
-        var all = System.IO.Directory.GetFiles(folder.Path, "*.*", System.IO.SearchOption.AllDirectories);
-        var zips = all.Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).ToList();
-        var nonZip = all.Count(f => f.EndsWith(".7z", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase));
-        await ViewModel.BackfillNexusAsync(zips, nonZip);
+        var archives = System.IO.Directory.GetFiles(folder.Path, "*.*", System.IO.SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".7z", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        await ViewModel.BackfillNexusAsync(archives);
     }
 
     // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.

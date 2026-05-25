@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -20,6 +19,14 @@ public sealed record DirectInjectMod(string Name, string Kind, string Evidence, 
 /// </summary>
 public static class DirectInject
 {
+    // The archive seam: one reader for all mod-archive reading (zip/7z/rar/tar via SharpCompress).
+    // Static so the existing static install methods keep their shape. Replaces raw ZipFile.OpenRead.
+    private static readonly IArchiveReader Archive = new SharpCompressArchiveReader();
+
+    // True for any archive container we route through the seam (zip/7z/rar). Mirrors intake.
+    private static bool IsArchive(string src)
+        => Intake.ArchiveExtensions.Any(a => src.EndsWith(a, StringComparison.OrdinalIgnoreCase));
+
     // Files/Dirs match by exact name; FileContains matches anywhere in a filename (for mods whose
     // exact filename varies between releases, e.g. ultrawide fixes). Empty arrays just don't match.
     private sealed record Signature(string Name, string Kind, string[] Files, string[] Dirs, string[] FileContains);
@@ -176,7 +183,7 @@ public static class DirectInject
             try
             {
                 if (Directory.Exists(src)) InstallDir(src, playFolder, result);
-                else if (src.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) InstallZip(src, playFolder, result);
+                else if (IsArchive(src)) InstallZip(src, playFolder, result);
                 else InstallFile(src, Path.GetFileName(src), playFolder, result);
             }
             catch (Exception e) { result.Skipped.Add(new SkippedItem(Path.GetFileName(src), e.Message)); }
@@ -218,15 +225,16 @@ public static class DirectInject
                         Consider(rel, playFolder, file);
                     }
                 }
-                else if (src.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                else if (IsArchive(src))
                 {
-                    using var zip = ZipFile.OpenRead(src);
-                    var prefix = WrapperPrefix(zip.Entries.Select(e => e.FullName));
-                    foreach (var entry in zip.Entries)
+                    using var zip = Archive.Open(src);
+                    var names = zip.EntryNames; // file entries only (dirs excluded by the seam)
+                    var prefix = WrapperPrefix(names);
+                    foreach (var entryName in names)
                     {
-                        var rel = SafeRelative(entry.FullName, prefix);
-                        if (rel is null) { if (!entry.FullName.EndsWith("/")) unsafeItems.Add(new SkippedItem(entry.FullName, "unsafe path")); continue; }
-                        Consider(rel, playFolder, $"{src}!{entry.FullName}");
+                        var rel = SafeRelative(entryName, prefix);
+                        if (rel is null) { unsafeItems.Add(new SkippedItem(entryName, "unsafe path")); continue; }
+                        Consider(rel, playFolder, $"{src}!{entryName}");
                     }
                 }
                 else Consider(Path.GetFileName(src), playFolder, src);
@@ -241,9 +249,8 @@ public static class DirectInject
         Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
         var bang = incoming.IndexOf('!');
         if (bang < 0) { File.Copy(incoming, destAbs, overwrite: true); return; }
-        using var zip = ZipFile.OpenRead(incoming[..bang]);
-        var entry = zip.GetEntry(incoming[(bang + 1)..]) ?? throw new FileNotFoundException($"Zip entry gone: {incoming}");
-        entry.ExtractToFile(destAbs, overwrite: true);
+        using var zip = Archive.Open(incoming[..bang]);
+        zip.Extract(incoming[(bang + 1)..], destAbs, overwrite: true);
     }
 
     /// <summary>Execute a play-folder plan: install new files, back-up-then-replace chosen collisions, skip the rest.</summary>
@@ -324,21 +331,18 @@ public static class DirectInject
 
     private static void InstallZip(string zipPath, string playFolder, IntakeResult result)
     {
-        using var zip = ZipFile.OpenRead(zipPath);
-        var prefix = WrapperPrefix(zip.Entries.Select(e => e.FullName));
-        foreach (var entry in zip.Entries)
+        using var zip = Archive.Open(zipPath);
+        var names = zip.EntryNames; // file entries only (dirs excluded by the seam)
+        var prefix = WrapperPrefix(names);
+        foreach (var entryName in names)
         {
-            var rel = SafeRelative(entry.FullName, prefix);
-            if (rel is null)
-            {
-                if (!entry.FullName.EndsWith("/")) result.Skipped.Add(new SkippedItem(entry.FullName, "unsafe path"));
-                continue;
-            }
+            var rel = SafeRelative(entryName, prefix);
+            if (rel is null) { result.Skipped.Add(new SkippedItem(entryName, "unsafe path")); continue; }
             var dest = Path.Combine(playFolder, rel);
             if (!IsUnder(playFolder, dest)) { result.Skipped.Add(new SkippedItem(rel, "unsafe path")); continue; }
             if (Exists(dest)) { result.Skipped.Add(new SkippedItem(rel, "already present")); continue; }
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            entry.ExtractToFile(dest, overwrite: false);
+            zip.Extract(entryName, dest, overwrite: false);
             result.Added.Add(rel);
         }
     }

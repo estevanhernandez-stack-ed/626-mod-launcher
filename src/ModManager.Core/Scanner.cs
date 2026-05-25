@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -19,6 +18,10 @@ public static class Scanner
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
+
+    // The archive seam: one reader for all mod-archive reading (zip/7z/rar/tar via SharpCompress).
+    // Static so the existing static intake methods keep their shape. Replaces raw ZipFile.OpenRead.
+    private static readonly IArchiveReader Archive = new SharpCompressArchiveReader();
 
     // ---------- data dir + context (pure) ----------
 
@@ -582,15 +585,14 @@ public static class Scanner
         {
             try
             {
-                if (!zipPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || !File.Exists(zipPath)) continue;
-                using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
-                var pick = ReadmeCapture.PickReadme(zip.Entries.Select(e => e.FullName));
+                if (!Intake.ArchiveExtensions.Any(a => zipPath.EndsWith(a, StringComparison.OrdinalIgnoreCase)) || !File.Exists(zipPath)) continue;
+                using var zip = Archive.Open(zipPath);
+                var names = zip.EntryNames;
+                var pick = ReadmeCapture.PickReadme(names);
                 if (pick is null) continue;
-                var entry = zip.GetEntry(pick);
-                if (entry is null) continue;
-                var keys = zip.Entries
-                    .Where(e => !string.IsNullOrEmpty(e.Name) && Intake.ClassifyDrop(e.FullName, c.Exts) == "mod")
-                    .Select(e => ModKey(Path.GetFileName(e.FullName), c))
+                var keys = names
+                    .Where(n => Intake.ClassifyDrop(n, c.Exts) == "mod")
+                    .Select(n => ModKey(Path.GetFileName(n), c))
                     .Where(IsSafeKey).Distinct().ToList();
                 if (keys.Count == 0) continue;
 
@@ -605,7 +607,7 @@ public static class Scanner
                     foreach (var other in new[] { ".md", ".txt" })
                         if (other != ext && File.Exists(stem + other)) { try { File.Delete(stem + other); } catch { /* best effort */ } }
                     var dest = stem + ext;
-                    if (firstPath is null) { entry.ExtractToFile(dest, overwrite: true); firstPath = dest; }
+                    if (firstPath is null) { zip.Extract(pick, dest, overwrite: true); firstPath = dest; }
                     else File.Copy(firstPath, dest, overwrite: true);
                 }
             }
@@ -667,15 +669,14 @@ public static class Scanner
                 }
                 else if (kind == "zip")
                 {
-                    using var zip = System.IO.Compression.ZipFile.OpenRead(p);
-                    foreach (var entry in zip.Entries)
+                    using var zip = Archive.Open(p);
+                    foreach (var entryName in zip.EntryNames) // file entries only (dirs excluded by the seam)
                     {
-                        if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
-                        if (Intake.ClassifyDrop(entry.FullName, c.Exts) != "mod") continue;
-                        var name = Path.GetFileName(entry.FullName); // basename neutralizes zip-slip traversal
+                        if (Intake.ClassifyDrop(entryName, c.Exts) != "mod") continue;
+                        var name = Path.GetFileName(entryName); // basename neutralizes zip-slip traversal
                         Directory.CreateDirectory(c.DataDir);
                         var tmp = Path.Combine(c.DataDir, "_tmp_" + name);
-                        entry.ExtractToFile(tmp, overwrite: true);
+                        zip.Extract(entryName, tmp, overwrite: true);
                         try
                         {
                             if (PlaceFile(tmp, name, c)) result.Added.Add(name);
@@ -719,14 +720,13 @@ public static class Scanner
             }
             else if (kind == "zip")
             {
-                using var zip = System.IO.Compression.ZipFile.OpenRead(p);
-                foreach (var entry in zip.Entries)
+                using var zip = Archive.Open(p);
+                foreach (var entryName in zip.EntryNames) // file entries only (dirs excluded by the seam)
                 {
-                    if (string.IsNullOrEmpty(entry.Name)) continue;
-                    if (Intake.ClassifyDrop(entry.FullName, c.Exts) != "mod") continue;
-                    var name = Path.GetFileName(entry.FullName);
+                    if (Intake.ClassifyDrop(entryName, c.Exts) != "mod") continue;
+                    var name = Path.GetFileName(entryName);
                     var (abs, rel) = DestFor(name, c);
-                    var incoming = $"{p}!{entry.FullName}";
+                    var incoming = $"{p}!{entryName}";
                     if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, incoming));
                     else if (!add.Any(a => a.RelPath == rel)) add.Add(new IntakeItem(name, rel, incoming));
                 }
@@ -741,9 +741,8 @@ public static class Scanner
         Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
         var bang = incoming.IndexOf('!');
         if (bang < 0) { File.Copy(incoming, destAbs, overwrite: true); return; }
-        using var zip = System.IO.Compression.ZipFile.OpenRead(incoming[..bang]);
-        var entry = zip.GetEntry(incoming[(bang + 1)..]) ?? throw new FileNotFoundException($"Zip entry gone: {incoming}");
-        entry.ExtractToFile(destAbs, overwrite: true);
+        using var zip = Archive.Open(incoming[..bang]);
+        zip.Extract(incoming[(bang + 1)..], destAbs, overwrite: true);
     }
 
     /// <summary>Execute a plan: install new files, back-up-then-replace chosen collisions, skip the rest.</summary>
@@ -937,7 +936,7 @@ public static class Scanner
         var meta = LoadMetadata(c);
         var matchedKeys = new HashSet<string>();
         foreach (var path in (droppedPaths ?? Enumerable.Empty<string>())
-                     .Where(p => p.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
+                     .Where(p => Intake.ArchiveExtensions.Any(a => p.EndsWith(a, StringComparison.OrdinalIgnoreCase))))
         {
             try
             {
@@ -956,13 +955,13 @@ public static class Scanner
         return new IdentifyResult(matchedKeys.Count);
     }
 
-    // The distinct mod keys a zip contributes (its mod-classified entries -> base keys).
+    // The distinct mod keys an archive contributes (its mod-classified entries -> base keys).
     private static IReadOnlyList<string> ZipModKeys(string zipPath, GameContext c)
     {
-        using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
-        return zip.Entries
-            .Where(e => !string.IsNullOrEmpty(e.Name) && Intake.ClassifyDrop(e.FullName, c.Exts) == "mod")
-            .Select(e => Variant.ParseVariant(ModKey(Path.GetFileName(e.FullName), c)).Base)
+        using var zip = Archive.Open(zipPath);
+        return zip.EntryNames // file entries only (dirs excluded by the seam)
+            .Where(n => Intake.ClassifyDrop(n, c.Exts) == "mod")
+            .Select(n => Variant.ParseVariant(ModKey(Path.GetFileName(n), c)).Base)
             .Distinct()
             .ToList();
     }

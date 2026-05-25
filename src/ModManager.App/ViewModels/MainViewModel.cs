@@ -469,21 +469,19 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Backfill metadata for already-installed mods by md5-matching the user's downloaded
     /// Nexus ARCHIVES (the only thing with the hash Nexus indexes). Each archive's match fills the
     /// metadata for every installed mod that came from it.</summary>
-    public async Task BackfillNexusAsync(IReadOnlyList<string> zipArchives, int skippedNonZip = 0)
+    public async Task BackfillNexusAsync(IReadOnlyList<string> archives)
     {
         if (_ctx is null) return;
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         if (string.IsNullOrWhiteSpace(_ctx.Game.NexusGameDomain)) { StatusText = "This game has no Nexus domain set."; return; }
-        var nonZipNote = skippedNonZip > 0 ? $" ({skippedNonZip} .7z/.rar skipped — multi-format support is coming)" : "";
-        if (zipArchives.Count == 0) { StatusText = $"No .zip archives found in that folder{nonZipNote}."; return; }
+        if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
         IsBusy = true;
         try
         {
-            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, zipArchives)).Matched;
-            StatusText = (n > 0
-                ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {zipArchives.Count} Nexus archive(s)."
-                : $"Scanned {zipArchives.Count} .zip — no Nexus matches (must be the ORIGINAL Nexus archives for this game).")
-                + nonZipNote;
+            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, archives)).Matched;
+            StatusText = n > 0
+                ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {archives.Count} Nexus archive(s)."
+                : $"Scanned {archives.Count} archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this game).";
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
