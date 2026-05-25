@@ -1122,6 +1122,35 @@ public static class Scanner
         return new IdentifyResult(matchedKeys.Count);
     }
 
+    /// <summary>
+    /// Identify already-installed Vortex-deployed mods by the Nexus modId recorded in Vortex's
+    /// deployment manifest, fetching metadata from Nexus by id (no archive needed). Merges Nexus as
+    /// authoritative provenance (same as the archive-md5 path); curated/CF fills what Nexus lacks.
+    /// </summary>
+    public static async Task<IdentifyResult> IdentifyVortexNexusAsync(GameContext c, INexusClient client)
+    {
+        var domain = c.Game.NexusGameDomain;
+        if (string.IsNullOrEmpty(domain)) return new IdentifyResult(0);
+
+        var meta = LoadMetadata(c);
+        var matched = 0;
+        foreach (var loc in c.Locations)
+        {
+            foreach (var r in VortexManifest.Read(loc.Abs))
+            {
+                if (r.NexusModId is not int id) continue;
+                ModMeta? hit;
+                try { hit = await client.GetModAsync(domain!, id); } catch { continue; }
+                if (hit is null) continue;
+                var key = Variant.ParseVariant(r.Folder).Base;
+                meta[key] = MergeMeta(meta.GetValueOrDefault(key) ?? new ModMeta(), hit); // Nexus wins, existing fills
+                matched++;
+            }
+        }
+        if (matched > 0) SaveMetadata(c, meta);
+        return new IdentifyResult(matched);
+    }
+
     // The distinct mod keys an archive contributes (its mod-classified entries -> base keys).
     private static IReadOnlyList<string> ZipModKeys(string zipPath, GameContext c)
     {
