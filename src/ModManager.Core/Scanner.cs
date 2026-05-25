@@ -767,6 +767,16 @@ public static class Scanner
         var collisions = new List<IntakeCollision>();
         var unsafeItems = new List<SkippedItem>();
 
+        // Guard: if the primary location is owned by another tool (Vortex/MO2), mark every
+        // incoming item as unsafe so the plan carries nothing to copy and the UI shows skips.
+        var primaryLoc = c.Locations.FirstOrDefault();
+        if (primaryLoc is not null && ToolOwnership.Detect(primaryLoc.Abs) is not null)
+        {
+            foreach (var p in ExpandPaths(paths, c))
+                unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "location is managed by another tool"));
+            return new IntakePlan(add, collisions, unsafeItems);
+        }
+
         foreach (var p in ExpandPaths(paths, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
@@ -812,6 +822,19 @@ public static class Scanner
         foreach (var u in plan.Unsafe) result.Skipped.Add(u);
 
         var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
+
+        // Defensive guard: if the primary is owned, write nothing. PlanIntake already routes all
+        // items into plan.Unsafe, so this only fires when ExecuteIntake is called directly with a
+        // hand-constructed plan that bypasses PlanIntake.
+        if (ToolOwnership.Detect(primary.Abs) is not null)
+        {
+            foreach (var item in plan.ToAdd)
+                result.Skipped.Add(new SkippedItem(item.Name, "location is managed by another tool"));
+            foreach (var col in plan.Collisions)
+                result.Skipped.Add(new SkippedItem(col.Name, "location is managed by another tool"));
+            return result;
+        }
+
         Directory.CreateDirectory(primary.Abs);
         string? batch = null;
         string Batch() => batch ??= ReplacedStore.NewBatch(Path.Combine(c.DataDir, "replaced"));
