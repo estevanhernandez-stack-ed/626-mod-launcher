@@ -37,6 +37,7 @@ public sealed record SkippedItem(string Name, string Reason);
 public sealed class IntakeResult
 {
     public List<string> Added { get; } = new();
+    public List<string> Updated { get; } = new();
     public List<SkippedItem> Skipped { get; } = new();
 }
 

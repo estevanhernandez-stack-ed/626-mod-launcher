@@ -61,6 +61,25 @@ public sealed class DirectInjectService
         return folder is null ? new IntakeResult() : DirectInject.Install(folder, paths);
     }
 
+    /// <summary>Plan a drop without touching disk — what's new, what collides, what's refused.</summary>
+    public IntakePlan Plan(GameEntry game, IEnumerable<string> paths)
+    {
+        var folder = PlayFolder(game.GameRoot);
+        return folder is null
+            ? new IntakePlan(Array.Empty<IntakeItem>(), Array.Empty<IntakeCollision>(), Array.Empty<SkippedItem>())
+            : DirectInject.Plan(folder, paths);
+    }
+
+    /// <summary>Execute a planned drop. Replaced originals are kept under the play folder's _626
+    /// folder so they travel with the game and can be reverted.</summary>
+    public IntakeResult Execute(GameEntry game, IntakePlan plan, ISet<string> replace)
+    {
+        var folder = PlayFolder(game.GameRoot);
+        if (folder is null) return new IntakeResult();
+        var replacedRoot = Path.Combine(folder, "_626", "replaced");
+        return DirectInject.Execute(folder, replacedRoot, plan, replace);
+    }
+
     public void SetEnabled(GameEntry game, string modName, bool enabled)
     {
         var folder = PlayFolder(game.GameRoot);
