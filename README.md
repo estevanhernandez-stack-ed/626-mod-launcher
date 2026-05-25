@@ -1,50 +1,65 @@
 # 626 Mod Launcher (.NET 10 / WinUI 3)
 
-Native Windows rewrite of the 626 Labs Mod Launcher — a load-order utility that enables,
-disables, and organizes mods for the user's own installed games, reversibly and atomically.
-
-This repo is **Phase 1**: the engine. `ModManager.Core` is a UI-free class library ported
-test-first from the original Electron app, which serves as the **executable spec**. The
-WinUI 3 shell (Phase 2) and MSIX/Store packaging (Phase 3) build on this proven core.
+Native Windows mod manager — enables, disables, and organizes mods for your own installed
+games, reversibly and atomically. Disabling *moves* a mod to a holding folder; nothing is
+ever deleted. This is the native rewrite of the original Electron 626 Labs Mod Launcher,
+which serves as the executable spec.
 
 ## Status
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | `ModManager.Core` + xUnit contract | **done — 157 tests green** |
-| 2 | WinUI 3 shell (Views/ViewModels, DI host) | not started |
-| 3 | MSIX + Microsoft Store packaging | not started |
+| 1 | `ModManager.Core` + xUnit contract | **done** |
+| 2 | WinUI 3 shell (Views/ViewModels, DI host) | **done — full feature surface** |
+| 3 | Portable distribution → MSIX + Microsoft Store | **portable build shipping; MSIX/Store next** |
 
-The ported test suite **is** the acceptance contract: a core isn't "ported" until its
-xUnit test passes. The contract mirrors the Electron app's 134-test `node:test` suite
-(the 3 Cloudflare Worker tests stay in JS — that logic doesn't move to C#).
+Test suite: **271 green** (`dotnet test tests/ModManager.Tests/ModManager.Tests.csproj`).
+The ported xUnit suite is the acceptance contract — a core isn't "ported" until its test passes.
+
+## What it does
+
+- **Games** — register games (popular-game quick-pick or manual), header switcher, Steam launch.
+- **Mods** — reversible enable/disable, All On/Off, **MP/SP** loadouts, named **Profiles**.
+- **Intake** — drag in a mod (folder or zip); **smart intake** fingerprints it at drop to identify it.
+- **Metadata** — fetch real names/descriptions/author credit over the CurseForge proxy; mod rows
+  surface `by <author> · downloads · source` (honor the builders).
+- **Load order** — reorder mods and apply (engine-specific), reversibly.
+- **Saves** — pro save manager: snapshot, 3-way clone, per-type restore, prune, auto-backup on launch.
+- **Themes** — 7 built-ins incl. the on-brand **626 Labs** theme, plus an AI theme generator.
+- **Engine-aware** — Bethesda, SMAPI, BepInEx, UE-pak, ModEngine2/FromSoft direct-inject, and more.
+
+## Build, test, run
+
+```pwsh
+dotnet test tests/ModManager.Tests/ModManager.Tests.csproj   # run the contract (use the explicit project)
+dotnet build src/ModManager.App/ModManager.App.csproj -p:Platform=x64   # build the app
+```
+
+Requires the **.NET 10 SDK**. (A bare `dotnet test` / `dotnet build` at the root hangs building
+the WinUI app — always target the explicit project.)
+
+## Portable distribution
+
+```pwsh
+dotnet publish src/ModManager.App/ModManager.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true
+```
+
+Produces a self-contained, **zero-prereq** `win-x64` folder — bundles the .NET runtime, the
+Windows App SDK, the `resources.pri` XAML index, and the VC++ runtime app-local, so a friend can
+unzip and run with nothing pre-installed. Two MSBuild targets in `ModManager.App.csproj` handle
+the PRI + VC++ bundling that `dotnet publish` otherwise drops. Zip the publish folder for hand-off;
+see [`GETTING-STARTED.md`](GETTING-STARTED.md) for the install note (incl. the SmartScreen step,
+since the build is unsigned for now). Road to the first drop + the Store track:
+[`docs/road-to-dist.md`](docs/road-to-dist.md).
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `src/ModManager.Core/` | The engine — no UI references. Scanner, Fingerprint, CurseForge client, themes, intake, metadata. |
+| `src/ModManager.Core/` | The engine — no UI references. Scanner, Fingerprint, CurseForge client, save manager, load order, themes, intake, metadata, game profiles. |
+| `src/ModManager.App/` | WinUI 3 shell — Views/ViewModels (CommunityToolkit.Mvvm), DI host, dialogs, services. |
 | `tests/ModManager.Tests/` | xUnit acceptance contract. |
-| `docs/spec.md` | The approved rewrite scope (from the Electron repo). |
-| `docs/checklist.md` | The Phase 1 build plan. |
-
-## Build & test
-
-```pwsh
-dotnet build
-dotnet test
-```
-
-Requires the **.NET 10 SDK**.
-
-## What's inside Core
-
-- **Scanner** — game-context resolution, mod scanning, reversible enable/disable (phase-ordered
-  with rollback), MP/SP loadouts, profiles, intake (folder-recursive + zip), data-dir migration.
-- **Fingerprint** — CurseForge MurmurHash2 file identification (golden-pinned).
-- **CurseForgeClient** — metadata over an injected `HttpClient`; works with a per-user key or a
-  thin proxy. The API key is **never embedded** — it's passed in at runtime (operating law #2).
-- **Metadata / Themes / EnginePresets / NameMatch / SteamParse** — the supporting pure cores.
+| `docs/` | Rewrite spec, build plan, feature map, save-manager design, road-to-dist, Store release flow. |
 
 ## Operating laws (carried from the Electron app)
 
@@ -55,5 +70,5 @@ Requires the **.NET 10 SDK**.
 
 ## Spec repo
 
-The original Electron app (working prototype + cross-referenced spec) lives separately. This
-rewrite mirrors its cores and design docs; see `docs/spec.md`.
+The original Electron app (working prototype + cross-referenced spec) lives separately at
+`mod-manager-builder`. This rewrite mirrors its cores and design docs; see `docs/spec.md`.
