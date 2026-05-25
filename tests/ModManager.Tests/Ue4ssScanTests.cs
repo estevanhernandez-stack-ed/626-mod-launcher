@@ -115,4 +115,42 @@ public class Ue4ssScanTests
         await Scanner.EnableModAsync("Off", c);
         Assert.True(Ue4ssManifest.IsEnabled(Path.Combine(root, "ue4ss", "Mods"), "Off"));
     }
+
+    // ── Safety-leak regression: profile-load must not re-enable an owned UE4SS mod ─────────────
+
+    [Fact]
+    public async Task LoadProfile_does_not_re_enable_an_owned_ue4ss_mod()
+    {
+        var root = TestSupport.TempDir("ue4ss-prof-owned-");
+        var c = Ctx(root, owned: true);
+        var modsDir = Path.Combine(root, "ue4ss", "Mods");
+
+        // Snapshot taken while "On" is enabled (mods.txt: "On : 1").
+        await Scanner.SaveProfileAsync("test-profile", c);
+
+        // Externally disable "On" in the manifest — simulates the tool (Vortex) or game flipping it.
+        Ue4ssManifest.SetEnabled(modsDir, "On", false);
+        Assert.False(Ue4ssManifest.IsEnabled(modsDir, "On")); // pre-condition
+
+        // Profile-load sees snapshot=enabled, current=disabled, wants to call EnableMod.
+        // The owned guard must block the flip.
+        await Scanner.LoadProfileAsync("test-profile", c);
+
+        Assert.False(Ue4ssManifest.IsEnabled(modsDir, "On"),
+            "LoadProfile must not flip an owned UE4SS mod's manifest — only the explicit per-row toggle may.");
+    }
+
+    [Fact]
+    public async Task SetLoaderModEnabled_still_flips_owned_mod_after_the_fix()
+    {
+        var root = TestSupport.TempDir("ue4ss-explicit-");
+        var c = Ctx(root, owned: true);
+        var modsDir = Path.Combine(root, "ue4ss", "Mods");
+
+        // "On" starts enabled. The explicit per-row toggle must still flip it — that exception is unchanged.
+        await Scanner.SetLoaderModEnabledAsync("On", false, c);
+
+        Assert.False(Ue4ssManifest.IsEnabled(modsDir, "On"),
+            "SetLoaderModEnabledAsync (explicit per-row path) must still flip owned loader mods.");
+    }
 }

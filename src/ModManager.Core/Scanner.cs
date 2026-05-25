@@ -437,6 +437,10 @@ public static class Scanner
         // Loader-driven mods (e.g. UE4SS Conductor) are never moved to the disabled holding folder;
         // their enable state lives in the manifest. Key on m.Loader for symmetry with DisableEntry.
         var live = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        // Owned mods are content read-only; their manifest is flipped only via the explicit per-row
+        // path (SetLoaderModEnabledAsync), never through a bulk/profile-reachable EnableMod call.
+        // Mirrors DisableEntry, which guards ReadOnly first.
+        if (live is { ReadOnly: true }) return;
         if (live?.Loader == "ue4ss")
         {
             try { Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true); }
@@ -664,6 +668,7 @@ public static class Scanner
         var desired = data.Mods.ToDictionary(m => m.Name, m => m.Enabled);
         foreach (var m in BuildModList(c))
         {
+            if (m.ReadOnly) continue; // never mutate a folder another tool owns (matches SetAllMods/ApplyMode)
             if (!desired.TryGetValue(m.Name, out var want)) continue;
             if (m.Enabled && !want) DisableMod(m.Name, c);
             else if (!m.Enabled && want) EnableMod(m.Name, c);
