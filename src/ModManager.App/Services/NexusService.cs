@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using ModManager.Core;
 
@@ -7,10 +9,12 @@ namespace ModManager.App.Services;
 /// <summary>
 /// Holds the user's Nexus connection: their own personal API key + the resolved <see cref="NexusClient"/>.
 /// The key is stored per-user at %APPDATA%\ModManagerBuilder\nexus.json (sibling to games.json) — it is
-/// the USER's key, obtained at runtime, and is NEVER baked into the binary (operating law #2). When the
-/// SSO app slug is registered later, the SSO handshake writes the same key sink; today the user pastes a
-/// personal key (account settings -> API access). Headers are per-request, so sharing the singleton
-/// HttpClient with CurseForge is safe.
+/// the USER's key, obtained at runtime, and is NEVER baked into the binary (operating law #2). At rest it
+/// is **DPAPI-encrypted** (<see cref="DataProtectionScope.CurrentUser"/>), so the ciphertext is bound to
+/// this Windows account — another user or machine can't read it. A pre-encryption plaintext file is
+/// adopted once and immediately re-saved encrypted. When the SSO app slug is registered later, the SSO
+/// handshake writes the same key sink; today the user pastes a personal key (account settings -> API
+/// access). Headers are per-request, so sharing the singleton HttpClient with CurseForge is safe.
 /// </summary>
 public sealed class NexusService
 {
@@ -57,7 +61,14 @@ public sealed class NexusService
         try { if (File.Exists(StorePath)) File.Delete(StorePath); } catch { /* best effort */ }
     }
 
-    private sealed class Stored { public string? ApiKey { get; set; } public string? UserName { get; set; } }
+    // ApiKey = legacy plaintext (read-only fallback, migrated on first save); ApiKeyProtected = the
+    // DPAPI-encrypted key (base64) we write going forward. UserName is not secret.
+    private sealed class Stored
+    {
+        public string? ApiKey { get; set; }
+        public string? ApiKeyProtected { get; set; }
+        public string? UserName { get; set; }
+    }
 
     private void Load()
     {
@@ -65,11 +76,41 @@ public sealed class NexusService
         {
             if (!File.Exists(StorePath)) return;
             var s = JsonSerializer.Deserialize<Stored>(File.ReadAllText(StorePath), Json);
-            _key = s?.ApiKey;
-            ConnectedUser = s?.UserName;
+            if (s is null) return;
+            ConnectedUser = s.UserName;
+
+            if (!string.IsNullOrEmpty(s.ApiKeyProtected))
+            {
+                _key = Unprotect(s.ApiKeyProtected);          // null if it can't be decrypted (other user/machine, corrupt)
+                if (_key is null) ConnectedUser = null;       // can't use it -> not connected
+            }
+            else if (!string.IsNullOrEmpty(s.ApiKey))
+            {
+                _key = s.ApiKey;                              // legacy plaintext from before encryption
+                Save();                                       // migrate: re-write encrypted, drop the plaintext
+            }
         }
-        catch { /* unreadable -> not connected */ }
+        catch { _key = null; ConnectedUser = null; /* unreadable -> not connected */ }
     }
 
-    private void Save() => AtomicJson.WriteJsonAtomic(StorePath, new Stored { ApiKey = _key, UserName = ConnectedUser });
+    // Writes only the encrypted key (the plaintext ApiKey field is never written again).
+    private void Save()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
+        AtomicJson.WriteJsonAtomic(StorePath, new Stored
+        {
+            ApiKeyProtected = string.IsNullOrEmpty(_key) ? null : Protect(_key),
+            UserName = ConnectedUser,
+        });
+    }
+
+    // DPAPI, CurrentUser scope — ciphertext is bound to this Windows account.
+    private static string Protect(string plain)
+        => Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(plain), null, DataProtectionScope.CurrentUser));
+
+    private static string? Unprotect(string protectedBase64)
+    {
+        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protectedBase64), null, DataProtectionScope.CurrentUser)); }
+        catch { return null; } // tampered / different user / corrupt -> treat as not connected
+    }
 }

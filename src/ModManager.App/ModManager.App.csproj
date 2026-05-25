@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.8" />
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
   </ItemGroup>
 
@@ -46,11 +47,7 @@
     resources.pri so the portable build actually launches on a machine that isn't the dev box.
   -->
   <Target Name="CopyPriToPublishOutput" AfterTargets="Publish">
-    <Copy SourceFiles="$(OutDir)$(TargetName).pri"
-          DestinationFiles="$(PublishDir)resources.pri"
-          OverwriteReadOnlyFiles="true"
-          SkipUnchangedFiles="false"
-          Condition="Exists('$(OutDir)$(TargetName).pri')" />
+    <Copy SourceFiles="$(OutDir)$(TargetName).pri" DestinationFiles="$(PublishDir)resources.pri" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" Condition="Exists('$(OutDir)$(TargetName).pri')" />
   </Target>
 
   <!--
@@ -64,12 +61,9 @@
     <ItemGroup>
       <VCRedistCrtDll Include="$(ProgramFiles)\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT\*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(VCRedistCrtDll)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true"
-          Condition="'@(VCRedistCrtDll)' != ''" />
-    <Message Importance="high" Text="BundleVCRuntime: copied VC++ runtime DLLs into $(PublishDir)"
-             Condition="'@(VCRedistCrtDll)' != ''" />
-    <Warning Text="BundleVCRuntime: no VC143.CRT redist DLLs found under VS 2022; the portable build will require VC++ Redist x64 on the target machine."
-             Condition="'@(VCRedistCrtDll)' == ''" />
+    <Copy SourceFiles="@(VCRedistCrtDll)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'@(VCRedistCrtDll)' != ''" />
+    <Message Importance="high" Text="BundleVCRuntime: copied VC++ runtime DLLs into $(PublishDir)" Condition="'@(VCRedistCrtDll)' != ''" />
+    <Warning Text="BundleVCRuntime: no VC143.CRT redist DLLs found under VS 2022; the portable build will require VC++ Redist x64 on the target machine." Condition="'@(VCRedistCrtDll)' == ''" />
   </Target>
 
   <!--
@@ -82,8 +76,7 @@
     <ItemGroup>
       <_MuiFile Include="$(PublishDir)**\*.mui" Exclude="$(PublishDir)en-us\**\*.mui" />
     </ItemGroup>
-    <RemoveDir Directories="@(_MuiFile->'%(RootDir)%(Directory)'->Distinct())"
-               Condition="'@(_MuiFile)' != ''" />
+    <RemoveDir Directories="@(_MuiFile-&gt;'%(RootDir)%(Directory)'-&gt;Distinct())" Condition="'@(_MuiFile)' != ''" />
   </Target>
 
   <!--
