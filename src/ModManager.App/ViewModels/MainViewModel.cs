@@ -66,6 +66,25 @@ public sealed partial class MainViewModel : ObservableObject
 
     public Visibility CoopHintVisibility => CoopLauncherMissing ? Visibility.Visible : Visibility.Collapsed;
 
+    // MP-safety summary: how many enabled mods read as not-co-op-safe (Risky or SP-only). Non-blocking.
+    private int MpRiskyEnabledCount => Mods.Count(m => m.Enabled && m.EffectiveMp is MpRisk.Risky or MpRisk.SpOnly);
+    public Visibility MpWarningVisibility => MpRiskyEnabledCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public string MpWarningText
+    {
+        get { var n = MpRiskyEnabledCount; return $"{n} enabled mod{(n == 1 ? "" : "s")} may not be co-op-safe"; }
+    }
+    private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); }
+
+    /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
+    public void SetMpOverride(ModRowViewModel row, MpRisk? value)
+    {
+        if (_ctx is null) return;
+        try { MpCompatStore.SetOverride(_ctx.DataDir, row.Mod.Name, value); }
+        catch (Exception e) { StatusText = e.Message; return; }
+        row.MpOverride = value;
+        NotifyMpWarning();
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadOrderVisibility))]
     [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
@@ -142,11 +161,14 @@ public sealed partial class MainViewModel : ObservableObject
             else list = await ReloadFromScannerAsync();
 
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
+            var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
             Mods = new ObservableCollection<ModRowViewModel>(
                 list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
+                    MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
                 }));
+            NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);

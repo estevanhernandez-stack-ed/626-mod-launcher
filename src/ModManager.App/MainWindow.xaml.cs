@@ -120,6 +120,20 @@ public sealed partial class MainWindow : Window
         ViewModel.LaunchTargetExplicit(target);
     }
 
+    // Set or clear a mod's MP-compat override from the badge flyout. Tag carries the choice.
+    private void OnSetMpCompat(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: string tag } item || item.DataContext is not ModRowViewModel row) return;
+        ModManager.Core.MpRisk? value = tag switch
+        {
+            "Safe" => ModManager.Core.MpRisk.Safe,
+            "Risky" => ModManager.Core.MpRisk.Risky,
+            "SpOnly" => ModManager.Core.MpRisk.SpOnly,
+            _ => null, // Auto / clear
+        };
+        ViewModel.SetMpOverride(row, value);
+    }
+
     private async void OnSaves(object sender, RoutedEventArgs e)
     {
         var svc = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
