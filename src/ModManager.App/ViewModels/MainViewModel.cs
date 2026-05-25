@@ -291,6 +291,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void Launch()
     {
         if (_ctx is null) return;
+        AutoBackupBeforeLaunch();
         try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
         catch (Exception e) { StatusText = e.Message; }
     }
@@ -299,8 +300,24 @@ public sealed partial class MainViewModel : ObservableObject
     public void LaunchTargetExplicit(LaunchTarget target)
     {
         if (_ctx is null) return;
+        AutoBackupBeforeLaunch();
         try { _svc.Launch(target, _ctx.Game.GameRoot); }
         catch (Exception e) { StatusText = e.Message; }
+    }
+
+    // When the game opts in, snapshot the save (auto) and prune before launching. Best-effort —
+    // a backup failure surfaces but never blocks play.
+    private void AutoBackupBeforeLaunch()
+    {
+        if (_ctx is null || !_ctx.Game.AutoBackupOnLaunch) return;
+        var dir = _ctx.SaveDir;
+        if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return;
+        try
+        {
+            SaveManager.Backup(dir, _ctx.SavesDir, "before-launch", auto: true);
+            SaveManager.Prune(_ctx.SavesDir, _ctx.Game.SaveAutoKeep ?? int.MaxValue);
+        }
+        catch (Exception e) { StatusText = "Auto-backup before launch failed: " + e.Message; }
     }
 
     /// <summary>The verified launch options for the active game (internal + external), for the dialog.</summary>

@@ -31,6 +31,10 @@
             <Button x:Name="BackupButton" Grid.Column="1" Content="Back up now" VerticalAlignment="Bottom" Click="OnBackup" />
         </Grid>
 
+        <CheckBox x:Name="AutoBackupCheck" Content="Auto-backup before launch"
+                  Checked="OnAutoBackupChanged" Unchecked="OnAutoBackupChanged"
+                  ToolTipService.ToolTip="Snapshot the save automatically each time you press Play (older auto snapshots are pruned; your named backups are kept)." />
+
         <TextBlock Text="Save files" FontWeight="SemiBold" />
         <ListView x:Name="SaveFileList" MaxHeight="120" SelectionMode="None">
             <ListView.ItemTemplate>
@@ -44,8 +48,12 @@
                             <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
                             <TextBlock Text="{x:Bind TypeLabel}" Opacity="0.6" FontSize="12" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="{x:Bind CloneLabel}" Click="OnClone" VerticalAlignment="Center"
-                                ToolTipService.ToolTip="Copy this save to the other type — safe, never overwrites" />
+                        <DropDownButton Grid.Column="1" Content="Clone to…" VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="Copy this save to another type — safe, never overwrites">
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Opening="OnCloneMenuOpening" />
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
@@ -61,13 +69,20 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
                             <TextBlock Text="{x:Bind Detail}" Opacity="0.6" FontSize="12" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Restore" Click="OnRestore" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Click="OnDelete" VerticalAlignment="Center"
+                        <DropDownButton Grid.Column="1" Content="Only…" VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="Restore just one save type from this snapshot">
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Opening="OnRestoreTypeOpening" />
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                        <Button Grid.Column="2" Content="Restore" Click="OnRestore" VerticalAlignment="Center" />
+                        <Button Grid.Column="3" Click="OnDelete" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Delete snapshot">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
                         </Button>

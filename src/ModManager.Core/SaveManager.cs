@@ -20,24 +20,6 @@ public static partial class SaveManager
 {
     private const string TimeFormat = "yyyyMMdd-HHmmss";
 
-    /// <summary>Known FromSoft save extensions and their plain-English type. Seamless Co-op invents .co2.</summary>
-    public static IReadOnlyDictionary<string, string> SaveTypes { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        [".sl2"] = "Vanilla",
-        [".co2"] = "Seamless Co-op",
-    };
-
-    /// <summary>Recognized save files in the folder, labeled by type (ignores .bak and unknown files).</summary>
-    public static IReadOnlyList<SaveFile> ListSaveFiles(string saveDir)
-    {
-        if (!Directory.Exists(saveDir)) return Array.Empty<SaveFile>();
-        return Directory.GetFiles(saveDir)
-            .Where(f => SaveTypes.ContainsKey(System.IO.Path.GetExtension(f)))
-            .Select(f => new SaveFile(System.IO.Path.GetFileName(f), System.IO.Path.GetExtension(f), SaveTypes[System.IO.Path.GetExtension(f)]))
-            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
     /// <summary>Recognized save files, labeled by the game's declared save types (profile-driven).</summary>
     public static IReadOnlyList<SaveFile> ListSaveFiles(string saveDir, IReadOnlyList<SaveType> saveTypes)
     {
@@ -65,10 +47,7 @@ public static partial class SaveManager
         var destName = System.IO.Path.GetFileNameWithoutExtension(sourceFileName) + targetExt;
         var dest = System.IO.Path.Combine(saveDir, destName);
         if (File.Exists(dest) && !overwrite)
-        {
-            var label = SaveTypes.TryGetValue(targetExt, out var l) ? l : targetExt;
-            throw new IOException($"A {label} save already exists ({destName}). Snapshot it first if you want to replace it.");
-        }
+            throw new IOException($"A {targetExt} save already exists ({destName}). Snapshot it first if you want to replace it.");
         File.Copy(src, dest, overwrite);
         return destName;
     }

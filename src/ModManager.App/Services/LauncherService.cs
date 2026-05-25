@@ -56,6 +56,17 @@ public sealed class LauncherService
         SaveRegistry(reg);
     }
 
+    /// <summary>Persist a game's auto-backup-before-launch preference + retention count.</summary>
+    public void SetAutoBackup(string gameId, bool onLaunch, int? keepAuto)
+    {
+        var reg = LoadRegistry();
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        g.AutoBackupOnLaunch = onLaunch;
+        g.SaveAutoKeep = keepAuto;
+        SaveRegistry(reg);
+    }
+
     /// <summary>Assemble a game entry from wizard input, persist it, and make it active.</summary>
     public GameEntry AddGame(GameInput input)
     {

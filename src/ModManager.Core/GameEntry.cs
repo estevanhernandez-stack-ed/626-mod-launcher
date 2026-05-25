@@ -46,6 +46,10 @@ public sealed class GameEntry
 
     // where this game's saves live (for the built-in save manager)
     public string? SaveDir { get; set; }
+
+    // auto-backup-before-launch opt-in + how many auto snapshots to retain (null = unlimited)
+    public bool AutoBackupOnLaunch { get; set; }
+    public int? SaveAutoKeep { get; set; } = 25;
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>
