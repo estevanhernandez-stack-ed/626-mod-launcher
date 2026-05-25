@@ -13,6 +13,18 @@
     PrimaryButtonClick="OnPrimary">
 
     <StackPanel Spacing="12" Width="440">
+        <Expander x:Name="AiExpander" HorizontalAlignment="Stretch" Header="Add with AI">
+            <StackPanel Spacing="8" Width="400">
+                <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                           Text="Type the game name, copy the prompt into any AI agent, paste the JSON it returns, then Apply to pre-fill the wizard." />
+                <TextBox x:Name="AiGameNameBox" Header="Game name" PlaceholderText="e.g. Elden Ring" />
+                <Button Content="Copy prompt" Click="OnCopyProfilePrompt" />
+                <TextBox x:Name="AiJsonBox" Header="Agent JSON" AcceptsReturn="True" Height="150" TextWrapping="Wrap"
+                         PlaceholderText="Paste the JSON the agent returned" />
+                <Button Content="Apply profile" Click="OnApplyProfile" />
+                <TextBlock x:Name="ProfileStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
+            </StackPanel>
+        </Expander>
         <ComboBox x:Name="PopularGamesBox" Header="Popular game (optional)" HorizontalAlignment="Stretch"
                   DisplayMemberPath="Name" PlaceholderText="Pick a known moddable game"
                   SelectionChanged="OnPopularSelected" />
@@ -38,6 +50,10 @@
         </Grid>
         <TextBox x:Name="ModPathBox" Header="Mod folder (relative to the game folder)" />
         <TextBox x:Name="SteamBox" Header="Steam App ID (optional — enables Launch)" />
+        <ComboBox x:Name="SaveRootBox" Header="Save root (optional)" HorizontalAlignment="Stretch"
+                  PlaceholderText="Where saves live" />
+        <TextBox x:Name="SaveSubPathBox" Header="Save subfolder (relative to the save root, optional)" />
+        <TextBox x:Name="RequiredLauncherBox" Header="Required launcher (relative exe, optional)" />
         <TextBlock x:Name="ErrorText" Foreground="{StaticResource ThemeDanger}" Visibility="Collapsed"
                    Text="Name, game folder, and engine are required." TextWrapping="Wrap" />
     </StackPanel>

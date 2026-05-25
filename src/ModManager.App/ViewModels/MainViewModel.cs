@@ -453,15 +453,19 @@ public sealed partial class MainViewModel : ObservableObject
         return await ConfirmReplacements(plan);
     }
 
-    /// <summary>Register a new game from the wizard, make it active, and load it.</summary>
-    public async Task AddGameAsync(GameInput input)
+    /// <summary>Register a new game from the wizard, make it active, and load it. When the wizard already
+    /// resolved a save folder (the "Add with AI" flow), <paramref name="resolvedSaveDir"/> is used directly
+    /// instead of re-running detection.</summary>
+    public async Task AddGameAsync(GameInput input, string? resolvedSaveDir = null)
     {
         IsBusy = true;
         try
         {
             var entry = _svc.AddGame(input);
-            // Find the save folder up front (Ludusavi by Steam id, then heuristics).
-            var saveDir = await SaveLocator.DetectAsync(_ludu, entry.GameName, entry.Engine, entry.GameRoot, entry.SteamAppId);
+            // Prefer the wizard's already-resolved save folder; else find it (Ludusavi by Steam id, then heuristics).
+            var saveDir = !string.IsNullOrEmpty(resolvedSaveDir)
+                ? resolvedSaveDir
+                : await SaveLocator.DetectAsync(_ludu, entry.GameName, entry.Engine, entry.GameRoot, entry.SteamAppId);
             if (saveDir is not null) _svc.SetSaveDir(entry.Id, saveDir);
             await LoadAsync();
             StatusText = $"Added {entry.GameName}.";
