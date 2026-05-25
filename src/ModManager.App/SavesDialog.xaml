@@ -36,7 +36,7 @@
                   ToolTipService.ToolTip="Snapshot the save automatically each time you press Play (older auto snapshots are pruned; your named backups are kept)." />
 
         <TextBlock Text="Save files" FontWeight="SemiBold" />
-        <ListView x:Name="SaveFileList" MaxHeight="120" SelectionMode="None">
+        <ListView x:Name="SaveFileList" MaxHeight="168" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SaveFileRow">
                     <Grid ColumnSpacing="8" Padding="0,6">
@@ -75,7 +75,7 @@
                             <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
                             <TextBlock Text="{x:Bind Detail}" Opacity="0.6" FontSize="12" />
                         </StackPanel>
-                        <DropDownButton Grid.Column="1" Content="Only…" VerticalAlignment="Center"
+                        <DropDownButton Grid.Column="1" Content="Only" MinWidth="84" VerticalAlignment="Center"
                                         ToolTipService.ToolTip="Restore just one save type from this snapshot">
                             <DropDownButton.Flyout>
                                 <MenuFlyout Opening="OnRestoreTypeOpening" />
