@@ -397,6 +397,7 @@ public static class Scanner
     {
         foreach (var m in BuildModList(c))
         {
+            if (m.ReadOnly) continue; // never mutate a folder another tool owns
             if (m.Enabled == enabled) continue;
             if (enabled) EnableMod(m.Name, c); else DisableEntry(m, c);
         }
@@ -406,6 +407,7 @@ public static class Scanner
     {
         foreach (var m in ListWithClass(c))
         {
+            if (m.ReadOnly) continue; // never mutate a folder another tool owns
             var want = Classification.ModeFilter(mode, m.Class ?? "both");
             if (m.Enabled && !want) DisableEntry(m, c);
             else if (!m.Enabled && want) EnableMod(m.Name, c);
@@ -487,7 +489,7 @@ public static class Scanner
     /// </summary>
     private static void ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
     {
-        var byKey = BuildModList(c).Where(m => m.Enabled).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
+        var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
         var index = 0;
         foreach (var key in orderedKeys)
         {
