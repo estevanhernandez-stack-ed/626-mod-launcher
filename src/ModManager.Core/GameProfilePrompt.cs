@@ -27,7 +27,6 @@ public static class GameProfilePrompt
             "  saveRoot (one of: DocumentsMyGames, AppData, LocalAppData, SteamUserData, GameInstall),\n" +
             "  saveSubPath (string, relative path under saveRoot),\n" +
             "  requiredLauncher (string, relative path to the launcher exe that must be used when modded; optional),\n" +
-            "  launchTargets (array of objects { label, kind: \"steam\" or \"exe\", target, isDefault }; optional),\n" +
             "  curseforgeGameId (number, optional).\n\n" +
             "Rules: valid JSON only; engine and saveRoot must be from the lists above; every path relative.";
     }

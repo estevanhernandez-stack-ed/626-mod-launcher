@@ -44,10 +44,8 @@ The JSON the agent returns. All paths relative or enum; absolute paths are rejec
   "saveRoot": "AppData",             // enum: DocumentsMyGames | AppData | LocalAppData | SteamUserData | GameInstall
   "saveSubPath": "EldenRing",        // relative path under the resolved save root
   "requiredLauncher": "Game/ersc_launcher.exe", // optional; relative exe that must be used when modded
-  "launchTargets": [                 // optional; each {label, kind: "steam"|"exe", target (rel for exe), isDefault}
-    { "label": "Play vanilla (Steam)", "kind": "steam", "isDefault": false }
-  ],
   "curseforgeGameId": null           // optional
+  // launchTargets deferred to the launch-enforcement follow-up — see "Out of scope (v1)"
 }
 ```
 
@@ -69,11 +67,13 @@ The JSON the agent returns. All paths relative or enum; absolute paths are rejec
   prompt: app context, the game name, the full field list, the allowed `engine` keys (from
   `EnginePresets`), the `saveRoot` enum values, "strict JSON only," and "relative/structured paths
   only — never an absolute machine path."
-- **`GameProfileImport`** — `Parse(string json) : GameProfileDraft` + `Validate(GameProfileDraft) :
-  IReadOnlyList<string> errors`. `GameProfileDraft` is a record mirroring the contract. Validation:
+- **`GameProfileImport`** — `Load(string json) : ProfileImportResult` (parse + validate in one call;
+  shipped as a single method, not separate `Parse` + `Validate`). The result carries a
+  `GameProfileDraft?` (non-null only when there are no errors) plus the error list.
+  `GameProfileDraft` is a record mirroring the contract. Validation:
   required fields present (`name`, `engine`, `saveRoot`, `saveSubPath`); `engine` ∈ known
-  `EnginePresets` keys; `saveRoot` ∈ enum; every path (`modPath`, `saveSubPath`, `requiredLauncher`,
-  exe launch targets) is **relative + safe** (no `..` segment, not drive-rooted, not absolute);
+  `EnginePresets` keys; `saveRoot` ∈ enum; every path (`modPath`, `saveSubPath`, `requiredLauncher`)
+  is **relative + safe** (no `..` segment, not drive-rooted, not absolute);
   `steamAppId` numeric if present. Bad JSON or any error → rejected with reasons, nothing applied
   (the `Themes.NormalizeTheme` contract).
 
@@ -100,7 +100,7 @@ The JSON the agent returns. All paths relative or enum; absolute paths are rejec
 ```
 game name
   → GameProfilePrompt.Build → (user runs it in their agent) → JSON
-  → GameProfileImport.Parse → GameProfileImport.Validate  [reject w/ reasons on error]
+  → GameProfileImport.Load (parse + validate)  [reject w/ reasons on error]
   → GameProfileResolver: resolve GameRoot (Steam detect/browse), mod folder, save dir
        (Ludusavi-first), launcher; verify on disk → pass/warn
   → pre-fill the Add Game wizard (editable, badges)
@@ -127,7 +127,7 @@ game name
 5. A `modPath` / `saveSubPath` / `requiredLauncher` that is absolute or contains `..` → error.
 6. Missing a required field (`name` / `engine` / `saveRoot` / `saveSubPath`) → error.
 7. Non-numeric `steamAppId` → error; absent `steamAppId` → allowed.
-8. Optional fields absent (modPath, launchTargets, curseforgeGameId) → draft valid, defaults applied.
+8. Optional fields absent (modPath, curseforgeGameId) → draft valid, defaults applied.
 
 App `GameProfileResolver` + the wizard pre-fill are build-verified + a live smoke test (register a
 real game from an agent profile end-to-end), as with the mod-update feature — there are no WinUI UI
@@ -137,13 +137,16 @@ unit tests.
 
 - **Launch-time enforcement** of `requiredLauncher` (a mod's launcher gating the vanilla launch) —
   its own follow-up feature; the schema + `GameEntry` field land here so it's ready.
+- **Launch targets / multi-launch authoring** (`launchTargets`) — lands with the launch-enforcement
+  follow-up. It overlaps that feature and isn't consumed by the register path, so it's deferred (not
+  emitted in the prompt) rather than carried half-wired.
 - **Sharing / distributing** community-authored profiles (a profile registry) — strategic, later.
 - **Auto-calling an LLM** — stays bring-your-own-agent, like the theme generator.
 
 ## File structure
 
 - Create: `src/ModManager.Core/GameProfilePrompt.cs` — the prompt builder.
-- Create: `src/ModManager.Core/GameProfileImport.cs` — `GameProfileDraft` + `Parse` + `Validate`.
+- Create: `src/ModManager.Core/GameProfileImport.cs` — `GameProfileDraft` + `Load` (parse + validate in one call, returning `ProfileImportResult`).
 - Modify: `src/ModManager.Core/GameEntry.cs` — `GameInput` gains `SaveRoot`/`SaveSubPath`/`RequiredLauncher`; `GameEntry` gains `RequiredLauncher`.
 - Modify: `src/ModManager.Core/EnginePresets.cs` (or wherever `BuildGameEntry` lives) — map the new `GameInput` fields onto the `GameEntry`.
 - Create: `src/ModManager.App/Services/GameProfileResolver.cs` — resolve + on-disk verify.
