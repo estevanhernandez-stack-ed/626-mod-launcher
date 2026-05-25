@@ -250,12 +250,20 @@
                             </Button>
                         </StackPanel>
 
-                        <Button Grid.Column="3" Click="OnShowReadme" VerticalAlignment="Center"
-                                Background="Transparent" BorderThickness="0"
-                                ToolTipService.ToolTip="Readme"
-                                Visibility="{x:Bind ReadmeVisibility, Mode=OneWay}">
-                            <FontIcon Glyph="&#xE8A5;" FontSize="14" />
-                        </Button>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button Click="OnShowReadme" VerticalAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="Readme"
+                                    Visibility="{x:Bind ReadmeVisibility, Mode=OneWay}">
+                                <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+                            </Button>
+                            <Button Click="OnShowCockpit" VerticalAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="Config cockpit — edit settings, view keybinds &amp; commands"
+                                    Visibility="{x:Bind CockpitVisibility, Mode=OneWay}">
+                                <FontIcon Glyph="&#xE713;" FontSize="14" />
+                            </Button>
+                        </StackPanel>
 
                         <ToggleSwitch Grid.Column="4" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
                                       IsEnabled="{x:Bind CanToggle}"

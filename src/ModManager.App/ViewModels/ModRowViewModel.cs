@@ -155,6 +155,17 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string VariantChip => Mod.Variant ?? "";
     public string ClassChip => (Mod.Class ?? "both").ToUpperInvariant();
 
+    // Cockpit (config + Lua surfacing). Built on demand by the parent VM, which holds the GameContext.
+    public string ModFolderAbs { get; init; } = "";   // set by parent: the mod's folder (for folder mods)
+    public bool HasCockpit => Mod.IsFolder && !string.IsNullOrEmpty(ModFolderAbs);
+    public string OwnedConfigWarning =>
+        Mod.ReadOnly && !string.IsNullOrEmpty(Mod.Managed)
+            ? $"Managed by {Mod.Managed!.ToUpperInvariant()} — config edits may be overwritten on its next deploy."
+            : "";
+    public Visibility OwnedConfigWarningVisibility =>
+        string.IsNullOrEmpty(OwnedConfigWarning) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility CockpitVisibility => HasCockpit ? Visibility.Visible : Visibility.Collapsed;
+
     // Row graphic: the builder's CurseForge art when we have it (honor them), else a monogram.
     private ImageSource? _thumb;
     private bool _thumbResolved;

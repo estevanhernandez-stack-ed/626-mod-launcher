@@ -170,12 +170,20 @@ public sealed partial class MainViewModel : ObservableObject
             var rows = new List<ModRowViewModel>();
             foreach (var fam in VariantGroups.Group(list))
                 foreach (var m in fam.Members)
+                {
+                    // For folder mods, supply the absolute folder path so the cockpit can discover
+                    // config files and Lua registrations without needing the GameContext itself.
+                    var folderAbs = m.IsFolder
+                        ? System.IO.Path.Combine(Scanner.LocByName(m.Location, _ctx!).Abs, m.Name)
+                        : "";
                     rows.Add(new ModRowViewModel(m, canToggle: !m.ReadOnly, canUninstall: !directInject && !m.ReadOnly)
                     {
                         ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
                         MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
                         InVariantGroup = fam.IsMulti,
+                        ModFolderAbs = folderAbs,
                     });
+                }
             Mods = new ObservableCollection<ModRowViewModel>(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
@@ -657,6 +665,32 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+    }
+
+    // ---------- config cockpit ----------
+
+    public sealed record CockpitConfigFile(string FileName, string Path, IReadOnlyList<ConfigEntry> Entries);
+
+    public (IReadOnlyList<CockpitConfigFile> Configs, IReadOnlyList<LuaKeyBind> Keybinds, IReadOnlyList<LuaConsoleCommand> Commands)
+        BuildCockpit(string modFolderAbs)
+    {
+        var configs = ModConfig.Discover(modFolderAbs)
+            .Select(p => new CockpitConfigFile(System.IO.Path.GetFileName(p), p, ModConfig.ReadFile(p)))
+            .ToList();
+        var (binds, cmds) = LuaScan.ScanFolder(modFolderAbs);
+        return (configs, binds, cmds);
+    }
+
+    public async Task SaveConfigValueAsync(string configPath, string? section, string key, string value)
+    {
+        try
+        {
+            var content = System.IO.File.ReadAllText(configPath);
+            var updated = ModConfig.SetValue(content, section, key, value);
+            await Scanner.WriteModConfigAsync(configPath, updated, _ctx!);
+            StatusText = $"Saved {key} in {System.IO.Path.GetFileName(configPath)}.";
+        }
+        catch (Exception e) { StatusText = $"Couldn't save {key}: {e.Message}"; }
     }
 
     private async Task BulkAsync(Func<Task> op)
