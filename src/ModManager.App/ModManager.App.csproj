@@ -72,4 +72,18 @@
              Condition="'@(VCRedistCrtDll)' == ''" />
   </Target>
 
+  <!--
+    Trim WinUI localization. The Windows App SDK ships .mui resource folders for ~85 languages
+    (de-DE, ja-JP, ...), each ~44 KB — that's where the 88-folder sprawl comes from. An English
+    friends-first build needs none but en-us; WinUI's built-in control strings stay English.
+    Removes the culture .mui folders from the publish output, keeping en-us.
+  -->
+  <Target Name="TrimWinUiLanguages" AfterTargets="Publish">
+    <ItemGroup>
+      <_MuiFile Include="$(PublishDir)**\*.mui" Exclude="$(PublishDir)en-us\**\*.mui" />
+    </ItemGroup>
+    <RemoveDir Directories="@(_MuiFile->'%(RootDir)%(Directory)'->Distinct())"
+               Condition="'@(_MuiFile)' != ''" />
+  </Target>
+
 </Project>
