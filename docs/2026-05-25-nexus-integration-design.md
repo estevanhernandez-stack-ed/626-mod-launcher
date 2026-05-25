@@ -37,10 +37,22 @@ This PR lands the **fake-handler-tested Core** (the part that doesn't need the e
   fake name-search was built. Nexus mod-details also has no reliable download-count / donation field,
   so those map null; `Url` is constructed from domain + mod id.
 
-**Deferred (gated on the external SSO slug + a real account):** `NexusAuthService` (the SSO
-handshake), `NexusService` (stored per-user key + connection status), the Connect-Nexus settings UI,
-the **live md5-at-intake wiring** into `Scanner` (the injectable mechanic + its merge), and Nexus as
-a live metadata-merge source. All compose on the shipped client.
+**Now also shipped (personal-key path — no slug needed):** `NexusService` (the user's own key,
+validated via `ValidateAsync`, stored per-user at `%APPDATA%\ModManagerBuilder\nexus.json` via
+`AtomicJson` — **never baked**, law #2), the Connect-Nexus toolbar button + dialog, and the **live
+md5-at-intake** wiring (`Scanner.Md5IdentifyAsync`, exact-match after the CF fingerprint pass, before
+name-search; Nexus author/donation flow into the existing mod-row honor-the-builders fields). This is
+the differentiator working end-to-end **and** the "testing build that authenticates with a personal
+API key" Nexus requires for SSO app registration. mod-safety audit: PASS (no baked secret, no key
+leakage, read-only md5, atomic writes, pure-core).
+
+- **Key-at-rest decision:** plaintext in per-user appdata (the user's own runtime-obtained key —
+  clears law #2, which forbids shipping a secret *in the binary*). **DPAPI (`ProtectedData`,
+  CurrentUser scope) at rest is a deferred hardening** — ~10 lines + one first-party NuGet dep,
+  flagged under the no-deps rule for an explicit decision.
+
+**Still deferred (gated on the external SSO slug + a real account):** `NexusAuthService` (the SSO
+websocket handshake) — it writes the same key sink `NexusService` already owns, so it layers on top.
 
 ## Architecture (pure-core / thin-shell)
 
