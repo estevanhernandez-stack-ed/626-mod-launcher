@@ -228,6 +228,44 @@ public static class DirectInject
         return new IntakePlan(add, collisions, unsafeItems);
     }
 
+    private static void CopyIncoming(string incoming, string destAbs)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
+        var bang = incoming.IndexOf('!');
+        if (bang < 0) { File.Copy(incoming, destAbs, overwrite: true); return; }
+        using var zip = ZipFile.OpenRead(incoming[..bang]);
+        var entry = zip.GetEntry(incoming[(bang + 1)..]) ?? throw new FileNotFoundException($"Zip entry gone: {incoming}");
+        entry.ExtractToFile(destAbs, overwrite: true);
+    }
+
+    /// <summary>Execute a play-folder plan: install new files, back-up-then-replace chosen collisions, skip the rest.</summary>
+    public static IntakeResult Execute(string playFolder, string replacedRoot, IntakePlan plan, ISet<string> replaceRelPaths)
+    {
+        var result = new IntakeResult();
+        foreach (var u in plan.Unsafe) result.Skipped.Add(u);
+        Directory.CreateDirectory(playFolder);
+        string? batch = null;
+        string Batch() => batch ??= ReplacedStore.NewBatch(replacedRoot);
+
+        foreach (var item in plan.ToAdd)
+        {
+            try { CopyIncoming(item.IncomingSource, Path.Combine(playFolder, item.RelPath)); result.Added.Add(item.RelPath); }
+            catch (Exception e) { result.Skipped.Add(new SkippedItem(item.Name, e.Message)); }
+        }
+        foreach (var col in plan.Collisions)
+        {
+            if (!replaceRelPaths.Contains(col.RelPath)) { result.Skipped.Add(new SkippedItem(col.Name, "kept existing")); continue; }
+            try
+            {
+                ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
+                CopyIncoming(col.IncomingSource, col.ExistingPath);
+                result.Updated.Add(col.RelPath);
+            }
+            catch (Exception e) { result.Skipped.Add(new SkippedItem(col.Name, e.Message)); }
+        }
+        return result;
+    }
+
     /// <summary>The single top-level folder that wraps every zip entry (to flatten), or null when
     /// files sit at the root, entries span multiple top folders, or the prefix is a traversal.</summary>
     public static string? WrapperPrefix(IEnumerable<string> entryNames)

@@ -124,4 +124,31 @@ public class IntakeUpdateTests
         Assert.Contains(plan.ToAdd, a => a.RelPath.EndsWith("seamlesscoop.exe", StringComparison.OrdinalIgnoreCase));
         try { Directory.Delete(root, true); } catch { }
     }
+
+    [Fact]
+    public void DirectInject_Execute_updates_whole_set_when_all_chosen_and_backs_up()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-die-" + Guid.NewGuid().ToString("N"));
+        var play = Path.Combine(root, "game"); Directory.CreateDirectory(play);
+        var backup = Path.Combine(root, "data", "replaced");
+        File.WriteAllText(Path.Combine(play, "ersc.dll"), "OLD-DLL");
+        File.WriteAllText(Path.Combine(play, "ersc_settings.ini"), "OLD-INI");
+
+        var zipPath = Path.Combine(root, "seamless.zip");
+        using (var z = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            using (var w = new StreamWriter(z.CreateEntry("ersc.dll").Open())) w.Write("NEW-DLL");
+            using (var w = new StreamWriter(z.CreateEntry("ersc_settings.ini").Open())) w.Write("NEW-INI");
+        }
+
+        var plan = DirectInject.Plan(play, new[] { zipPath });
+        var replaceAll = plan.Collisions.Select(c => c.RelPath).ToHashSet();
+        var result = DirectInject.Execute(play, backup, plan, replaceAll);
+
+        Assert.Equal("NEW-DLL", File.ReadAllText(Path.Combine(play, "ersc.dll")));
+        Assert.Equal("NEW-INI", File.ReadAllText(Path.Combine(play, "ersc_settings.ini")));
+        Assert.Equal(2, result.Updated.Count);
+        Assert.True(Directory.GetFiles(backup, "*", SearchOption.AllDirectories).Length >= 2);
+        try { Directory.Delete(root, true); } catch { }
+    }
 }
