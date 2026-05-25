@@ -52,6 +52,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     }
 
     public string DisplayName => string.IsNullOrEmpty(Mod.DisplayName) ? Mod.Name : Mod.DisplayName;
+
+    // When metadata renames the mod, surface the underlying file key so two same-titled mods (e.g.
+    // FasterShips vs aaUltraFastShips, both "Faster Ships") are distinguishable at a glance.
+    public string FileTag => string.Equals(DisplayName, Mod.Name, StringComparison.OrdinalIgnoreCase) ? "" : Mod.Name;
+    public Visibility FileTagVisibility => string.IsNullOrEmpty(FileTag) ? Visibility.Collapsed : Visibility.Visible;
+
     public string? Description => Mod.Description;
     public bool HasDescription => !string.IsNullOrEmpty(Mod.Description);
     public Visibility DescriptionVisibility => HasDescription ? Visibility.Visible : Visibility.Collapsed;

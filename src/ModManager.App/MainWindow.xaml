@@ -192,7 +192,11 @@
                         </Grid>
 
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind FileTag}" FontFamily="Consolas" FontSize="11" Opacity="0.45"
+                                           VerticalAlignment="Center" Visibility="{x:Bind FileTagVisibility}" />
+                            </StackPanel>
                             <TextBlock Text="{x:Bind Description}" Opacity="0.7" TextWrapping="Wrap" MaxLines="2"
                                        Visibility="{x:Bind DescriptionVisibility}" />
                             <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{x:Bind CreditVisibility}">
