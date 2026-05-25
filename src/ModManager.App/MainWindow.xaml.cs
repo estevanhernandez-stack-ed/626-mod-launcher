@@ -84,10 +84,54 @@ public sealed partial class MainWindow : Window
             menu.Items.Add(new MenuFlyoutItem { Text = "No launch options for this game", IsEnabled = false });
     }
 
-    private void OnLaunchTargetClick(object sender, RoutedEventArgs e)
+    private async void OnLaunchTargetClick(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuFlyoutItem { Tag: ModManager.Core.LaunchTarget target })
-            ViewModel.LaunchTargetExplicit(target);
+        if (sender is not MenuFlyoutItem { Tag: ModManager.Core.LaunchTarget target }) return;
+
+        // Enforcement: a vanilla/steam launch while a required launcher is in force confirms first —
+        // steer to the launcher, but keep vanilla reachable behind one explicit choice.
+        if (ViewModel.NeedsVanillaConfirm(target))
+        {
+            var launcher = ViewModel.RequiredLauncherTarget();
+            var dialog = new ContentDialog
+            {
+                Title = "Mods won't load this way",
+                Content = "Your enabled mods/co-op won't load through a vanilla launch.",
+                PrimaryButtonText = launcher is not null ? $"Use {launcher.Label}" : "Use launcher",
+                SecondaryButtonText = "Launch vanilla anyway",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot,
+            };
+            switch (await dialog.ShowAsync())
+            {
+                case ContentDialogResult.Primary:
+                    if (launcher is not null) ViewModel.LaunchTargetExplicit(launcher);
+                    else ViewModel.NotifyLauncherMissing();
+                    break;
+                case ContentDialogResult.Secondary:
+                    ViewModel.LaunchTargetExplicit(target);
+                    break;
+                // None (Cancel): do nothing.
+            }
+            return;
+        }
+
+        ViewModel.LaunchTargetExplicit(target);
+    }
+
+    // Set or clear a mod's MP-compat override from the badge flyout. Tag carries the choice.
+    private void OnSetMpCompat(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: string tag } item || item.DataContext is not ModRowViewModel row) return;
+        ModManager.Core.MpRisk? value = tag switch
+        {
+            "Safe" => ModManager.Core.MpRisk.Safe,
+            "Risky" => ModManager.Core.MpRisk.Risky,
+            "SpOnly" => ModManager.Core.MpRisk.SpOnly,
+            _ => null, // Auto / clear
+        };
+        ViewModel.SetMpOverride(row, value);
     }
 
     private async void OnSaves(object sender, RoutedEventArgs e)
@@ -293,6 +337,21 @@ public sealed partial class MainWindow : Window
         };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             await ViewModel.UninstallAsync(row);
+    }
+
+    // Readme viewer: captured-at-intake readme -> CurseForge description -> empty state. Rendered
+    // to native controls only (no HTML/script), links gated through SafeUrl by the renderer.
+    private async void OnShowReadme(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        var dialog = new ContentDialog
+        {
+            Title = row.DisplayName,
+            Content = ReadmeRenderer.Build(row.GetReadmeMarkdown()),
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
     }
 
     private void OnDragOver(object sender, DragEventArgs e)

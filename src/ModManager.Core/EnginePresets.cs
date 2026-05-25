@@ -79,6 +79,7 @@ public static partial class EnginePresets
         if (input.CurseforgeGameId is not null) entry.CurseforgeGameId = input.CurseforgeGameId;
         if (!string.IsNullOrEmpty(input.SaveModPath)) entry.SaveModPath = input.SaveModPath;
         if (input.SaveModForbidden is { Count: > 0 }) entry.SaveModForbidden = input.SaveModForbidden;
+        if (!string.IsNullOrEmpty(input.NexusGameDomain)) entry.NexusGameDomain = input.NexusGameDomain;
         return entry;
     }
 }

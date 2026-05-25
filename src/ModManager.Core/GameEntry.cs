@@ -56,6 +56,9 @@ public sealed class GameEntry
     public string? SaveModPath { get; set; }
     public IReadOnlyList<string> SaveModForbidden { get; set; } = Array.Empty<string>();
 
+    // Nexus Mods game key — a domain NAME ("windrose"), not a numeric id (how Nexus keys games)
+    public string? NexusGameDomain { get; set; }
+
     // auto-backup-before-launch opt-in + how many auto snapshots to retain (null = unlimited)
     public bool AutoBackupOnLaunch { get; set; }
     public int? SaveAutoKeep { get; set; } = 25;
@@ -88,6 +91,7 @@ public sealed class GameInput
     public int? CurseforgeGameId { get; init; }
     public string? SaveModPath { get; init; }
     public IReadOnlyList<string>? SaveModForbidden { get; init; }
+    public string? NexusGameDomain { get; init; }
 }
 
 /// <summary>An engine preset: the mod-folder layout / extensions / grouping for an engine.</summary>

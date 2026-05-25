@@ -464,30 +464,43 @@ public static class Scanner
             {
                 var dest = LoadOrderApply.WithOrder(f, index);
                 if (dest == f) continue;
-                var from = Path.Combine(loc.Abs, f);
-                var to = Path.Combine(loc.Abs, dest);
-                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
+                // Rename the primary and every server-build mirror identically so SP and MP keep
+                // the same filename — desync here strands mirror copies (the Windrose bug).
+                MoveIfFree(loc.Abs, f, dest);
+                foreach (var mp in loc.Mirrors) MoveIfFree(mp, f, dest);
             }
             index++;
         }
         SaveLoadOrder(c, orderedKeys);
     }
 
-    /// <summary>Strip launcher load-order prefixes from every location, restoring original names.</summary>
+    /// <summary>Strip launcher load-order prefixes from every location (primary + mirrors), restoring original names.</summary>
     private static void ResetLoadOrder(GameContext c)
     {
         foreach (var loc in c.Locations)
         {
-            foreach (var f in ListPakFiles(loc.Abs, c))
-            {
-                var stripped = LoadOrderApply.StripPrefix(f);
-                if (stripped == f) continue;
-                var from = Path.Combine(loc.Abs, f);
-                var to = Path.Combine(loc.Abs, stripped);
-                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
-            }
+            StripPrefixesIn(loc.Abs, c);
+            foreach (var mp in loc.Mirrors) StripPrefixesIn(mp, c);
         }
         try { File.Delete(c.LoadOrderPath); } catch { /* nothing to clear */ }
+    }
+
+    private static void StripPrefixesIn(string dir, GameContext c)
+    {
+        foreach (var f in ListPakFiles(dir, c))
+        {
+            var stripped = LoadOrderApply.StripPrefix(f);
+            if (stripped != f) MoveIfFree(dir, f, stripped);
+        }
+    }
+
+    /// <summary>Rename <paramref name="from"/> to <paramref name="to"/> within <paramref name="dir"/>,
+    /// only when the source exists and the destination is free — idempotent, never clobbers.</summary>
+    private static void MoveIfFree(string dir, string from, string to)
+    {
+        var src = Path.Combine(dir, from);
+        var dst = Path.Combine(dir, to);
+        if (File.Exists(src) && !File.Exists(dst)) File.Move(src, dst);
     }
 
     // ---------- profiles ----------
@@ -541,6 +554,65 @@ public static class Scanner
 
     public static Task<IntakeResult> AddModsAsync(IEnumerable<string> paths, GameContext c) => Task.FromResult(AddMods(paths, c));
 
+    /// <summary>The captured readme for a mod (cached at intake), or null. A derived cache under
+    /// <c>dataDir\readmes\&lt;modKey&gt;.(md|txt)</c> — md preferred over txt.</summary>
+    public static string? ReadmePathFor(string modKey, GameContext c)
+    {
+        if (!IsSafeKey(modKey)) return null;
+        var dir = Path.Combine(c.DataDir, "readmes");
+        foreach (var ext in new[] { ".md", ".txt" })
+        {
+            var p = Path.Combine(dir, modKey + ext);
+            if (File.Exists(p)) return p;
+        }
+        return null;
+    }
+
+    // A modKey is filename-derived, but guard against separators / illegal chars so a crafted name
+    // can never write the cache outside the readmes folder.
+    private static bool IsSafeKey(string? key)
+        => !string.IsNullOrWhiteSpace(key) && key!.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+
+    /// <summary>Best-effort: cache each given zip's best readme under every mod key that zip
+    /// contributes, so the viewer can surface it. Derived cache (re-captured on re-intake) — it
+    /// never throws into the intake flow; a readme is never worth failing an install over.</summary>
+    private static void CaptureReadmes(IEnumerable<string> zipPaths, GameContext c)
+    {
+        foreach (var zipPath in zipPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (!zipPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || !File.Exists(zipPath)) continue;
+                using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
+                var pick = ReadmeCapture.PickReadme(zip.Entries.Select(e => e.FullName));
+                if (pick is null) continue;
+                var entry = zip.GetEntry(pick);
+                if (entry is null) continue;
+                var keys = zip.Entries
+                    .Where(e => !string.IsNullOrEmpty(e.Name) && Intake.ClassifyDrop(e.FullName, c.Exts) == "mod")
+                    .Select(e => ModKey(Path.GetFileName(e.FullName), c))
+                    .Where(IsSafeKey).Distinct().ToList();
+                if (keys.Count == 0) continue;
+
+                var ext = Path.GetExtension(pick).ToLowerInvariant();
+                var dir = Path.Combine(c.DataDir, "readmes");
+                Directory.CreateDirectory(dir);
+                string? firstPath = null;
+                foreach (var key in keys)
+                {
+                    var stem = Path.Combine(dir, key);
+                    // A re-capture may switch ext (md<->txt); drop the stale sibling so resolution is unambiguous.
+                    foreach (var other in new[] { ".md", ".txt" })
+                        if (other != ext && File.Exists(stem + other)) { try { File.Delete(stem + other); } catch { /* best effort */ } }
+                    var dest = stem + ext;
+                    if (firstPath is null) { entry.ExtractToFile(dest, overwrite: true); firstPath = dest; }
+                    else File.Copy(firstPath, dest, overwrite: true);
+                }
+            }
+            catch { /* derived cache — never break intake over a readme */ }
+        }
+    }
+
     private static bool PlaceFile(string srcAbs, string fileName, GameContext c)
     {
         var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
@@ -580,8 +652,9 @@ public static class Scanner
 
     private static IntakeResult AddMods(IEnumerable<string> paths, GameContext c)
     {
+        var pathList = (paths ?? Enumerable.Empty<string>()).ToList();
         var result = new IntakeResult();
-        foreach (var p in ExpandPaths(paths, c))
+        foreach (var p in ExpandPaths(pathList, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
             try
@@ -615,6 +688,7 @@ public static class Scanner
             }
             catch (Exception e) { result.Skipped.Add(new SkippedItem(Path.GetFileName(p), e.Message)); }
         }
+        CaptureReadmes(pathList, c);
         return result;
     }
 
@@ -709,6 +783,14 @@ public static class Scanner
             }
         }
         if (batch != null && manifest.Count > 0) ReplacedStore.WriteManifest(batch, manifest);
+
+        // Capture readmes from every source zip the plan touched (added or collided) — keyed by the
+        // mod keys those zips contribute, independent of which files were actually replaced.
+        var zipSources = plan.ToAdd.Select(a => a.IncomingSource)
+            .Concat(plan.Collisions.Select(col => col.IncomingSource))
+            .Select(s => { var b = s.IndexOf('!'); return b < 0 ? null : s[..b]; })
+            .Where(z => z is not null).Select(z => z!);
+        CaptureReadmes(zipSources, c);
         return result;
     }
 

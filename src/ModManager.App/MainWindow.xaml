@@ -123,6 +123,15 @@
                         <TextBlock Text="Co-op needs its launcher" Foreground="{StaticResource ThemeDanger}" />
                     </StackPanel>
                 </Button>
+                <Border Padding="8,2" CornerRadius="4"
+                        ToolTipService.ToolTip="Some enabled mods may desync co-op — review before hosting or joining"
+                        Visibility="{x:Bind ViewModel.MpWarningVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <TextBlock Text="{x:Bind ViewModel.MpWarningText, Mode=OneWay}"
+                                   Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
                 <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
                         ToolTipService.ToolTip="This game needs a launch option for mods to load"
                         Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
@@ -153,6 +162,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -200,14 +210,37 @@
                                     Visibility="{x:Bind VariantVisibility}">
                                 <TextBlock Text="{x:Bind VariantChip}" FontFamily="Consolas" FontSize="11" />
                             </Border>
+                            <!-- MP-safety badge doubles as the set-override affordance (faint "MP?" = no claim) -->
+                            <Button Padding="6,2" CornerRadius="3" BorderThickness="0"
+                                    Background="{StaticResource ThemePanel}" VerticalAlignment="Center"
+                                    Opacity="{x:Bind MpBadgeOpacity, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Multiplayer safety — click to set">
+                                <TextBlock Text="{x:Bind MpBadge, Mode=OneWay}" FontFamily="Consolas" FontSize="11"
+                                           Foreground="{x:Bind MpBadgeBrush, Mode=OneWay}" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="Mark MP-safe" Click="OnSetMpCompat" Tag="Safe" />
+                                        <MenuFlyoutItem Text="Mark MP-risky" Click="OnSetMpCompat" Tag="Risky" />
+                                        <MenuFlyoutItem Text="Mark SP-only" Click="OnSetMpCompat" Tag="SpOnly" />
+                                        <MenuFlyoutItem Text="Auto (clear)" Click="OnSetMpCompat" Tag="Auto" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
                         </StackPanel>
 
-                        <ToggleSwitch Grid.Column="3" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
+                        <Button Grid.Column="3" Click="OnShowReadme" VerticalAlignment="Center"
+                                Background="Transparent" BorderThickness="0"
+                                ToolTipService.ToolTip="Readme"
+                                Visibility="{x:Bind ReadmeVisibility, Mode=OneWay}">
+                            <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+                        </Button>
+
+                        <ToggleSwitch Grid.Column="4" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
                                       IsEnabled="{x:Bind CanToggle}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
                                       Visibility="{x:Bind NormalVisibility, Mode=OneWay}" />
 
-                        <Button Grid.Column="4" Click="OnUninstall" VerticalAlignment="Center"
+                        <Button Grid.Column="5" Click="OnUninstall" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
                                 ToolTipService.ToolTip="Uninstall (permanent)"
                                 Visibility="{x:Bind ManageVisibility, Mode=OneWay}">

@@ -22,6 +22,26 @@ public class ScannerLoadOrderTests
         return (modsDir, c);
     }
 
+    // Server-build mirror fixture: the SP client folder (mods) and the MP server-build mirror
+    // (server) both hold the same pak. The Windrose desync bug — load-order rename touched the
+    // primary only, leaving the mirror under a different filename — lived here.
+    private static (string modsDir, string mirrorDir, GameContext c) MirrorFixture()
+    {
+        var root = TestSupport.TempDir("loadorder-mirror-");
+        var gameRoot = Path.Combine(root, "game");
+        var modsDir = Path.Combine(gameRoot, "mods");
+        var mirrorDir = Path.Combine(gameRoot, "server");
+        Directory.CreateDirectory(modsDir);
+        Directory.CreateDirectory(mirrorDir);
+        var c = Scanner.GameContext(new GameEntry
+        {
+            Id = "t", GameName = "T", GameRoot = gameRoot,
+            ModLocations = new[] { new ModLocation("mods", "mods", "mods") { Mirrors = new[] { "server" } } },
+            FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
+        });
+        return (modsDir, mirrorDir, c);
+    }
+
     [Fact]
     public async Task A_launcher_prefixed_file_groups_to_its_base_key()
     {
@@ -67,6 +87,35 @@ public class ScannerLoadOrderTests
         await Scanner.ResetLoadOrderAsync(c);
         var restored = Directory.GetFiles(modsDir).Select(Path.GetFileName).OrderBy(x => x, StringComparer.Ordinal).ToArray();
         Assert.Equal(new[] { "audio.pak", "cool.pak" }, restored);
+    }
+
+    [Fact]
+    public async Task ApplyLoadOrder_prefixes_the_mirror_in_lockstep_with_the_primary()
+    {
+        var (modsDir, mirrorDir, c) = MirrorFixture();
+        File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "C");
+        File.WriteAllText(Path.Combine(mirrorDir, "cool.pak"), "C");
+
+        await Scanner.ApplyLoadOrderAsync(c, new[] { "cool" });
+
+        // Both copies carry the same prefix — no SP/MP filename desync.
+        Assert.True(File.Exists(Path.Combine(modsDir, "0010__cool.pak")));
+        Assert.True(File.Exists(Path.Combine(mirrorDir, "0010__cool.pak")));
+        Assert.False(File.Exists(Path.Combine(mirrorDir, "cool.pak")));
+    }
+
+    [Fact]
+    public async Task ResetLoadOrder_strips_the_mirror_in_lockstep_with_the_primary()
+    {
+        var (modsDir, mirrorDir, c) = MirrorFixture();
+        File.WriteAllText(Path.Combine(modsDir, "0010__cool.pak"), "C");
+        File.WriteAllText(Path.Combine(mirrorDir, "0010__cool.pak"), "C");
+
+        await Scanner.ResetLoadOrderAsync(c);
+
+        Assert.True(File.Exists(Path.Combine(modsDir, "cool.pak")));
+        Assert.True(File.Exists(Path.Combine(mirrorDir, "cool.pak")));
+        Assert.False(File.Exists(Path.Combine(mirrorDir, "0010__cool.pak")));
     }
 
     [Fact]

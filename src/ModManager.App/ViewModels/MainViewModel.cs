@@ -66,6 +66,25 @@ public sealed partial class MainViewModel : ObservableObject
 
     public Visibility CoopHintVisibility => CoopLauncherMissing ? Visibility.Visible : Visibility.Collapsed;
 
+    // MP-safety summary: how many enabled mods read as not-co-op-safe (Risky or SP-only). Non-blocking.
+    private int MpRiskyEnabledCount => Mods.Count(m => m.Enabled && m.EffectiveMp is MpRisk.Risky or MpRisk.SpOnly);
+    public Visibility MpWarningVisibility => MpRiskyEnabledCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public string MpWarningText
+    {
+        get { var n = MpRiskyEnabledCount; return $"{n} enabled mod{(n == 1 ? "" : "s")} may not be co-op-safe"; }
+    }
+    private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); }
+
+    /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
+    public void SetMpOverride(ModRowViewModel row, MpRisk? value)
+    {
+        if (_ctx is null) return;
+        try { MpCompatStore.SetOverride(_ctx.DataDir, row.Mod.Name, value); }
+        catch (Exception e) { StatusText = e.Message; return; }
+        row.MpOverride = value;
+        NotifyMpWarning();
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadOrderVisibility))]
     [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
@@ -142,8 +161,14 @@ public sealed partial class MainViewModel : ObservableObject
             else list = await ReloadFromScannerAsync();
 
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
+            var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
             Mods = new ObservableCollection<ModRowViewModel>(
-                list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)));
+                list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)
+                {
+                    ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
+                    MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
+                }));
+            NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
@@ -294,10 +319,47 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The active game's launch targets (modded / alt-launcher / vanilla) for the dropdown.</summary>
     public IReadOnlyList<LaunchTarget> LaunchTargets => _ctx?.Game.LaunchTargets ?? Array.Empty<LaunchTarget>();
 
+    /// <summary>True when any mod is enabled — the trigger for launch enforcement.</summary>
+    public bool AnyModsEnabled => Mods.Any(m => m.Enabled);
+
+    /// <summary>The required launcher resolved to a runnable exe target, or null when not set, the
+    /// path resolves outside GameRoot (bad/manual value), or the exe is missing.</summary>
+    public LaunchTarget? RequiredLauncherTarget()
+    {
+        if (_ctx is null || string.IsNullOrEmpty(_ctx.Game.RequiredLauncher)) return null;
+        var root = _ctx.Game.GameRoot;
+        var rel = _ctx.Game.RequiredLauncher!.Replace('/', System.IO.Path.DirectorySeparatorChar);
+        var abs = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, rel));
+        var rootFull = System.IO.Path.GetFullPath(root).TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+        if (!abs.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) return null; // escaped GameRoot
+        if (!System.IO.File.Exists(abs)) return null;                                   // not installed
+        return new LaunchTarget(System.IO.Path.GetFileName(abs), "exe", abs) { WorkingDir = System.IO.Path.GetDirectoryName(abs) };
+    }
+
+    /// <summary>True when picking <paramref name="target"/> (a vanilla/steam launch) should confirm
+    /// first because the game's required launcher is in force.</summary>
+    public bool NeedsVanillaConfirm(LaunchTarget target)
+        => _ctx is not null && LaunchGuard.NeedsVanillaConfirm(_ctx.Game, AnyModsEnabled, target);
+
+    /// <summary>Surface the needs-launcher hint when the required launcher is set but not found.</summary>
+    public void NotifyLauncherMissing()
+    {
+        CoopLauncherMissing = true;
+        StatusText = "Required launcher not found — install it next to the game to play with mods.";
+    }
+
     [RelayCommand]
     private void Launch()
     {
         if (_ctx is null) return;
+        // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
+        if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
+        {
+            var launcher = RequiredLauncherTarget();
+            if (launcher is null) { NotifyLauncherMissing(); return; } // never launch a non-existent exe
+            LaunchTargetExplicit(launcher);
+            return;
+        }
         AutoBackupBeforeLaunch();
         try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
         catch (Exception e) { StatusText = e.Message; }

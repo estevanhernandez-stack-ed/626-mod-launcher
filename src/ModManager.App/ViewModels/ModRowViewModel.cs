@@ -56,6 +56,22 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool HasDescription => !string.IsNullOrEmpty(Mod.Description);
     public Visibility DescriptionVisibility => HasDescription ? Visibility.Visible : Visibility.Collapsed;
 
+    // Captured-at-intake readme file for this mod (set by the parent, which holds the GameContext).
+    // The "Readme" affordance shows when a captured readme OR a CurseForge description exists.
+    public string? ReadmeFilePath { get; init; }
+    public Visibility ReadmeVisibility => (ReadmeFilePath is not null || HasDescription) ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The markdown to show: captured readme file -> CurseForge description -> empty state.</summary>
+    public string GetReadmeMarkdown()
+    {
+        if (ReadmeFilePath is not null)
+        {
+            try { var t = System.IO.File.ReadAllText(ReadmeFilePath); if (!string.IsNullOrWhiteSpace(t)) return t; }
+            catch { /* fall through to the description / empty state */ }
+        }
+        return string.IsNullOrWhiteSpace(Mod.Description) ? "No readme available." : Mod.Description!;
+    }
+
     // Author credit line — visible, clickable attribution (honor the builders). Each link opens
     // in the browser via HyperlinkButton.NavigateUri; SafeUrl guards to http(s) only.
     public string AuthorText => string.IsNullOrEmpty(Mod.Author) ? "" : $"by {Mod.Author}";
@@ -76,6 +92,31 @@ public sealed partial class ModRowViewModel : ObservableObject
     private bool HasAnyCredit => !string.IsNullOrEmpty(Mod.Author) || ModUri is not null
         || SourceUri is not null || DonateUri is not null || Mod.Downloads is > 0;
     public Visibility CreditVisibility => Mod.HasMeta && HasAnyCredit ? Visibility.Visible : Visibility.Collapsed;
+
+    // MP-safety: effective = the user's override (if any) over the class-inferred risk. The badge
+    // doubles as the set-override affordance, so it's always shown (faint "MP?" when we make no claim).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MpBadge))]
+    [NotifyPropertyChangedFor(nameof(MpBadgeBrush))]
+    [NotifyPropertyChangedFor(nameof(MpBadgeOpacity))]
+    private MpRisk? mpOverride;
+
+    public MpRisk EffectiveMp => MpCompat.Effective(MpCompat.Infer(Mod.Class), MpOverride);
+    public string MpBadge => EffectiveMp switch
+    {
+        MpRisk.Safe => "MP-SAFE",
+        MpRisk.Risky => "MP-RISKY",
+        MpRisk.SpOnly => "SP-ONLY",
+        _ => "MP?",
+    };
+    public Brush? MpBadgeBrush => EffectiveMp switch
+    {
+        MpRisk.Safe => Res("ThemeAccent"),
+        MpRisk.Risky or MpRisk.SpOnly => Res("ThemeDanger"),
+        _ => Res("ThemeInkSoft"),
+    };
+    public double MpBadgeOpacity => EffectiveMp == MpRisk.Unknown ? 0.5 : 1.0;
+    private static Brush? Res(string key) => Application.Current.Resources.TryGetValue(key, out var v) ? v as Brush : null;
 
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;
