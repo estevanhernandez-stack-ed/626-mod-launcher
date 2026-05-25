@@ -76,4 +76,32 @@ public class IntakeUpdateTests
         Assert.Contains(plan.Collisions, c => c.Name == "old.dll");
         try { Directory.Delete(root, true); } catch { }
     }
+
+    [Fact]
+    public void Scanner_ExecuteIntake_replaces_chosen_backs_up_old_skips_unchosen()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-se-" + Guid.NewGuid().ToString("N"));
+        var ctx = FlatCtx(root, "dll");
+        var mods = ctx.Locations[0].Abs;
+        File.WriteAllText(Path.Combine(mods, "old.dll"), "OLD");
+        File.WriteAllText(Path.Combine(mods, "keep.dll"), "KEEP");
+        var drop = Path.Combine(root, "drop"); Directory.CreateDirectory(drop);
+        File.WriteAllText(Path.Combine(drop, "old.dll"), "NEW");
+        File.WriteAllText(Path.Combine(drop, "keep.dll"), "NEW2");
+        File.WriteAllText(Path.Combine(drop, "fresh.dll"), "ADD");
+
+        var paths = new[] { "old.dll", "keep.dll", "fresh.dll" }.Select(f => Path.Combine(drop, f));
+        var plan = Scanner.PlanIntake(paths, ctx);
+        var result = Scanner.ExecuteIntake(plan, new HashSet<string> { "old.dll" }, ctx);
+
+        Assert.Equal("NEW", File.ReadAllText(Path.Combine(mods, "old.dll")));
+        Assert.Equal("KEEP", File.ReadAllText(Path.Combine(mods, "keep.dll")));
+        Assert.Equal("ADD", File.ReadAllText(Path.Combine(mods, "fresh.dll")));
+        Assert.Contains("old.dll", result.Updated);
+        Assert.Contains("fresh.dll", result.Added);
+        Assert.Contains(result.Skipped, s => s.Name == "keep.dll");
+        var backups = Directory.GetFiles(Path.Combine(ctx.DataDir, "replaced"), "old.dll", SearchOption.AllDirectories);
+        Assert.True(backups.Length == 1 && File.ReadAllText(backups[0]) == "OLD");
+        try { Directory.Delete(root, true); } catch { }
+    }
 }

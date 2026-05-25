@@ -661,6 +661,47 @@ public static class Scanner
         return new IntakePlan(add, collisions, unsafeItems);
     }
 
+    /// <summary>Copy a planned source — a loose file path, or "zipPath!entryName" — to dest (overwrite allowed).</summary>
+    private static void CopyPlanned(string incoming, string destAbs)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
+        var bang = incoming.IndexOf('!');
+        if (bang < 0) { File.Copy(incoming, destAbs, overwrite: true); return; }
+        using var zip = System.IO.Compression.ZipFile.OpenRead(incoming[..bang]);
+        var entry = zip.GetEntry(incoming[(bang + 1)..]) ?? throw new FileNotFoundException($"Zip entry gone: {incoming}");
+        entry.ExtractToFile(destAbs, overwrite: true);
+    }
+
+    /// <summary>Execute a plan: install new files, back-up-then-replace chosen collisions, skip the rest.</summary>
+    public static IntakeResult ExecuteIntake(IntakePlan plan, ISet<string> replaceRelPaths, GameContext c)
+    {
+        var result = new IntakeResult();
+        foreach (var u in plan.Unsafe) result.Skipped.Add(u);
+
+        var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
+        Directory.CreateDirectory(primary.Abs);
+        string? batch = null;
+        string Batch() => batch ??= ReplacedStore.NewBatch(Path.Combine(c.DataDir, "replaced"));
+
+        foreach (var item in plan.ToAdd)
+        {
+            try { CopyPlanned(item.IncomingSource, Path.Combine(primary.Abs, item.RelPath)); result.Added.Add(item.RelPath); }
+            catch (Exception e) { result.Skipped.Add(new SkippedItem(item.Name, e.Message)); }
+        }
+        foreach (var col in plan.Collisions)
+        {
+            if (!replaceRelPaths.Contains(col.RelPath)) { result.Skipped.Add(new SkippedItem(col.Name, "kept existing")); continue; }
+            try
+            {
+                ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
+                CopyPlanned(col.IncomingSource, col.ExistingPath);
+                result.Updated.Add(col.RelPath);
+            }
+            catch (Exception e) { result.Skipped.Add(new SkippedItem(col.Name, e.Message)); }
+        }
+        return result;
+    }
+
     // ---------- metadata refresh (network client injected) ----------
 
     private static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)
