@@ -24,6 +24,24 @@ Register the 626 app with Nexus Mods to obtain an **application slug** for SSO. 
 client (public identifier); it is not a secret. Until registered, the SSO flow can't run — the rest
 of the build can proceed and be tested against a fake handler.
 
+## As shipped — v1 slice (2026-05-25)
+
+This PR lands the **fake-handler-tested Core** (the part that doesn't need the external SSO slug):
+
+- `Md5Hash` (golden-tested), `NexusRequests` + `NexusClient` / `INexusClient` (injected `HttpClient`,
+  per-user `apikey` header — **never baked**, law #2), `nexusGameDomain` threaded through
+  `GameEntry` / `GameInput` / `BuildGameEntry` / `GameProfileDraft` / profile parse / the Add-Game
+  draft-carry (same path `curseforgeGameId` takes).
+- **API correction:** Nexus's public **v1 API has no name-search endpoint** — the real capabilities
+  are mod-details-by-id (`GetMod`) and **md5 file lookup** (`GetByMd5`, the exact-ID mechanic). No
+  fake name-search was built. Nexus mod-details also has no reliable download-count / donation field,
+  so those map null; `Url` is constructed from domain + mod id.
+
+**Deferred (gated on the external SSO slug + a real account):** `NexusAuthService` (the SSO
+handshake), `NexusService` (stored per-user key + connection status), the Connect-Nexus settings UI,
+the **live md5-at-intake wiring** into `Scanner` (the injectable mechanic + its merge), and Nexus as
+a live metadata-merge source. All compose on the shipped client.
+
 ## Architecture (pure-core / thin-shell)
 
 ### Auth — `NexusAuthService` (App)
