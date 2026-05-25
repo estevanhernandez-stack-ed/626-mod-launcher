@@ -294,10 +294,47 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The active game's launch targets (modded / alt-launcher / vanilla) for the dropdown.</summary>
     public IReadOnlyList<LaunchTarget> LaunchTargets => _ctx?.Game.LaunchTargets ?? Array.Empty<LaunchTarget>();
 
+    /// <summary>True when any mod is enabled — the trigger for launch enforcement.</summary>
+    public bool AnyModsEnabled => Mods.Any(m => m.Enabled);
+
+    /// <summary>The required launcher resolved to a runnable exe target, or null when not set, the
+    /// path resolves outside GameRoot (bad/manual value), or the exe is missing.</summary>
+    public LaunchTarget? RequiredLauncherTarget()
+    {
+        if (_ctx is null || string.IsNullOrEmpty(_ctx.Game.RequiredLauncher)) return null;
+        var root = _ctx.Game.GameRoot;
+        var rel = _ctx.Game.RequiredLauncher!.Replace('/', System.IO.Path.DirectorySeparatorChar);
+        var abs = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, rel));
+        var rootFull = System.IO.Path.GetFullPath(root).TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+        if (!abs.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) return null; // escaped GameRoot
+        if (!System.IO.File.Exists(abs)) return null;                                   // not installed
+        return new LaunchTarget(System.IO.Path.GetFileName(abs), "exe", abs) { WorkingDir = System.IO.Path.GetDirectoryName(abs) };
+    }
+
+    /// <summary>True when picking <paramref name="target"/> (a vanilla/steam launch) should confirm
+    /// first because the game's required launcher is in force.</summary>
+    public bool NeedsVanillaConfirm(LaunchTarget target)
+        => _ctx is not null && LaunchGuard.NeedsVanillaConfirm(_ctx.Game, AnyModsEnabled, target);
+
+    /// <summary>Surface the needs-launcher hint when the required launcher is set but not found.</summary>
+    public void NotifyLauncherMissing()
+    {
+        CoopLauncherMissing = true;
+        StatusText = "Required launcher not found — install it next to the game to play with mods.";
+    }
+
     [RelayCommand]
     private void Launch()
     {
         if (_ctx is null) return;
+        // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
+        if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
+        {
+            var launcher = RequiredLauncherTarget();
+            if (launcher is null) { NotifyLauncherMissing(); return; } // never launch a non-existent exe
+            LaunchTargetExplicit(launcher);
+            return;
+        }
         AutoBackupBeforeLaunch();
         try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
         catch (Exception e) { StatusText = e.Message; }
