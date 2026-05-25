@@ -138,4 +138,52 @@ public class Ue4ssManifestTests
         Assert.Contains("New : 1", txt);
         Assert.Contains("Keybinds : 1", txt); // keybinds section preserved
     }
+
+    // Fix 1: SetInModsJson must preserve unknown per-entry fields (load_order, note, etc.)
+    [Fact]
+    public void SetEnabled_preserves_unknown_mods_json_fields()
+    {
+        var d = ModsDir(); Folder(d, "Foo");
+        File.WriteAllText(Path.Combine(d, "mods.json"),
+            "[{\"mod_name\":\"Foo\",\"mod_enabled\":true,\"load_order\":7,\"note\":\"keep me\"}]");
+
+        Ue4ssManifest.SetEnabled(d, "Foo", false);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(d, "mods.json")));
+        var foo = doc.RootElement.EnumerateArray().First(e => e.GetProperty("mod_name").GetString() == "Foo");
+        Assert.False(foo.GetProperty("mod_enabled").GetBoolean());       // flipped
+        Assert.Equal(7, foo.GetProperty("load_order").GetInt32());       // preserved
+        Assert.Equal("keep me", foo.GetProperty("note").GetString());    // preserved
+    }
+
+    // Fix 2: transactional lockstep — if the second write fails, the first must roll back.
+    // We make mods.json (second write in the rollback-target direction after reorder) read-only
+    // so File.Move(overwrite:true) throws, then verify mods.txt is restored to its original value.
+    [Fact]
+    public void SetEnabled_keeps_manifests_consistent_on_partial_failure()
+    {
+        var d = ModsDir(); Folder(d, "Foo");
+        var txtPath  = Path.Combine(d, "mods.txt");
+        var jsonPath = Path.Combine(d, "mods.json");
+        File.WriteAllText(txtPath,  "Foo : 1\n");
+        File.WriteAllText(jsonPath, "[{\"mod_name\":\"Foo\",\"mod_enabled\":true}]");
+
+        // Force the second write (mods.txt — written after mods.json in the new order) to fail
+        // by making it read-only so File.Move(overwrite:true) throws on Windows.
+        File.SetAttributes(txtPath, FileAttributes.ReadOnly);
+        try
+        {
+            Assert.ThrowsAny<Exception>(() => Ue4ssManifest.SetEnabled(d, "Foo", false));
+
+            // mods.json (first write) must have been rolled back to its original content.
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(jsonPath));
+            var foo = doc.RootElement.EnumerateArray().First(e => e.GetProperty("mod_name").GetString() == "Foo");
+            Assert.True(foo.GetProperty("mod_enabled").GetBoolean(), "mods.json should be rolled back to enabled=true");
+        }
+        finally
+        {
+            // Always restore writable so the temp dir can be cleaned up.
+            File.SetAttributes(txtPath, FileAttributes.Normal);
+        }
+    }
 }

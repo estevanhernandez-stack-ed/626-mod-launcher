@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace ModManager.Core;
@@ -68,17 +69,34 @@ public static class Ue4ssManifest
     /// <summary>
     /// Enable/disable a UE4SS mod WITHOUT moving files: set the flag in every present manifest
     /// (add the entry if missing), and on disable remove any enabled.txt (else it overrides the 0).
-    /// Atomic writes. No-op-safe if the folder has no manifest.
+    /// Atomic writes. Transactional: if the second write fails, the first is restored from its
+    /// pre-image so the two manifests never desync. No-op-safe if the folder has no manifest.
     /// </summary>
     public static void SetEnabled(string modsDir, string name, bool enabled)
     {
-        var txt = Path.Combine(modsDir, "mods.txt");
-        if (File.Exists(txt)) WriteAtomic(txt, SetInModsTxt(File.ReadAllLines(txt), name, enabled));
+        var jsonPath = Path.Combine(modsDir, "mods.json");
+        var txtPath  = Path.Combine(modsDir, "mods.txt");
 
-        var json = Path.Combine(modsDir, "mods.json");
-        if (File.Exists(json)) WriteAtomic(json, SetInModsJson(File.ReadAllText(json), name, enabled));
+        // Capture pre-images up front so we can roll back on partial failure.
+        string? jsonPre = File.Exists(jsonPath) ? File.ReadAllText(jsonPath) : null;
+        string? txtPre  = File.Exists(txtPath)  ? File.ReadAllText(txtPath)  : null;
+
+        // Write mods.json FIRST (UE4SS prefers it when both exist; also our reader does).
+        if (jsonPre is not null) WriteAtomic(jsonPath, SetInModsJson(jsonPre, name, enabled));
+
+        try
+        {
+            if (txtPre is not null) WriteAtomic(txtPath, SetInModsTxt(File.ReadAllLines(txtPath), name, enabled));
+        }
+        catch
+        {
+            // Second write failed — restore mods.json from its pre-image so both manifests agree.
+            if (jsonPre is not null) File.WriteAllText(jsonPath, jsonPre);
+            throw;
+        }
 
         // enabled.txt overrides the manifest — it must go when disabling.
+        // Only reached after both manifest writes succeeded.
         if (!enabled)
         {
             var et = Path.Combine(modsDir, name, "enabled.txt");
@@ -116,30 +134,61 @@ public static class Ue4ssManifest
         return string.Join("\r\n", outLines) + "\r\n";
     }
 
+    /// <summary>
+    /// Patch <paramref name="content"/> so the entry whose mod_name matches <paramref name="name"/>
+    /// has mod_enabled == <paramref name="enabled"/>. ALL other fields on EVERY entry are preserved
+    /// verbatim (values round-trip; whitespace is re-serialized with WriteIndented).
+    /// Uses JsonNode so unknown keys are carried through without reconstruction.
+    /// </summary>
     private static string SetInModsJson(string content, string name, bool enabled)
     {
-        var list = new List<Dictionary<string, object>>();
+        JsonArray arr;
         try
         {
-            using var doc = JsonDocument.Parse(content);
-            foreach (var el in doc.RootElement.EnumerateArray())
-            {
-                var n = el.TryGetProperty("mod_name", out var nn) ? nn.GetString() ?? "" : "";
-                var en = el.TryGetProperty("mod_enabled", out var ee) && ee.ValueKind == JsonValueKind.True;
-                if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) en = enabled;
-                list.Add(new Dictionary<string, object> { ["mod_name"] = n, ["mod_enabled"] = en });
-            }
+            arr = JsonNode.Parse(content)?.AsArray() ?? new JsonArray();
         }
-        catch { list.Clear(); }
-        if (!list.Any(d => string.Equals((string)d["mod_name"], name, StringComparison.OrdinalIgnoreCase)))
-            list.Add(new Dictionary<string, object> { ["mod_name"] = name, ["mod_enabled"] = enabled });
-        return JsonSerializer.Serialize(list, Json);
+        catch
+        {
+            arr = new JsonArray();
+        }
+
+        var found = false;
+        foreach (var node in arr)
+        {
+            if (node is not JsonObject obj) continue;
+            var n = obj["mod_name"]?.GetValue<string>();
+            if (!string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) continue;
+            obj["mod_enabled"] = JsonValue.Create(enabled);
+            found = true;
+            break;
+        }
+
+        if (!found)
+        {
+            var entry = new JsonObject
+            {
+                ["mod_name"]    = JsonValue.Create(name),
+                ["mod_enabled"] = JsonValue.Create(enabled)
+            };
+            arr.Add(entry);
+        }
+
+        return arr.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
+    // Fix 3: unique temp name + cleanup so a failed write leaves no debris.
     private static void WriteAtomic(string path, string content)
     {
-        var tmp = path + ".tmp";
-        File.WriteAllText(tmp, content);
-        File.Move(tmp, path, overwrite: true);
+        var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(tmp, content);
+            File.Move(tmp, path, overwrite: true);
+            tmp = null; // consumed — don't delete in finally
+        }
+        finally
+        {
+            if (tmp is not null && File.Exists(tmp)) try { File.Delete(tmp); } catch { /* best effort */ }
+        }
     }
 }

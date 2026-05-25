@@ -334,7 +334,8 @@ public static class Scanner
         // Loader-driven mods (e.g. UE4SS Conductor): flip the manifest, no file moves.
         if (m.Loader == "ue4ss")
         {
-            Ue4ssManifest.SetEnabled(LocByName(m.Location, c).Abs, m.Name, enabled: false);
+            try { Ue4ssManifest.SetEnabled(LocByName(m.Location, c).Abs, m.Name, enabled: false); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e); }
             return;
         }
         var loc = LocByName(m.Location, c);
@@ -385,7 +386,8 @@ public static class Scanner
         var live = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (live?.Loader == "ue4ss")
         {
-            Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true);
+            try { Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e); }
             return;
         }
 
