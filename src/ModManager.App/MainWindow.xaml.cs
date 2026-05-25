@@ -413,6 +413,180 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    // Config cockpit: per-mod panel for editing config files and viewing keybinds/commands.
+    // Config VALUE edits are intentionally allowed even on tool-owned folders (user-data).
+    // Owned folders show a warning; the edit is not blocked. Mod CONTENT invariant is untouched.
+    private async void OnShowCockpit(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        if (!row.HasCockpit) return;
+
+        var (configs, keybinds, commands) = ViewModel.BuildCockpit(row.ModFolderAbs);
+
+        var panelBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemePanel"];
+        var accentBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeAccent"];
+        var dangerBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeDanger"];
+        var inkSoftBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeInkSoft"];
+
+        var root = new StackPanel { Spacing = 12, MinWidth = 480 };
+
+        // Owned-folder warning (shown when Mod.ReadOnly)
+        if (!string.IsNullOrEmpty(row.OwnedConfigWarning))
+        {
+            var warn = new Border { Padding = new Thickness(10, 6, 10, 6), CornerRadius = new CornerRadius(4), Background = panelBrush };
+            var warnText = new TextBlock
+            {
+                Text = row.OwnedConfigWarning,  // textContent — no raw mod data
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.9,
+                Foreground = dangerBrush,
+            };
+            warn.Child = warnText;
+            root.Children.Add(warn);
+        }
+
+        // Config files
+        if (configs.Count == 0 && keybinds.Count == 0 && commands.Count == 0)
+        {
+            root.Children.Add(new TextBlock { Text = "No config files or Lua registrations found in this mod folder.", Opacity = 0.6, TextWrapping = TextWrapping.Wrap });
+        }
+
+        foreach (var cfg in configs)
+        {
+            var section = new StackPanel { Spacing = 8 };
+
+            var header = new TextBlock
+            {
+                Text = cfg.FileName,  // filename from our own file scan, safe
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                FontSize = 13,
+            };
+            section.Children.Add(header);
+
+            if (cfg.Entries.Count == 0)
+            {
+                section.Children.Add(new TextBlock { Text = "No parseable entries.", Opacity = 0.5 });
+            }
+
+            foreach (var entry in cfg.Entries)
+            {
+                var row2 = new Grid { ColumnSpacing = 8 };
+                row2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
+                row2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row2.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var keyLabel = new TextBlock
+                {
+                    Text = entry.Key,   // key from parsed config — textContent only
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontSize = 12,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                };
+                if (!string.IsNullOrEmpty(entry.Description))
+                    ToolTipService.SetToolTip(keyLabel, entry.Description);
+                Grid.SetColumn(keyLabel, 0);
+
+                var valueBox = new TextBox
+                {
+                    Text = entry.Value,  // value from parsed config — text binding only
+                    IsSpellCheckEnabled = false,
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontSize = 12,
+                };
+                Grid.SetColumn(valueBox, 1);
+
+                // Capture loop vars for async closure
+                var capturedCfgPath = cfg.Path;
+                var capturedSection = entry.Section;
+                var capturedKey = entry.Key;
+                var capturedBox = valueBox;
+
+                var saveBtn = new Button { Content = "Save", VerticalAlignment = VerticalAlignment.Center };
+                saveBtn.Click += async (_, _) =>
+                {
+                    try { await ViewModel.SaveConfigValueAsync(capturedCfgPath, capturedSection, capturedKey, capturedBox.Text); }
+                    catch (Exception ex) { ViewModel.StatusText = "Config save failed: " + ex.Message; }
+                };
+                Grid.SetColumn(saveBtn, 2);
+
+                row2.Children.Add(keyLabel);
+                row2.Children.Add(valueBox);
+                row2.Children.Add(saveBtn);
+                section.Children.Add(row2);
+
+                if (!string.IsNullOrEmpty(entry.Description))
+                {
+                    var desc = new TextBlock
+                    {
+                        Text = entry.Description,  // description from config comments — textContent only
+                        Opacity = 0.55,
+                        FontSize = 11,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, -4, 0, 0),
+                    };
+                    section.Children.Add(desc);
+                }
+            }
+
+            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = section });
+        }
+
+        // Keybinds (read-only)
+        if (keybinds.Count > 0)
+        {
+            var kbSection = new StackPanel { Spacing = 6 };
+            kbSection.Children.Add(new TextBlock { Text = "Keybinds", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+            foreach (var bind in keybinds)
+            {
+                var modText = bind.Modifiers.Count > 0 ? string.Join("+", bind.Modifiers) + "+" : "";
+                var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(3), Background = panelBrush };
+                chip.Child = new TextBlock
+                {
+                    Text = modText + bind.Key,   // key/modifier names from Lua regex scan — textContent
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontSize = 12,
+                };
+                kbSection.Children.Add(chip);
+            }
+            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = kbSection });
+        }
+
+        // Console commands (read-only)
+        if (commands.Count > 0)
+        {
+            var cmdSection = new StackPanel { Spacing = 6 };
+            cmdSection.Children.Add(new TextBlock { Text = "Console commands", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+            foreach (var cmd in commands)
+            {
+                var row3 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(3), Background = panelBrush };
+                chip.Child = new TextBlock
+                {
+                    Text = cmd.Name,  // command name from Lua regex scan — textContent
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontSize = 12,
+                };
+                var copyBtn = new Button { Content = "Copy", Padding = new Thickness(6, 2, 6, 2) };
+                var capturedCmdName = cmd.Name;
+                copyBtn.Click += (_, _) => { var dp = new Windows.ApplicationModel.DataTransfer.DataPackage(); dp.SetText(capturedCmdName); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp); };
+                row3.Children.Add(chip);
+                row3.Children.Add(copyBtn);
+                cmdSection.Children.Add(row3);
+            }
+            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = cmdSection });
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = $"{row.DisplayName} — Config",
+            Content = new ScrollViewer { Content = root, MaxHeight = 560, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
+    }
+
     private void OnDragOver(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
