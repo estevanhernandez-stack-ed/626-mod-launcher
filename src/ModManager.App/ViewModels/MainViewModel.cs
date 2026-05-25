@@ -459,14 +459,22 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            // CF name-search over the installed mods. Nexus identification can't run here: Nexus
+            // CF name-search over the installed mods. Nexus md5 identification can't run here: Nexus
             // matches the published-archive md5, and installed mods are already extracted (the archive
             // is gone) — Nexus identifies at DROP time instead (Md5IdentifyArchivesAsync on intake).
+            // Vortex-deployed mods ARE identifiable here: their deployment manifest records the Nexus
+            // modId, so we can fetch by id without needing the original archive.
             var r = await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge);
-            StatusText = r.GameId is null
-                ? "Couldn't resolve this game on CurseForge."
-                : $"Matched {r.Matched} of {r.Total} mods on CurseForge.";
+            var vtx = 0;
+            if (_nexus.IsConnected)
+            {
+                try { vtx = (await Scanner.IdentifyVortexNexusAsync(_ctx, _nexus.Client!)).Matched; }
+                catch { /* best-effort; CF result still stands */ }
+            }
             await ReloadModsAsync();
+            StatusText = r.GameId is null
+                ? (vtx > 0 ? $"Filled {vtx} Vortex mod(s) from Nexus." : "Couldn't resolve this game on CurseForge.")
+                : $"Matched {r.Matched} of {r.Total} on CurseForge" + (vtx > 0 ? $", +{vtx} from Vortex/Nexus." : ".");
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
