@@ -35,6 +35,7 @@ public sealed class NexusService
 
     public bool IsConnected => !string.IsNullOrEmpty(_key);
     public string? ConnectedUser { get; private set; }
+    public bool ConnectedPremium { get; private set; }
 
     /// <summary>A client bound to the stored key, or null when not connected.</summary>
     public INexusClient? Client => string.IsNullOrEmpty(_key) ? null : new NexusClient(_http, new NexusOptions { ApiKey = _key });
@@ -49,8 +50,26 @@ public sealed class NexusService
         if (user is null) return null;
         _key = apiKey;
         ConnectedUser = user.Name;
+        ConnectedPremium = user.IsPremium;
         Save();
         return user.Name;
+    }
+
+    /// <summary>Re-validate the stored key to refresh the account name + premium flag (e.g. after an
+    /// upgrade, or to populate premium for a connection stored before it was tracked). Offline-safe:
+    /// a network/transient failure leaves the cached values intact.</summary>
+    public async Task RefreshAsync()
+    {
+        if (string.IsNullOrEmpty(_key)) return;
+        try
+        {
+            var user = await new NexusClient(_http, new NexusOptions { ApiKey = _key }).ValidateAsync();
+            if (user is null) return; // key now rejected — leave it to the connect flow to handle
+            ConnectedUser = user.Name;
+            ConnectedPremium = user.IsPremium;
+            Save();
+        }
+        catch { /* offline / transient — keep the cached name + premium */ }
     }
 
     /// <summary>Clear the stored key — Nexus features go inert; everything else is unaffected.</summary>
@@ -58,6 +77,7 @@ public sealed class NexusService
     {
         _key = null;
         ConnectedUser = null;
+        ConnectedPremium = false;
         try { if (File.Exists(StorePath)) File.Delete(StorePath); } catch { /* best effort */ }
     }
 
@@ -68,6 +88,7 @@ public sealed class NexusService
         public string? ApiKey { get; set; }
         public string? ApiKeyProtected { get; set; }
         public string? UserName { get; set; }
+        public bool Premium { get; set; }
     }
 
     private void Load()
@@ -78,6 +99,7 @@ public sealed class NexusService
             var s = JsonSerializer.Deserialize<Stored>(File.ReadAllText(StorePath), Json);
             if (s is null) return;
             ConnectedUser = s.UserName;
+            ConnectedPremium = s.Premium;
 
             if (!string.IsNullOrEmpty(s.ApiKeyProtected))
             {
@@ -101,6 +123,7 @@ public sealed class NexusService
         {
             ApiKeyProtected = string.IsNullOrEmpty(_key) ? null : Protect(_key),
             UserName = ConnectedUser,
+            Premium = ConnectedPremium,
         });
     }
 

@@ -440,6 +440,9 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            // CF name-search over the installed mods. Nexus identification can't run here: Nexus
+            // matches the published-archive md5, and installed mods are already extracted (the archive
+            // is gone) — Nexus identifies at DROP time instead (Md5IdentifyArchivesAsync on intake).
             var r = await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge);
             StatusText = r.GameId is null
                 ? "Couldn't resolve this game on CurseForge."
@@ -454,6 +457,38 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool NexusConnected => _nexus.IsConnected;
     public string? NexusUser => _nexus.ConnectedUser;
+    public bool NexusPremium => _nexus.ConnectedPremium;
+
+    /// <summary>The connected account line, with a Premium/Free tag — null when not connected.</summary>
+    public string? NexusAccountLine =>
+        !_nexus.IsConnected ? null : $"{_nexus.ConnectedUser}{(_nexus.ConnectedPremium ? " (Premium)" : " (Free)")}";
+
+    /// <summary>Re-validate the stored key to refresh the account name + premium flag (offline-safe).</summary>
+    public Task RefreshNexusAsync() => _nexus.RefreshAsync();
+
+    /// <summary>Backfill metadata for already-installed mods by md5-matching the user's downloaded
+    /// Nexus ARCHIVES (the only thing with the hash Nexus indexes). Each archive's match fills the
+    /// metadata for every installed mod that came from it.</summary>
+    public async Task BackfillNexusAsync(IReadOnlyList<string> zipArchives, int skippedNonZip = 0)
+    {
+        if (_ctx is null) return;
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (string.IsNullOrWhiteSpace(_ctx.Game.NexusGameDomain)) { StatusText = "This game has no Nexus domain set."; return; }
+        var nonZipNote = skippedNonZip > 0 ? $" ({skippedNonZip} .7z/.rar skipped — multi-format support is coming)" : "";
+        if (zipArchives.Count == 0) { StatusText = $"No .zip archives found in that folder{nonZipNote}."; return; }
+        IsBusy = true;
+        try
+        {
+            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, zipArchives)).Matched;
+            StatusText = (n > 0
+                ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {zipArchives.Count} Nexus archive(s)."
+                : $"Scanned {zipArchives.Count} .zip — no Nexus matches (must be the ORIGINAL Nexus archives for this game).")
+                + nonZipNote;
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
 
     /// <summary>Validate + store a pasted personal Nexus key (the user's own — never baked). Result via StatusText.</summary>
     public async Task<bool> ConnectNexusAsync(string apiKey)
@@ -463,7 +498,7 @@ public sealed partial class MainViewModel : ObservableObject
             var user = await _nexus.ConnectAsync(apiKey);
             StatusText = user is null
                 ? "Nexus key rejected — check it on your account's API access page."
-                : $"Connected to Nexus as {user}.";
+                : $"Connected to Nexus as {NexusAccountLine}.";
             return user is not null;
         }
         catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
@@ -522,7 +557,8 @@ public sealed partial class MainViewModel : ObservableObject
                 // files the CF fingerprint misses) — then a name-search fallback. Exact wins over fuzzy.
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
                 catch { /* best-effort; intake already succeeded */ }
-                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyAsync(_ctx, _nexus.Client!, r.Added)).Matched; }
+                // Nexus matches the published-ARCHIVE md5 — hash the dropped zip(s), not the extracted files.
+                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, paths)).Matched; }
                 catch { /* best-effort; a Nexus miss / outage never fails intake */ }
                 try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                 catch { /* best-effort */ }

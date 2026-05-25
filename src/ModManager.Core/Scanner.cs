@@ -922,4 +922,48 @@ public static class Scanner
         SaveMetadata(c, meta);
         return new IdentifyResult(matchedKeys.Count);
     }
+
+    /// <summary>
+    /// Identify just-dropped Nexus mods by the md5 of the **dropped archive** — Nexus indexes the
+    /// published archive's hash, NOT the extracted file, so this is the correct intake path (an
+    /// extracted .pak's md5 never matches). For each dropped .zip: hash it, ask Nexus, and apply the
+    /// match to every mod key the zip contributes. Best-effort; needs a Nexus domain on the game.
+    /// </summary>
+    public static async Task<IdentifyResult> Md5IdentifyArchivesAsync(GameContext c, INexusClient nexus, IEnumerable<string> droppedPaths)
+    {
+        var domain = c.Game.NexusGameDomain;
+        if (string.IsNullOrWhiteSpace(domain)) return new IdentifyResult(0);
+
+        var meta = LoadMetadata(c);
+        var matchedKeys = new HashSet<string>();
+        foreach (var path in (droppedPaths ?? Enumerable.Empty<string>())
+                     .Where(p => p.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                if (!File.Exists(path)) continue;
+                var match = await nexus.GetByMd5Async(domain, Md5Hash.OfFile(path)); // hash the ARCHIVE
+                if (match?.Meta is null) continue;
+                foreach (var key in ZipModKeys(path, c))
+                {
+                    meta[key] = MergeMeta(match.Meta, meta.GetValueOrDefault(key));
+                    matchedKeys.Add(key);
+                }
+            }
+            catch { /* a miss / outage / unreadable zip never breaks intake */ }
+        }
+        if (matchedKeys.Count > 0) SaveMetadata(c, meta);
+        return new IdentifyResult(matchedKeys.Count);
+    }
+
+    // The distinct mod keys a zip contributes (its mod-classified entries -> base keys).
+    private static IReadOnlyList<string> ZipModKeys(string zipPath, GameContext c)
+    {
+        using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
+        return zip.Entries
+            .Where(e => !string.IsNullOrEmpty(e.Name) && Intake.ClassifyDrop(e.FullName, c.Exts) == "mod")
+            .Select(e => Variant.ParseVariant(ModKey(Path.GetFileName(e.FullName), c)).Base)
+            .Distinct()
+            .ToList();
+    }
 }
