@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window
         var steamGames = App.AppHost.Services.GetRequiredService<Services.SteamService>().InstalledGames();
         var dialog = new AddGameDialog(hwnd, steamGames) { XamlRoot = Content.XamlRoot };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            await ViewModel.AddGameAsync(dialog.BuildInput());
+            await ViewModel.AddGameAsync(dialog.BuildInput(), dialog.ResolvedSaveDir);
     }
 
     // Populate the Launch dropdown from the active game's targets each time it opens, so it
