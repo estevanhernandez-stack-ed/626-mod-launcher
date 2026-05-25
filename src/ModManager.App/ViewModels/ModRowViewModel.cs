@@ -136,6 +136,10 @@ public sealed partial class ModRowViewModel : ObservableObject
     public double MpBadgeOpacity => EffectiveMp == MpRisk.Unknown ? 0.5 : 1.0;
     private static Brush? Res(string key) => Application.Current.Resources.TryGetValue(key, out var v) ? v as Brush : null;
 
+    // Part of a multi-variant family (same mod page / _Nx base) — members sit adjacent + show a chip.
+    public bool InVariantGroup { get; init; }
+    public Visibility VariantGroupVisibility => InVariantGroup ? Visibility.Visible : Visibility.Collapsed;
+
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;
     public bool HasVariant => !string.IsNullOrEmpty(Mod.Variant);

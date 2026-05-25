@@ -214,6 +214,11 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                    ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"
+                                    Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">
+                                <TextBlock Text="VARIANT" FontFamily="Consolas" FontSize="11" Foreground="Black" />
+                            </Border>
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="3" Padding="6,2">
                                 <TextBlock Text="{x:Bind ClassChip}" FontFamily="Consolas" FontSize="11" />
                             </Border>

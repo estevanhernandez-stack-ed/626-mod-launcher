@@ -163,13 +163,20 @@ public sealed partial class MainViewModel : ObservableObject
             else list = await ReloadFromScannerAsync();
 
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
+            // Order rows so variant-family members (same mod page / _Nx base) sit together, and mark
+            // the members of a multi-variant family so the row shows a VARIANT chip. Toggles stay
+            // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
-            Mods = new ObservableCollection<ModRowViewModel>(
-                list.Select(m => new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)
-                {
-                    ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
-                    MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
-                }));
+            var rows = new List<ModRowViewModel>();
+            foreach (var fam in VariantGroups.Group(list))
+                foreach (var m in fam.Members)
+                    rows.Add(new ModRowViewModel(m, canToggle: true, canUninstall: !directInject)
+                    {
+                        ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
+                        MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
+                        InVariantGroup = fam.IsMulti,
+                    });
+            Mods = new ObservableCollection<ModRowViewModel>(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
