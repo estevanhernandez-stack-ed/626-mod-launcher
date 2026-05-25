@@ -196,6 +196,8 @@ public sealed partial class AddGameDialog : ContentDialog
         FileExtensions = _appliedDraft?.FileExtensions,
         GroupingRule = _appliedDraft?.GroupingRule,
         CurseforgeGameId = _appliedDraft?.CurseforgeGameId,
+        SaveModPath = _appliedDraft?.SaveModPath,
+        SaveModForbidden = _appliedDraft?.SaveModForbidden,
         NexusGameDomain = _appliedDraft?.NexusGameDomain,
     };
 }

@@ -7,6 +7,7 @@ public sealed record GameProfileDraft(
     string? Name, string? Engine, string? WindowTitle, string? SteamAppId,
     string? ModPath, IReadOnlyList<string>? FileExtensions, string? GroupingRule,
     string? SaveRoot, string? SaveSubPath, string? RequiredLauncher, int? CurseforgeGameId,
+    string? SaveModPath = null, IReadOnlyList<string>? SaveModForbidden = null,
     string? NexusGameDomain = null);
 
 /// <summary>Result of loading a profile: a Draft (non-null only when Errors is empty) plus any errors.</summary>

@@ -50,6 +50,12 @@ public sealed class GameEntry
     // relative path (under GameRoot) to the launcher that must be used when modded (e.g. Seamless Co-op)
     public string? RequiredLauncher { get; set; }
 
+    // Save/world-mod install layout, relative to <saveDir>\<profile> (e.g. "RocksDB/{version}/Worlds");
+    // null falls back to the built-in RocksDB default. SaveModForbidden lists save subfolders the
+    // installer must NEVER write (game-managed, e.g. RocksDB_v2) — merged with built-in defaults.
+    public string? SaveModPath { get; set; }
+    public IReadOnlyList<string> SaveModForbidden { get; set; } = Array.Empty<string>();
+
     // Nexus Mods game key — a domain NAME ("windrose"), not a numeric id (how Nexus keys games)
     public string? NexusGameDomain { get; set; }
 
@@ -83,6 +89,8 @@ public sealed class GameInput
     public string? SaveSubPath { get; init; }
     public string? RequiredLauncher { get; init; }
     public int? CurseforgeGameId { get; init; }
+    public string? SaveModPath { get; init; }
+    public IReadOnlyList<string>? SaveModForbidden { get; init; }
     public string? NexusGameDomain { get; init; }
 }
 
