@@ -186,7 +186,7 @@ public static class Scanner
                     {
                         Name = f, Location = loc.Name, Enabled = enabled, Files = new List<string> { f },
                         OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
-                        Loader = (isUe4ss && posture == Posture.Conductor) ? "ue4ss" : null,
+                        Loader = isUe4ss ? "ue4ss" : null,
                     };
                 }
             }
@@ -312,6 +312,28 @@ public static class Scanner
 
     public static Task DisableModAsync(string name, GameContext c) { DisableMod(name, c); return Task.CompletedTask; }
     public static Task EnableModAsync(string name, GameContext c) { EnableMod(name, c); return Task.CompletedTask; }
+
+    /// <summary>
+    /// Explicit per-row toggle entry point. For UE4SS loader mods this flips the manifest
+    /// (no content move) even when the folder is tool-owned — mirroring the config edit-with-warning
+    /// exception. For non-loader mods it falls through to the normal gated path.
+    /// IMPORTANT: bulk ops (SetAllMods, ApplyMode, LoadProfile) MUST NOT call this — they go
+    /// through DisableEntry/EnableMod which keep their ReadOnly guard, so owned mods are skipped.
+    /// </summary>
+    public static Task SetLoaderModEnabledAsync(string name, bool enabled, GameContext c)
+    {
+        var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        if (m?.Loader == "ue4ss")
+        {
+            // Manifest flip only — never a content move. Allowed regardless of ReadOnly.
+            try { Ue4ssManifest.SetEnabled(LocByName(m.Location, c).Abs, name, enabled); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't {(enabled ? "enable" : "disable")} \"{name}\" ({e.Message})", e); }
+            return Task.CompletedTask;
+        }
+        // Non-loader mod: fall back to the normal gated path (ReadOnly guard applies).
+        if (enabled) EnableMod(name, c); else { var m2 = BuildModList(c).FirstOrDefault(x => x.Name == name); if (m2 is not null) DisableEntry(m2, c); }
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// Permanently delete a mod — the one destructive op, gated by an explicit caller (the UI

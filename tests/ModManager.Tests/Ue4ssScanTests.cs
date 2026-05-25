@@ -41,13 +41,56 @@ public class Ue4ssScanTests
     }
 
     [Fact]
-    public async Task Owned_ue4ss_folder_still_reads_true_state_but_is_not_loader_driven()
+    public async Task Owned_ue4ss_folder_still_reads_true_state_and_is_loader_tagged()
     {
         var mods = await Scanner.BuildModListAsync(Ctx(TestSupport.TempDir("ue4ss-own-"), owned: true));
         var off = mods.First(m => m.Name == "Off");
-        Assert.False(off.Enabled);   // true state still read (non-mutating)
-        Assert.True(off.ReadOnly);   // owned -> read-only
-        Assert.Null(off.Loader);     // not loader-driven (we won't write an owned folder)
+        Assert.False(off.Enabled);      // true state still read (non-mutating)
+        Assert.True(off.ReadOnly);      // owned -> read-only (governs CONTENT ops)
+        Assert.Equal("ue4ss", off.Loader); // ALL UE4SS mods carry Loader; ReadOnly guards content separately
+    }
+
+    // ── NEW: per-row manifest-flip exception (TDD: write failing, then implement) ──────────────
+
+    [Fact]
+    public async Task Owned_ue4ss_mod_is_loader_tagged_and_content_readonly()
+    {
+        var mods = await Scanner.BuildModListAsync(Ctx(TestSupport.TempDir("ue4ss-ltro-"), owned: true));
+        var on = mods.First(m => m.Name == "On");
+        Assert.Equal("ue4ss", on.Loader);  // Loader set for all UE4SS, owned or not
+        Assert.True(on.ReadOnly);          // ReadOnly still governs content — owned folder invariant intact
+    }
+
+    [Fact]
+    public async Task SetLoaderModEnabled_toggles_an_owned_ue4ss_mod_via_manifest_without_moving_content()
+    {
+        var root = TestSupport.TempDir("ue4ss-flip-");
+        var c = Ctx(root, owned: true);
+        var modsDir = Path.Combine(root, "ue4ss", "Mods");
+        var contentFile = Path.Combine(modsDir, "On", "Scripts", "main.lua");
+        Directory.CreateDirectory(Path.GetDirectoryName(contentFile)!);
+        File.WriteAllText(contentFile, "-- test lua");
+
+        // Explicit per-row manifest flip — allowed on owned folders (manifest only, never content move).
+        await Scanner.SetLoaderModEnabledAsync("On", false, c);
+
+        Assert.False(Ue4ssManifest.IsEnabled(modsDir, "On"));          // manifest flipped
+        Assert.True(Directory.Exists(Path.Combine(modsDir, "On")));    // content folder untouched
+        Assert.True(File.Exists(contentFile));                          // content file untouched
+        Assert.False(Directory.Exists(Path.Combine(c.DisabledRoot, "On"))); // nothing in holding
+    }
+
+    [Fact]
+    public async Task Bulk_SetAllMods_still_skips_owned_ue4ss_mods()
+    {
+        var root = TestSupport.TempDir("ue4ss-bulk-");
+        var c = Ctx(root, owned: true);
+        var modsDir = Path.Combine(root, "ue4ss", "Mods");
+
+        // "On" is enabled in mods.txt; bulk disable should NOT flip it (owned = conservative skip).
+        await Scanner.SetAllModsAsync(false, c);
+
+        Assert.True(Ue4ssManifest.IsEnabled(modsDir, "On")); // owned mod state UNCHANGED by bulk
     }
 
     [Fact]
