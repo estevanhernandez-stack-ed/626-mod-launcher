@@ -135,9 +135,10 @@ public static class Scanner
         foreach (var loc in c.Locations)
         {
             // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
-            // (Stage 2 will pass loaderCanConduct=true when a loader adapter claims an unowned folder.)
+            // A UE4SS folder with a manifest is a loader-driven location: it can Conduct when unowned.
             var owner = ToolOwnership.Detect(loc.Abs);
-            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: false);
+            var isUe4ss = loc.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(loc.Abs);
+            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: isUe4ss);
             var readOnly = posture == Posture.Coexist;
             var managedLabel = owner?.ToString().ToLowerInvariant()
                 ?? (readOnly ? loc.Managed : null);
@@ -147,10 +148,14 @@ public static class Scanner
                 foreach (var f in ListSubfolders(loc.Abs))
                 {
                     if (outMap.ContainsKey(f)) continue;
+                    // Reading the manifest is non-mutating, so we surface true state even in an
+                    // owned folder. Loader-drive (writing) is granted only where Conductor (unowned).
+                    var enabled = isUe4ss ? Ue4ssManifest.IsEnabled(loc.Abs, f) : true;
                     outMap[f] = new Mod
                     {
-                        Name = f, Location = loc.Name, Enabled = true, Files = new List<string> { f },
+                        Name = f, Location = loc.Name, Enabled = enabled, Files = new List<string> { f },
                         OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
+                        Loader = (isUe4ss && posture == Posture.Conductor) ? "ue4ss" : null,
                     };
                 }
             }
