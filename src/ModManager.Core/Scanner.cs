@@ -78,6 +78,29 @@ public static class Scanner
     public static ModLocationCtx LocByName(string? name, GameContext c)
         => c.Locations.FirstOrDefault(l => l.Name == name) ?? c.Locations[0];
 
+    // ---------- config cockpit ----------
+
+    /// <summary>
+    /// Write edited config back to a mod's config file: first copy the current file to a timestamped
+    /// backup under our data dir (NEVER into the mod folder), then atomically replace the file.
+    /// Editing a config VALUE is allowed even in a tool-owned folder (user-data); callers warn the user.
+    /// </summary>
+    public static Task WriteModConfigAsync(string configPath, string content, GameContext c)
+    {
+        if (File.Exists(configPath))
+        {
+            var backupDir = Path.Combine(c.DataDir, "config-backups",
+                Path.GetFileName(Path.GetDirectoryName(configPath)) ?? "mod");
+            Directory.CreateDirectory(backupDir);
+            var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+            File.Copy(configPath, Path.Combine(backupDir, $"{Path.GetFileName(configPath)}.{stamp}.bak"), overwrite: true);
+        }
+        var tmp = configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        File.WriteAllText(tmp, content);
+        File.Move(tmp, configPath, overwrite: true);
+        return Task.CompletedTask;
+    }
+
     // ---------- migration ----------
 
     public static Task<bool> MigrateDataDirAsync(GameContext c) => Task.FromResult(MigrateDataDir(c));
