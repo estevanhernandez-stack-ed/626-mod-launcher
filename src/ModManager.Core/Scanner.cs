@@ -464,30 +464,43 @@ public static class Scanner
             {
                 var dest = LoadOrderApply.WithOrder(f, index);
                 if (dest == f) continue;
-                var from = Path.Combine(loc.Abs, f);
-                var to = Path.Combine(loc.Abs, dest);
-                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
+                // Rename the primary and every server-build mirror identically so SP and MP keep
+                // the same filename — desync here strands mirror copies (the Windrose bug).
+                MoveIfFree(loc.Abs, f, dest);
+                foreach (var mp in loc.Mirrors) MoveIfFree(mp, f, dest);
             }
             index++;
         }
         SaveLoadOrder(c, orderedKeys);
     }
 
-    /// <summary>Strip launcher load-order prefixes from every location, restoring original names.</summary>
+    /// <summary>Strip launcher load-order prefixes from every location (primary + mirrors), restoring original names.</summary>
     private static void ResetLoadOrder(GameContext c)
     {
         foreach (var loc in c.Locations)
         {
-            foreach (var f in ListPakFiles(loc.Abs, c))
-            {
-                var stripped = LoadOrderApply.StripPrefix(f);
-                if (stripped == f) continue;
-                var from = Path.Combine(loc.Abs, f);
-                var to = Path.Combine(loc.Abs, stripped);
-                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
-            }
+            StripPrefixesIn(loc.Abs, c);
+            foreach (var mp in loc.Mirrors) StripPrefixesIn(mp, c);
         }
         try { File.Delete(c.LoadOrderPath); } catch { /* nothing to clear */ }
+    }
+
+    private static void StripPrefixesIn(string dir, GameContext c)
+    {
+        foreach (var f in ListPakFiles(dir, c))
+        {
+            var stripped = LoadOrderApply.StripPrefix(f);
+            if (stripped != f) MoveIfFree(dir, f, stripped);
+        }
+    }
+
+    /// <summary>Rename <paramref name="from"/> to <paramref name="to"/> within <paramref name="dir"/>,
+    /// only when the source exists and the destination is free — idempotent, never clobbers.</summary>
+    private static void MoveIfFree(string dir, string from, string to)
+    {
+        var src = Path.Combine(dir, from);
+        var dst = Path.Combine(dir, to);
+        if (File.Exists(src) && !File.Exists(dst)) File.Move(src, dst);
     }
 
     // ---------- profiles ----------
