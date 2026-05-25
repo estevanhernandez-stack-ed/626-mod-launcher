@@ -86,4 +86,22 @@
                Condition="'@(_MuiFile)' != ''" />
   </Target>
 
+  <!--
+    Strip the Windows AI / ML runtime. The Windows App SDK 2.x bundles ONNX Runtime, DirectML, and
+    the Microsoft.Windows.AI.* surface (~42 MB / 28 files) even for apps that never touch AI — it's
+    lazy-loaded by Windows AI APIs this mod manager never calls. There is no SDK opt-out
+    (microsoft/WindowsAppSDK#5969), so remove it from the publish output. Verified: app still launches.
+  -->
+  <Target Name="TrimWindowsAiRuntime" AfterTargets="Publish">
+    <ItemGroup>
+      <_AiFile Include="$(PublishDir)onnxruntime.dll" />
+      <_AiFile Include="$(PublishDir)DirectML.dll" />
+      <_AiFile Include="$(PublishDir)Microsoft.ML.OnnxRuntime.dll" />
+      <_AiFile Include="$(PublishDir)Microsoft.Windows.AI.*" />
+      <_AiFile Include="$(PublishDir)workloads*.json" />
+    </ItemGroup>
+    <Delete Files="@(_AiFile)" Condition="'@(_AiFile)' != ''" />
+    <Message Importance="high" Text="TrimWindowsAiRuntime: removed the bundled Windows AI/ML runtime from publish" Condition="'@(_AiFile)' != ''" />
+  </Target>
+
 </Project>
