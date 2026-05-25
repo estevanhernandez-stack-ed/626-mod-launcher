@@ -80,4 +80,24 @@ public class GameProfileImportTests
         Assert.Equal("Game/ersc_launcher.exe", entry.RequiredLauncher);
         Assert.Equal("fromsoft", entry.Engine);
     }
+
+    [Fact]
+    public void BuildGameEntry_carries_the_full_agent_profile_fields()
+    {
+        var input = new GameInput
+        {
+            Name = "Custom Game",
+            Engine = "ue-pak",
+            GameRoot = @"C:\game",
+            WindowTitle = "W",
+            FileExtensions = new[] { "pak" },
+            GroupingRule = "by_folder",
+            CurseforgeGameId = 12345,
+        };
+        var entry = EnginePresets.BuildGameEntry(input, existingIds: null);
+        Assert.Equal(12345, entry.CurseforgeGameId);
+        Assert.Equal("W", entry.WindowTitle);
+        Assert.Equal(new[] { "pak" }, entry.FileExtensions);
+        Assert.Equal("by_folder", entry.GroupingRule);
+    }
 }

@@ -79,6 +79,7 @@ public sealed class GameInput
     public string? SaveRoot { get; init; }
     public string? SaveSubPath { get; init; }
     public string? RequiredLauncher { get; init; }
+    public int? CurseforgeGameId { get; init; }
 }
 
 /// <summary>An engine preset: the mod-folder layout / extensions / grouping for an engine.</summary>

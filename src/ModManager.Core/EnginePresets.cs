@@ -76,6 +76,7 @@ public static partial class EnginePresets
         }
         if (!string.IsNullOrEmpty(input.LaunchExe)) entry.LaunchExe = input.LaunchExe;
         if (!string.IsNullOrEmpty(input.RequiredLauncher)) entry.RequiredLauncher = input.RequiredLauncher;
+        if (input.CurseforgeGameId is not null) entry.CurseforgeGameId = input.CurseforgeGameId;
         return entry;
     }
 }

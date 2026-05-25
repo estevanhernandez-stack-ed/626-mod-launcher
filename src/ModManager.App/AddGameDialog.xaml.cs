@@ -16,6 +16,10 @@ public sealed partial class AddGameDialog : ContentDialog
     // Resolved save folder from an "Add with AI" apply, stashed for the register path to persist.
     private string? _resolvedSaveDir;
 
+    // The applied agent profile, stashed so BuildInput can carry fields that have no visible wizard
+    // control (windowTitle / fileExtensions / groupingRule / curseforgeGameId). Null on manual add.
+    private GameProfileDraft? _appliedDraft;
+
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
 
@@ -57,6 +61,7 @@ public sealed partial class AddGameDialog : ContentDialog
             return;
         }
         var d = result.Draft;
+        _appliedDraft = d; // stash so BuildInput can carry fields with no visible control
 
         // Resolve + verify on disk (read-only). No browse attempted here — pass null so Steam detection runs.
         var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
@@ -184,5 +189,12 @@ public sealed partial class AddGameDialog : ContentDialog
         SaveRoot = SaveRootBox.SelectedItem as string,
         SaveSubPath = string.IsNullOrWhiteSpace(SaveSubPathBox.Text) ? null : SaveSubPathBox.Text.Trim(),
         RequiredLauncher = string.IsNullOrWhiteSpace(RequiredLauncherBox.Text) ? null : RequiredLauncherBox.Text.Trim(),
+        // No visible wizard control for these — carry the applied agent profile's values through so
+        // they reach the registry instead of being silently dropped. Null on manual add (no draft),
+        // which leaves the preset defaults to apply in BuildGameEntry.
+        WindowTitle = _appliedDraft?.WindowTitle,
+        FileExtensions = _appliedDraft?.FileExtensions,
+        GroupingRule = _appliedDraft?.GroupingRule,
+        CurseforgeGameId = _appliedDraft?.CurseforgeGameId,
     };
 }
