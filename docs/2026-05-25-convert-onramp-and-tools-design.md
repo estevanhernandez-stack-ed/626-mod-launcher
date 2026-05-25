@@ -101,6 +101,23 @@ Per archive, in order:
   with its variant chip (today's behavior).
 - The selector drives the mutual-exclusion enable/disable through the parent VM.
 
+### B2a. Observed in live testing (2026-05-25) — refinements
+
+Real Windrose mods exposed the model's limits and two adjacent bugs that this pass must address:
+
+- **Variant grouping is filename-token-only.** It groups `LootPickupRange_2x` / `MoreStacks_10x`
+  correctly, but `FasterShips` vs `aaUltraFastShips` (conceptually "speed variants") share no `_Nx`
+  token, so they won't group. **Refinement:** also group by **identified mod identity** (CF/Nexus id)
+  when metadata resolves it — and never let grouping merge genuinely distinct mods.
+- **Fuzzy name-search mislabels.** `aaUltraFastShips` name-matched the CF "Faster Ships" listing, so
+  two distinct mods rendered identically (same title/author/desc) and a **Nexus-installed** mod showed
+  a **CurseForge** source. **Refinement:** prefer exact (fingerprint/md5) over name-search; tag
+  name-search results as **lower-confidence**; keep **source accurate** (a Nexus-identified mod must
+  not read CurseForge); don't overwrite a higher-confidence/correct-source match with a fuzzy one.
+- **Rows need file identity (the "labels" pass).** When metadata gives two mods the same title, the
+  row must still surface the **underlying file/base name** (e.g. a secondary line or the key) so they
+  are distinguishable. This is load-bearing for a convert staring at hundreds of rows.
+
 ### B3. Import interaction
 
 - When an imported archive contains multiple variant files: **install all the files**, then
