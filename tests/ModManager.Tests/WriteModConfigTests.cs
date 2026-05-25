@@ -18,6 +18,34 @@ public class WriteModConfigTests
     }
 
     [Fact]
+    public async Task WriteModConfig_cleans_up_temp_and_throws_when_target_is_locked()
+    {
+        var root = TestSupport.TempDir("wmc-lock-");
+        var modsDir = Path.Combine(root, "game", "mods", "Foo");
+        Directory.CreateDirectory(modsDir);
+        var cfg = Path.Combine(modsDir, "config.txt");
+        File.WriteAllText(cfg, "x = 1");
+        var c = Scanner.GameContext(new GameEntry { Id = "t", GameName = "T", GameRoot = Path.Combine(root, "game") });
+
+        // Make the target read-only so File.Move(overwrite:true) throws UnauthorizedAccessException.
+        File.SetAttributes(cfg, FileAttributes.ReadOnly);
+        try
+        {
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                () => Scanner.WriteModConfigAsync(cfg, "x = 2", c));
+
+            // The temp file must have been cleaned up — no litter in the mod folder.
+            var leftover = Directory.GetFiles(modsDir, "*.tmp");
+            Assert.Empty(leftover);
+        }
+        finally
+        {
+            // Restore so TempDir cleanup can delete the file.
+            File.SetAttributes(cfg, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
     public async Task WriteModConfig_backs_up_original_to_data_dir_then_writes()
     {
         var root = TestSupport.TempDir("wmc-");

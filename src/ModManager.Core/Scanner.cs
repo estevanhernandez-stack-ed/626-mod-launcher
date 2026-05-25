@@ -96,8 +96,16 @@ public static class Scanner
             File.Copy(configPath, Path.Combine(backupDir, $"{Path.GetFileName(configPath)}.{stamp}.bak"), overwrite: true);
         }
         var tmp = configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(tmp, content);
-        File.Move(tmp, configPath, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmp, content);
+            File.Move(tmp, configPath, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort cleanup */ }
+            throw;
+        }
         return Task.CompletedTask;
     }
 

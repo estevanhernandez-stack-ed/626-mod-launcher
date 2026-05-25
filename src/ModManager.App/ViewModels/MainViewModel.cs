@@ -683,10 +683,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     public async Task SaveConfigValueAsync(string configPath, string? section, string key, string value)
     {
-        var content = System.IO.File.ReadAllText(configPath);
-        var updated = ModConfig.SetValue(content, section, key, value);
-        await Scanner.WriteModConfigAsync(configPath, updated, _ctx!);
-        StatusText = $"Saved {key} in {System.IO.Path.GetFileName(configPath)}.";
+        try
+        {
+            var content = System.IO.File.ReadAllText(configPath);
+            var updated = ModConfig.SetValue(content, section, key, value);
+            await Scanner.WriteModConfigAsync(configPath, updated, _ctx!);
+            StatusText = $"Saved {key} in {System.IO.Path.GetFileName(configPath)}.";
+        }
+        catch (Exception e) { StatusText = $"Couldn't save {key}: {e.Message}"; }
     }
 
     private async Task BulkAsync(Func<Task> op)
