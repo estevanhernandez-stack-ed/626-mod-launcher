@@ -1,3 +1,4 @@
+using System.Linq;
 using ModManager.Core;
 
 namespace ModManager.Tests;
@@ -149,6 +150,69 @@ public class IntakeUpdateTests
         Assert.Equal("NEW-INI", File.ReadAllText(Path.Combine(play, "ersc_settings.ini")));
         Assert.Equal(2, result.Updated.Count);
         Assert.True(Directory.GetFiles(backup, "*", SearchOption.AllDirectories).Length >= 2);
+        try { Directory.Delete(root, true); } catch { }
+    }
+
+    [Fact]
+    public void ExecuteIntake_rolls_back_when_replace_copy_fails_leaving_original()
+    {
+        // A collision whose incoming source is a bogus zip entry -> backup moves the old file out,
+        // then the copy throws. The original must be restored (not left missing), counted skipped.
+        var root = Path.Combine(Path.GetTempPath(), "mmb-rb-" + Guid.NewGuid().ToString("N"));
+        var ctx = FlatCtx(root, "dll");
+        var mods = ctx.Locations[0].Abs;
+        File.WriteAllText(Path.Combine(mods, "old.dll"), "ORIGINAL");
+
+        var bogus = new IntakeCollision("old.dll", "old.dll", Path.Combine(mods, "old.dll"),
+            Path.Combine(root, "nope.zip") + "!ghost.dll"); // zip doesn't exist -> CopyPlanned throws
+        var plan = new IntakePlan(Array.Empty<IntakeItem>(), new[] { bogus }, Array.Empty<SkippedItem>());
+
+        var result = Scanner.ExecuteIntake(plan, new HashSet<string> { "old.dll" }, ctx);
+
+        Assert.Equal("ORIGINAL", File.ReadAllText(Path.Combine(mods, "old.dll"))); // restored, not lost
+        Assert.DoesNotContain("old.dll", result.Updated);
+        Assert.Contains(result.Skipped, s => s.Name == "old.dll");
+        try { Directory.Delete(root, true); } catch { }
+    }
+
+    [Fact]
+    public void DirectInject_Execute_rolls_back_when_replace_copy_fails_leaving_original()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-dirb-" + Guid.NewGuid().ToString("N"));
+        var play = Path.Combine(root, "game"); Directory.CreateDirectory(play);
+        var backup = Path.Combine(root, "data", "replaced");
+        File.WriteAllText(Path.Combine(play, "ersc.dll"), "ORIGINAL");
+
+        var bogus = new IntakeCollision("ersc.dll", "ersc.dll", Path.Combine(play, "ersc.dll"),
+            Path.Combine(root, "nope.zip") + "!ghost.dll");
+        var plan = new IntakePlan(Array.Empty<IntakeItem>(), new[] { bogus }, Array.Empty<SkippedItem>());
+
+        var result = DirectInject.Execute(play, backup, plan, new HashSet<string> { "ersc.dll" });
+
+        Assert.Equal("ORIGINAL", File.ReadAllText(Path.Combine(play, "ersc.dll")));
+        Assert.DoesNotContain("ersc.dll", result.Updated);
+        Assert.Contains(result.Skipped, s => s.Name == "ersc.dll");
+        try { Directory.Delete(root, true); } catch { }
+    }
+
+    [Fact]
+    public void DirectInject_Execute_writes_backup_manifest_with_provenance()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-man-" + Guid.NewGuid().ToString("N"));
+        var play = Path.Combine(root, "game"); Directory.CreateDirectory(play);
+        var backup = Path.Combine(root, "data", "replaced");
+        File.WriteAllText(Path.Combine(play, "ersc.dll"), "OLD");
+        var zip = Path.Combine(root, "s.zip");
+        using (var z = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            using (var w = new StreamWriter(z.CreateEntry("ersc.dll").Open())) w.Write("NEW");
+
+        var plan = DirectInject.Plan(play, new[] { zip });
+        DirectInject.Execute(play, backup, plan, plan.Collisions.Select(c => c.RelPath).ToHashSet());
+
+        var manifest = Directory.GetFiles(backup, "__626replaced.json", SearchOption.AllDirectories);
+        Assert.Single(manifest);
+        var json = File.ReadAllText(manifest[0]);
+        Assert.Contains("ersc.dll", json); // relPath/originalPath recorded
         try { Directory.Delete(root, true); } catch { }
     }
 }

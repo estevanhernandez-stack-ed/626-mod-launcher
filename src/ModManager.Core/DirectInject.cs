@@ -252,17 +252,27 @@ public static class DirectInject
             try { CopyIncoming(item.IncomingSource, Path.Combine(playFolder, item.RelPath)); result.Added.Add(item.RelPath); }
             catch (Exception e) { result.Skipped.Add(new SkippedItem(item.Name, e.Message)); }
         }
+        var manifest = new List<ReplacedStore.ReplacedEntry>();
         foreach (var col in plan.Collisions)
         {
             if (!replaceRelPaths.Contains(col.RelPath)) { result.Skipped.Add(new SkippedItem(col.Name, "kept existing")); continue; }
+            string? backupPath = null;
             try
             {
-                ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
+                backupPath = ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
                 CopyIncoming(col.IncomingSource, col.ExistingPath);
+                manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow));
                 result.Updated.Add(col.RelPath);
             }
-            catch (Exception e) { result.Skipped.Add(new SkippedItem(col.Name, e.Message)); }
+            catch (Exception e)
+            {
+                // roll back the partial move so the original is never left missing
+                try { if (backupPath != null && File.Exists(backupPath) && !File.Exists(col.ExistingPath)) File.Move(backupPath, col.ExistingPath); }
+                catch { /* best effort */ }
+                result.Skipped.Add(new SkippedItem(col.Name, e.Message));
+            }
         }
+        if (batch != null && manifest.Count > 0) ReplacedStore.WriteManifest(batch, manifest);
         return result;
     }
 

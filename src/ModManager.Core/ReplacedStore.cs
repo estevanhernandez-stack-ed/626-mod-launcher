@@ -29,4 +29,11 @@ public static class ReplacedStore
         catch (IOException) { File.Copy(existingAbs, dest, overwrite: false); File.Delete(existingAbs); }
         return dest;
     }
+
+    /// <summary>One file preserved in a replaced-versions batch: where it came from + when.</summary>
+    public sealed record ReplacedEntry(string OriginalPath, string RelPath, DateTime TakenUtc);
+
+    /// <summary>Write the batch manifest (provenance for a future revert) atomically.</summary>
+    public static void WriteManifest(string batchDir, IReadOnlyList<ReplacedEntry> entries)
+        => AtomicJson.WriteJsonAtomic(Path.Combine(batchDir, "__626replaced.json"), entries);
 }
