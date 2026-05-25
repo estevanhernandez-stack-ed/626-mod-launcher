@@ -16,4 +16,23 @@ public class IntakeUpdateTests
         result.Updated.Add("ersc.dll");
         Assert.Single(result.Updated);
     }
+
+    [Fact]
+    public void ReplacedStore_moves_old_file_into_timestamped_backup_recoverably()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mmb-rs-" + Guid.NewGuid().ToString("N"));
+        var live = Path.Combine(root, "game");
+        var backup = Path.Combine(root, "data", "replaced");
+        Directory.CreateDirectory(live);
+        var existing = Path.Combine(live, "ersc.dll");
+        File.WriteAllText(existing, "OLD");
+
+        var dir = ReplacedStore.NewBatch(backup);
+        var saved = ReplacedStore.Backup(existing, "ersc.dll", dir);
+
+        Assert.False(File.Exists(existing));
+        Assert.True(File.Exists(saved));
+        Assert.Equal("OLD", File.ReadAllText(saved));
+        try { Directory.Delete(root, true); } catch { }
+    }
 }
