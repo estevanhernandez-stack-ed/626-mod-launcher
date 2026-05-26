@@ -9,7 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
+    <Grid x:Name="RootGrid" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
           RequestedTheme="Dark" Background="{StaticResource ThemeBg}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
