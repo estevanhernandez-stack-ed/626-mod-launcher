@@ -168,39 +168,33 @@ public sealed partial class MainViewModel : ObservableObject
             // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
             var rows = new List<ModRowViewModel>();
-            // Three sections top-to-bottom: pak/game mods; then UE4SS mods installed for THIS game;
-            // then the framework mods that ship bundled with UE4SS. Stable OrderBy keeps variant adjacency.
-            static (int Rank, string Label) ModSection(Mod m) =>
-                m.Loader != "ue4ss" ? (0, "MODS")
-                : m.Builtin ? (2, "BUNDLED WITH UE4SS")
-                : (1, "UE4SS SCRIPTS");
-            foreach (var fam in VariantGroups.Group(list)
-                         .OrderBy(f => f.Members.FirstOrDefault() is { } fm ? ModSection(fm).Rank : 0))
-                foreach (var m in fam.Members)
-                {
-                    // For folder mods, supply the absolute folder path so the cockpit can discover
-                    // config files and Lua registrations without needing the GameContext itself.
-                    var folderAbs = m.IsFolder
-                        ? System.IO.Path.Combine(Scanner.LocByName(m.Location, _ctx!).Abs, m.Name)
-                        : "";
-                    rows.Add(new ModRowViewModel(m, canToggle: !m.ReadOnly || m.Loader == "ue4ss", canUninstall: !directInject && !m.ReadOnly)
-                    {
-                        ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
-                        MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
-                        InVariantGroup = fam.IsMulti,
-                        ModFolderAbs = folderAbs,
-                    });
-                }
-            // Stamp a section divider on the first row of each block (e.g. "UE4SS SCRIPTS" before the
-            // UE4SS group), so the flat list reads as sections without a grouping engine.
-            string? prevSection = null;
-            foreach (var row in rows)
+            // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
+            // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
+            // OrderAndStampSections then orders + sections per GroupMode.
+            foreach (var fam in VariantGroups.Group(list))
             {
-                var label = ModSection(row.Mod).Label;
-                row.SectionHeader = label != prevSection ? label : null;
-                prevSection = label;
+                var rep = fam.Members[0]; // representative carries the row's name/description/metadata
+                var folderAbs = rep.IsFolder
+                    ? System.IO.Path.Combine(Scanner.LocByName(rep.Location, _ctx!).Abs, rep.Name)
+                    : "";
+                var options = fam.IsMulti
+                    ? (IReadOnlyList<VariantOptionVM>)fam.Members
+                        .Select(m => new VariantOptionVM(
+                            m.Name,
+                            string.IsNullOrEmpty(m.Variant) ? m.Name : m.Variant!.ToUpperInvariant(),
+                            m.Enabled,
+                            !m.ReadOnly || m.Loader == "ue4ss"))
+                        .ToList()
+                    : System.Array.Empty<VariantOptionVM>();
+                rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader == "ue4ss", canUninstall: !directInject && !rep.ReadOnly)
+                {
+                    ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
+                    MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
+                    ModFolderAbs = folderAbs,
+                    VariantOptions = options,
+                });
             }
-            Mods = new ObservableCollection<ModRowViewModel>(rows);
+            OrderAndStampSections(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
@@ -222,6 +216,47 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
+
+    // View toggle: group the list by source (paks / UE4SS installed / bundled) or by MP-safety class.
+    public IReadOnlyList<string> GroupModes { get; } = new[] { "By source", "By class" };
+
+    [ObservableProperty] private string groupMode = "By source";
+    partial void OnGroupModeChanged(string value)
+    {
+        if (Mods.Count > 0) OrderAndStampSections(Mods.ToList()); // re-group in place, no rescan
+    }
+
+    // Section key for a mod under the active GroupMode. Rank drives top-to-bottom order; Label is the
+    // divider text. "By class" uses the MP-safety class (both/sp/mp) we track, not a content category.
+    private (int Rank, string Label) SectionOf(Mod m)
+    {
+        if (GroupMode == "By class")
+            return (m.Class ?? "both").ToLowerInvariant() switch
+            {
+                "both" => (0, "WORKS IN MP & SP"),
+                "sp" => (1, "SINGLE-PLAYER"),
+                "mp" => (2, "MULTIPLAYER"),
+                _ => (3, "UNCLASSIFIED"),
+            };
+        return m.Loader != "ue4ss" ? (0, "MODS")
+            : m.Builtin ? (2, "BUNDLED WITH UE4SS")
+            : (1, "UE4SS SCRIPTS");
+    }
+
+    // Order rows by the active grouping (stable OrderBy preserves variant adjacency within a section)
+    // and stamp a divider on the first row of each block. Used by reload and the group-by toggle.
+    private void OrderAndStampSections(IEnumerable<ModRowViewModel> rows)
+    {
+        var ordered = rows.OrderBy(r => SectionOf(r.Mod).Rank).ToList();
+        string? prev = null;
+        foreach (var r in ordered)
+        {
+            var label = SectionOf(r.Mod).Label;
+            r.SectionHeader = label != prev ? label : null;
+            prev = label;
+        }
+        Mods = new ObservableCollection<ModRowViewModel>(ordered);
+    }
 
     /// <summary>Toggle one mod. The reversible disable/enable lives in Scanner; on failure the
     /// switch reverts and the error surfaces (never a silent half-disable).</summary>
@@ -247,6 +282,29 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = e.Message;
         }
         finally { row.IsBusy = false; }
+    }
+
+    /// <summary>Toggle one level of a multi-variant family — enable/disable that specific variant's
+    /// files via the same gated path as the single toggle, then reload to refresh the chips.</summary>
+    public async Task ToggleVariantAsync(VariantOptionVM opt, bool enable)
+    {
+        if (_ctx is null) return;
+        try
+        {
+            if (enable)
+            {
+                // Single-select: only one level of a family runs at a time — turn the siblings off so
+                // two levels never collide. (Turning the chosen one back off later leaves none active.)
+                var list = await Scanner.BuildModListAsync(_ctx);
+                var fam = VariantGroups.Group(list).FirstOrDefault(f => f.Members.Any(m => m.Name == opt.ModName));
+                if (fam is not null)
+                    foreach (var sib in fam.Members.Where(m => m.Name != opt.ModName && m.Enabled))
+                        await Scanner.SetLoaderModEnabledAsync(sib.Name, false, _ctx);
+            }
+            await Scanner.SetLoaderModEnabledAsync(opt.ModName, enable, _ctx);
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
     }
 
     [RelayCommand]

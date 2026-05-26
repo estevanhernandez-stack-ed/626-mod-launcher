@@ -26,6 +26,8 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ManageVisibility))]
     [NotifyPropertyChangedFor(nameof(MonogramVisibility))]
     [NotifyPropertyChangedFor(nameof(ThumbnailVisibility))]
+    [NotifyPropertyChangedFor(nameof(ToggleVisibility))]
+    [NotifyPropertyChangedFor(nameof(VariantOptionsVisibility))]
     private bool inLoadOrder;
 
     // Toggling and uninstall are granted separately. Direct-inject mods can be toggled (reversible
@@ -51,11 +53,16 @@ public sealed partial class ModRowViewModel : ObservableObject
         _canUninstall = canUninstall;
     }
 
-    public string DisplayName => string.IsNullOrEmpty(Mod.DisplayName) ? Mod.Name : Mod.DisplayName;
+    // A multi-variant family row shows the BASE title (e.g. "Faster Ships"); the per-level distinction
+    // lives in the inline option chips, not the title.
+    public string DisplayName => HasVariantOptions && !string.IsNullOrEmpty(Mod.BaseTitle)
+        ? Mod.BaseTitle
+        : (string.IsNullOrEmpty(Mod.DisplayName) ? Mod.Name : Mod.DisplayName);
 
     // When metadata renames the mod, surface the underlying file key so two same-titled mods (e.g.
-    // FasterShips vs aaUltraFastShips, both "Faster Ships") are distinguishable at a glance.
-    public string FileTag => string.Equals(DisplayName, Mod.Name, StringComparison.OrdinalIgnoreCase) ? "" : Mod.Name;
+    // FasterShips vs aaUltraFastShips, both "Faster Ships") are distinguishable at a glance. Hidden on
+    // a variant-family row (the option chips carry the distinction).
+    public string FileTag => HasVariantOptions || string.Equals(DisplayName, Mod.Name, StringComparison.OrdinalIgnoreCase) ? "" : Mod.Name;
     public Visibility FileTagVisibility => string.IsNullOrEmpty(FileTag) ? Visibility.Collapsed : Visibility.Visible;
 
     public string? Description => Mod.Description;
@@ -141,6 +148,13 @@ public sealed partial class ModRowViewModel : ObservableObject
     // Part of a multi-variant family (same mod page / _Nx base) — members sit adjacent + show a chip.
     public bool InVariantGroup { get; init; }
     public Visibility VariantGroupVisibility => InVariantGroup ? Visibility.Visible : Visibility.Collapsed;
+
+    // A multi-variant family is collapsed onto THIS single row; each level is an inline toggle chip.
+    public IReadOnlyList<VariantOptionVM> VariantOptions { get; init; } = System.Array.Empty<VariantOptionVM>();
+    public bool HasVariantOptions => VariantOptions.Count > 0;
+    public Visibility VariantOptionsVisibility => !InLoadOrder && HasVariantOptions ? Visibility.Visible : Visibility.Collapsed;
+    // The single on/off switch is replaced by the option chips on a variant-family row.
+    public Visibility ToggleVisibility => !InLoadOrder && !HasVariantOptions ? Visibility.Visible : Visibility.Collapsed;
 
     // Section divider rendered ABOVE this row — set by the parent on the first row of each list
     // section (e.g. "UE4SS SCRIPTS"), null otherwise. Lets the flat list show sections without grouping.
