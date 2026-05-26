@@ -24,6 +24,27 @@ public static class GameProfileImport
 
     private static readonly JsonSerializerOptions Opts = new() { PropertyNameCaseInsensitive = true };
 
+    /// <summary>Parses + validates a JSON array of profiles. One result per element (good or bad);
+    /// a single bad row doesn't poison the rest. Returns a single error result when the root is not
+    /// a valid JSON array.</summary>
+    public static IReadOnlyList<ProfileImportResult> LoadMany(string json)
+    {
+        List<string> elements;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return new[] { new ProfileImportResult(null, new[] { "Expected a JSON array of profiles." }) };
+            // Clone each element to its own owned JSON string before the doc is disposed.
+            elements = doc.RootElement.EnumerateArray().Select(e => e.GetRawText()).ToList();
+        }
+        catch (JsonException e)
+        {
+            return new[] { new ProfileImportResult(null, new[] { "Not valid JSON: " + e.Message }) };
+        }
+        return elements.Select(Load).ToList();
+    }
+
     public static ProfileImportResult Load(string json)
     {
         GameProfileDraft? d;
