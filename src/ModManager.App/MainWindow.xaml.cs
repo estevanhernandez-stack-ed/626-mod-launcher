@@ -12,6 +12,8 @@ public sealed partial class MainWindow : Window
     public MainViewModel ViewModel { get; }
 
     private bool _loaded;
+    // Session-level opt-out for the "managed by another tool" toggle warning (set from the dialog).
+    private bool _suppressOwnedToggleWarning;
 
     public MainWindow()
     {
@@ -44,8 +46,49 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not ToggleSwitch sw || sw.DataContext is not ModRowViewModel row) return;
         if (sw.IsOn == row.Mod.Enabled) return;
+
+        // Owned UE4SS mods: the toggle flips the loader manifest, but the managing tool (Vortex/MO2)
+        // may overwrite that on its next deploy. Warn before applying; cancel reverts the switch.
+        if (row.Mod.ReadOnly && row.Mod.Loader == "ue4ss" && !_suppressOwnedToggleWarning)
+        {
+            if (!await ConfirmOwnedToggleAsync(row, turningOn: sw.IsOn))
+            {
+                sw.IsOn = row.Mod.Enabled; // revert visual; nothing applied (re-entry is a no-op via the guard above)
+                return;
+            }
+        }
+
         row.Enabled = sw.IsOn;
         await ViewModel.ToggleAsync(row);
+    }
+
+    /// <summary>Confirm flipping a mod whose folder another tool owns. Returns false on cancel.
+    /// A "don't warn again" check sets a session-level opt-out.</summary>
+    private async Task<bool> ConfirmOwnedToggleAsync(ModRowViewModel row, bool turningOn)
+    {
+        var owner = string.IsNullOrEmpty(row.Mod.Managed) ? "ANOTHER TOOL" : row.Mod.Managed!.ToUpperInvariant();
+        var dontAsk = new CheckBox { Content = "Don't warn me again this session", Margin = new Thickness(0, 12, 0, 0) };
+        var body = new StackPanel { Spacing = 8 };
+        body.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Text = $"\"{row.DisplayName}\" is managed by {owner}. Turning it {(turningOn ? "on" : "off")} here " +
+                   $"changes the UE4SS manifest, but {owner} may overwrite that on its next deploy. " +
+                   "Mods enabled via an enabled.txt file are the most likely to be restored.",
+        });
+        body.Children.Add(dontAsk);
+        var dialog = new ContentDialog
+        {
+            Title = $"Managed by {owner}",
+            Content = body,
+            PrimaryButtonText = turningOn ? "Turn on anyway" : "Turn off anyway",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        var ok = await dialog.ShowAsync() == ContentDialogResult.Primary;
+        if (ok && dontAsk.IsChecked == true) _suppressOwnedToggleWarning = true;
+        return ok;
     }
 
     private async void OnAddMods(object sender, RoutedEventArgs e)
