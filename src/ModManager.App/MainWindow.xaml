@@ -69,12 +69,8 @@
                                     <FontIcon Glyph="&#xE8F1;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Generate a theme with AI…" Click="OnNewTheme"
-                                            ToolTipService.ToolTip="Use AI to generate a custom color theme — installs instantly.">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE790;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
+                            <!-- 'Generate a theme with AI' moved into the THEME dropdown ("+ New theme…")
+                                 so theme-related actions live in one place. -->
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
                                 <MenuFlyoutItem.Icon>
@@ -233,13 +229,18 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- THEME: picker only. Honest label - rename to SETTINGS once a second control lands. -->
+                <!-- THEME: picker + generator in one dropdown. Selecting a theme applies it; the
+                     "+ New theme…" item at the bottom of the flyout opens the AI theme generator. -->
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="THEME" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
-                    <ComboBox MinWidth="120" ToolTipService.ToolTip="Theme"
-                              ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
-                              SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
-                              DisplayMemberPath="Name" />
+                    <DropDownButton MinWidth="140" ToolTipService.ToolTip="Pick a theme or generate a new one">
+                        <DropDownButton.Content>
+                            <TextBlock Text="{x:Bind ViewModel.SelectedThemeName, Mode=OneWay}" />
+                        </DropDownButton.Content>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Opening="OnThemeMenuOpening" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
