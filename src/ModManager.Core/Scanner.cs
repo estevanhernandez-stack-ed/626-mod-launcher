@@ -1223,6 +1223,29 @@ public static class Scanner
         return new IdentifyResult(matched);
     }
 
+    /// <summary>Resolve a CurseForge mod-page slug to a ModMeta. Uses the existing Search endpoint
+    /// with the slug as the query; since CfMod carries no Slug field, takes the top result (CF search
+    /// with the slug literal as the query is the best available resolution). Returns null on no-match / error.</summary>
+    public static async Task<ModMeta?> LookupCurseForgeSlugAsync(ICurseForgeClient client, int gameId, string modSlug)
+    {
+        try
+        {
+            var hits = await client.SearchAsync(gameId, modSlug);
+            var best = hits?.FirstOrDefault();
+            return best is null ? null : CurseForgeRequests.MapMod(best);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Write a single entry into the per-game metadata.json, leaving everything else
+    /// untouched. Used by the manual-match flow. (LoadMetadata + SaveMetadata are already atomic.)</summary>
+    public static void WriteOneMeta(GameContext c, string modKey, ModMeta meta)
+    {
+        var existing = LoadMetadata(c);
+        var next = new Dictionary<string, ModMeta>(existing, StringComparer.OrdinalIgnoreCase) { [modKey] = meta };
+        SaveMetadata(c, next);
+    }
+
     // The distinct mod keys an archive contributes (its mod-classified entries -> base keys).
     private static IReadOnlyList<string> ZipModKeys(string zipPath, GameContext c)
     {
