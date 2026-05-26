@@ -74,6 +74,17 @@ public class LuaScanTests
         Assert.Equal(lua, LuaScan.RemapKeyBind(lua, "Z", System.Array.Empty<string>(), "F6"));
     }
 
+    [Theory]
+    [InlineData("F3); evil()--")]
+    [InlineData("F3, X")]
+    [InlineData(" F3 ")]
+    [InlineData("")]
+    public void RemapKeyBind_rejects_non_identifier_toKey_value(string toKey)
+    {
+        var lua = "RegisterKeyBind(Key.F3, X)";
+        Assert.Equal(lua, LuaScan.RemapKeyBind(lua, "F3", System.Array.Empty<string>(), toKey));
+    }
+
     [Fact]
     public void ScanFolder_records_each_keybind_source_file()
     {

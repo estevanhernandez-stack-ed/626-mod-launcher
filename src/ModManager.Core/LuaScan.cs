@@ -57,8 +57,13 @@ public static class LuaScan
     /// <summary>Rewrite the key of the first RegisterKeyBind matching (fromKey, fromMods). Only the
     /// Key.X token is changed; everything else (callback, modifiers, surrounding code) is untouched.
     /// Returns the input unchanged if no confident match. Caller backs up the file before writing.</summary>
+    private static readonly Regex KeyIdentRe = new(@"^[A-Za-z0-9_]+$", RegexOptions.Compiled);
+
     public static string RemapKeyBind(string lua, string fromKey, IReadOnlyList<string> fromMods, string toKey)
     {
+        // toKey is slot-injected as raw Lua — refuse anything that isn't a plain identifier so a
+        // fat-fingered or pasted value (e.g. "F3); evil()") can't corrupt the script.
+        if (string.IsNullOrEmpty(toKey) || !KeyIdentRe.IsMatch(toKey)) return lua;
         var want = fromMods.Select(m => m.ToUpperInvariant()).OrderBy(x => x).ToList();
         foreach (Match m in KeyBindRe.Matches(lua))
         {
