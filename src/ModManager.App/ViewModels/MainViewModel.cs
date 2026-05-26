@@ -767,6 +767,22 @@ public sealed partial class MainViewModel : ObservableObject
         return (configs, binds, cmds);
     }
 
+    /// <summary>Remap a Lua-hardcoded keybind: back up the source .lua, rewrite the one key token,
+    /// write atomically. No-op (with a status note) if the rewrite finds no confident match.</summary>
+    public async Task RemapKeyBindAsync(LuaKeyBind bind, string newKey)
+    {
+        if (_ctx is null || string.IsNullOrEmpty(bind.SourceFile) || string.IsNullOrWhiteSpace(newKey)) return;
+        try
+        {
+            var lua = System.IO.File.ReadAllText(bind.SourceFile);
+            var updated = LuaScan.RemapKeyBind(lua, bind.Key, bind.Modifiers, newKey.Trim());
+            if (updated == lua) { StatusText = $"Couldn't find {bind.Key} to remap (left unchanged)."; return; }
+            await Scanner.WriteModConfigAsync(bind.SourceFile, updated, _ctx); // reuse: backup-to-data-dir + atomic
+            StatusText = $"Remapped {bind.Key} -> {newKey.Trim().ToUpperInvariant()}. Restart the mod/UE4SS to apply.";
+        }
+        catch (Exception e) { StatusText = $"Couldn't remap {bind.Key}: {e.Message}"; }
+    }
+
     public async Task SaveConfigValueAsync(string configPath, string? section, string key, string value)
     {
         try

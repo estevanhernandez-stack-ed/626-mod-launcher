@@ -2,8 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace ModManager.Core;
 
-/// <summary>A keybind a UE4SS Lua mod registers statically (Key.NAME + optional ModifierKey.X list).</summary>
-public sealed record LuaKeyBind(string Key, IReadOnlyList<string> Modifiers);
+/// <summary>A keybind a UE4SS Lua mod registers statically (Key.NAME + optional ModifierKey.X list).
+/// SourceFile is set by ScanFolder (the .lua that contained the call); null when parsed from raw text.</summary>
+public sealed record LuaKeyBind(string Key, IReadOnlyList<string> Modifiers, string? SourceFile = null);
 /// <summary>A console command a UE4SS Lua mod registers.</summary>
 public sealed record LuaConsoleCommand(string Name);
 
@@ -47,9 +48,35 @@ public static class LuaScan
         {
             string t;
             try { t = File.ReadAllText(f); } catch { continue; }
-            binds.AddRange(Keybinds(t));
+            binds.AddRange(Keybinds(t).Select(b => b with { SourceFile = f }));
             cmds.AddRange(Commands(t));
         }
         return (binds, cmds);
+    }
+
+    /// <summary>Rewrite the key of the first RegisterKeyBind matching (fromKey, fromMods). Only the
+    /// Key.X token is changed; everything else (callback, modifiers, surrounding code) is untouched.
+    /// Returns the input unchanged if no confident match. Caller backs up the file before writing.</summary>
+    private static readonly Regex KeyIdentRe = new(@"^[A-Za-z0-9_]+$", RegexOptions.Compiled);
+
+    public static string RemapKeyBind(string lua, string fromKey, IReadOnlyList<string> fromMods, string toKey)
+    {
+        // toKey is slot-injected as raw Lua — refuse anything that isn't a plain identifier so a
+        // fat-fingered or pasted value (e.g. "F3); evil()") can't corrupt the script.
+        if (string.IsNullOrEmpty(toKey) || !KeyIdentRe.IsMatch(toKey)) return lua;
+        var want = fromMods.Select(m => m.ToUpperInvariant()).OrderBy(x => x).ToList();
+        foreach (Match m in KeyBindRe.Matches(lua))
+        {
+            if (!string.Equals(m.Groups[1].Value, fromKey, StringComparison.OrdinalIgnoreCase)) continue;
+            var mods = new List<string>();
+            if (m.Groups[2].Success)
+                foreach (Match mm in ModRe.Matches(m.Groups[2].Value)) mods.Add(mm.Groups[1].Value.ToUpperInvariant());
+            if (!want.SequenceEqual(mods.OrderBy(x => x))) continue;
+            // Replace the "Key.{from}" inside this match only.
+            var keyTokenStart = m.Index + m.Value.IndexOf("Key." + m.Groups[1].Value, StringComparison.Ordinal);
+            var keyToken = "Key." + m.Groups[1].Value;
+            return lua[..keyTokenStart] + "Key." + toKey + lua[(keyTokenStart + keyToken.Length)..];
+        }
+        return lua;
     }
 }
