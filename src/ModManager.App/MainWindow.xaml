@@ -48,8 +48,8 @@
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Profile…" Click="OnProfile"
-                                            ToolTipService.ToolTip="Set your avatar — use it as the launcher icon and derive a theme from its colors.">
+                            <MenuFlyoutItem Text="Settings…" Click="OnSettings"
+                                            ToolTipService.ToolTip="App settings — avatar / derived theme / window transparency / Nexus account.">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE77B;" />
                                 </MenuFlyoutItem.Icon>
@@ -251,11 +251,11 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- Nexus connection status + jump-link. Clicking opens the Profile dialog (which
-                     owns the connect/disconnect UI as its Nexus section). The dot is the affordance:
+                <!-- Nexus connection status + jump-link. Clicking opens Settings (which owns the
+                     connect/disconnect UI as its Nexus section). The dot is the affordance:
                      accent-green when connected, danger-red when not. -->
-                <Button Click="OnProfile" VerticalAlignment="Bottom"
-                        ToolTipService.ToolTip="Nexus Mods connection — click to manage in your Profile">
+                <Button Click="OnSettings" VerticalAlignment="Bottom"
+                        ToolTipService.ToolTip="Nexus Mods connection — click to manage in Settings">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
                         <TextBlock Text="Nexus" />

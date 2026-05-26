@@ -35,6 +35,7 @@ public partial class App : Application
                 services.AddSingleton<GameProfileResolver>();
                 services.AddSingleton<NexusService>();
                 services.AddSingleton<AvatarService>();
+                services.AddSingleton<AppSettingsService>();
                 services.AddTransient<MainViewModel>();
             })
             .Build();

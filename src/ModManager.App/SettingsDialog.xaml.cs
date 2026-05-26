@@ -12,32 +12,35 @@ using Windows.UI;
 namespace ModManager.App;
 
 /// <summary>
-/// The user-identity hub. Three concerns in one place: avatar (the launcher's icon), a theme
-/// derived from that image, and the Nexus Mods connection. The Apply button commits the avatar
-/// + derived theme changes (gated by the checkboxes); the Nexus Connect/Disconnect buttons are
-/// inline (they take effect immediately so the toolbar dot updates the moment you act here).
+/// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
+/// account in one place. The Apply button commits the avatar + derived theme changes (gated by
+/// the checkboxes); the transparency dropdown applies immediately; the Nexus Connect/Disconnect
+/// buttons are also inline so the toolbar dot updates the moment you act here.
 /// </summary>
-public sealed partial class ProfileDialog : ContentDialog
+public sealed partial class SettingsDialog : ContentDialog
 {
     private readonly IntPtr _hwnd;
     private readonly AvatarService _avatars;
     private readonly ThemeService _themes;
+    private readonly AppSettingsService _appSettings;
     private readonly MainViewModel _vm;
+    private bool _suppressBackdropChange = true; // ignore the initial SelectionChanged from seeding
 
     private string? _pickedSourcePath;
     private IReadOnlyList<PaletteColor> _palette = Array.Empty<PaletteColor>();
 
     /// <summary>True when the user applied a change that needs to flow back to the main shell
-    /// (avatar swap → icon refresh, theme add → dropdown refresh). Nexus changes flow through
-    /// the VM's existing notifications and don't need this flag.</summary>
+    /// (avatar swap → icon refresh, theme add → dropdown refresh). Nexus + backdrop changes flow
+    /// through their own notification paths and don't need this flag.</summary>
     public bool Changed { get; private set; }
 
-    public ProfileDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, MainViewModel vm)
+    public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
         _hwnd = hwnd;
         _avatars = avatars;
         _themes = themes;
+        _appSettings = appSettings;
         _vm = vm;
 
         DeriveThemeCheck.Checked   += (_, _) => ThemeNameBox.Visibility = Visibility.Visible;
@@ -51,9 +54,33 @@ public sealed partial class ProfileDialog : ContentDialog
             RemoveButton.Visibility = Visibility.Visible;
         }
 
+        // Seed the backdrop dropdown to the currently-saved value. The flag suppresses the initial
+        // SelectionChanged firing as a "user action" — we only apply on actual user changes.
+        BackdropBox.SelectedIndex = _appSettings.Backdrop switch
+        {
+            WindowBackdropKind.Mica    => 1,
+            WindowBackdropKind.Acrylic => 2,
+            _                          => 0,
+        };
+        _suppressBackdropChange = false;
+
         // Seed the Nexus section. Re-validate the stored key first (offline-safe) so the account
         // name + premium tag are current before we render the banner.
         _ = InitializeNexusSectionAsync();
+    }
+
+    private void OnBackdropChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressBackdropChange) return;
+        if (BackdropBox.SelectedItem is not ComboBoxItem item || item.Tag is not string tag) return;
+        var kind = tag switch
+        {
+            "mica"    => WindowBackdropKind.Mica,
+            "acrylic" => WindowBackdropKind.Acrylic,
+            _         => WindowBackdropKind.Solid,
+        };
+        _appSettings.SetBackdrop(kind);
+        // The MainWindow listens to AppSettingsService.BackdropChanged and re-applies the backdrop.
     }
 
     private async Task InitializeNexusSectionAsync()
