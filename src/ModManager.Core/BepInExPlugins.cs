@@ -45,7 +45,11 @@ public static class BepInExPlugins
         }
         else
         {
-            if (File.Exists(dll)) File.Move(dll, off, overwrite: true);
+            if (File.Exists(dll))
+            {
+                if (File.Exists(off)) throw new IOException($"\"{name}\" already has a disabled copy — resolve it first.");
+                File.Move(dll, off);
+            }
         }
     }
 }

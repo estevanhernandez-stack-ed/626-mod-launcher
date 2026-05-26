@@ -60,4 +60,21 @@ public class BepInExScanTests
         Assert.True(on.ReadOnly);                 // Vortex/MO2 owns it -> coexist
         Assert.True(on.Enabled);                  // true state still read (non-mutating)
     }
+
+    [Fact]
+    public async Task ApplyLoadOrder_does_not_prefix_bepinex_plugins()
+    {
+        // BepInEx plugins are loader-driven (Loader == "bepinex") and must not get pak load-order
+        // prefixes applied — the prefix breaks SetEnabled's key-based rename.
+        var root = TestSupport.TempDir("beplo-");
+        var c = Ctx(root, owned: false);
+        var plugins = Path.Combine(root, "BepInEx", "plugins");
+
+        await Scanner.ApplyLoadOrderAsync(c, new[] { "On" });
+
+        // The file must still be named On.dll, NOT 0010__On.dll or any prefixed variant.
+        Assert.True(File.Exists(Path.Combine(plugins, "On.dll")), "On.dll should be untouched by load-order prefix");
+        Assert.False(Directory.GetFiles(plugins).Any(f => Path.GetFileName(f).Contains("__On")),
+            "No prefixed variant of On.dll should exist");
+    }
 }

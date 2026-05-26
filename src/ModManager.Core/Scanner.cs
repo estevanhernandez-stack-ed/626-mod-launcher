@@ -614,7 +614,7 @@ public static class Scanner
     /// </summary>
     private static void ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
     {
-        var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
+        var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly && m.Loader is null).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
         var index = 0;
         foreach (var key in orderedKeys)
         {

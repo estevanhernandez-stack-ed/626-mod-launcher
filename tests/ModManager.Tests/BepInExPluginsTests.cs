@@ -83,4 +83,19 @@ public class BepInExPluginsTests
         BepInExPlugins.SetEnabled(d, "A", true); // already enabled — no throw, no change
         Assert.True(File.Exists(Path.Combine(d, "A.dll")));
     }
+
+    [Fact]
+    public void SetEnabled_false_does_not_clobber_an_existing_disabled_copy()
+    {
+        // Both A.dll (the "new" live file) and A.dll.disabled (the "old" prior disabled copy) exist.
+        // SetEnabled(false) must refuse rather than silently destroy the older disabled copy.
+        var d = Dir();
+        File.WriteAllText(Path.Combine(d, "A.dll"), "NEW");
+        File.WriteAllText(Path.Combine(d, "A.dll.disabled"), "OLD");
+
+        var ex = Assert.Throws<IOException>(() => BepInExPlugins.SetEnabled(d, "A", false));
+        Assert.Contains("already has a disabled copy", ex.Message);
+        // The original disabled copy must be untouched — no data loss.
+        Assert.Equal("OLD", File.ReadAllText(Path.Combine(d, "A.dll.disabled")));
+    }
 }
