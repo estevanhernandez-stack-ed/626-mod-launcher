@@ -142,6 +142,10 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool InVariantGroup { get; init; }
     public Visibility VariantGroupVisibility => InVariantGroup ? Visibility.Visible : Visibility.Collapsed;
 
+    // Ships with UE4SS (framework mod) — shown with a quiet built-in badge, described from the catalog.
+    public bool IsBuiltin => Mod.Builtin;
+    public Visibility BuiltinVisibility => Mod.Builtin ? Visibility.Visible : Visibility.Collapsed;
+
     // Another tool (e.g. Vortex) manages this mod's folder — we surface it read-only with a badge
     // so the picture is complete, but the toggle is disabled and there's no uninstall (honor the law).
     public bool IsManaged => !string.IsNullOrEmpty(Mod.Managed);
