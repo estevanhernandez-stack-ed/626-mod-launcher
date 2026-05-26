@@ -114,11 +114,11 @@
                 </Grid.RowDefinitions>
                 <!-- Row 0: group labels -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,2">
-                    <TextBlock Text="LIST"     Width="68"  Opacity="0.45" FontSize="10" CharacterSpacing="80" />
-                    <TextBlock Text="TOGGLE"   Width="160" Opacity="0.45" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
-                    <TextBlock Text="LOADOUT"  Width="148" Opacity="0.45" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
-                    <TextBlock Text="MODS"     Width="100" Opacity="0.45" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
-                    <TextBlock Text="LIBRARY"  Opacity="0.45" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
+                    <TextBlock Text="LIST"     Width="68"  Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
+                    <TextBlock Text="TOGGLE"   Width="160" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
+                    <TextBlock Text="LOADOUT"  Width="148" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
+                    <TextBlock Text="MODS"     Width="100" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
+                    <TextBlock Text="LIBRARY"  Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
                 </StackPanel>
                 <!-- Row 1: controls (relabeled) -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
@@ -156,8 +156,8 @@
                 </Grid.RowDefinitions>
                 <!-- Row 0: group labels -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,2" HorizontalAlignment="Right">
-                    <TextBlock Text="VIEW"    Width="248" Opacity="0.45" FontSize="10" CharacterSpacing="80" TextAlignment="Right" />
-                    <TextBlock Text="ACCOUNT" Width="80"  Opacity="0.45" FontSize="10" CharacterSpacing="80" TextAlignment="Right" Margin="6,0,0,0" />
+                    <TextBlock Text="VIEW"    Width="248" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" TextAlignment="Right" />
+                    <TextBlock Text="ACCOUNT" Width="80"  Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" TextAlignment="Right" Margin="6,0,0,0" />
                 </StackPanel>
                 <!-- Row 1: informational widgets + view/account controls -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
