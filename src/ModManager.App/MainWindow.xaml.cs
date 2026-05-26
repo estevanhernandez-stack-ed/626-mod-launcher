@@ -51,6 +51,13 @@ public sealed partial class MainWindow : Window
             Services.WindowBackdropKind.Acrylic => new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop(),
             _                                   => null, // Solid — the Grid's ThemeBg fills the window
         };
+        // A backdrop only shows where the root visual is transparent. Solid keeps ThemeBg painting
+        // the central area; Mica/Acrylic clear it so the system backdrop tint reads through. The
+        // title bar / command bar / footer keep their own opaque backgrounds either way - only the
+        // central list area becomes translucent, matching how Win11 apps with Mica typically look.
+        RootGrid.Background = kind == Services.WindowBackdropKind.Solid
+            ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeBg"]
+            : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
     }
 
     private async void OnFirstActivated(object sender, WindowActivatedEventArgs args)
