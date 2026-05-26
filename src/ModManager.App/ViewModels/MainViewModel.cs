@@ -168,7 +168,10 @@ public sealed partial class MainViewModel : ObservableObject
             // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
             var rows = new List<ModRowViewModel>();
-            foreach (var fam in VariantGroups.Group(list))
+            // UE4SS (loader-managed) mods get their own section at the BOTTOM of the list; everything
+            // else stays on top. OrderBy is stable, so variant-family adjacency is preserved within each.
+            foreach (var fam in VariantGroups.Group(list)
+                         .OrderBy(f => f.Members.FirstOrDefault()?.Loader == "ue4ss" ? 1 : 0))
                 foreach (var m in fam.Members)
                 {
                     // For folder mods, supply the absolute folder path so the cockpit can discover
@@ -184,6 +187,15 @@ public sealed partial class MainViewModel : ObservableObject
                         ModFolderAbs = folderAbs,
                     });
                 }
+            // Stamp a section divider on the first row of each block (e.g. "UE4SS SCRIPTS" before the
+            // UE4SS group), so the flat list reads as sections without a grouping engine.
+            string? prevSection = null;
+            foreach (var row in rows)
+            {
+                var section = row.Mod.Loader == "ue4ss" ? "UE4SS SCRIPTS" : "MODS";
+                row.SectionHeader = section != prevSection ? section : null;
+                prevSection = section;
+            }
             Mods = new ObservableCollection<ModRowViewModel>(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
