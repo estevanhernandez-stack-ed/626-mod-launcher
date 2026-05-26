@@ -47,6 +47,18 @@ public sealed partial class MainWindow : Window
     private async void OnModToggled(object sender, RoutedEventArgs e)
     {
         if (sender is not ToggleSwitch sw || sw.DataContext is not ModRowViewModel row) return;
+
+        // Variant-family row: the switch toggles the FAMILY on/off. ON restores the last-active
+        // variant (remembered by MainViewModel across rescans); OFF disables every variant after
+        // recording which was on. Single-select variant CHIPS still pick which variant is active.
+        if (row.HasVariantOptions)
+        {
+            var familyOn = row.VariantOptions.Any(v => v.Enabled);
+            if (sw.IsOn == familyOn) return; // re-entry / programmatic set - no-op
+            await ViewModel.ToggleFamilyAsync(row, sw.IsOn);
+            return;
+        }
+
         if (sw.IsOn == row.Mod.Enabled) return;
 
         // Owned loader-driven mods (UE4SS manifest flip / BepInEx .dll rename): the managing tool
@@ -503,21 +515,30 @@ public sealed partial class MainWindow : Window
             await ViewModel.RemoveActiveGameAsync();
     }
 
-    // Gated uninstall: the destructive op is always behind an explicit confirm.
+    // Gated uninstall: the destructive op is always behind an explicit confirm. Family rows
+    // uninstall every variant in the family - the confirm names the count so the blast radius
+    // is in front of the user before they click Uninstall.
     private async void OnUninstall(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        var (title, content) = row.HasVariantOptions
+            ? ("Uninstall family?",
+               $"Permanently delete \"{row.DisplayName}\" and all {row.VariantOptions.Count} variants? " +
+               "This removes every variant's files and can't be undone.")
+            : ("Uninstall mod?",
+               $"Permanently delete \"{row.DisplayName}\"? This removes the mod's files and can't be undone.");
         var dialog = new ContentDialog
         {
-            Title = "Uninstall mod?",
-            Content = $"Permanently delete \"{row.DisplayName}\"? This removes the mod's files and can't be undone.",
+            Title = title,
+            Content = content,
             PrimaryButtonText = "Uninstall",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            await ViewModel.UninstallAsync(row);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (row.HasVariantOptions) await ViewModel.UninstallFamilyAsync(row);
+        else                       await ViewModel.UninstallAsync(row);
     }
 
     // Readme viewer: captured-at-intake readme -> CurseForge description -> empty state. Rendered

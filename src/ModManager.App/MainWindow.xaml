@@ -399,7 +399,7 @@
                             </Button>
                         </StackPanel>
 
-                        <ToggleSwitch Grid.Column="4" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
+                        <ToggleSwitch Grid.Column="4" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
                                       IsEnabled="{x:Bind CanToggle}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
                                       Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />

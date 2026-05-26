@@ -28,6 +28,12 @@ public sealed partial class MainViewModel : ObservableObject
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
+    // Per-family last-active variant memory. Keyed by Mod.BaseTitle (the variant family's shared
+    // name). Survives mod-list rebuilds so an off-then-on flip of the family switch restores the
+    // variant the user had selected, not the first one. In-memory only - rebuilds reset to "first
+    // variant" if the app restarts; persistence is a separate concern.
+    private readonly Dictionary<string, string> _familyLastActive = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Shows the collision prompt and returns the rel-paths to replace, or null if cancelled. The
     /// view wires this (the dialog + XamlRoot live in the code-behind, not the VM). When unset,
@@ -366,6 +372,60 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>Toggle a variant family on or off. ON re-enables the LAST-active variant (remembered
+    /// across rescans via <see cref="_familyLastActive"/>) or the first if none recorded. OFF disables
+    /// every currently-enabled variant after recording which one was active. The variant CHIPS pick
+    /// which variant is active when the family is on; this switch picks whether the family is on.</summary>
+    public async Task ToggleFamilyAsync(ModRowViewModel row, bool on)
+    {
+        if (_ctx is null || !row.HasVariantOptions) return;
+        var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
+        try
+        {
+            if (on)
+            {
+                if (row.VariantOptions.Any(v => v.Enabled)) return; // already on - no-op
+                var target = _familyLastActive.TryGetValue(familyKey, out var remembered) ? remembered : null;
+                target ??= row.VariantOptions.FirstOrDefault()?.ModName;
+                if (target is null) return;
+                await Scanner.SetLoaderModEnabledAsync(target, true, _ctx);
+            }
+            else
+            {
+                // Remember the active variant first so an off-then-on flip restores the user's choice.
+                var active = row.VariantOptions.FirstOrDefault(v => v.Enabled);
+                if (active is not null) _familyLastActive[familyKey] = active.ModName;
+                foreach (var v in row.VariantOptions.Where(v => v.Enabled).ToList())
+                    await Scanner.SetLoaderModEnabledAsync(v.ModName, false, _ctx);
+            }
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>Permanently uninstall every variant in a family. Gated by a confirm dialog in the
+    /// view that names the count. Also clears the family's last-active memory so a future variant
+    /// add doesn't auto-enable into a stale slot.</summary>
+    public async Task UninstallFamilyAsync(ModRowViewModel row)
+    {
+        if (_ctx is null || !row.HasVariantOptions) return;
+        IsBusy = true;
+        try
+        {
+            var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
+            foreach (var opt in row.VariantOptions.ToList())
+            {
+                if (ConfigBacked) _me2.Remove(_ctx.Game, opt.ModName);
+                else await Scanner.UninstallModAsync(opt.ModName, _ctx);
+            }
+            _familyLastActive.Remove(familyKey);
+            StatusText = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
     }
 
     [RelayCommand]

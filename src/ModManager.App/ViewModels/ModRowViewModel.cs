@@ -35,9 +35,9 @@ public sealed partial class ModRowViewModel : ObservableObject
     private readonly bool _canToggle;
     private readonly bool _canUninstall;
     public bool CanToggle => _canToggle;
-    // Hidden on a collapsed variant-family row — its uninstall would target only the representative
-    // variant, not the whole family. (Per-chip uninstall is a separate follow-on if ever wanted.)
-    public Visibility ManageVisibility => !InLoadOrder && _canUninstall && !HasVariantOptions ? Visibility.Visible : Visibility.Collapsed;
+    // Family rows get a family-scope uninstall (deletes every variant, gated by a confirm naming the
+    // count). The single-mod uninstall handler branches on HasVariantOptions in MainWindow.xaml.cs.
+    public Visibility ManageVisibility => !InLoadOrder && _canUninstall ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OrderValue))]
@@ -156,8 +156,14 @@ public sealed partial class ModRowViewModel : ObservableObject
     public IReadOnlyList<VariantOptionVM> VariantOptions { get; init; } = System.Array.Empty<VariantOptionVM>();
     public bool HasVariantOptions => VariantOptions.Count > 0;
     public Visibility VariantOptionsVisibility => !InLoadOrder && HasVariantOptions ? Visibility.Visible : Visibility.Collapsed;
-    // The single on/off switch is replaced by the option chips on a variant-family row.
-    public Visibility ToggleVisibility => !InLoadOrder && !HasVariantOptions ? Visibility.Visible : Visibility.Collapsed;
+    // The family row keeps its on/off switch — flipping OFF disables every variant (the parent VM
+    // remembers the active one); flipping ON restores the last-active variant. The variant CHIPS
+    // pick WHICH one is active when the family is on; the SWITCH picks whether the family is on at all.
+    public Visibility ToggleVisibility => !InLoadOrder ? Visibility.Visible : Visibility.Collapsed;
+    // What the ToggleSwitch.IsOn binds to: for family rows, ANY variant enabled means the family is on;
+    // for single-mod rows, it's just the underlying mod's Enabled. Evaluated at row construction;
+    // the row VM is recreated whenever the list rebuilds, so this stays fresh without a notify.
+    public bool ToggleIsOn => HasVariantOptions ? VariantOptions.Any(v => v.Enabled) : Enabled;
 
     // Section divider rendered ABOVE this row — set by the parent on the first row of each list
     // section (e.g. "UE4SS SCRIPTS"), null otherwise. Lets the flat list show sections without grouping.
