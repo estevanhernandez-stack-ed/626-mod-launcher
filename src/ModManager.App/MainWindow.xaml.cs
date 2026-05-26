@@ -349,104 +349,16 @@ public sealed partial class MainWindow : Window
             ViewModel.SelectedTheme = t;
     }
 
-    // Connect Nexus Mods with a personal API key (the user's own — never baked). Validates before
-    // storing; shows the connected account + a Disconnect option. The dialog inherits the app's
-    // dark theme explicitly (ContentDialog doesn't otherwise pick up the window's RequestedTheme).
-    private async void OnNexus(object sender, RoutedEventArgs e)
-    {
-        // Re-validate a stored key first so the account name + Premium/Free tag are current (and to
-        // populate premium for a connection saved before it was tracked). Offline-safe.
-        if (ViewModel.NexusConnected) await ViewModel.RefreshNexusAsync();
-
-        var panel = new StackPanel { Spacing = 12 };
-
-        if (ViewModel.NexusConnected)
-        {
-            // Prominent accent banner so the connected state reads at a glance — without this the
-            // empty key input made it look like a key was required.
-            var banner = new Border
-            {
-                Background = (Brush)Application.Current.Resources["ThemePanel"],
-                BorderBrush = (Brush)Application.Current.Resources["ThemeAccent"],
-                BorderThickness = new Thickness(0, 0, 0, 2),
-                Padding = new Thickness(12, 10, 12, 10),
-                CornerRadius = new CornerRadius(4),
-            };
-            var bannerRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
-            bannerRow.Children.Add(new FontIcon
-            {
-                Glyph = "",                                  // checkmark (E73E)
-                FontSize = 18,
-                Foreground = (Brush)Application.Current.Resources["ThemeAccent"],
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-            bannerRow.Children.Add(new TextBlock
-            {
-                Text = $"Connected as {ViewModel.NexusAccountLine}",
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-            banner.Child = bannerRow;
-            panel.Children.Add(banner);
-
-            panel.Children.Add(new TextBlock
-            {
-                TextWrapping = TextWrapping.Wrap,
-                Opacity = 0.75,
-                Text = "Your saved API key is being used for metadata and mod ID lookups. " +
-                       "Click Disconnect to remove the saved key, or paste a different key below " +
-                       "to switch accounts.",
-            });
-        }
-        else
-        {
-            panel.Children.Add(new TextBlock
-            {
-                TextWrapping = TextWrapping.Wrap,
-                Opacity = 0.85,
-                Text = "Get your personal API key from nexusmods.com → account settings → API access, " +
-                       "then paste it here. The key stays on your machine — it's never sent anywhere " +
-                       "except Nexus's own API.",
-            });
-        }
-
-        var keyBox = new PasswordBox
-        {
-            PlaceholderText = ViewModel.NexusConnected
-                ? "Paste a new key only if switching accounts"
-                : "Nexus personal API key",
-            Width = 380,
-        };
-        panel.Children.Add(keyBox);
-
-        var dialog = new ContentDialog
-        {
-            Title = "Connect Nexus Mods",
-            Content = panel,
-            PrimaryButtonText = "Connect",
-            CloseButtonText = "Close",
-            XamlRoot = Content.XamlRoot,
-            RequestedTheme = ElementTheme.Dark, // inherit the app's dark theming explicitly
-        };
-        if (ViewModel.NexusConnected) dialog.SecondaryButtonText = "Disconnect";
-
-        switch (await dialog.ShowAsync())
-        {
-            case ContentDialogResult.Primary:
-                if (!string.IsNullOrWhiteSpace(keyBox.Password)) await ViewModel.ConnectNexusAsync(keyBox.Password);
-                break;
-            case ContentDialogResult.Secondary:
-                ViewModel.DisconnectNexus();
-                break;
-        }
-    }
+    // The standalone Nexus connect/disconnect dialog moved into ProfileDialog as a section so all
+    // user-identity stuff (avatar, theme, Nexus account) lives in one place. The toolbar Nexus
+    // status pill now calls OnProfile directly — the dot still signals connection state.
 
     private async void OnProfile(object sender, RoutedEventArgs e)
     {
         var avatars = App.AppHost.Services.GetRequiredService<Services.AvatarService>();
         var themes  = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
         var hwnd    = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dialog  = new ProfileDialog(hwnd, avatars, themes) { XamlRoot = Content.XamlRoot };
+        var dialog  = new ProfileDialog(hwnd, avatars, themes, ViewModel) { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
         if (dialog.Changed)
         {

@@ -7,37 +7,65 @@
     PrimaryButtonText="Apply"
     CloseButtonText="Close"
     DefaultButton="Primary"
-    RequestedTheme="Dark"
     PrimaryButtonClick="OnApply">
 
-    <StackPanel Spacing="14" Width="440">
-        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
-                   Text="Pick an image — a Discord avatar, a screenshot, a photo. Use it as the launcher's icon and derive a theme from its colors. Everything stays on your machine." />
+    <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="14" Width="460">
+            <!-- ============ IDENTITY ============ -->
+            <TextBlock Text="Identity" FontWeight="SemiBold" FontSize="14" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                       Text="Pick an image — a Discord avatar, a screenshot, a photo. Use it as the launcher's icon and derive a theme from its colors. Everything stays on your machine." />
 
-        <Grid ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Width="96" Height="96" CornerRadius="8"
-                    Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="1">
-                <Image x:Name="PreviewImage" Stretch="UniformToFill" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Width="96" Height="96" CornerRadius="8"
+                        Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="1">
+                    <Image x:Name="PreviewImage" Stretch="UniformToFill" />
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                    <Button Content="Pick image…" Click="OnPickImage" />
+                    <Button x:Name="RemoveButton" Content="Remove avatar" Click="OnRemove" Visibility="Collapsed" />
+                    <TextBlock x:Name="FileLabel" Opacity="0.65" FontSize="11" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Text="Extracted palette" FontWeight="SemiBold" Margin="0,4,0,0" />
+            <StackPanel x:Name="PaletteStrip" Orientation="Horizontal" Spacing="6" Height="32" />
+            <TextBlock x:Name="PaletteEmpty" Text="Pick an image to see its dominant colors." Opacity="0.5" FontSize="12" />
+
+            <CheckBox x:Name="UseAsIconCheck" Content="Use this image as the launcher's icon" IsChecked="True" />
+            <CheckBox x:Name="DeriveThemeCheck" Content="Save a theme derived from these colors" IsChecked="True" />
+            <TextBox x:Name="ThemeNameBox" Header="Theme name" Text="From avatar" />
+
+            <!-- Divider -->
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
+            <!-- ============ NEXUS MODS ============ -->
+            <TextBlock Text="Nexus Mods" FontWeight="SemiBold" FontSize="14" />
+
+            <!-- Connected banner (visible when connected) -->
+            <Border x:Name="NexusConnectedBanner" Visibility="Collapsed"
+                    Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeAccent}"
+                    BorderThickness="0,0,0,2" Padding="12,10,12,10" CornerRadius="4">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE73E;" FontSize="18" Foreground="{StaticResource ThemeAccent}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="NexusConnectedText" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
             </Border>
-            <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
-                <Button Content="Pick image…" Click="OnPickImage" />
-                <Button x:Name="RemoveButton" Content="Remove avatar" Click="OnRemove" Visibility="Collapsed" />
-                <TextBlock x:Name="FileLabel" Opacity="0.65" FontSize="11" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+
+            <TextBlock x:Name="NexusExplainer" TextWrapping="Wrap" Opacity="0.75" FontSize="12" />
+
+            <PasswordBox x:Name="NexusKeyBox" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="NexusConnectButton" Content="Connect" Click="OnNexusConnect" />
+                <Button x:Name="NexusDisconnectButton" Content="Disconnect" Click="OnNexusDisconnect" Visibility="Collapsed" />
             </StackPanel>
-        </Grid>
 
-        <TextBlock Text="Extracted palette" FontWeight="SemiBold" />
-        <StackPanel x:Name="PaletteStrip" Orientation="Horizontal" Spacing="6" Height="32" />
-        <TextBlock x:Name="PaletteEmpty" Text="Pick an image to see its dominant colors." Opacity="0.5" FontSize="12" />
-
-        <CheckBox x:Name="UseAsIconCheck" Content="Use this image as the launcher's icon" IsChecked="True" />
-        <CheckBox x:Name="DeriveThemeCheck" Content="Save a theme derived from these colors" IsChecked="True" />
-        <TextBox x:Name="ThemeNameBox" Header="Theme name" Text="From avatar" />
-
-        <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
-    </StackPanel>
+            <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
 </ContentDialog>

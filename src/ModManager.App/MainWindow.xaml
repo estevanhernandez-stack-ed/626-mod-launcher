@@ -251,10 +251,11 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- Nexus connection status. Standalone (no section label) - the dot is the affordance:
-                     accent when connected, danger-red when not. -->
-                <Button Click="OnNexus" VerticalAlignment="Bottom"
-                        ToolTipService.ToolTip="Connect your Nexus Mods account (per-user API key) for metadata + md5 mod ID">
+                <!-- Nexus connection status + jump-link. Clicking opens the Profile dialog (which
+                     owns the connect/disconnect UI as its Nexus section). The dot is the affordance:
+                     accent-green when connected, danger-red when not. -->
+                <Button Click="OnProfile" VerticalAlignment="Bottom"
+                        ToolTipService.ToolTip="Nexus Mods connection — click to manage in your Profile">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
                         <TextBlock Text="Nexus" />

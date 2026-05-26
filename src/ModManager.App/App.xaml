@@ -21,6 +21,25 @@
             <SolidColorBrush x:Key="ThemeDanger" Color="#E13A5A" />
             <SolidColorBrush x:Key="ThemeInk" Color="#E8F2FF" />
             <SolidColorBrush x:Key="ThemeInkSoft" Color="#A8C2D9" />
+
+            <!-- ContentDialog + AccentButton overrides. Same-instance pattern as above so
+                 ThemeService.Apply's in-place Color mutation flows through to every popup. The
+                 keys here are the ones WinUI 3's default ContentDialog + AccentButton templates
+                 look up - override them and every ContentDialog in the app picks up our theme. -->
+            <SolidColorBrush x:Key="ContentDialogBackground" Color="#0F182B" />
+            <SolidColorBrush x:Key="ContentDialogForeground" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ContentDialogBorderBrush" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="ContentDialogTopOverlay" Color="#1A2540" />
+            <SolidColorBrush x:Key="ContentDialogSeparatorBorderBrush" Color="#2A3A5C" />
+
+            <SolidColorBrush x:Key="AccentButtonBackground" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
+            <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#A8C2D9" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
