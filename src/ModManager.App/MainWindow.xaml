@@ -344,13 +344,19 @@
                                     Background="Transparent" BorderThickness="0"
                                     ToolTipService.ToolTip="Readme"
                                     Visibility="{x:Bind ReadmeVisibility, Mode=OneWay}">
-                                <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="14" HorizontalAlignment="Center" />
+                                    <TextBlock Text="readme" FontSize="9" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                                </StackPanel>
                             </Button>
                             <Button Click="OnShowCockpit" VerticalAlignment="Center"
                                     Background="Transparent" BorderThickness="0"
                                     ToolTipService.ToolTip="Config cockpit — edit settings, view keybinds &amp; commands"
                                     Visibility="{x:Bind CockpitVisibility, Mode=OneWay}">
-                                <FontIcon Glyph="&#xE713;" FontSize="14" />
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
+                                    <FontIcon Glyph="&#xE713;" FontSize="14" HorizontalAlignment="Center" />
+                                    <TextBlock Text="config" FontSize="9" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                                </StackPanel>
                             </Button>
                         </StackPanel>
 
@@ -363,7 +369,10 @@
                                 Background="Transparent" BorderThickness="0"
                                 ToolTipService.ToolTip="Uninstall (permanent)"
                                 Visibility="{x:Bind ManageVisibility, Mode=OneWay}">
-                            <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
+                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
+                                <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" HorizontalAlignment="Center" />
+                                <TextBlock Text="uninstall" FontSize="9" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                            </StackPanel>
                         </Button>
                     </Grid>
                     </StackPanel>
