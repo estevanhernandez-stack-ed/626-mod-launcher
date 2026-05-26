@@ -441,6 +441,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void OnProfile(object sender, RoutedEventArgs e)
+    {
+        var avatars = App.AppHost.Services.GetRequiredService<Services.AvatarService>();
+        var themes  = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
+        var hwnd    = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dialog  = new ProfileDialog(hwnd, avatars, themes) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+        if (dialog.Changed)
+        {
+            // Refresh themes list (may have a new derived theme) + the title-bar icon binding.
+            ViewModel.RefreshThemes();
+            ViewModel.NotifyAppIconChanged();
+            // Re-apply the window/taskbar icon: prefer the user's, fall back to the bundled.
+            var iconPath = System.IO.File.Exists(avatars.AvatarIcoPath)
+                ? avatars.AvatarIcoPath
+                : System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+            if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
+        }
+    }
+
     private void OnFindMods(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not string key) return;

@@ -31,7 +31,7 @@
                 <ColumnDefinition Width="140" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Image Width="20" Height="20" Source="ms-appx:///Assets/icon.ico" />
+                <Image Width="20" Height="20" Source="{x:Bind ViewModel.AppIconSource, Mode=OneWay}" />
                 <TextBlock Text="626 Mod Launcher" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
@@ -48,6 +48,13 @@
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout>
+                            <MenuFlyoutItem Text="Profile…" Click="OnProfile"
+                                            ToolTipService.ToolTip="Set your avatar — use it as the launcher icon and derive a theme from its colors.">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE77B;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
                             <!-- Find mods on Nexus / CurseForge moved out of this menu into the MODS
                                  toolbar section (Find mods dropdown) — they're discovery actions, not
                                  game-options. The handler OnFindMods reads Tag and is reused there. -->

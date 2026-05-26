@@ -25,6 +25,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ThemeService _themes;
     private readonly LudusaviService _ludu;
     private readonly NexusService _nexus;
+    private readonly AvatarService _avatars;
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
@@ -105,7 +106,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars)
     {
         _svc = svc;
         _me2 = me2;
@@ -113,6 +114,7 @@ public sealed partial class MainViewModel : ObservableObject
         _themes = themes;
         _ludu = ludu;
         _nexus = nexus;
+        _avatars = avatars;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -178,6 +180,23 @@ public sealed partial class MainViewModel : ObservableObject
     {
         ThemeOptions = _themes.Themes;
         SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == imported.Id) ?? imported;
+    }
+
+    /// <summary>URI for the title-bar Image. Returns the user avatar if set; otherwise the bundled
+    /// icon. Notified when the avatar changes (so the title bar swaps live without restart).</summary>
+    public string AppIconSource => _avatars.HasAvatar
+        ? new Uri(_avatars.AvatarPngPath).AbsoluteUri
+        : "ms-appx:///Assets/icon.ico";
+
+    public void NotifyAppIconChanged() => OnPropertyChanged(nameof(AppIconSource));
+
+    /// <summary>Reload the theme list (a new derived theme may have just been imported), preserving
+    /// the active selection where possible.</summary>
+    public void RefreshThemes()
+    {
+        _themes.Reload();
+        ThemeOptions = _themes.Themes;
+        SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == SelectedTheme?.Id) ?? _themes.Default;
     }
 
     public async Task LoadAsync()
