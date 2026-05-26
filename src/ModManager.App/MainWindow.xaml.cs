@@ -471,8 +471,13 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
         if (!row.HasCockpit) return;
+        await ShowCockpitForRowAsync(row);
+    }
 
+    private async Task ShowCockpitForRowAsync(ModRowViewModel row)
+    {
         var (configs, keybinds, commands) = ViewModel.BuildCockpit(row.ModFolderAbs);
+        var conflicts = ModManager.Core.Hotkeys.Conflicts(keybinds);
 
         var panelBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemePanel"];
         var accentBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeAccent"];
@@ -572,23 +577,94 @@ public sealed partial class MainWindow : Window
             root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = section });
         }
 
-        // Keybinds (read-only)
+        // cockpitDialog declared before building keybind rows so the Set click handlers can reference it
+        ContentDialog? cockpitDialog = null;
+
+        // Keybinds — editable for Lua-hardcoded binds (SourceFile != null), read-only for dynamic ones
         if (keybinds.Count > 0)
         {
             var kbSection = new StackPanel { Spacing = 6 };
             kbSection.Children.Add(new TextBlock { Text = "Keybinds", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+
             foreach (var bind in keybinds)
             {
                 var modText = bind.Modifiers.Count > 0 ? string.Join("+", bind.Modifiers) + "+" : "";
-                var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(3), Background = panelBrush };
-                chip.Child = new TextBlock
+                var sig = ModManager.Core.Hotkeys.Signature(bind);
+                var hasConflict = conflicts.Contains(sig);
+
+                if (bind.SourceFile is null)
                 {
-                    Text = modText + bind.Key,   // key/modifier names from Lua regex scan — textContent
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
-                    FontSize = 12,
-                };
-                kbSection.Children.Add(chip);
+                    // Dynamic/unparsed bind — render read-only as before
+                    var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(3), Background = panelBrush };
+                    chip.Child = new TextBlock
+                    {
+                        Text = modText + bind.Key,   // key/modifier names from Lua regex scan — textContent
+                        FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                        FontSize = 12,
+                    };
+                    kbSection.Children.Add(chip);
+                }
+                else
+                {
+                    // Lua-hardcoded bind with a known source file — editable
+                    var bindRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+
+                    // Modifier prefix (read-only — modifier editing is deferred)
+                    if (bind.Modifiers.Count > 0)
+                    {
+                        bindRow.Children.Add(new TextBlock
+                        {
+                            Text = modText,   // modifier names from Lua regex — textContent
+                            VerticalAlignment = VerticalAlignment.Center,
+                            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                            FontSize = 12,
+                            Opacity = 0.7,
+                        });
+                    }
+
+                    // Editable key TextBox
+                    var capturedBind = bind;
+                    var keyBox = new TextBox
+                    {
+                        Text = bind.Key,    // key name from Lua regex scan — text property only
+                        Width = 80,
+                        IsSpellCheckEnabled = false,
+                        FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                        FontSize = 12,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    bindRow.Children.Add(keyBox);
+
+                    // Conflict marker (shown when this signature clashes with another bind)
+                    if (hasConflict)
+                    {
+                        var conflictMark = new TextBlock
+                        {
+                            Text = "!",   // literal — not mod-supplied
+                            Foreground = dangerBrush,
+                            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            FontSize = 14,
+                        };
+                        ToolTipService.SetToolTip(conflictMark, "Conflict: another bind uses the same key combo.");
+                        bindRow.Children.Add(conflictMark);
+                    }
+
+                    var capturedKeyBox = keyBox;
+                    var setBtn = new Button { Content = "Set", Padding = new Thickness(6, 2, 6, 2), VerticalAlignment = VerticalAlignment.Center };
+                    setBtn.Click += async (_, _) =>
+                    {
+                        await ViewModel.RemapKeyBindAsync(capturedBind, capturedKeyBox.Text);
+                        // Dismiss current cockpit and rebuild to reflect the new key
+                        cockpitDialog?.Hide();
+                        await ShowCockpitForRowAsync(row);
+                    };
+                    bindRow.Children.Add(setBtn);
+
+                    kbSection.Children.Add(bindRow);
+                }
             }
+
             root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = kbSection });
         }
 
@@ -624,6 +700,7 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Close",
             XamlRoot = Content.XamlRoot,
         };
+        cockpitDialog = dialog;
         await dialog.ShowAsync();
     }
 
