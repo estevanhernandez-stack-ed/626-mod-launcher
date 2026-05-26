@@ -47,9 +47,10 @@ public sealed partial class MainWindow : Window
         if (sender is not ToggleSwitch sw || sw.DataContext is not ModRowViewModel row) return;
         if (sw.IsOn == row.Mod.Enabled) return;
 
-        // Owned UE4SS mods: the toggle flips the loader manifest, but the managing tool (Vortex/MO2)
-        // may overwrite that on its next deploy. Warn before applying; cancel reverts the switch.
-        if (row.Mod.ReadOnly && row.Mod.Loader == "ue4ss" && !_suppressOwnedToggleWarning)
+        // Owned loader-driven mods (UE4SS manifest flip / BepInEx .dll rename): the managing tool
+        // (Vortex/MO2) may overwrite the change on its next deploy. Warn before applying; cancel
+        // reverts the switch.
+        if (row.Mod.ReadOnly && row.Mod.Loader is "ue4ss" or "bepinex" && !_suppressOwnedToggleWarning)
         {
             if (!await ConfirmOwnedToggleAsync(row, turningOn: sw.IsOn))
             {
@@ -75,14 +76,19 @@ public sealed partial class MainWindow : Window
     private async Task<bool> ConfirmOwnedToggleAsync(ModRowViewModel row, bool turningOn)
     {
         var owner = string.IsNullOrEmpty(row.Mod.Managed) ? "ANOTHER TOOL" : row.Mod.Managed!.ToUpperInvariant();
+        // Describe the actual mechanism for each loader so the warning matches reality.
+        var (mechanism, restoreNote) = row.Mod.Loader switch
+        {
+            "bepinex" => ("renames the plugin's .dll", "BepInEx plugins (.dll files) are typically tracked, so the rename is the most likely thing to be undone."),
+            _         => ("changes the UE4SS manifest", "Mods enabled via an enabled.txt file are the most likely to be restored."),
+        };
         var dontAsk = new CheckBox { Content = "Don't warn me again this session", Margin = new Thickness(0, 12, 0, 0) };
         var body = new StackPanel { Spacing = 8 };
         body.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
             Text = $"\"{row.DisplayName}\" is managed by {owner}. Turning it {(turningOn ? "on" : "off")} here " +
-                   $"changes the UE4SS manifest, but {owner} may overwrite that on its next deploy. " +
-                   "Mods enabled via an enabled.txt file are the most likely to be restored.",
+                   $"{mechanism}, but {owner} may overwrite that on its next deploy. " + restoreNote,
         });
         body.Children.Add(dontAsk);
         var dialog = new ContentDialog

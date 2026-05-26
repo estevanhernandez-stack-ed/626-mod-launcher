@@ -35,7 +35,9 @@ public sealed partial class ModRowViewModel : ObservableObject
     private readonly bool _canToggle;
     private readonly bool _canUninstall;
     public bool CanToggle => _canToggle;
-    public Visibility ManageVisibility => !InLoadOrder && _canUninstall ? Visibility.Visible : Visibility.Collapsed;
+    // Hidden on a collapsed variant-family row — its uninstall would target only the representative
+    // variant, not the whole family. (Per-chip uninstall is a separate follow-on if ever wanted.)
+    public Visibility ManageVisibility => !InLoadOrder && _canUninstall && !HasVariantOptions ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OrderValue))]
