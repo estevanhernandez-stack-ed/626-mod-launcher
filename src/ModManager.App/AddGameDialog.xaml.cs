@@ -20,8 +20,17 @@ public sealed partial class AddGameDialog : ContentDialog
     // control (windowTitle / fileExtensions / groupingRule / curseforgeGameId). Null on manual add.
     private GameProfileDraft? _appliedDraft;
 
+    // Approved batch rows, populated by OnApplyBatch and consumed by MainWindow's register loop on
+    // Primary. Empty in the single-game flow.
+    private readonly List<(GameInput Input, string? ResolvedSaveDir)> _batchApproved = new();
+
+    private sealed record BatchRowVM(string Headline, string Detail);
+
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
+
+    /// <summary>The approved batch inputs, or an empty list if batch mode wasn't used.</summary>
+    public IReadOnlyList<(GameInput Input, string? ResolvedSaveDir)> BatchApproved => _batchApproved;
 
     public sealed record EngineOption(string Key, string Label);
 
@@ -40,6 +49,11 @@ public sealed partial class AddGameDialog : ContentDialog
 
         SteamGamesBox.ItemsSource = steamGames;
         if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
+
+        // Batch picker mirrors the single-game Steam list. Disable the expander when there's nothing
+        // installed - the batched ask is meaningless without targets.
+        BatchSteamList.ItemsSource = steamGames;
+        if (steamGames.Count == 0) BatchExpander.IsEnabled = false;
     }
 
     // Copy the agent prompt for the typed game name to the clipboard. Mirrors NewThemeDialog's flow.
@@ -82,6 +96,97 @@ public sealed partial class AddGameDialog : ContentDialog
             $"{(c.Status == ResolveStatus.Pass ? "OK" : "!")} {c.Label}"));
         ShowProfileStatus($"Profile applied. {summary}", "ThemeAccent");
         _resolvedSaveDir = resolved.SaveDir; // stash for register
+    }
+
+    // Build a batched prompt from the picked Steam games. Empty selection -> a status nudge, no copy.
+    private void OnCopyBatchPrompt(object sender, RoutedEventArgs e)
+    {
+        var picked = BatchSteamList.SelectedItems.Cast<SteamGame>().ToList();
+        if (picked.Count == 0)
+        {
+            ShowBatchStatus("Pick at least one Steam game first.", "ThemeDanger");
+            return;
+        }
+        var pkg = new DataPackage();
+        pkg.SetText(GameProfilePrompt.BuildMany(picked.Select(g => g.Name).ToList()));
+        Clipboard.SetContent(pkg);
+        ShowBatchStatus($"Batch prompt copied for {picked.Count} games — run it, paste the array back, then Apply all.", "ThemeAccent");
+    }
+
+    // Validate the pasted JSON array, resolve each, render a per-row preview, and collect the
+    // approved inputs. Primary commits them.
+    private async void OnApplyBatch(object sender, RoutedEventArgs e)
+    {
+        _batchApproved.Clear();
+        var results = GameProfileImport.LoadMany(BatchJsonBox.Text ?? "");
+        if (results.Count == 0)
+        {
+            ShowBatchStatus("Empty array — nothing to apply.", "ThemeDanger");
+            BatchResultsList.ItemsSource = Array.Empty<BatchRowVM>();
+            return;
+        }
+
+        var picked = BatchSteamList.SelectedItems.Cast<SteamGame>().ToList();
+        var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
+        var rows = new List<BatchRowVM>();
+        int ok = 0;
+
+        for (int i = 0; i < results.Count; i++)
+        {
+            var r = results[i];
+            var name = r.Draft?.Name ?? (i < picked.Count ? picked[i].Name : $"#{i + 1}");
+            if (r.Draft is null)
+            {
+                rows.Add(new BatchRowVM($"SKIPPED  {name}", string.Join("  ", r.Errors)));
+                continue;
+            }
+            // Same resolve flow the single-game Apply uses. browsedGameRoot null -> Steam detection.
+            var resolved = await resolver.ResolveAsync(r.Draft, browsedGameRoot: null);
+            var summary = string.Join("   ", resolved.Checks.Select(c =>
+                $"{(c.Status == ResolveStatus.Pass ? "OK" : "!")} {c.Label}"));
+
+            // Assemble a GameInput from the draft - mirrors BuildInput's mapping when an _appliedDraft
+            // is in play, so the batch path carries the same fields the single-game path does.
+            var input = new GameInput
+            {
+                Name = r.Draft.Name!,
+                Engine = r.Draft.Engine!,
+                GameRoot = resolved.GameRoot ?? "",
+                ModPath = r.Draft.ModPath,
+                SteamAppId = r.Draft.SteamAppId,
+                SaveRoot = r.Draft.SaveRoot,
+                SaveSubPath = r.Draft.SaveSubPath,
+                RequiredLauncher = r.Draft.RequiredLauncher,
+                WindowTitle = r.Draft.WindowTitle,
+                FileExtensions = r.Draft.FileExtensions,
+                GroupingRule = r.Draft.GroupingRule,
+                CurseforgeGameId = r.Draft.CurseforgeGameId,
+                SaveModPath = r.Draft.SaveModPath,
+                SaveModForbidden = r.Draft.SaveModForbidden,
+                NexusGameDomain = r.Draft.NexusGameDomain,
+            };
+
+            if (string.IsNullOrEmpty(input.GameRoot))
+            {
+                rows.Add(new BatchRowVM($"NEEDS FOLDER  {name}", $"Could not resolve install folder. {summary}"));
+                continue;
+            }
+
+            _batchApproved.Add((input, resolved.SaveDir));
+            rows.Add(new BatchRowVM($"READY  {name}", summary));
+            ok++;
+        }
+
+        BatchResultsList.ItemsSource = rows;
+        ShowBatchStatus($"{ok} of {results.Count} ready to register. Click Add to commit; cancel to abandon.",
+            ok == 0 ? "ThemeDanger" : "ThemeAccent");
+    }
+
+    private void ShowBatchStatus(string message, string brushKey)
+    {
+        BatchStatus.Text = message;
+        if (Application.Current.Resources.TryGetValue(brushKey, out var v) && v is Brush b) BatchStatus.Foreground = b;
+        BatchStatus.Visibility = Visibility.Visible;
     }
 
     // Select the EngineBox item whose key matches — same mechanism the popular-games quick-pick uses.
@@ -170,6 +275,9 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        // Batch mode: at least one approved row passes; the single-form fields are irrelevant.
+        if (_batchApproved.Count > 0) return;
+
         if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(FolderBox.Text)
             || EngineBox.SelectedItem is not EngineOption)
         {

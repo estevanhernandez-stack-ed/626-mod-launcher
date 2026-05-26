@@ -25,6 +25,38 @@
                 <TextBlock x:Name="ProfileStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
             </StackPanel>
         </Expander>
+        <Expander x:Name="BatchExpander" HorizontalAlignment="Stretch" Header="Batch from Steam (multiple games)">
+            <StackPanel Spacing="8" Width="400">
+                <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                           Text="Pick the Steam games you want to onboard, copy the batch prompt into your agent, paste the JSON array back, then Apply all. Profiles that pass register on Add; the rest are skipped." />
+                <ListView x:Name="BatchSteamList" SelectionMode="Multiple" Height="160"
+                          BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <Button Content="Copy batch prompt" Click="OnCopyBatchPrompt" />
+                <TextBox x:Name="BatchJsonBox" Header="Agent JSON array" AcceptsReturn="True" Height="120" TextWrapping="Wrap"
+                         PlaceholderText="Paste the JSON array the agent returned" />
+                <Button Content="Apply all" Click="OnApplyBatch" />
+                <TextBlock x:Name="BatchStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
+                <ItemsControl x:Name="BatchResultsList" Margin="0,4,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
+                                    CornerRadius="4" Padding="8" Margin="0,0,0,4">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Headline}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Detail}" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Expander>
         <ComboBox x:Name="PopularGamesBox" Header="Popular game (optional)" HorizontalAlignment="Stretch"
                   DisplayMemberPath="Name" PlaceholderText="Pick a known moddable game"
                   SelectionChanged="OnPopularSelected" />

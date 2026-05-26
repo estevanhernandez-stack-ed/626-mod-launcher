@@ -121,8 +121,18 @@ public sealed partial class MainWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var steamGames = App.AppHost.Services.GetRequiredService<Services.SteamService>().InstalledGames();
         var dialog = new AddGameDialog(hwnd, steamGames) { XamlRoot = Content.XamlRoot };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            await ViewModel.AddGameAsync(dialog.BuildInput(), dialog.ResolvedSaveDir);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        // Batch mode wins when there's at least one approved row - register them in order and skip
+        // the single-form path. Otherwise the existing single-game flow applies.
+        if (dialog.BatchApproved.Count > 0)
+        {
+            foreach (var (input, resolvedSaveDir) in dialog.BatchApproved)
+                await ViewModel.AddGameAsync(input, resolvedSaveDir);
+            return;
+        }
+
+        await ViewModel.AddGameAsync(dialog.BuildInput(), dialog.ResolvedSaveDir);
     }
 
     // Populate the Launch dropdown from the active game's targets each time it opens, so it
