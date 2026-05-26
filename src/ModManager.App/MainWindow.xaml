@@ -128,9 +128,25 @@
                     <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
                     <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
                     <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
-                    <Button Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all" />
-                    <Button Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp" />
-                    <Button Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp" />
+                    <Border CornerRadius="3" BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
+                            Background="{StaticResource ThemePanel}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
+                                    BorderThickness="0" CornerRadius="0" MinWidth="44"
+                                    Background="{x:Bind ViewModel.LoadoutAllBrush, Mode=OneWay}"
+                                    Foreground="{x:Bind ViewModel.LoadoutAllForeground, Mode=OneWay}" />
+                            <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
+                            <Button Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
+                                    BorderThickness="0" CornerRadius="0" MinWidth="44"
+                                    Background="{x:Bind ViewModel.LoadoutMpBrush, Mode=OneWay}"
+                                    Foreground="{x:Bind ViewModel.LoadoutMpForeground, Mode=OneWay}" />
+                            <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
+                            <Button Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
+                                    BorderThickness="0" CornerRadius="0" MinWidth="44"
+                                    Background="{x:Bind ViewModel.LoadoutSpBrush, Mode=OneWay}"
+                                    Foreground="{x:Bind ViewModel.LoadoutSpForeground, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
                     <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
                     <Button Content="+ Add mods" Click="OnAddMods" />
                     <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />

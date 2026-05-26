@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using ModManager.App.Services;
 using ModManager.Core;
 
@@ -106,6 +108,35 @@ public sealed partial class MainViewModel : ObservableObject
         _nexus = nexus;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
+    }
+
+    // Segmented Loadout control: the selected segment tints with the theme accent; the others stay
+    // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.
+    public Brush LoadoutAllBrush => SegmentBrushFor("all");
+    public Brush LoadoutMpBrush  => SegmentBrushFor("mp");
+    public Brush LoadoutSpBrush  => SegmentBrushFor("sp");
+    public Brush LoadoutAllForeground => SegmentForegroundFor("all");
+    public Brush LoadoutMpForeground  => SegmentForegroundFor("mp");
+    public Brush LoadoutSpForeground  => SegmentForegroundFor("sp");
+
+    private Brush SegmentBrushFor(string mode)
+        => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
+            ? (Application.Current.Resources["ThemeAccent"] as Brush ?? new SolidColorBrush(Colors.MediumPurple))
+            : new SolidColorBrush(Colors.Transparent);
+
+    private Brush SegmentForegroundFor(string mode)
+        => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
+            ? new SolidColorBrush(Colors.Black)
+            : (Application.Current.Resources["ThemeText"] as Brush ?? new SolidColorBrush(Colors.White));
+
+    partial void OnActiveModeChanged(string value)
+    {
+        OnPropertyChanged(nameof(LoadoutAllBrush));
+        OnPropertyChanged(nameof(LoadoutMpBrush));
+        OnPropertyChanged(nameof(LoadoutSpBrush));
+        OnPropertyChanged(nameof(LoadoutAllForeground));
+        OnPropertyChanged(nameof(LoadoutMpForeground));
+        OnPropertyChanged(nameof(LoadoutSpForeground));
     }
 
     partial void OnSelectedThemeChanged(Theme? value)
