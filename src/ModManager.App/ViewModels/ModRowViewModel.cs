@@ -142,6 +142,11 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool InVariantGroup { get; init; }
     public Visibility VariantGroupVisibility => InVariantGroup ? Visibility.Visible : Visibility.Collapsed;
 
+    // Section divider rendered ABOVE this row — set by the parent on the first row of each list
+    // section (e.g. "UE4SS SCRIPTS"), null otherwise. Lets the flat list show sections without grouping.
+    public string? SectionHeader { get; set; }
+    public Visibility SectionHeaderVisibility => string.IsNullOrEmpty(SectionHeader) ? Visibility.Collapsed : Visibility.Visible;
+
     // Ships with UE4SS (framework mod) — shown with a quiet built-in badge, described from the catalog.
     public bool IsBuiltin => Mod.Builtin;
     public Visibility BuiltinVisibility => Mod.Builtin ? Visibility.Visible : Visibility.Collapsed;
