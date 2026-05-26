@@ -36,6 +36,7 @@ public partial class App : Application
                 services.AddSingleton<NexusService>();
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
+                services.AddSingleton<UpdateChecker>();
                 services.AddTransient<MainViewModel>();
             })
             .Build();
@@ -45,5 +46,10 @@ public partial class App : Application
     {
         _window = new MainWindow();
         _window.Activate();
+
+        // Fire-and-forget update check (debounced 24h, fails silently). Comfort, not load-bearing.
+        // Only meaningful when the app was installed via the Velopack Setup.exe — UpdateChecker
+        // detects "not installed" (dev runs, portable zip) and exits without touching the network.
+        _ = AppHost.Services.GetRequiredService<UpdateChecker>().CheckForUpdatesAsync();
     }
 }
