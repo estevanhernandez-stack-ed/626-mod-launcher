@@ -283,7 +283,13 @@ public sealed partial class MainViewModel : ObservableObject
             OrderAndStampSections(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
-            LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
+            // LaunchOptions.NeedsAttention fires on Steam App ID alone — it doesn't know what's
+            // installed. For Elden Ring, the only recommended option is the anti-cheat OFF swap,
+            // which only matters for users WITHOUT Seamless Co-op. When Seamless is fully wired
+            // (mod files + launcher both present), the user doesn't need the vanilla anti-cheat
+            // toggle — Seamless brings its own bypass. Suppress the toolbar warning then.
+            LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId)
+                && !_direct.SeamlessFullyInstalled(_ctx.Game);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
@@ -662,8 +668,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (turnOn) AntiCheat.Enable(folder, opt.Bootstrapper);
             else AntiCheat.Disable(folder, opt.Bootstrapper, opt.RealExe);
             StatusText = turnOn
-                ? "Anti-cheat ON — Play launches normally (official online OK)."
-                : "Anti-cheat OFF — press Play for mods. Avoid OFFICIAL online until you turn it back on (Seamless Co-op is fine).";
+                ? "Switched to ONLINE mode (anti-cheat on) — official multiplayer OK, file-based mods blocked."
+                : "Switched to OFFLINE mode (anti-cheat off) — Play loads mods. Seamless Co-op online still works.";
         }
         catch (Exception e) { StatusText = e.Message; }
         return AntiCheatStateOf(opt);

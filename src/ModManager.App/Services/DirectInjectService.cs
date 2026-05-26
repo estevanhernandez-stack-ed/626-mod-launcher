@@ -44,14 +44,24 @@ public sealed class DirectInjectService
     /// starts through that launcher, so the bare DLL alone won't work. Drives the "needs launcher" flag.
     /// </summary>
     public bool SeamlessNeedsLauncher(GameEntry game)
+        => IsSeamlessDllPresent(game) && LaunchScan.FindSeamless(game.GameRoot) is null;
+
+    /// <summary>
+    /// True when Seamless Co-op is fully wired (mod files + launcher exe both present). When true,
+    /// the user does NOT need to flip vanilla anti-cheat off for modded Elden Ring — Seamless brings
+    /// its own bypass and runs its own private multiplayer. Suppresses the "Launch options" warning.
+    /// </summary>
+    public bool SeamlessFullyInstalled(GameEntry game)
+        => IsSeamlessDllPresent(game) && LaunchScan.FindSeamless(game.GameRoot) is not null;
+
+    private bool IsSeamlessDllPresent(GameEntry game)
     {
         if (game.Engine != "fromsoft") return false;
         var folder = PlayFolder(game.GameRoot);
         if (folder is null) return false;
-        var dllPresent = Directory.Exists(Path.Combine(folder, "SeamlessCoop"))
-                         || File.Exists(Path.Combine(folder, "ersc.dll"))
-                         || File.Exists(Path.Combine(folder, "SeamlessCoop", "ersc.dll"));
-        return dllPresent && LaunchScan.FindSeamless(game.GameRoot) is null;
+        return Directory.Exists(Path.Combine(folder, "SeamlessCoop"))
+            || File.Exists(Path.Combine(folder, "ersc.dll"))
+            || File.Exists(Path.Combine(folder, "SeamlessCoop", "ersc.dll"));
     }
 
     /// <summary>Install dropped sources (zip/files/folders) into the game's exe folder.</summary>
