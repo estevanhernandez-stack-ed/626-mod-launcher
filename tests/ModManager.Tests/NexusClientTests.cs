@@ -38,8 +38,9 @@ public class NexusClientTests
 
         var e = await client.GetModAsync("skyrimspecialedition", 3863);
 
-        Assert.Equal("https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/3863.json", h.Calls[0].Url);
-        Assert.Equal("K", h.Calls[0].ApiKey);
+        // Calls[0] = game-info (category prefetch); Calls[1] = the actual mod request
+        Assert.Equal("https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/3863.json", h.Calls[1].Url);
+        Assert.Equal("K", h.Calls[1].ApiKey);
         Assert.Equal("SkyUI", e!.Title);
         Assert.Equal("auth", e.Author);
         Assert.Equal("https://www.nexusmods.com/skyrimspecialedition/mods/3863", e.Url);
@@ -64,8 +65,9 @@ public class NexusClientTests
 
         var m = await client.GetByMd5Async("skyrimspecialedition", "abc123");
 
-        Assert.Equal("https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/md5_search/abc123.json", h.Calls[0].Url);
-        Assert.Equal("K", h.Calls[0].ApiKey);
+        // Calls[0] = game-info (category prefetch); Calls[1] = the actual md5-search request
+        Assert.Equal("https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/md5_search/abc123.json", h.Calls[1].Url);
+        Assert.Equal("K", h.Calls[1].ApiKey);
         Assert.NotNull(m);
         Assert.Equal(777, m!.ModId);
         Assert.Equal("Matched", m.Meta.Title);
@@ -99,8 +101,9 @@ public class NexusClientTests
 
         await client.GetModAsync("skyrim", 9);
 
-        Assert.Equal("https://proxy.example/v1/games/skyrim/mods/9.json", h.Calls[0].Url);
-        Assert.Null(h.Calls[0].ApiKey);
+        // Calls[0] = game-info (category prefetch); Calls[1] = the actual mod request
+        Assert.Equal("https://proxy.example/v1/games/skyrim/mods/9.json", h.Calls[1].Url);
+        Assert.Null(h.Calls[1].ApiKey);
     }
 
     [Fact]

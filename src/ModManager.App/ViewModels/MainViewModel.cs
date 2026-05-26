@@ -183,10 +183,10 @@ public sealed partial class MainViewModel : ObservableObject
                             m.Name,
                             string.IsNullOrEmpty(m.Variant) ? m.Name : m.Variant!.ToUpperInvariant(),
                             m.Enabled,
-                            !m.ReadOnly || m.Loader == "ue4ss"))
+                            !m.ReadOnly || m.Loader is "ue4ss" or "bepinex"))
                         .ToList()
                     : System.Array.Empty<VariantOptionVM>();
-                rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader == "ue4ss", canUninstall: !directInject && !rep.ReadOnly)
+                rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
@@ -232,6 +232,9 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (GroupMode == "By category")
         {
+            // UE4SS framework mods aren't on CF/Nexus (no category to fetch) — give them their own
+            // bucket so they don't pile into UNCATEGORIZED next to truly unidentified mods.
+            if (m.Builtin) return (8000, "UE4SS BUILT-IN");
             var c = string.IsNullOrWhiteSpace(m.Category) ? "UNCATEGORIZED" : m.Category!.Trim().ToUpperInvariant();
             var rank = string.Equals(c, "UNCATEGORIZED", StringComparison.Ordinal) ? int.MaxValue : 0;
             return (rank, c);
@@ -277,10 +280,10 @@ public sealed partial class MainViewModel : ObservableObject
             else await Scanner.SetLoaderModEnabledAsync(row.Mod.Name, row.Enabled, _ctx);
             // Warn when toggling an owned UE4SS mod — manifest flip succeeded, but the managing
             // tool may overwrite it on its next deploy (mirrors the config edit-with-warning rule).
-            var wasOwnedUe4ss = row.Mod.ReadOnly && row.Mod.Loader == "ue4ss";
+            var wasOwnedLoader = row.Mod.ReadOnly && row.Mod.Loader is "ue4ss" or "bepinex";
             await ReloadModsAsync();
-            if (wasOwnedUe4ss && !string.IsNullOrEmpty(row.Mod.Managed))
-                StatusText = $"Toggled {row.Mod.Name} via UE4SS — managed by {row.Mod.Managed.ToUpperInvariant()}, may be overwritten on its next deploy.";
+            if (wasOwnedLoader && !string.IsNullOrEmpty(row.Mod.Managed))
+                StatusText = $"Toggled {row.Mod.Name} via the loader — managed by {row.Mod.Managed.ToUpperInvariant()}, may be overwritten on its next deploy.";
         }
         catch (Exception e)
         {
