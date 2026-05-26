@@ -156,6 +156,64 @@ public class Ue4ssManifestTests
         Assert.Equal("keep me", foo.GetProperty("note").GetString());    // preserved
     }
 
+    // ---------- SetOrder tests ----------
+
+    [Fact]
+    public void SetOrder_reorders_mods_txt_preserving_flags_and_keybinds_last()
+    {
+        var d = ModsDir(); Folder(d, "A"); Folder(d, "B"); Folder(d, "C");
+        File.WriteAllText(Path.Combine(d, "mods.txt"),
+            "A : 1\nB : 1\nC : 0\n\n; Built-in keybinds, do not move up!\nKeybinds : 1\n");
+
+        Ue4ssManifest.SetOrder(d, new[] { "C", "A" });
+
+        var lines = File.ReadAllLines(Path.Combine(d, "mods.txt"))
+            .Where(l => l.Contains(" : ")).Select(l => l.Trim()).ToList();
+        // C, A first (in the given order), then the remaining (B), then Keybinds pinned last.
+        Assert.Equal(new[] { "C : 0", "A : 1", "B : 1", "Keybinds : 1" }, lines);
+    }
+
+    [Fact]
+    public void SetOrder_reorders_mods_json_preserving_enable_and_unknown_fields()
+    {
+        var d = ModsDir(); Folder(d, "A"); Folder(d, "B");
+        File.WriteAllText(Path.Combine(d, "mods.json"),
+            "[{\"mod_name\":\"A\",\"mod_enabled\":true,\"note\":\"keep\"},{\"mod_name\":\"B\",\"mod_enabled\":false}]");
+
+        Ue4ssManifest.SetOrder(d, new[] { "B", "A" });
+
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(d, "mods.json")));
+        var arr = doc.RootElement.EnumerateArray().ToList();
+        Assert.Equal("B", arr[0].GetProperty("mod_name").GetString());
+        Assert.Equal("A", arr[1].GetProperty("mod_name").GetString());
+        Assert.False(arr[0].GetProperty("mod_enabled").GetBoolean());          // flag preserved
+        Assert.Equal("keep", arr[1].GetProperty("note").GetString());          // unknown field preserved
+    }
+
+    [Fact]
+    public void SetOrder_keeps_txt_and_json_in_lockstep()
+    {
+        var d = ModsDir(); Folder(d, "A"); Folder(d, "B");
+        File.WriteAllText(Path.Combine(d, "mods.txt"), "A : 1\nB : 1\n");
+        File.WriteAllText(Path.Combine(d, "mods.json"),
+            "[{\"mod_name\":\"A\",\"mod_enabled\":true},{\"mod_name\":\"B\",\"mod_enabled\":true}]");
+
+        Ue4ssManifest.SetOrder(d, new[] { "B", "A" });
+
+        var txtFirst = File.ReadAllLines(Path.Combine(d, "mods.txt")).First(l => l.Contains(" : ")).Trim();
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(d, "mods.json")));
+        Assert.Equal("B : 1", txtFirst);
+        Assert.Equal("B", doc.RootElement.EnumerateArray().First().GetProperty("mod_name").GetString());
+    }
+
+    [Fact]
+    public void SetOrder_no_manifest_is_a_safe_noop()
+    {
+        var d = ModsDir(); Folder(d, "A");
+        Ue4ssManifest.SetOrder(d, new[] { "A" }); // no throw, nothing to write
+        Assert.False(File.Exists(Path.Combine(d, "mods.txt")));
+    }
+
     // Fix 2: transactional lockstep — if the second write fails, the first must roll back.
     // We make mods.json (second write in the rollback-target direction after reorder) read-only
     // so File.Move(overwrite:true) throws, then verify mods.txt is restored to its original value.

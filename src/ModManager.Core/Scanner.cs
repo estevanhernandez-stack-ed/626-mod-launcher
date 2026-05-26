@@ -631,6 +631,19 @@ public static class Scanner
             }
             index++;
         }
+        // UE4SS folder locations don't use pak prefixes — persist their relative order into the
+        // loader manifest instead (only the mods that live in that folder, in the requested order).
+        // Skip owned folders (Vortex/MO2): reordering an owned manifest is the same hands-off class
+        // as the bulk/profile disable guard (ReadOnly). Bulk load-order is not the sanctioned per-row
+        // warned path, so owned folder manifests stay untouched.
+        foreach (var loc in c.Locations.Where(l => l.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(l.Abs)))
+        {
+            if (ToolOwnership.Detect(loc.Abs) is not null) continue;
+            var locNames = new HashSet<string>(ListSubfolders(loc.Abs), StringComparer.OrdinalIgnoreCase);
+            var orderedForLoc = orderedKeys.Where(locNames.Contains).ToList();
+            if (orderedForLoc.Count > 0) Ue4ssManifest.SetOrder(loc.Abs, orderedForLoc);
+        }
+
         SaveLoadOrder(c, orderedKeys);
     }
 
