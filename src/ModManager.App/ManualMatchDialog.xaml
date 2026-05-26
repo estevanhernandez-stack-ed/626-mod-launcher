@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.ManualMatchDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Match to a mod"
+    PrimaryButtonText="Apply"
+    CloseButtonText="Close"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="440">
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+        <TextBox x:Name="UrlBox" Header="Mod page URL"
+                 PlaceholderText="https://www.nexusmods.com/eldenring/mods/510 or https://www.curseforge.com/.../mods/..." />
+        <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11"
+                   Text="Paste the URL from the mod's Nexus or CurseForge page. We'll pull the title, author, downloads, and icon. The match locks — future rescans won't override it." />
+    </StackPanel>
+</ContentDialog>

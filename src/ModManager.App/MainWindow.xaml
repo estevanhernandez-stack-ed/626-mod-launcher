@@ -300,6 +300,11 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <Grid.ContextFlyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="Match to a mod…" Click="OnManualMatch" />
+                            </MenuFlyout>
+                        </Grid.ContextFlyout>
 
                         <!-- Icon cell: load-order number (editable) in reorder mode, else art/monogram -->
                         <Grid Grid.Column="0" Width="48" Height="40" VerticalAlignment="Center">
