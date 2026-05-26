@@ -1,74 +1,103 @@
-# 626 Mod Launcher (.NET 10 / WinUI 3)
+# 626 Mod Launcher
 
-Native Windows mod manager — enables, disables, and organizes mods for your own installed
-games, reversibly and atomically. Disabling *moves* a mod to a holding folder; nothing is
-ever deleted. This is the native rewrite of the original Electron 626 Labs Mod Launcher,
-which serves as the executable spec.
+> A native Windows mod manager that's honest about what it does, polite about your files, and decent to the modders.
 
-## Status
+[![release](https://img.shields.io/github/v/release/estevanhernandez-stack-ed/626-mod-launcher?include_prereleases&label=latest)](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)
+[![license](https://img.shields.io/github/license/estevanhernandez-stack-ed/626-mod-launcher)](LICENSE)
 
-| Phase | Scope | State |
-|---|---|---|
-| 1 | `ModManager.Core` + xUnit contract | **done** |
-| 2 | WinUI 3 shell (Views/ViewModels, DI host) | **done — full feature surface** |
-| 3 | Portable distribution → MSIX + Microsoft Store | **portable build shipping; MSIX/Store next** |
+A reversible, atomic mod toggler for PC games — Bethesda, Unreal pak, FromSoft, BepInEx, UE4SS Lua, Mod Engine 2, Stardew SMAPI, and friends. Built because Vortex made me angry. Free, no ads, no telemetry, no account required to use it.
 
-Test suite: **271 green** (`dotnet test tests/ModManager.Tests/ModManager.Tests.csproj`).
-The ported xUnit suite is the acceptance contract — a core isn't "ported" until its test passes.
+## Download
+
+Latest release: **[Setup.exe on GitHub Releases](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**
+
+Double-click the Setup.exe. Windows will warn you the first time (SmartScreen — we haven't bought a code-signing certificate yet); click **More info → Run anyway**. The launcher installs to your user profile, lands in the Start Menu, and auto-updates from then on. Uninstall via the normal Add/Remove Programs.
+
+Want to look first? The launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
 
 ## What it does
 
-- **Games** — register games (popular-game quick-pick or manual), header switcher, Steam launch.
-- **Mods** — reversible enable/disable, All On/Off, **MP/SP** loadouts, named **Profiles**.
-- **Intake** — drag in a mod (folder or zip); **smart intake** fingerprints it at drop to identify it.
-- **Metadata** — fetch real names/descriptions/author credit over the CurseForge proxy; mod rows
-  surface `by <author> · downloads · source` (honor the builders).
-- **Load order** — reorder mods and apply (engine-specific), reversibly.
-- **Saves** — pro save manager: snapshot, 3-way clone, per-type restore, prune, auto-backup on launch.
-- **Themes** — 7 built-ins incl. the on-brand **626 Labs** theme, plus an AI theme generator.
-- **Engine-aware** — Bethesda, SMAPI, BepInEx, UE-pak, ModEngine2/FromSoft direct-inject, and more.
+The short version: you point it at a game, it lists your mods, you flip switches.
 
-## Build, test, run
+The slightly longer version:
+
+- **Reversible toggles.** Disabling a mod *moves* its files to a holding folder. Nothing is ever deleted by a toggle. Flip it back and the mod returns where it was.
+- **Atomic state.** Every state change writes through `fs-atomic` — temp file, rename, no partial-write corruption. Lose power mid-toggle and your library survives.
+- **Drag-and-drop intake.** Drop a `.zip` / `.7z` / `.rar` / loose mod folder on the window. It identifies the mod (CurseForge fingerprint → Nexus md5 → name-search), fills in the real name, author, description, downloads count, and source link. Honor the builders.
+- **Engine-aware.** Knows about Bethesda plugins, Unreal pak folders + UE4SS Lua mods, FromSoft Mod Engine 2 configs, BepInEx plugins, Stardew SMAPI mods, and more. Each engine gets its own enable/disable mechanism — the one the mod loader actually expects, not a one-size hack.
+- **MP / SP loadouts.** Toggle between multiplayer-safe and single-player-only sets for the same game. Named profiles let you save and switch between configurations ("my Elden Ring NG+ build", "my chill survival setup").
+- **Save manager.** Snapshot saves, 3-way clone across save types (Vanilla / Seamless Co-op / Reforged for Elden Ring, etc.), per-type restore, auto-backup-on-launch, prune the autos. The named backups never get pruned.
+- **Save mods.** Some mods install into the save tree (Windrose worlds, etc.), not the game folder. Drop a world zip and it installs to the right place — safely guarded against writing to game-managed save folders.
+- **Themes.** Seven built-ins (Obsidian, Aurora, Ember, Mint, Matrix, Blueprint, the on-brand 626 Labs). Pick an image — your Discord avatar, a screenshot, anything — and the launcher derives a theme from its dominant colors. Local k-means quantization; no AI in the loop. The same image can become your app icon.
+- **Lua keybind editing.** UE4SS Lua mods that bind keys via `RegisterKeyBind` — the launcher reads them, surfaces conflicts, lets you remap. Snapshots first, atomic write.
+- **Coordination with Vortex / MO2.** If another tool owns a folder, the launcher shows those mods read-only with a clear "managed by Vortex" badge. It never touches files another tool claims.
+
+## What it doesn't do
+
+- **Pirate, crack, or modify game code.** It moves mod files around. Your game is your game.
+- **Phone home.** No analytics, no telemetry, no "thanks for using" pings. The CurseForge metadata proxy is the only outbound network call by default; the Nexus integration is opt-in and uses YOUR personal API key (never bundled, never shared).
+- **Auto-install mods for you.** You drop the file, the launcher places it where the game expects. Discovery — finding new mods on Nexus or CurseForge — is one click, but the actual download stays in your browser.
+- **Touch your game's executable.** Mods modify mods. The launcher doesn't patch, inject into, or rewrite game binaries.
+
+## Run it from source
 
 ```pwsh
-dotnet test tests/ModManager.Tests/ModManager.Tests.csproj   # run the contract (use the explicit project)
-dotnet build src/ModManager.App/ModManager.App.csproj -p:Platform=x64   # build the app
+git clone https://github.com/estevanhernandez-stack-ed/626-mod-launcher
+cd 626-mod-launcher
+
+# Run the Core test suite (635+ tests, full architectural contract)
+dotnet test tests/ModManager.Tests/ModManager.Tests.csproj
+
+# Build + run the app
+dotnet build src/ModManager.App/ModManager.App.csproj -p:Platform=x64
+# (then open the produced bin/x64/Debug/.../ModManager.App.exe)
 ```
 
-Requires the **.NET 10 SDK**. (A bare `dotnet test` / `dotnet build` at the root hangs building
-the WinUI app — always target the explicit project.)
+Requires the **.NET 10 SDK** and Windows 10/11. Tests run headless; the WinUI 3 app is x64 / arm64 Windows-only.
 
-## Portable distribution
+> ⚠️ A bare `dotnet test` or `dotnet build` at the root hangs building the WinUI app. Always target the explicit project as shown above.
 
-```pwsh
-dotnet publish src/ModManager.App/ModManager.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true
-```
+## How it's built
 
-Produces a self-contained, **zero-prereq** `win-x64` folder — bundles the .NET runtime, the
-Windows App SDK, the `resources.pri` XAML index, and the VC++ runtime app-local, so a friend can
-unzip and run with nothing pre-installed. Two MSBuild targets in `ModManager.App.csproj` handle
-the PRI + VC++ bundling that `dotnet publish` otherwise drops. Zip the publish folder for hand-off;
-see [`GETTING-STARTED.md`](GETTING-STARTED.md) for the install note (incl. the SmartScreen step,
-since the build is unsigned for now). Road to the first drop + the Store track:
-[`docs/road-to-dist.md`](docs/road-to-dist.md).
+**Two projects, one philosophy.**
 
-## Layout
+- `ModManager.Core` — pure data + logic + xUnit tests. No WinRT, no UI, no Electron. Every behavior change starts with a failing test here. Runs headless on any platform.
+- `ModManager.App` — the WinUI 3 shell. Views, ViewModels, DI host, Windows-specific services (Steam library detection, Mica/Acrylic backdrop, AppWindow.SetIcon). A thin layer over the Core.
 
-| Path | What it is |
-|---|---|
-| `src/ModManager.Core/` | The engine — no UI references. Scanner, Fingerprint, CurseForge client, save manager, load order, themes, intake, metadata, game profiles. |
-| `src/ModManager.App/` | WinUI 3 shell — Views/ViewModels (CommunityToolkit.Mvvm), DI host, dialogs, services. |
-| `tests/ModManager.Tests/` | xUnit acceptance contract. |
-| `docs/` | Rewrite spec, build plan, feature map, save-manager design, road-to-dist, Store release flow. |
+That split is the operating discipline that lets the launcher ship features fast without breaking — every file-touching invariant lives in pure functions with tests in front of them, and the UI is allowed to be the messy parts. The full architectural cores (Scanner, Intake, SaveModInstaller, PaletteExtractor, ThemePrompt, etc.) are all under `src/ModManager.Core/`.
 
-## Operating laws (carried from the Electron app)
+## Operating laws
 
-1. **Honor the builders** — surface attribution, source, donation links, downloads.
-2. **Never embed the API key** — proxy or per-user, supplied at runtime.
-3. **File ops stay reversible and atomic** — temp-write + rename; disable rolls back on failure.
-4. **Core stays UI-free and test-first** — guarded by `CorePurityTests`.
+These outrank convenience. Every change in the repo rests on them:
 
-## Spec repo
+1. **Honor the builders.** Surface attribution, source, donation links, downloads counts. The mod row links straight to the author's page.
+2. **Never embed an API key.** CurseForge access goes through a proxy that holds the key server-side. Nexus uses the user's personal key, supplied at runtime, kept on-machine.
+3. **File ops stay reversible and atomic.** Temp-write + rename, no clobber on intake, disable rolls back on failure. Snapshot-first on save-tree writes.
+4. **Pure-core, thin-shell.** Core stays UI-free and test-first (guarded by `CorePurityTests`). The app shell is allowed to be the messy edges.
 
-The original Electron app (working prototype + cross-referenced spec) lives separately at
-`mod-manager-builder`. This rewrite mirrors its cores and design docs; see `docs/spec.md`.
+## Versions + roadmap
+
+Tag-triggered GitHub Releases ship the Setup.exe + auto-update payload. See [docs/RELEASE.md](docs/RELEASE.md) for the maintainer-side flow.
+
+**Where it's headed:**
+
+- **Agent access.** A documented MCP surface (read first, write later) so Claude Code / Claude Desktop / any MCP-aware tool can drive the launcher safely. Local-only, per-session token, audit log of every write, consent on first connect. Sketch at [docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md](docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md).
+- **Microsoft Store.** MSIX channel parallel to GitHub Releases. Signed by Microsoft, bypasses SmartScreen, auto-updates through Store. Mod manager apps are a 10.2.2 gray area — the GitHub channel is the load-bearing one regardless.
+- **Nexus SSO.** OAuth-style sign-in next to the existing personal-API-key flow. Pending Nexus application approval, which wants a public binary to evaluate against — hence the GitHub Release path coming first.
+- **Save-mod browser.** Today you drop a world zip and it installs; next is browsing + installing from Nexus's save-mod listings directly.
+
+## Why it exists
+
+I was using Vortex (Nexus's official installer) for Windrose mods and it kept either silently failing or doing the wrong thing — re-downloading files I already had, missing mods that came from CurseForge, not understanding UE4SS Lua mods, asking me to "deploy" three times after every change. Mod Organizer is great if you live in the Skyrim ecosystem but it didn't fit non-Bethesda games.
+
+So I built this. The thesis: a mod manager should be honest about what it touches, reversible by default, and decent to the modders whose work makes any of this fun. No mystery overlays, no proprietary databases, no "deploy" buttons.
+
+Free, open, licensed per [LICENSE](LICENSE). If you want to contribute, [CONTRIBUTING.md](CONTRIBUTING.md) is a few paragraphs and the test suite is your contract.
+
+## Honor the builders
+
+If you used a mod from one of the modding communities (Nexus, CurseForge, modding Discords) and it made your game more fun, **say thanks where it counts**. The mod row's source link goes straight to the author's page. Tip them, leave a comment, endorse on Nexus. The launcher exists to make their work easier to live with — they're the reason any of us are here.
+
+---
+
+**626 Labs** · [@estevanhernandez-stack-ed](https://github.com/estevanhernandez-stack-ed) · Fort Worth, TX

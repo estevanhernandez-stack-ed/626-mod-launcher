@@ -18,6 +18,11 @@
     <Version>0.1.0</Version>
     <!-- The 626 mark as the exe icon (Explorer / taskbar). The window icon is set at runtime. -->
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <!-- Custom entry point in Program.cs so VelopackApp.Build().Run() executes BEFORE WinUI starts.
+         Install / uninstall / restart-after-update hooks fire from argv there. WinUI's XAML
+         codegen suppresses its own generated Main when DISABLE_XAML_GENERATED_MAIN is defined. -->
+    <StartupObject>ModManager.App.Program</StartupObject>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +31,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.8" />
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
+    <PackageReference Include="Velopack" Version="0.0.1298" />
   </ItemGroup>
 
   <ItemGroup>
