@@ -40,8 +40,12 @@
                           ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}"
                           DisplayMemberPath="Name" />
-                <Button ToolTipService.ToolTip="Game options" Background="Transparent" BorderThickness="0">
-                    <FontIcon Glyph="&#xE712;" FontSize="14" />
+                <Button ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
+                        Background="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        <TextBlock Text="More" Opacity="0.85" />
+                    </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
@@ -107,27 +111,27 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid Grid.Column="0" Visibility="{x:Bind ViewModel.NormalBarVisibility, Mode=OneWay}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <!-- Row 0: group labels -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,2">
-                    <TextBlock Text="LIST"     Width="68"  Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
-                    <TextBlock Text="TOGGLE"   Width="160" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
-                    <TextBlock Text="LOADOUT"  Width="148" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
-                    <TextBlock Text="MODS"     Width="100" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
-                    <TextBlock Text="LIBRARY"  Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" Margin="6,0,0,0" />
+            <!-- Left cluster: three self-sizing sections (MODS / LOADOUT / LIBRARY). Each section is
+                 a vertical StackPanel with the label on top and the button row below - the section
+                 auto-sizes to MAX(label-width, button-row-width), so labels cannot drift out of
+                 alignment with their cluster. Dividers sit between sections, bottom-anchored to
+                 align with the button row (not stretching up through the label area). -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="0"
+                        Visibility="{x:Bind ViewModel.NormalBarVisibility, Mode=OneWay}">
+                <!-- MODS: bulk toggle + intake -->
+                <StackPanel Orientation="Vertical" Spacing="2">
+                    <TextBlock Text="MODS" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
+                        <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
+                        <Button Content="+ Add mods" Click="OnAddMods" />
+                    </StackPanel>
                 </StackPanel>
-                <!-- Row 1: controls (relabeled) -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
-                    <Button Content="↻ Rescan" Command="{x:Bind ViewModel.RefreshCommand}"
-                            ToolTipService.ToolTip="Re-scan the game folder for new or removed mods" />
-                    <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
-                    <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
-                    <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
-                    <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
+                <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
+                                  VerticalAlignment="Bottom" Margin="10,0,10,0" />
+                <!-- LOADOUT: All / MP / SP filter (segmented) -->
+                <StackPanel Orientation="Vertical" Spacing="2">
+                    <TextBlock Text="LOADOUT" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
                     <Border CornerRadius="3" BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                             Background="{StaticResource ThemePanel}">
                         <StackPanel Orientation="Horizontal">
@@ -147,15 +151,23 @@
                                     Foreground="{x:Bind ViewModel.LoadoutSpForeground, Mode=OneWay}" />
                         </StackPanel>
                     </Border>
-                    <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
-                    <Button Content="+ Add mods" Click="OnAddMods" />
-                    <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
-                    <Button Content="Reorder" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Drag rows to set the load order" />
-                    <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
-                    <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />
-                    <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" VerticalAlignment="Center" />
                 </StackPanel>
-            </Grid>
+                <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
+                                  VerticalAlignment="Bottom" Margin="10,0,10,0" />
+                <!-- LIBRARY: rescan + reorder + saved-state surfaces -->
+                <StackPanel Orientation="Vertical" Spacing="2">
+                    <TextBlock Text="LIBRARY" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="↻ Rescan" Command="{x:Bind ViewModel.RefreshCommand}"
+                                ToolTipService.ToolTip="Re-scan the game folder for new or removed mods" />
+                        <Button Content="Reorder" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Drag rows to set the load order" />
+                        <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
+                        <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />
+                    </StackPanel>
+                </StackPanel>
+                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18"
+                              VerticalAlignment="Bottom" Margin="10,0,0,6" />
+            </StackPanel>
 
             <!-- Load-order mode: reorder controls replace the normal bar -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
@@ -165,59 +177,66 @@
                 <Button Content="Apply order" Click="OnApplyOrder" Foreground="Black" Background="{StaticResource ThemeAccent}" />
                 <Button Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <!-- Row 0: group labels -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,2" HorizontalAlignment="Right">
-                    <TextBlock Text="VIEW"    Width="248" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" TextAlignment="Right" />
-                    <TextBlock Text="ACCOUNT" Width="80"  Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" TextAlignment="Right" Margin="6,0,0,0" />
-                </StackPanel>
-                <!-- Row 1: informational widgets + view/account controls -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Click="OnCoopHint" Background="Transparent" BorderThickness="0"
-                            ToolTipService.ToolTip="Seamless Co-op is installed but its launcher is missing — co-op needs the full mod"
-                            Visibility="{x:Bind ViewModel.CoopHintVisibility, Mode=OneWay}">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
-                            <TextBlock Text="Co-op needs its launcher" Foreground="{StaticResource ThemeDanger}" />
-                        </StackPanel>
-                    </Button>
-                    <Border Padding="8,2" CornerRadius="4"
-                            ToolTipService.ToolTip="Some enabled mods may desync co-op — review before hosting or joining"
-                            Visibility="{x:Bind ViewModel.MpWarningVisibility, Mode=OneWay}">
-                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
-                            <TextBlock Text="{x:Bind ViewModel.MpWarningText, Mode=OneWay}"
-                                       Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Border>
-                    <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
-                            ToolTipService.ToolTip="This game needs a launch option for mods to load"
-                            Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE7BA;" FontSize="13" />
-                            <TextBlock Text="Launch options" />
-                        </StackPanel>
-                    </Button>
+            <!-- Right cluster: VIEW (group-by) · SETTINGS (theme picker) · standalone Nexus indicator.
+                 Informational widgets (CoopHint / MpWarning / LaunchHint) sit at the left edge of this
+                 stack and don't belong to any labeled section - they're visibility-toggled status banners.
+                 Nexus has no section label - its dot color (accent / danger) signals the state. -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Bottom">
+                <Button Click="OnCoopHint" Background="Transparent" BorderThickness="0" VerticalAlignment="Bottom"
+                        ToolTipService.ToolTip="Seamless Co-op is installed but its launcher is missing — co-op needs the full mod"
+                        Visibility="{x:Bind ViewModel.CoopHintVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <TextBlock Text="Co-op needs its launcher" Foreground="{StaticResource ThemeDanger}" />
+                    </StackPanel>
+                </Button>
+                <Border Padding="8,2" CornerRadius="4" VerticalAlignment="Bottom" Margin="6,0,0,0"
+                        ToolTipService.ToolTip="Some enabled mods may desync co-op — review before hosting or joining"
+                        Visibility="{x:Bind ViewModel.MpWarningVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <TextBlock Text="{x:Bind ViewModel.MpWarningText, Mode=OneWay}"
+                                   Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+                <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
+                        VerticalAlignment="Bottom" Margin="6,0,0,0"
+                        ToolTipService.ToolTip="This game needs a launch option for mods to load"
+                        Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" />
+                        <TextBlock Text="Launch options" />
+                    </StackPanel>
+                </Button>
+                <!-- VIEW: how the mod list is grouped -->
+                <StackPanel Orientation="Vertical" Spacing="2" Margin="10,0,0,0">
+                    <TextBlock Text="VIEW" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
                     <ComboBox MinWidth="120" ToolTipService.ToolTip="Group the mod list"
                               ItemsSource="{x:Bind ViewModel.GroupModes}"
                               SelectedItem="{x:Bind ViewModel.GroupMode, Mode=TwoWay}" />
+                </StackPanel>
+                <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
+                                  VerticalAlignment="Bottom" Margin="10,0,10,0" />
+                <!-- SETTINGS: theme picker (future settings land here too) -->
+                <StackPanel Orientation="Vertical" Spacing="2">
+                    <TextBlock Text="SETTINGS" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
                     <ComboBox MinWidth="120" ToolTipService.ToolTip="Theme"
                               ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
                               DisplayMemberPath="Name" />
-                    <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
-                    <Button Click="OnNexus" ToolTipService.ToolTip="Connect your Nexus Mods account (per-user API key) for metadata + md5 mod ID">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
-                            <TextBlock Text="Nexus" />
-                        </StackPanel>
-                    </Button>
                 </StackPanel>
-            </Grid>
+                <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
+                                  VerticalAlignment="Bottom" Margin="10,0,10,0" />
+                <!-- Nexus connection status. Standalone (no section label) - the dot is the affordance:
+                     accent when connected, danger-red when not. -->
+                <Button Click="OnNexus" VerticalAlignment="Bottom"
+                        ToolTipService.ToolTip="Connect your Nexus Mods account (per-user API key) for metadata + md5 mod ID">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
+                        <TextBlock Text="Nexus" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Mod list -->

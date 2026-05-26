@@ -619,12 +619,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool NexusConnected => _nexus.IsConnected;
 
-    /// <summary>Status dot for the Nexus toolbar button — accent when connected, muted when not.
-    /// Returns resource-backed brushes so theme switches propagate via ThemeService.Set's in-place
-    /// color mutation.</summary>
+    /// <summary>Status dot for the Nexus toolbar button — accent-green when connected, danger-red
+    /// when disconnected. The dot IS the affordance now (no separate ACCOUNT section label), so the
+    /// state has to read at a glance. Resource-backed brushes so theme switches propagate via
+    /// ThemeService.Set's in-place color mutation.</summary>
     public Brush NexusStatusBrush => NexusConnected
         ? ((Brush)Application.Current.Resources["ThemeAccent"])
-        : ((Brush)Application.Current.Resources["ThemeInkSoft"]);
+        : ((Brush)Application.Current.Resources["ThemeDanger"]);
 
     public string? NexusUser => _nexus.ConnectedUser;
     public bool NexusPremium => _nexus.ConnectedPremium;
