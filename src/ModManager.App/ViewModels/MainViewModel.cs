@@ -291,6 +291,16 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         try
         {
+            if (enable)
+            {
+                // Single-select: only one level of a family runs at a time — turn the siblings off so
+                // two levels never collide. (Turning the chosen one back off later leaves none active.)
+                var list = await Scanner.BuildModListAsync(_ctx);
+                var fam = VariantGroups.Group(list).FirstOrDefault(f => f.Members.Any(m => m.Name == opt.ModName));
+                if (fam is not null)
+                    foreach (var sib in fam.Members.Where(m => m.Name != opt.ModName && m.Enabled))
+                        await Scanner.SetLoaderModEnabledAsync(sib.Name, false, _ctx);
+            }
             await Scanner.SetLoaderModEnabledAsync(opt.ModName, enable, _ctx);
             await ReloadModsAsync();
         }

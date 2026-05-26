@@ -234,7 +234,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="Levels of the same mod — turn on any. Drop in more anytime; they won't collide."
+                            <TextBlock Text="Same mod, different levels — pick one (turning one on turns the others off). Drop in more anytime; they won't collide."
                                        Opacity="0.5" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
                                        Visibility="{x:Bind VariantOptionsVisibility, Mode=OneWay}" />
                         </StackPanel>
