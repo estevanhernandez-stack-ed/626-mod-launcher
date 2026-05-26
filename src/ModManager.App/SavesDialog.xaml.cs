@@ -15,13 +15,19 @@ public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>
 public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets);
 
+/// <summary>One installed-save-mod row: friendly title + when/source detail.</summary>
+public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail);
+
 public sealed partial class SavesDialog : ContentDialog
 {
     private readonly LauncherService _svc;
     private readonly IntPtr _hwnd;
     private readonly string _gameId;
     private readonly string _savesDir;
+    private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
+    private readonly string? _saveModPath;
+    private readonly IReadOnlyList<string>? _saveModForbidden;
     private string? _saveDir;
     private bool _loaded; // suppress persist during initial control setup
 
@@ -32,14 +38,18 @@ public sealed partial class SavesDialog : ContentDialog
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;
         _savesDir = ctx.SavesDir;
+        _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
         _saveTypes = GameProfiles.Resolve(ctx.Game.Engine, ctx.Game.SteamAppId).SaveTypes;
+        _saveModPath = ctx.Game.SaveModPath;
+        _saveModForbidden = ctx.Game.SaveModForbidden;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
         KeepBox.Value = ctx.Game.SaveAutoKeep ?? 25;
         if (!string.IsNullOrEmpty(_saveDir)) StatusText.Text = "Save folder ready.";
         FolderBox.Text = _saveDir ?? "";
         Refresh();
         RefreshSaveFiles();
+        RefreshSaveMods();
         _loaded = true;
     }
 
@@ -111,6 +121,49 @@ public sealed partial class SavesDialog : ContentDialog
         }
         catch (Exception ex) { StatusText.Text = ex.Message; }
     }
+
+    private void RefreshSaveMods()
+    {
+        var rows = SaveModStore.Load(_dataDir)
+            .Select(e => new SaveModRow(e, e.Name,
+                $"{e.InstalledUtc.ToLocalTime():g}  ·  world {Short(e.Guid)}  ·  {System.IO.Path.GetFileName(e.SourceZip)}"))
+            .OrderByDescending(r => r.Entry.InstalledUtc)
+            .ToList();
+        SaveModList.ItemsSource = rows;
+        SaveModEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnSaveModReset(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not SaveModRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            SaveModInstaller.ResetWorld(_saveDir, _savesDir, row.Entry.SourceZip,
+                row.Entry.Guid, _saveModPath, _saveModForbidden);
+            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first.";
+            Refresh();
+        }
+        catch (Exception ex) { StatusText.Text = ex.Message; }
+    }
+
+    private void OnSaveModRemove(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not SaveModRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            SaveModInstaller.RemoveWorld(_saveDir, _savesDir, row.Entry.Guid,
+                _saveModPath, _saveModForbidden);
+            SaveModStore.Remove(_dataDir, row.Entry.Guid);
+            StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first.";
+            Refresh();
+            RefreshSaveMods();
+        }
+        catch (Exception ex) { StatusText.Text = ex.Message; }
+    }
+
+    private static string Short(string g) => g.Length <= 8 ? g : g[..8] + "…";
 
     private void OnRestoreTypeOpening(object sender, object e)
     {
