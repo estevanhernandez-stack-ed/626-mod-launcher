@@ -70,11 +70,11 @@
                             <MenuFlyoutItem Text="Fetch metadata for all mods" Command="{x:Bind ViewModel.FetchMetadataCommand}"
                                             ToolTipService.ToolTip="Re-fetch metadata from CurseForge for every mod (best-effort).">
                                 <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE896;" />
+                                    <FontIcon Glyph="&#xE8F1;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Generate a theme with AI…" Click="OnNewTheme"
-                                            ToolTipService.ToolTip="Open the theme generator.">
+                                            ToolTipService.ToolTip="Use AI to generate a custom color theme — installs instantly.">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE790;" />
                                 </MenuFlyoutItem.Icon>
