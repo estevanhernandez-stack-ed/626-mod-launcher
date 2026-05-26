@@ -40,6 +40,33 @@
             <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
             <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
             <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#A8C2D9" />
+
+            <!-- ComboBox flyout (game picker + VIEW dropdown). Default WinUI uses near-black for the
+                 popup chrome which doesn't match our navy. Override the dropdown chrome to ThemePanel
+                 and route hover/selected accents through our brushes. -->
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#1A2540" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBackgroundPointerOver" Color="#1A2540" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBackgroundPointerPressed" Color="#1A2540" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="ComboBoxDropDownForeground" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="ComboBoxItemForegroundSelected" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxItemForegroundSelectedPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxItemForegroundPointerOver" Color="#E8F2FF" />
+
+            <!-- MenuFlyout (THEME dropdown items, … More menu, per-row right-click menus). Same idea -
+                 the default popup chrome is system-dark; align it to our navy. -->
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#1A2540" />
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="MenuFlyoutItemForeground" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="#2A3A5C" />
+            <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="MenuFlyoutItemForegroundPressed" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="MenuFlyoutSeparatorBackground" Color="#2A3A5C" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
