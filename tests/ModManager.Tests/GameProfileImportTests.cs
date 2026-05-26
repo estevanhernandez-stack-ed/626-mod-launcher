@@ -82,6 +82,57 @@ public class GameProfileImportTests
     }
 
     [Fact]
+    public void LoadMany_parses_each_element_with_its_own_result()
+    {
+        var json = """
+        [
+          { "name":"A","engine":"bethesda","saveRoot":"AppData","saveSubPath":"A" },
+          { "name":"B","engine":"frostbite","saveRoot":"AppData","saveSubPath":"B" }
+        ]
+        """;
+        var results = GameProfileImport.LoadMany(json);
+        Assert.Equal(2, results.Count);
+        Assert.Empty(results[0].Errors);
+        Assert.Equal("A", results[0].Draft!.Name);
+        Assert.NotEmpty(results[1].Errors); // frostbite is not an engine preset
+        Assert.Null(results[1].Draft);
+    }
+
+    [Fact]
+    public void LoadMany_rejects_non_array_root_with_one_error()
+    {
+        var results = GameProfileImport.LoadMany("""{ "name":"X" }""");
+        Assert.Single(results);
+        Assert.Null(results[0].Draft);
+        Assert.Contains(results[0].Errors, e => e.Contains("array", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void LoadMany_rejects_bad_json_with_one_error()
+    {
+        var results = GameProfileImport.LoadMany("[ not json");
+        Assert.Single(results);
+        Assert.Null(results[0].Draft);
+        Assert.NotEmpty(results[0].Errors);
+    }
+
+    [Fact]
+    public void LoadMany_returns_empty_for_an_empty_array()
+    {
+        var results = GameProfileImport.LoadMany("[]");
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Load_carries_nexusGameDomain_when_present()
+    {
+        var json = """{ "name":"Cyberpunk 2077","engine":"custom","saveRoot":"DocumentsMyGames","saveSubPath":"CD Projekt Red/Cyberpunk 2077","nexusGameDomain":"cyberpunk2077" }""";
+        var r = GameProfileImport.Load(json);
+        Assert.Empty(r.Errors);
+        Assert.Equal("cyberpunk2077", r.Draft!.NexusGameDomain);
+    }
+
+    [Fact]
     public void BuildGameEntry_carries_the_full_agent_profile_fields()
     {
         var input = new GameInput
