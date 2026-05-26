@@ -169,7 +169,8 @@ public static class Scanner
             // A UE4SS folder with a manifest is a loader-driven location: it can Conduct when unowned.
             var owner = ToolOwnership.Detect(loc.Abs);
             var isUe4ss = loc.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(loc.Abs);
-            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: isUe4ss);
+            var isBepInEx = loc.Form != "folders" && string.Equals(c.Game.Engine, "bepinex", StringComparison.OrdinalIgnoreCase);
+            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: isUe4ss || isBepInEx);
             var readOnly = posture == Posture.Coexist;
             var managedLabel = owner?.ToString().ToLowerInvariant()
                 ?? (readOnly ? loc.Managed : null);
@@ -188,6 +189,19 @@ public static class Scanner
                         OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
                         Loader = isUe4ss ? "ue4ss" : null,
                         Builtin = isUe4ss && Ue4ssBuiltins.IsBuiltin(f),
+                    };
+                }
+            }
+            else if (isBepInEx)
+            {
+                foreach (var (name, file, enabled) in BepInExPlugins.Scan(loc.Abs))
+                {
+                    if (outMap.ContainsKey(name)) continue;
+                    outMap[name] = new Mod
+                    {
+                        Name = name, Location = loc.Name, Enabled = enabled, IsFolder = false,
+                        Files = new List<string> { file }, OnServer = false,
+                        Managed = managedLabel, ReadOnly = readOnly, Loader = "bepinex",
                     };
                 }
             }
@@ -212,7 +226,7 @@ public static class Scanner
         // OnServer (multiplayer mirror presence) is only meaningful for pak-file locations.
         foreach (var m in outMap.Values)
         {
-            if (m.IsFolder) continue;
+            if (m.IsFolder || m.Loader is not null) continue;
             var loc = LocByName(m.Location, c);
             if (loc is null || loc.Mirrors.Count == 0) { m.OnServer = true; continue; }
             var mirrorFiles = new HashSet<string>();
@@ -331,6 +345,12 @@ public static class Scanner
             catch (Exception e) { throw new InvalidOperationException($"Couldn't {(enabled ? "enable" : "disable")} \"{name}\" ({e.Message})", e); }
             return Task.CompletedTask;
         }
+        if (m?.Loader == "bepinex")
+        {
+            try { BepInExPlugins.SetEnabled(LocByName(m.Location, c).Abs, name, enabled); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't {(enabled ? "enable" : "disable")} \"{name}\" ({e.Message})", e); }
+            return Task.CompletedTask;
+        }
         // Non-loader mod: fall back to the normal gated path (ReadOnly guard applies).
         if (enabled) EnableMod(name, c); else { var m2 = BuildModList(c).FirstOrDefault(x => x.Name == name); if (m2 is not null) DisableEntry(m2, c); }
         return Task.CompletedTask;
@@ -392,6 +412,12 @@ public static class Scanner
             catch (Exception e) { throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e); }
             return;
         }
+        if (m.Loader == "bepinex")
+        {
+            try { BepInExPlugins.SetEnabled(LocByName(m.Location, c).Abs, m.Name, enable: false); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e); }
+            return;
+        }
         var loc = LocByName(m.Location, c);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
@@ -445,6 +471,12 @@ public static class Scanner
         if (live?.Loader == "ue4ss")
         {
             try { Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true); }
+            catch (Exception e) { throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e); }
+            return;
+        }
+        if (live?.Loader == "bepinex")
+        {
+            try { BepInExPlugins.SetEnabled(LocByName(live.Location, c).Abs, name, enable: true); }
             catch (Exception e) { throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e); }
             return;
         }
