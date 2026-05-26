@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
@@ -653,7 +654,51 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var plan = Scanner.PlanIntake(paths, _ctx);
+            // Pre-check 1: save/world-mod drops. Routes detected zips to SaveModFlow and carves
+            // them out so the regular intake doesn't try to classify their non-pak contents.
+            var remaining = paths.ToList();
+            var savedCount = 0;
+            var saveSkipReasons = new List<string>();
+            if (!string.IsNullOrEmpty(_ctx.SaveDir))
+            {
+                var saveTypeExts = GameProfiles.Resolve(_ctx.Game.Engine, _ctx.Game.SteamAppId)
+                    .SaveTypes.Select(t => t.Extension).ToList();
+                var verdicts = SaveModFlow.TryHandleDrops(
+                    remaining, saveTypeExts,
+                    saveProfilesDir: _ctx.SaveDir!,
+                    snapshotsDir: _ctx.SavesDir,
+                    dataDir: _ctx.DataDir,
+                    saveModPath: _ctx.Game.SaveModPath,
+                    forbidden: _ctx.Game.SaveModForbidden);
+                foreach (var v in verdicts)
+                {
+                    if (v.Outcome == SaveModDropOutcome.Installed) { savedCount++; remaining.Remove(v.SourcePath); }
+                    else if (v.Outcome == SaveModDropOutcome.Failed)
+                    { saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: {v.Reason}"); remaining.Remove(v.SourcePath); }
+                }
+            }
+
+            // Pre-check 2: UE4SS Lua-mod drops. Detection only — ue4ss\Mods is typically owned by
+            // Vortex, so we surface a clear message instead of writing. Carves the matched archives
+            // out so the regular intake doesn't silently skip every Lua/.dll entry.
+            var luaDetected = new List<string>();
+            var archiveReader = new SharpCompressArchiveReader();
+            remaining = remaining.Where(p =>
+            {
+                if (string.IsNullOrEmpty(p) || !File.Exists(p)) return true;
+                var lower = p.ToLowerInvariant();
+                if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) return true;
+                try
+                {
+                    using var arch = archiveReader.Open(p);
+                    var v = Ue4ssLuaDetect.Detect(arch.EntryNames);
+                    if (v.IsLuaMod) { luaDetected.Add(v.ModFolderName ?? Path.GetFileNameWithoutExtension(p)); return false; }
+                    return true;
+                }
+                catch { return true; }
+            }).ToList();
+
+            var plan = Scanner.PlanIntake(remaining, _ctx);
             var chosen = await ConfirmReplacementsAsync(plan);
             if (chosen is null) { StatusText = "Update cancelled."; return; }
             var r = Scanner.ExecuteIntake(plan, chosen, _ctx);
@@ -666,14 +711,24 @@ public sealed partial class MainViewModel : ObservableObject
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
                 catch { /* best-effort; intake already succeeded */ }
                 // Nexus matches the published-ARCHIVE md5 — hash the dropped zip(s), not the extracted files.
-                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, paths)).Matched; }
+                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, remaining)).Matched; }
                 catch { /* best-effort; a Nexus miss / outage never fails intake */ }
                 try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                 catch { /* best-effort */ }
             }
-            StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
+
+            // Assemble a single status line that surfaces every outcome - save-mod installs first,
+            // any save-mod failures with their reasons, UE4SS Lua detections second, then the
+            // regular intake's add/update/skip counts.
+            var statusParts = new List<string>();
+            if (savedCount > 0) statusParts.Add($"Installed {savedCount} save-mod world{(savedCount == 1 ? "" : "s")}");
+            foreach (var reason in saveSkipReasons) statusParts.Add(reason);
+            if (luaDetected.Count > 0)
+                statusParts.Add($"{string.Join(", ", luaDetected)} {(luaDetected.Count == 1 ? "looks like a" : "look like")} UE4SS Lua mod{(luaDetected.Count == 1 ? "" : "s")} — install via Vortex (ue4ss\\Mods is managed)");
+            statusParts.Add($"updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}");
+            StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
-                + (identified > 0 ? $", identified {identified} on CurseForge" : "")
+                + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
                 + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
             await ReloadModsAsync();
         }
