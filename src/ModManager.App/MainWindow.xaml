@@ -67,6 +67,19 @@
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Fetch metadata for all mods" Command="{x:Bind ViewModel.FetchMetadataCommand}"
+                                            ToolTipService.ToolTip="Re-fetch metadata from CurseForge for every mod (best-effort).">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE896;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Generate a theme with AI…" Click="OnNewTheme"
+                                            ToolTipService.ToolTip="Open the theme generator.">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE790;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
                             <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE74D;" />
@@ -105,7 +118,6 @@
                 <Button Content="SP" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp" />
                 <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
                 <Button Content="+ Add" Click="OnAddMods" />
-                <Button Content="Fetch metadata" Command="{x:Bind ViewModel.FetchMetadataCommand}" />
                 <Button Content="Unlock load order" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Reorder mods" />
                 <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
                 <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots" />
@@ -154,7 +166,6 @@
                           SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
                           DisplayMemberPath="Name" />
                 <Button Content="Nexus" Click="OnNexus" ToolTipService.ToolTip="Connect your Nexus Mods account (per-user API key) for metadata + md5 mod ID" />
-                <Button Content="+ Theme" Click="OnNewTheme" ToolTipService.ToolTip="Generate a theme with AI" />
             </StackPanel>
         </Grid>
 
