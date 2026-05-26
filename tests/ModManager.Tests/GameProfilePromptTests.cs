@@ -16,4 +16,13 @@ public class GameProfilePromptTests
         Assert.Contains("requiredLauncher", p);
         Assert.DoesNotContain("```", p);          // no markdown fences requested
     }
+
+    [Fact]
+    public void Build_asks_for_nexusGameDomain()
+    {
+        var p = GameProfilePrompt.Build("Cyberpunk 2077");
+        Assert.Contains("nexusGameDomain", p);
+        // The contract: a Nexus URL slug, not a numeric id.
+        Assert.Contains("slug", p, StringComparison.OrdinalIgnoreCase);
+    }
 }
