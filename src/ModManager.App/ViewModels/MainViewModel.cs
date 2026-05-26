@@ -286,9 +286,13 @@ public sealed partial class MainViewModel : ObservableObject
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
             if (directInject)
+                // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
+                // read as "you don't have Mod Engine 2 (you should)" — which is wrong; for a
+                // Seamless Co-op / EML stack, ME2 actively conflicts. Name what's running so the
+                // user knows they're fine, and present ME2 as one path among others, not the goal.
                 StatusText = list.Count > 0
-                    ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable (no Mod Engine 2)."
-                    : "No Mod Engine 2 and no recognized mods found. Install Mod Engine 2 to manage folder mods here.";
+                    ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable. Loose-file install, no Mod Engine 2 needed."
+                    : "No mods yet — drop a mod archive to install, or set up Mod Engine 2 for folder-based mods.";
             else UpdateStatus();
         }
         catch (Exception e) { StatusText = e.Message; }
