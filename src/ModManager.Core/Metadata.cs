@@ -62,6 +62,14 @@ public static partial class Metadata
             m.Image = e?.Image;
             m.Downloads = e?.Downloads;
             m.HasMeta = e is not null;
+            if (e is null && m.Builtin && Ue4ssBuiltins.Lookup(m.Name) is { } b)
+            {
+                m.BaseTitle = b.Title;
+                m.DisplayName = !string.IsNullOrEmpty(m.Variant) ? $"{b.Title} ({m.Variant})" : b.Title;
+                m.Description = b.Description;
+                m.Source = b.DocsUrl;   // shows as the source/docs link
+                m.HasMeta = true;        // so the credit line (with the docs link) renders
+            }
             list.Add(m);
         }
         return list;

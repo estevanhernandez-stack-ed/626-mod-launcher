@@ -187,6 +187,7 @@ public static class Scanner
                         Name = f, Location = loc.Name, Enabled = enabled, Files = new List<string> { f },
                         OnServer = false, IsFolder = true, Managed = managedLabel, ReadOnly = readOnly,
                         Loader = isUe4ss ? "ue4ss" : null,
+                        Builtin = isUe4ss && Ue4ssBuiltins.IsBuiltin(f),
                     };
                 }
             }

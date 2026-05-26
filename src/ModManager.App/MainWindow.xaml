@@ -220,6 +220,12 @@
                                     Visibility="{x:Bind ManagedVisibility, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind ManagedBadge}" FontFamily="Consolas" FontSize="11" Opacity="0.8" />
                             </Border>
+                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemePanel}"
+                                    BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
+                                    ToolTipService.ToolTip="Ships with UE4SS — framework mod, not a downloaded mod"
+                                    Visibility="{x:Bind BuiltinVisibility, Mode=OneWay}">
+                                <TextBlock Text="UE4SS BUILT-IN" FontFamily="Consolas" FontSize="11" Opacity="0.7" />
+                            </Border>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"
                                     Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">
