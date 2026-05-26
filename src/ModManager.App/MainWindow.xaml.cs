@@ -387,6 +387,17 @@ public sealed partial class MainWindow : Window
     // user-identity stuff (avatar, theme, Nexus account, window transparency) lives in one place.
     // The toolbar Nexus status pill now calls OnSettings directly — the dot still signals state.
 
+    // Open the active game's root folder in Explorer. Quiet glyph in the bottom status bar — Este
+    // asked for "doesn't need to look like a button, could just say go to game folder." Errors are
+    // swallowed: a missing path / shell failure isn't worth a toast.
+    private void OnOpenGameFolder(object sender, RoutedEventArgs e)
+    {
+        var path = ViewModel.GameRootText;
+        if (string.IsNullOrEmpty(path)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch { /* path gone / shell unavailable — silent */ }
+    }
+
     private async void OnSettings(object sender, RoutedEventArgs e)
     {
         var avatars     = App.AppHost.Services.GetRequiredService<Services.AvatarService>();

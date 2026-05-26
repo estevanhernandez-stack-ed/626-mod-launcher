@@ -458,12 +458,21 @@
         <Grid Grid.Row="3" Height="32" Padding="12,0" Background="{StaticResource ThemeFooterBg}"
               BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="{x:Bind ViewModel.GameRootText, Mode=OneWay}" Opacity="0.5" FontSize="12"
+            <!-- Open-in-Explorer affordance — a quiet folder glyph that fires the game-root path
+                 through the shell. Hidden when no game is active so the empty footer stays clean. -->
+            <Button Grid.Column="0" Click="OnOpenGameFolder"
+                    Background="Transparent" BorderThickness="0" Padding="0,0,8,0" MinWidth="0"
+                    ToolTipService.ToolTip="Open game folder in Explorer"
+                    Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
+                <FontIcon Glyph="&#xE838;" FontSize="12" Opacity="0.7" />
+            </Button>
+            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.GameRootText, Mode=OneWay}" Opacity="0.5" FontSize="12"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Opacity="0.8" FontSize="12"
+            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Opacity="0.8" FontSize="12"
                        VerticalAlignment="Center" />
         </Grid>
     </Grid>
