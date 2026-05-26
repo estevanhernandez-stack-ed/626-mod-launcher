@@ -68,6 +68,25 @@ public sealed class ThemeService
         Set(res, "ThemeDanger", t["danger"]);
         Set(res, "ThemeInk", t["text"]);
         Set(res, "ThemeInkSoft", t["text_secondary"]);
+
+        // ContentDialog + AccentButton resource overrides (declared in App.xaml). Same in-place
+        // mutation pattern: WinUI's default popup templates look up these specific keys, and
+        // because we re-color them in lockstep with the rest of the theme, every dialog in the
+        // app re-themes live without needing an explicit RequestedTheme on each one.
+        Set(res, "ContentDialogBackground", t["bg"]);
+        Set(res, "ContentDialogForeground", t["text"]);
+        Set(res, "ContentDialogBorderBrush", t["border"]);
+        Set(res, "ContentDialogTopOverlay", t["glass"]);
+        Set(res, "ContentDialogSeparatorBorderBrush", t["border"]);
+
+        Set(res, "AccentButtonBackground", t["accent"]);
+        Set(res, "AccentButtonBackgroundPointerOver", t["accent"]);
+        Set(res, "AccentButtonBackgroundPressed", t["accent"]);
+        Set(res, "AccentButtonBackgroundDisabled", t["border"]);
+        Set(res, "AccentButtonForeground", "#000000");
+        Set(res, "AccentButtonForegroundPointerOver", "#000000");
+        Set(res, "AccentButtonForegroundPressed", "#000000");
+        Set(res, "AccentButtonForegroundDisabled", t["text_secondary"]);
     }
 
     private static void Set(ResourceDictionary res, string key, string hex)
