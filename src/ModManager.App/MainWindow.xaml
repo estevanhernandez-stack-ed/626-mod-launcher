@@ -226,6 +226,7 @@
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ModRowViewModel">
                     <StackPanel>
+                    <!-- Section header. Right-margin 4 (was 0 on the plain TextBlock) for visual consistency with the ? button column. -->
                     <Grid Visibility="{x:Bind SectionHeaderVisibility, Mode=OneWay}" Margin="4,16,4,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

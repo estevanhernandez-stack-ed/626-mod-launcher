@@ -255,7 +255,7 @@ public sealed partial class MainWindow : Window
             {
                 CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(6, 2, 6, 2),
-                Background = (Application.Current.Resources["ThemePanel"] as Brush) ?? new SolidColorBrush(Microsoft.UI.Colors.DimGray),
+                Background = (Brush)Application.Current.Resources["ThemePanel"],
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
                 {
@@ -281,7 +281,7 @@ public sealed partial class MainWindow : Window
         Add("MP-SAFE",  "Author or verified-safe list says this works in MP.");
         Add("MP-RISKY", "Flagged risky in MP (anti-cheat / desync). Use with care.");
         Add("MP?",      "No MP stance claimed. Right-click the badge to set one.");
-        Add("3x / 10x", "Active level of a variant family. Click another in the family to switch.");
+        Add("[N]x",     "Active level of a variant family (the number is the level — e.g. 5x, 10x, 20x). Click another in the family to switch.");
         Add("VARIANT",  "One of several variants of the same mod — pick whichever fits.");
         Add("📄 readme",   "Open the mod's bundled readme.");
         Add("⚙ config",    "Open the config cockpit (UE4SS keybinds + settings).");

@@ -424,7 +424,7 @@ public sealed partial class MainViewModel : ObservableObject
                 .GroupBy(m => m.Mod.Name).ToDictionary(g => g.Key, g => g.First());
             ordered = orderKeys.Where(byKey.ContainsKey).Select(k => byKey[k]).ToList();
         }
-        foreach (var r in ordered) r.InLoadOrder = true;
+        foreach (var r in ordered) { r.InLoadOrder = true; r.IsFirstSectionHeader = false; }
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
         Renumber();
         IsLoadOrderMode = true;
