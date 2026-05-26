@@ -201,6 +201,17 @@ public sealed partial class SavesDialog : ContentDialog
         _svc.SetAutoBackup(_gameId, AutoBackupCheck.IsChecked == true, keep);
     }
 
+    // Open the save folder in Explorer. Quiet glyph next to Change… — Este asked for "go to save
+    // folder right near where they link the save folder." Errors are swallowed: missing path /
+    // shell failure isn't worth a toast (the user can re-set via Change…).
+    private void OnOpenSaveFolder(object sender, RoutedEventArgs e)
+    {
+        var path = FolderBox.Text;
+        if (string.IsNullOrEmpty(path)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch { /* path gone / shell unavailable — silent */ }
+    }
+
     private async void OnChangeFolder(object sender, RoutedEventArgs e)
     {
         var picker = new FolderPicker();

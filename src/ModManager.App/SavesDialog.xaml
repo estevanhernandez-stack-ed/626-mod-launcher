@@ -16,10 +16,15 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="FolderBox" Grid.Column="0" Header="Save folder" IsReadOnly="True"
                      PlaceholderText="Set the game's save folder to enable snapshots" />
-            <Button Grid.Column="1" Content="Change…" VerticalAlignment="Bottom" Click="OnChangeFolder" />
+            <Button x:Name="OpenFolderButton" Grid.Column="1" Click="OnOpenSaveFolder" VerticalAlignment="Bottom"
+                    ToolTipService.ToolTip="Open save folder in Explorer">
+                <FontIcon Glyph="&#xE838;" FontSize="12" />
+            </Button>
+            <Button Grid.Column="2" Content="Change…" VerticalAlignment="Bottom" Click="OnChangeFolder" />
         </Grid>
 
         <Grid ColumnSpacing="8">
