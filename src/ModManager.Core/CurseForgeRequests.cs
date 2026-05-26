@@ -37,6 +37,7 @@ public sealed class CfMod
     public List<CfAuthor>? Authors { get; set; }
     public CfLogo? Logo { get; set; }
     public CfLinks? Links { get; set; }
+    public List<CfCategory>? Categories { get; set; }
 }
 
 public sealed class CfAuthor
@@ -56,6 +57,11 @@ public sealed class CfLinks
 {
     public string? WebsiteUrl { get; set; }
     public string? SourceUrl { get; set; }
+}
+
+public sealed class CfCategory
+{
+    public string? Name { get; set; }
 }
 
 /// <summary>
@@ -120,6 +126,7 @@ public static class CurseForgeRequests
             Downloads = mod.DownloadCount,
             Source = Z(links?.SourceUrl),
             CurseforgeId = mod.Id,
+            Category = mod.Categories is { Count: > 0 } ? Z(mod.Categories[0].Name) : null,
         };
     }
 
