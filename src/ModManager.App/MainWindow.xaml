@@ -226,9 +226,21 @@
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ModRowViewModel">
                     <StackPanel>
-                    <TextBlock Text="{x:Bind SectionHeader}" Visibility="{x:Bind SectionHeaderVisibility, Mode=OneWay}"
-                               FontWeight="SemiBold" FontSize="12" CharacterSpacing="80"
-                               Foreground="{StaticResource ThemeAccent}" Margin="4,16,0,4" />
+                    <Grid Visibility="{x:Bind SectionHeaderVisibility, Mode=OneWay}" Margin="4,16,4,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{x:Bind SectionHeader}"
+                                   FontWeight="SemiBold" FontSize="12" CharacterSpacing="80"
+                                   Foreground="{StaticResource ThemeAccent}" />
+                        <Button Grid.Column="1" Click="OnShowChipGlossary" Padding="6,0" MinWidth="22" Height="20"
+                                Background="{StaticResource ThemePanel}" CornerRadius="10" BorderThickness="0"
+                                ToolTipService.ToolTip="What do the chips and icons mean?"
+                                Visibility="{x:Bind FirstSectionHelpVisibility, Mode=OneWay}">
+                            <TextBlock Text="?" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
+                        </Button>
+                    </Grid>
                     <Grid Padding="4,8" ColumnSpacing="12" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,0,0,1">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />

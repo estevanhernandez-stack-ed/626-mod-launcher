@@ -164,6 +164,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string? SectionHeader { get; set; }
     public Visibility SectionHeaderVisibility => string.IsNullOrEmpty(SectionHeader) ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>True for the topmost row that carries a SectionHeader. Drives the one-time chip-legend
+    /// affordance — only the first header shows the "?" button to avoid noise across group-by views.</summary>
+    public bool IsFirstSectionHeader { get; set; }
+    public Visibility FirstSectionHelpVisibility =>
+        IsFirstSectionHeader && !string.IsNullOrEmpty(SectionHeader) ? Visibility.Visible : Visibility.Collapsed;
+
     // Ships with UE4SS (framework mod) — shown with a quiet built-in badge, described from the catalog.
     public bool IsBuiltin => Mod.Builtin;
     public Visibility BuiltinVisibility => Mod.Builtin ? Visibility.Visible : Visibility.Collapsed;

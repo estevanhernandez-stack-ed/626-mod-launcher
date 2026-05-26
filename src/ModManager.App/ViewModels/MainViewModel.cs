@@ -312,6 +312,9 @@ public sealed partial class MainViewModel : ObservableObject
             r.SectionHeader = label != prev ? label : null;
             prev = label;
         }
+        // Mark the first row carrying a SectionHeader as the legend host. Only one ? button per render.
+        var firstSection = ordered.FirstOrDefault(m => !string.IsNullOrEmpty(m.SectionHeader));
+        if (firstSection is not null) firstSection.IsFirstSectionHeader = true;
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
     }
 
