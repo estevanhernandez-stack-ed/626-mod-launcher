@@ -62,6 +62,14 @@ public sealed partial class MainWindow : Window
         await ViewModel.ToggleAsync(row);
     }
 
+    // One level of a multi-variant family — toggle that specific variant independently.
+    private async void OnVariantClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Microsoft.UI.Xaml.Controls.Primitives.ToggleButton tb
+            || tb.DataContext is not VariantOptionVM opt) return;
+        await ViewModel.ToggleVariantAsync(opt, tb.IsChecked == true);
+    }
+
     /// <summary>Confirm flipping a mod whose folder another tool owns. Returns false on cancel.
     /// A "don't warn again" check sets a session-level opt-out.</summary>
     private async Task<bool> ConfirmOwnedToggleAsync(ModRowViewModel row, bool turningOn)

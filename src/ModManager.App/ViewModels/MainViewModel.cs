@@ -168,23 +168,32 @@ public sealed partial class MainViewModel : ObservableObject
             // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
             var rows = new List<ModRowViewModel>();
-            // Build in variant-group order; OrderAndStampSections then orders + sections per GroupMode.
+            // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
+            // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
+            // OrderAndStampSections then orders + sections per GroupMode.
             foreach (var fam in VariantGroups.Group(list))
-                foreach (var m in fam.Members)
+            {
+                var rep = fam.Members[0]; // representative carries the row's name/description/metadata
+                var folderAbs = rep.IsFolder
+                    ? System.IO.Path.Combine(Scanner.LocByName(rep.Location, _ctx!).Abs, rep.Name)
+                    : "";
+                var options = fam.IsMulti
+                    ? (IReadOnlyList<VariantOptionVM>)fam.Members
+                        .Select(m => new VariantOptionVM(
+                            m.Name,
+                            string.IsNullOrEmpty(m.Variant) ? m.Name : m.Variant!.ToUpperInvariant(),
+                            m.Enabled,
+                            !m.ReadOnly || m.Loader == "ue4ss"))
+                        .ToList()
+                    : System.Array.Empty<VariantOptionVM>();
+                rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader == "ue4ss", canUninstall: !directInject && !rep.ReadOnly)
                 {
-                    // For folder mods, supply the absolute folder path so the cockpit can discover
-                    // config files and Lua registrations without needing the GameContext itself.
-                    var folderAbs = m.IsFolder
-                        ? System.IO.Path.Combine(Scanner.LocByName(m.Location, _ctx!).Abs, m.Name)
-                        : "";
-                    rows.Add(new ModRowViewModel(m, canToggle: !m.ReadOnly || m.Loader == "ue4ss", canUninstall: !directInject && !m.ReadOnly)
-                    {
-                        ReadmeFilePath = Scanner.ReadmePathFor(m.Name, _ctx!),
-                        MpOverride = mpOverrides.TryGetValue(m.Name, out var o) ? o : null,
-                        InVariantGroup = fam.IsMulti,
-                        ModFolderAbs = folderAbs,
-                    });
-                }
+                    ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
+                    MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
+                    ModFolderAbs = folderAbs,
+                    VariantOptions = options,
+                });
+            }
             OrderAndStampSections(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
@@ -273,6 +282,19 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = e.Message;
         }
         finally { row.IsBusy = false; }
+    }
+
+    /// <summary>Toggle one level of a multi-variant family — enable/disable that specific variant's
+    /// files via the same gated path as the single toggle, then reload to refresh the chips.</summary>
+    public async Task ToggleVariantAsync(VariantOptionVM opt, bool enable)
+    {
+        if (_ctx is null) return;
+        try
+        {
+            await Scanner.SetLoaderModEnabledAsync(opt.ModName, enable, _ctx);
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
     }
 
     [RelayCommand]

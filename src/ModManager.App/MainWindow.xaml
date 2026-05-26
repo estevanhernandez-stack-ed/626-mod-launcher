@@ -218,6 +218,25 @@
                                 <TextBlock Text="{x:Bind DownloadsText}" Opacity="0.55" FontSize="12" VerticalAlignment="Center"
                                            Visibility="{x:Bind DownloadsVisibility}" />
                             </StackPanel>
+                            <!-- Multi-variant family: pick which level(s) to run, inline on this one row -->
+                            <ItemsControl ItemsSource="{x:Bind VariantOptions}" Margin="0,4,0,0"
+                                          Visibility="{x:Bind VariantOptionsVisibility, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:VariantOptionVM">
+                                        <ToggleButton Content="{x:Bind Label}" IsChecked="{x:Bind Enabled, Mode=OneWay}"
+                                                      IsEnabled="{x:Bind CanToggle}" Click="OnVariantClick"
+                                                      MinWidth="0" Padding="10,2" FontSize="12" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Levels of the same mod — turn on any. Drop in more anytime; they won't collide."
+                                       Opacity="0.5" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Visibility="{x:Bind VariantOptionsVisibility, Mode=OneWay}" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -281,7 +300,7 @@
                         <ToggleSwitch Grid.Column="4" IsOn="{x:Bind Enabled, Mode=OneWay}" Toggled="OnModToggled"
                                       IsEnabled="{x:Bind CanToggle}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
-                                      Visibility="{x:Bind NormalVisibility, Mode=OneWay}" />
+                                      Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
 
                         <Button Grid.Column="5" Click="OnUninstall" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
