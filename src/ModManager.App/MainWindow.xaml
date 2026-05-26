@@ -211,7 +211,7 @@
                               DisplayMemberPath="Name" />
                     <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" Margin="4,6" />
                     <Button Click="OnNexus" ToolTipService.ToolTip="Connect your Nexus Mods account (per-user API key) for metadata + md5 mod ID">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
                             <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
                             <TextBlock Text="Nexus" />
                         </StackPanel>
