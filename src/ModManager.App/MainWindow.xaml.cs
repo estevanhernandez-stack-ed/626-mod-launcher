@@ -32,7 +32,25 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
         if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
+
+        // Window backdrop (Solid / Mica / Acrylic). Applied on launch and re-applied whenever the
+        // user picks a different value in Settings. Mica/Acrylic need a SystemBackdrop instance;
+        // Solid clears it back to null so the Grid's Background ThemeBg fully fills the window.
+        var appSettings = App.AppHost.Services.GetRequiredService<Services.AppSettingsService>();
+        ApplyBackdrop(appSettings.Backdrop);
+        appSettings.BackdropChanged += (_, _) => ApplyBackdrop(appSettings.Backdrop);
+
         Activated += OnFirstActivated;
+    }
+
+    private void ApplyBackdrop(Services.WindowBackdropKind kind)
+    {
+        SystemBackdrop = kind switch
+        {
+            Services.WindowBackdropKind.Mica    => new Microsoft.UI.Xaml.Media.MicaBackdrop(),
+            Services.WindowBackdropKind.Acrylic => new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop(),
+            _                                   => null, // Solid — the Grid's ThemeBg fills the window
+        };
     }
 
     private async void OnFirstActivated(object sender, WindowActivatedEventArgs args)
@@ -349,16 +367,17 @@ public sealed partial class MainWindow : Window
             ViewModel.SelectedTheme = t;
     }
 
-    // The standalone Nexus connect/disconnect dialog moved into ProfileDialog as a section so all
-    // user-identity stuff (avatar, theme, Nexus account) lives in one place. The toolbar Nexus
-    // status pill now calls OnProfile directly — the dot still signals connection state.
+    // The standalone Nexus connect/disconnect dialog moved into SettingsDialog as a section so all
+    // user-identity stuff (avatar, theme, Nexus account, window transparency) lives in one place.
+    // The toolbar Nexus status pill now calls OnSettings directly — the dot still signals state.
 
-    private async void OnProfile(object sender, RoutedEventArgs e)
+    private async void OnSettings(object sender, RoutedEventArgs e)
     {
-        var avatars = App.AppHost.Services.GetRequiredService<Services.AvatarService>();
-        var themes  = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
-        var hwnd    = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dialog  = new ProfileDialog(hwnd, avatars, themes, ViewModel) { XamlRoot = Content.XamlRoot };
+        var avatars     = App.AppHost.Services.GetRequiredService<Services.AvatarService>();
+        var themes      = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
+        var appSettings = App.AppHost.Services.GetRequiredService<Services.AppSettingsService>();
+        var hwnd        = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dialog      = new SettingsDialog(hwnd, avatars, themes, appSettings, ViewModel) { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
         if (dialog.Changed)
         {

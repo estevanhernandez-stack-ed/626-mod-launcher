@@ -87,6 +87,30 @@ public sealed class ThemeService
         Set(res, "AccentButtonForegroundPointerOver", "#000000");
         Set(res, "AccentButtonForegroundPressed", "#000000");
         Set(res, "AccentButtonForegroundDisabled", t["text_secondary"]);
+
+        // ComboBox flyout (game picker + VIEW dropdown).
+        Set(res, "ComboBoxDropDownBackground", t["glass"]);
+        Set(res, "ComboBoxDropDownBackgroundPointerOver", t["glass"]);
+        Set(res, "ComboBoxDropDownBackgroundPointerPressed", t["glass"]);
+        Set(res, "ComboBoxDropDownBorderBrush", t["border"]);
+        Set(res, "ComboBoxDropDownForeground", t["text"]);
+        Set(res, "ComboBoxItemBackgroundSelected", t["border"]);
+        Set(res, "ComboBoxItemBackgroundSelectedPointerOver", t["border"]);
+        Set(res, "ComboBoxItemBackgroundSelectedPressed", t["border"]);
+        Set(res, "ComboBoxItemBackgroundPointerOver", t["border"]);
+        Set(res, "ComboBoxItemForegroundSelected", t["text"]);
+        Set(res, "ComboBoxItemForegroundSelectedPointerOver", t["text"]);
+        Set(res, "ComboBoxItemForegroundPointerOver", t["text"]);
+
+        // MenuFlyout (THEME dropdown, ... More menu, per-row right-click menus).
+        Set(res, "MenuFlyoutPresenterBackground", t["glass"]);
+        Set(res, "MenuFlyoutPresenterBorderBrush", t["border"]);
+        Set(res, "MenuFlyoutItemForeground", t["text"]);
+        Set(res, "MenuFlyoutItemBackgroundPointerOver", t["border"]);
+        Set(res, "MenuFlyoutItemBackgroundPressed", t["border"]);
+        Set(res, "MenuFlyoutItemForegroundPointerOver", t["text"]);
+        Set(res, "MenuFlyoutItemForegroundPressed", t["text"]);
+        Set(res, "MenuFlyoutSeparatorBackground", t["border"]);
     }
 
     private static void Set(ResourceDictionary res, string key, string hex)
