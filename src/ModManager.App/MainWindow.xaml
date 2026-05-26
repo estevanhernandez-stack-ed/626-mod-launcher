@@ -146,6 +146,9 @@
                         <TextBlock Text="Launch options" />
                     </StackPanel>
                 </Button>
+                <ComboBox MinWidth="120" ToolTipService.ToolTip="Group the mod list"
+                          ItemsSource="{x:Bind ViewModel.GroupModes}"
+                          SelectedItem="{x:Bind ViewModel.GroupMode, Mode=TwoWay}" />
                 <ComboBox MinWidth="120" ToolTipService.ToolTip="Theme"
                           ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"

@@ -557,19 +557,8 @@ public sealed partial class MainWindow : Window
                 row2.Children.Add(valueBox);
                 row2.Children.Add(saveBtn);
                 section.Children.Add(row2);
-
-                if (!string.IsNullOrEmpty(entry.Description))
-                {
-                    var desc = new TextBlock
-                    {
-                        Text = entry.Description,  // description from config comments — textContent only
-                        Opacity = 0.55,
-                        FontSize = 11,
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = new Thickness(0, -4, 0, 0),
-                    };
-                    section.Children.Add(desc);
-                }
+                // Each option stays a single line; its description lives on the key's hover tooltip
+                // (set above) rather than a second line.
             }
 
             root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = section });
