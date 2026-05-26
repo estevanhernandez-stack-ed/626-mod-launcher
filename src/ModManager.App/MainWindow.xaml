@@ -314,18 +314,20 @@
                                     Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">
                                 <TextBlock Text="VARIANT" FontFamily="Consolas" FontSize="11" Foreground="Black" />
                             </Border>
-                            <Border Background="{StaticResource ThemePanel}" CornerRadius="3" Padding="6,2">
+                            <Border Background="{StaticResource ThemePanel}" CornerRadius="3" Padding="6,2"
+                                    ToolTipService.ToolTip="{x:Bind ClassChipTooltip}">
                                 <TextBlock Text="{x:Bind ClassChip}" FontFamily="Consolas" FontSize="11" />
                             </Border>
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="3" Padding="6,2"
-                                    Visibility="{x:Bind VariantVisibility}">
+                                    Visibility="{x:Bind VariantVisibility}"
+                                    ToolTipService.ToolTip="Active variant of this mod. Click another in the family to switch.">
                                 <TextBlock Text="{x:Bind VariantChip}" FontFamily="Consolas" FontSize="11" />
                             </Border>
                             <!-- MP-safety badge doubles as the set-override affordance (faint "MP?" = no claim) -->
                             <Button Padding="6,2" CornerRadius="3" BorderThickness="0"
                                     Background="{StaticResource ThemePanel}" VerticalAlignment="Center"
                                     Opacity="{x:Bind MpBadgeOpacity, Mode=OneWay}"
-                                    ToolTipService.ToolTip="Multiplayer safety — click to set">
+                                    ToolTipService.ToolTip="{x:Bind MpBadgeTooltip, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind MpBadge, Mode=OneWay}" FontFamily="Consolas" FontSize="11"
                                            Foreground="{x:Bind MpBadgeBrush, Mode=OneWay}" />
                                 <Button.Flyout>
