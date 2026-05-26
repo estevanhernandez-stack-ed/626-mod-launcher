@@ -743,6 +743,60 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>Manual-match escape hatch: user pastes a Nexus or CurseForge URL for a row whose
+    /// auto-identify didn't land. Parse → fetch metadata from the named provider → write it against
+    /// this mod's key with IsManual=true so future rescans can't clobber it. Result via StatusText.</summary>
+    public async Task<bool> ManualMatchAsync(ModRowViewModel row, string url)
+    {
+        if (_ctx is null) return false;
+        var parts = ModSiteUrl.Parse(url);
+        if (parts is null)
+        {
+            StatusText = "That doesn't look like a Nexus or CurseForge mod URL.";
+            return false;
+        }
+
+        try
+        {
+            ModMeta? hit = null;
+            switch (parts.Provider)
+            {
+                case ModSiteProvider.Nexus:
+                    if (!_nexus.IsConnected)
+                    {
+                        StatusText = "Connect Nexus first (Settings → Nexus Mods).";
+                        return false;
+                    }
+                    hit = await _nexus.Client!.GetModAsync(parts.GameKey, int.Parse(parts.ModRef));
+                    break;
+
+                case ModSiteProvider.CurseForge:
+                    // The CF client needs a numeric gameId. Use the active game's registered CF id.
+                    // If the game has no CurseforgeGameId yet, the user has to set it in Add Game /
+                    // Settings first — we don't try to resolve a slug → gameId without the registry hint.
+                    if (_ctx.Game.CurseforgeGameId is not int gameId)
+                    {
+                        StatusText = "This game has no CurseForge ID registered — set it in the game's registry first.";
+                        return false;
+                    }
+                    hit = await Scanner.LookupCurseForgeSlugAsync(_svc.CurseForge, gameId, parts.ModRef);
+                    break;
+            }
+
+            if (hit is null)
+            {
+                StatusText = $"Couldn't find that mod on {parts.Provider}.";
+                return false;
+            }
+            hit.IsManual = true;
+            Scanner.WriteOneMeta(_ctx, row.Mod.Name, hit);
+            await ReloadModsAsync();
+            StatusText = $"Matched \"{row.DisplayName}\" to {hit.Title ?? "the pasted URL"}.";
+            return true;
+        }
+        catch (Exception e) { StatusText = e.Message; return false; }
+    }
+
     /// <summary>Validate + store a pasted personal Nexus key (the user's own — never baked). Result via StatusText.</summary>
     public async Task<bool> ConnectNexusAsync(string apiKey)
     {
@@ -792,8 +846,28 @@ public sealed partial class MainViewModel : ObservableObject
                 var r = _direct.Execute(_ctx.Game, plan, chosen);
                 if (r.Added.Count > 0 || r.Updated.Count > 0) _svc.Redetect(_ctx.Game.Id); // pick up mod folders + launchers
                 await ReloadModsAsync();                                                    // rebuilds context: refreshed list + Play targets
+
+                // Identify what just got installed — same chain the regular intake branch uses. Direct-inject
+                // mods are named from DirectInject.Catalog (e.g. "Seamless Co-op"); Md5IdentifyArchivesAsync's
+                // fromsoft branch maps the archive's md5 → Nexus → those catalog names. Best-effort: a Nexus
+                // miss / outage / unreachable CF proxy never breaks the install that already succeeded.
+                var identified = 0;
+                var nexusIdentified = 0;
+                if (r.Added.Count > 0 || r.Updated.Count > 0)
+                {
+                    try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added.Concat(r.Updated))).Matched; }
+                    catch { }
+                    try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, paths)).Matched; }
+                    catch { }
+                    try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
+                    catch { }
+                    if (identified > 0 || nexusIdentified > 0) await ReloadModsAsync();
+                }
+
                 StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
-                    + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : ".");
+                    + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : ".")
+                    + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
+                    + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
             }
             catch (Exception e) { StatusText = e.Message; }
             finally { IsBusy = false; }

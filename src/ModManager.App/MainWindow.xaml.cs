@@ -240,6 +240,15 @@ public sealed partial class MainWindow : Window
         ViewModel.SetMpOverride(row, value);
     }
 
+    // Right-click → "Match to a mod…": opens the URL paste dialog, then hands the URL to the VM.
+    private async void OnManualMatch(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        var dialog = new ManualMatchDialog(row.DisplayName) { XamlRoot = Content.XamlRoot };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        await ViewModel.ManualMatchAsync(row, dialog.Url);
+    }
+
     private async void OnSaves(object sender, RoutedEventArgs e)
     {
         var svc = App.AppHost.Services.GetRequiredService<Services.LauncherService>();

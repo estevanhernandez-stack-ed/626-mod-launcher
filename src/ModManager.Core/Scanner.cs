@@ -1006,6 +1006,12 @@ public static class Scanner
 
     private static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)
     {
+        // Manual entries lock the row. Auto-identify (Nexus md5 / CF fingerprint / name search) never
+        // overrides what the user pasted via "Match to a mod…". Covers both parameter directions —
+        // Scanner.cs has call sites with existing on either side.
+        if (curated?.IsManual == true) return curated;
+        if (cf.IsManual) return cf;
+
         if (curated is null) return cf;
         return new ModMeta
         {
@@ -1019,6 +1025,7 @@ public static class Scanner
             Image = curated.Image ?? cf.Image,
             Downloads = curated.Downloads ?? cf.Downloads,
             CurseforgeId = curated.CurseforgeId ?? cf.CurseforgeId,
+            Category = curated.Category ?? cf.Category,
         };
     }
 
@@ -1152,12 +1159,31 @@ public static class Scanner
                 if (!File.Exists(path)) continue;
                 var match = await nexus.GetByMd5Async(domain, Md5Hash.OfFile(path)); // hash the ARCHIVE
                 if (match?.Meta is null) continue;
-                foreach (var key in ZipModKeys(path, c))
+
+                // Get the mod keys this archive INSTALLS. Extension-based engines (pak/dll/jar) name mods
+                // after their files, so ZipModKeys (filter by c.Exts + strip variants) is right. Catalog-based
+                // engines (fromsoft direct-inject — c.Game.FileExtensions empty in the registry entry) name
+                // mods from DirectInject.Catalog, so fall back to the signature matcher against the archive's
+                // entries. Note: c.Exts is always non-empty (GameContext normalizes empty→["pak"]), so branch
+                // on the raw registry entry instead.
+                IReadOnlyList<string> keys;
+                if (c.Game.FileExtensions.Count > 0)
+                {
+                    keys = ZipModKeys(path, c);
+                }
+                else
+                {
+                    using var zipForKeys = Archive.Open(path);
+                    keys = DirectInject.MatchSignaturesInZip(zipForKeys.EntryNames);
+                }
+
+                foreach (var key in keys)
                 {
                     // A Nexus archive-md5 match is exact provenance (this file IS the Nexus upload),
                     // so it is AUTHORITATIVE: Nexus identity (title/author/url/image) wins over any
                     // existing CurseForge match; CF only fills the fields Nexus lacks (downloads,
                     // source-code link). This is what makes backfill override a CF-won collision.
+                    // Manual matches (ModMeta.IsManual) still lock the row — MergeMeta short-circuits.
                     meta[key] = MergeMeta(meta.GetValueOrDefault(key) ?? new ModMeta(), match.Meta);
                     matchedKeys.Add(key);
                 }
@@ -1195,6 +1221,29 @@ public static class Scanner
         }
         if (matched > 0) SaveMetadata(c, meta);
         return new IdentifyResult(matched);
+    }
+
+    /// <summary>Resolve a CurseForge mod-page slug to a ModMeta. Uses the existing Search endpoint
+    /// with the slug as the query; since CfMod carries no Slug field, takes the top result (CF search
+    /// with the slug literal as the query is the best available resolution). Returns null on no-match / error.</summary>
+    public static async Task<ModMeta?> LookupCurseForgeSlugAsync(ICurseForgeClient client, int gameId, string modSlug)
+    {
+        try
+        {
+            var hits = await client.SearchAsync(gameId, modSlug);
+            var best = hits?.FirstOrDefault();
+            return best is null ? null : CurseForgeRequests.MapMod(best);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Write a single entry into the per-game metadata.json, leaving everything else
+    /// untouched. Used by the manual-match flow. (LoadMetadata + SaveMetadata are already atomic.)</summary>
+    public static void WriteOneMeta(GameContext c, string modKey, ModMeta meta)
+    {
+        var existing = LoadMetadata(c);
+        var next = new Dictionary<string, ModMeta>(existing, StringComparer.OrdinalIgnoreCase) { [modKey] = meta };
+        SaveMetadata(c, next);
     }
 
     // The distinct mod keys an archive contributes (its mod-classified entries -> base keys).
