@@ -241,6 +241,13 @@ public sealed partial class MainViewModel : ObservableObject
             else if (directInject) list = _direct.List(_ctx.Game);
             else list = await ReloadFromScannerAsync();
 
+            // Always merge metadata.json onto the row list. The scanner branch did this internally too —
+            // MergeMetadata is idempotent (same map → same fields), so the scanner branch's re-merge is a
+            // no-op and the direct-inject + ME2 branches now pick up Nexus / CF identifies the same way
+            // Windrose does. Without this, metadata.json entries written by Md5IdentifyArchivesAsync /
+            // RefreshMetadataByNameAsync for fromsoft games never reach the displayed rows.
+            list = Metadata.MergeMetadata(list, Scanner.LoadMetadata(_ctx));
+
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
             // Order rows so variant-family members (same mod page / _Nx base) sit together, and mark
             // the members of a multi-variant family so the row shows a VARIANT chip. Toggles stay
