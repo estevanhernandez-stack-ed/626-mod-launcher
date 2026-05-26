@@ -168,10 +168,14 @@ public sealed partial class MainViewModel : ObservableObject
             // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
             var rows = new List<ModRowViewModel>();
-            // UE4SS (loader-managed) mods get their own section at the BOTTOM of the list; everything
-            // else stays on top. OrderBy is stable, so variant-family adjacency is preserved within each.
+            // Three sections top-to-bottom: pak/game mods; then UE4SS mods installed for THIS game;
+            // then the framework mods that ship bundled with UE4SS. Stable OrderBy keeps variant adjacency.
+            static (int Rank, string Label) ModSection(Mod m) =>
+                m.Loader != "ue4ss" ? (0, "MODS")
+                : m.Builtin ? (2, "BUNDLED WITH UE4SS")
+                : (1, "UE4SS SCRIPTS");
             foreach (var fam in VariantGroups.Group(list)
-                         .OrderBy(f => f.Members.FirstOrDefault()?.Loader == "ue4ss" ? 1 : 0))
+                         .OrderBy(f => f.Members.FirstOrDefault() is { } fm ? ModSection(fm).Rank : 0))
                 foreach (var m in fam.Members)
                 {
                     // For folder mods, supply the absolute folder path so the cockpit can discover
@@ -192,9 +196,9 @@ public sealed partial class MainViewModel : ObservableObject
             string? prevSection = null;
             foreach (var row in rows)
             {
-                var section = row.Mod.Loader == "ue4ss" ? "UE4SS SCRIPTS" : "MODS";
-                row.SectionHeader = section != prevSection ? section : null;
-                prevSection = section;
+                var label = ModSection(row.Mod).Label;
+                row.SectionHeader = label != prevSection ? label : null;
+                prevSection = label;
             }
             Mods = new ObservableCollection<ModRowViewModel>(rows);
             NotifyMpWarning();
