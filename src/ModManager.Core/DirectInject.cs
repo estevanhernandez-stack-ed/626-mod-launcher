@@ -49,6 +49,44 @@ public static class DirectInject
     private static Signature Sig(string name, string kind, string[]? files = null, string[]? dirs = null, string[]? contains = null)
         => new(name, kind, files ?? Array.Empty<string>(), dirs ?? Array.Empty<string>(), contains ?? Array.Empty<string>());
 
+    /// <summary>
+    /// Recognize which catalog-named direct-inject mods a zip archive INSTALLS, by running the same
+    /// signature rules (<see cref="Signature"/>) the on-disk recognizer uses against the archive's
+    /// entry list. Case-insensitive. Returns distinct mod names that matched; empty if nothing did.
+    /// Pure - takes the entry names only, no IO.
+    /// </summary>
+    public static IReadOnlyList<string> MatchSignaturesInZip(IEnumerable<string> zipEntryNames)
+    {
+        var entries = (zipEntryNames ?? Enumerable.Empty<string>())
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Select(n => n.Replace('\\', '/'))
+            .ToList();
+        if (entries.Count == 0) return Array.Empty<string>();
+
+        // Pre-compute the things each Signature predicate looks at.
+        var basenamesLower = entries
+            .Select(n => System.IO.Path.GetFileName(n).ToLowerInvariant())
+            .Where(n => n.Length > 0)
+            .ToHashSet();
+        var dirSegmentsLower = entries
+            .SelectMany(n => n.Split('/', StringSplitOptions.RemoveEmptyEntries).SkipLast(1))
+            .Select(s => s.ToLowerInvariant())
+            .ToHashSet();
+
+        var hits = new List<string>();
+        foreach (var sig in Catalog)
+        {
+            if (sig.Files.Any(f => basenamesLower.Contains(f.ToLowerInvariant()))) { hits.Add(sig.Name); continue; }
+            if (sig.Dirs.Any(d => dirSegmentsLower.Contains(d.ToLowerInvariant())))  { hits.Add(sig.Name); continue; }
+            if (sig.FileContains.Any(f =>
+                basenamesLower.Any(b => b.Contains(f, StringComparison.OrdinalIgnoreCase))))
+            {
+                hits.Add(sig.Name);
+            }
+        }
+        return hits.Distinct().ToList();
+    }
+
     /// <summary>The catalog label for the bare DLL mod loader — hidden once its individual mods are listed.</summary>
     public const string LoaderName = "DLL mod loader";
     private const string ModsDir = "mods";
