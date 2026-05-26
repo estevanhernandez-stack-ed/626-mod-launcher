@@ -318,25 +318,105 @@ public sealed partial class MainWindow : Window
             ViewModel.OnThemeImported(dialog.Imported);
     }
 
+    // Build the THEME dropdown menu fresh each time it opens. Lists every installed theme with a
+    // checkmark on the active one, then a "+ New theme…" item at the bottom that opens the AI
+    // generator. Theme-related actions live in one place this way.
+    private void OnThemeMenuOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout menu) return;
+        menu.Items.Clear();
+        foreach (var theme in ViewModel.ThemeOptions)
+        {
+            var item = new MenuFlyoutItem { Text = theme.Name, Tag = theme };
+            if (theme.Id == ViewModel.SelectedTheme?.Id)
+                item.Icon = new FontIcon { Glyph = "" }; // checkmark
+            item.Click += OnPickTheme;
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var newItem = new MenuFlyoutItem
+        {
+            Text = "+ New theme…",
+            Icon = new FontIcon { Glyph = "" }, // paint brush (matches the old menu item)
+        };
+        newItem.Click += OnNewTheme;
+        menu.Items.Add(newItem);
+    }
+
+    private void OnPickTheme(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem item && item.Tag is ModManager.Core.Theme t)
+            ViewModel.SelectedTheme = t;
+    }
+
     // Connect Nexus Mods with a personal API key (the user's own — never baked). Validates before
-    // storing; shows the connected account + a Disconnect option.
+    // storing; shows the connected account + a Disconnect option. The dialog inherits the app's
+    // dark theme explicitly (ContentDialog doesn't otherwise pick up the window's RequestedTheme).
     private async void OnNexus(object sender, RoutedEventArgs e)
     {
         // Re-validate a stored key first so the account name + Premium/Free tag are current (and to
         // populate premium for a connection saved before it was tracked). Offline-safe.
         if (ViewModel.NexusConnected) await ViewModel.RefreshNexusAsync();
 
-        var status = new TextBlock
+        var panel = new StackPanel { Spacing = 12 };
+
+        if (ViewModel.NexusConnected)
         {
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.85,
-            Text = ViewModel.NexusConnected
-                ? $"Connected as {ViewModel.NexusAccountLine}. Paste a new key to switch, or disconnect."
-                : "Get your personal API key from nexusmods.com -> account settings -> API access, then paste it here.",
+            // Prominent accent banner so the connected state reads at a glance — without this the
+            // empty key input made it look like a key was required.
+            var banner = new Border
+            {
+                Background = (Brush)Application.Current.Resources["ThemePanel"],
+                BorderBrush = (Brush)Application.Current.Resources["ThemeAccent"],
+                BorderThickness = new Thickness(0, 0, 0, 2),
+                Padding = new Thickness(12, 10, 12, 10),
+                CornerRadius = new CornerRadius(4),
+            };
+            var bannerRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+            bannerRow.Children.Add(new FontIcon
+            {
+                Glyph = "",                                  // checkmark (E73E)
+                FontSize = 18,
+                Foreground = (Brush)Application.Current.Resources["ThemeAccent"],
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            bannerRow.Children.Add(new TextBlock
+            {
+                Text = $"Connected as {ViewModel.NexusAccountLine}",
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            banner.Child = bannerRow;
+            panel.Children.Add(banner);
+
+            panel.Children.Add(new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.75,
+                Text = "Your saved API key is being used for metadata and mod ID lookups. " +
+                       "Click Disconnect to remove the saved key, or paste a different key below " +
+                       "to switch accounts.",
+            });
+        }
+        else
+        {
+            panel.Children.Add(new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.85,
+                Text = "Get your personal API key from nexusmods.com → account settings → API access, " +
+                       "then paste it here. The key stays on your machine — it's never sent anywhere " +
+                       "except Nexus's own API.",
+            });
+        }
+
+        var keyBox = new PasswordBox
+        {
+            PlaceholderText = ViewModel.NexusConnected
+                ? "Paste a new key only if switching accounts"
+                : "Nexus personal API key",
+            Width = 380,
         };
-        var keyBox = new PasswordBox { PlaceholderText = "Nexus personal API key", Width = 380 };
-        var panel = new StackPanel { Spacing = 10 };
-        panel.Children.Add(status);
         panel.Children.Add(keyBox);
 
         var dialog = new ContentDialog
@@ -346,6 +426,7 @@ public sealed partial class MainWindow : Window
             PrimaryButtonText = "Connect",
             CloseButtonText = "Close",
             XamlRoot = Content.XamlRoot,
+            RequestedTheme = ElementTheme.Dark, // inherit the app's dark theming explicitly
         };
         if (ViewModel.NexusConnected) dialog.SecondaryButtonText = "Disconnect";
 

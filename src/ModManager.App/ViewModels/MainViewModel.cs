@@ -156,7 +156,12 @@ public sealed partial class MainViewModel : ObservableObject
         // wraps the brush (binding helpers, etc.) sees a fresh reference, and so the active-mode
         // tint re-paints immediately on theme switch.
         NotifyLoadoutBrushes();
+        OnPropertyChanged(nameof(SelectedThemeName));
     }
+
+    /// <summary>The active theme's display name (or a placeholder when none is selected). Drives the
+    /// THEME DropDownButton's content label.</summary>
+    public string SelectedThemeName => SelectedTheme?.Name ?? "Theme";
 
     private void NotifyLoadoutBrushes()
     {
