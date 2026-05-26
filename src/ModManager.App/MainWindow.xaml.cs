@@ -531,14 +531,21 @@ public sealed partial class MainWindow : Window
         }
 
         var on = state == ModManager.Core.AntiCheatState.On;
+        // Frame as ONLINE vs OFFLINE mode, not "anti-cheat on/off + a hidden trade." The toggle is
+        // the consequence; the user picks the mode they want. Old copy implied "off = play modded"
+        // and quietly buried the offline-mode side effect.
         card.Children.Add(new TextBlock
         {
-            Text = on ? "Anti-cheat is currently ON (online play, mods off)." : "Anti-cheat is currently OFF — press Play to start with mods, offline.",
+            Text = on
+                ? "Currently in ONLINE mode (anti-cheat on) — official multiplayer works, file-based mods are blocked."
+                : "Currently in OFFLINE mode (anti-cheat off) — Play loads mods. No official online until you switch back.",
             Opacity = 0.9, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
         });
         var toggle = new Button
         {
-            Content = on ? "Turn anti-cheat OFF (play modded)" : "Turn anti-cheat ON (play online)",
+            Content = on
+                ? "Switch to offline mode (anti-cheat off)"
+                : "Switch to online mode (anti-cheat on)",
             Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black),
             Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeAccent"],
         };

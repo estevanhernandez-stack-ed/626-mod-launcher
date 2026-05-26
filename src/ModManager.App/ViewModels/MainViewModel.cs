@@ -283,7 +283,13 @@ public sealed partial class MainViewModel : ObservableObject
             OrderAndStampSections(rows);
             NotifyMpWarning();
             GameRootText = _ctx.GameRoot;
-            LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId);
+            // LaunchOptions.NeedsAttention fires on Steam App ID alone — it doesn't know what's
+            // installed. For Elden Ring, the only recommended option is the anti-cheat OFF swap,
+            // which only matters for users WITHOUT Seamless Co-op. When Seamless is fully wired
+            // (mod files + launcher both present), the user doesn't need the vanilla anti-cheat
+            // toggle — Seamless brings its own bypass. Suppress the toolbar warning then.
+            LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId)
+                && !_direct.SeamlessFullyInstalled(_ctx.Game);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
@@ -294,6 +300,11 @@ public sealed partial class MainViewModel : ObservableObject
                     ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable. Loose-file install, no Mod Engine 2 needed."
                     : "No mods yet — drop a mod archive to install, or set up Mod Engine 2 for folder-based mods.";
             else UpdateStatus();
+            // Toggling a mod (especially Seamless) may change which target the Launch button fires.
+            // Re-publish the computed properties so the toolbar label tracks state without a manual
+            // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
+            OnPropertyChanged(nameof(EffectiveLaunchTarget));
+            OnPropertyChanged(nameof(LaunchButtonLabel));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -573,6 +584,37 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>True when any mod is enabled — the trigger for launch enforcement.</summary>
     public bool AnyModsEnabled => Mods.Any(m => m.Enabled);
 
+    /// <summary>The launch target the primary Launch button will fire — state-aware. With Seamless
+    /// Co-op fully installed on a FromSoft game, the Seamless launcher IS the modded launch path
+    /// (its own bypass + private multiplayer), so default to it. Otherwise fall back to the registry's
+    /// IsDefault target. The dropdown still exposes every target — this only picks the primary.</summary>
+    public LaunchTarget? EffectiveLaunchTarget
+    {
+        get
+        {
+            if (_ctx is null) return null;
+            if (_direct.SeamlessFullyInstalled(_ctx.Game))
+            {
+                var seamless = _ctx.Game.LaunchTargets.FirstOrDefault(t =>
+                    string.Equals(t.Kind, "exe", StringComparison.OrdinalIgnoreCase)
+                    && (t.Target ?? "").Contains("ersc_launcher", StringComparison.OrdinalIgnoreCase));
+                if (seamless is not null) return seamless;
+            }
+            return LauncherService.DefaultTarget(_ctx.Game);
+        }
+    }
+
+    /// <summary>The Launch button's label — names the target the primary click will fire so the user
+    /// doesn't have to open the dropdown to find out (Seamless vs vanilla, ME2 vs Steam, etc.).</summary>
+    public string LaunchButtonLabel
+    {
+        get
+        {
+            var t = EffectiveLaunchTarget;
+            return string.IsNullOrEmpty(t?.Label) ? "▶ Launch" : $"▶ {t.Label}";
+        }
+    }
+
     /// <summary>The required launcher resolved to a runnable exe target, or null when not set, the
     /// path resolves outside GameRoot (bad/manual value), or the exe is missing.</summary>
     public LaunchTarget? RequiredLauncherTarget()
@@ -612,7 +654,15 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
         AutoBackupBeforeLaunch();
-        try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
+        // Use the state-aware effective target (e.g. Seamless when fully installed) so the primary
+        // Launch matches what the button label promised. Fall back to the legacy LauncherService.Launch
+        // path for games with no registered targets at all (steam:// / LaunchExe).
+        var target = EffectiveLaunchTarget;
+        try
+        {
+            if (target is not null) _svc.Launch(target, _ctx.Game.GameRoot);
+            else if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game.";
+        }
         catch (Exception e) { StatusText = e.Message; }
     }
 
@@ -662,8 +712,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (turnOn) AntiCheat.Enable(folder, opt.Bootstrapper);
             else AntiCheat.Disable(folder, opt.Bootstrapper, opt.RealExe);
             StatusText = turnOn
-                ? "Anti-cheat ON — Play launches normally (official online OK)."
-                : "Anti-cheat OFF — press Play for mods. Avoid OFFICIAL online until you turn it back on (Seamless Co-op is fine).";
+                ? "Switched to ONLINE mode (anti-cheat on) — official multiplayer OK, file-based mods blocked."
+                : "Switched to OFFLINE mode (anti-cheat off) — Play loads mods. Seamless Co-op online still works.";
         }
         catch (Exception e) { StatusText = e.Message; }
         return AntiCheatStateOf(opt);

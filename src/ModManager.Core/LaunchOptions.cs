@@ -38,11 +38,12 @@ public static class LaunchOptions
         "1245620" => new[]
         {
             new LaunchOption(
-                "Anti-cheat (mods need it off)",
-                "Elden Ring's EasyAntiCheat blocks mods. Turn it OFF and your installed mods load when "
-                + "you press Play. Don't go into OFFICIAL online multiplayer with anti-cheat off — turn it "
-                + "back ON for that. (Seamless Co-op is separate: it runs its own private co-op with its own "
-                + "bypass, so playing online through Seamless is safe.) Fully reversible.",
+                "Online vs offline mode (anti-cheat)",
+                "EasyAntiCheat blocks file-based Elden Ring mods. The trade: anti-cheat ON means "
+                + "official online multiplayer works but mods don't load; anti-cheat OFF means Play "
+                + "launches in offline mode with mods loaded. Seamless Co-op is its own path — it "
+                + "ships a bypass and runs its own multiplayer, so Seamless works either way. "
+                + "Fully reversible.",
                 LaunchOptionKind.AntiCheatToggle)
             {
                 Bootstrapper = "start_protected_game.exe",
