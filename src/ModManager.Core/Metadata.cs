@@ -61,6 +61,7 @@ public static partial class Metadata
             m.Donate = e?.Donate;
             m.Image = e?.Image;
             m.Downloads = e?.Downloads;
+            m.Category = e?.Category;
             m.HasMeta = e is not null;
             if (e is null && m.Builtin && Ue4ssBuiltins.Lookup(m.Name) is { } b)
             {
