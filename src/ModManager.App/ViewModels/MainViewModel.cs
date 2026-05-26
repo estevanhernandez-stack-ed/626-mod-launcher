@@ -218,7 +218,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
 
     // View toggle: group the list by source (paks / UE4SS installed / bundled) or by MP-safety class.
-    public IReadOnlyList<string> GroupModes { get; } = new[] { "By source", "By class" };
+    public IReadOnlyList<string> GroupModes { get; } = new[] { "By source", "By class", "By category" };
 
     [ObservableProperty] private string groupMode = "By source";
     partial void OnGroupModeChanged(string value)
@@ -230,6 +230,12 @@ public sealed partial class MainViewModel : ObservableObject
     // divider text. "By class" uses the MP-safety class (both/sp/mp) we track, not a content category.
     private (int Rank, string Label) SectionOf(Mod m)
     {
+        if (GroupMode == "By category")
+        {
+            var c = string.IsNullOrWhiteSpace(m.Category) ? "UNCATEGORIZED" : m.Category!.Trim().ToUpperInvariant();
+            var rank = string.Equals(c, "UNCATEGORIZED", StringComparison.Ordinal) ? int.MaxValue : 0;
+            return (rank, c);
+        }
         if (GroupMode == "By class")
             return (m.Class ?? "both").ToLowerInvariant() switch
             {
