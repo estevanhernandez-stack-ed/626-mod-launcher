@@ -617,6 +617,14 @@ public sealed partial class MainViewModel : ObservableObject
     // ---------- Nexus connection ----------
 
     public bool NexusConnected => _nexus.IsConnected;
+
+    /// <summary>Status dot for the Nexus toolbar button — accent when connected, muted when not.
+    /// Returns resource-backed brushes so theme switches propagate via ThemeService.Set's in-place
+    /// color mutation.</summary>
+    public Brush NexusStatusBrush => NexusConnected
+        ? ((Brush)Application.Current.Resources["ThemeAccent"])
+        : ((Brush)Application.Current.Resources["ThemeInkSoft"]);
+
     public string? NexusUser => _nexus.ConnectedUser;
     public bool NexusPremium => _nexus.ConnectedPremium;
 
@@ -658,6 +666,8 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = user is null
                 ? "Nexus key rejected — check it on your account's API access page."
                 : $"Connected to Nexus as {NexusAccountLine}.";
+            OnPropertyChanged(nameof(NexusConnected));
+            OnPropertyChanged(nameof(NexusStatusBrush));
             return user is not null;
         }
         catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
@@ -667,6 +677,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _nexus.Disconnect();
         StatusText = "Disconnected from Nexus.";
+        OnPropertyChanged(nameof(NexusConnected));
+        OnPropertyChanged(nameof(NexusStatusBrush));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
