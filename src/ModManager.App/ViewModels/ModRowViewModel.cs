@@ -181,15 +181,16 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string VariantChip => Mod.Variant ?? "";
     public string ClassChip => (Mod.Class ?? "both").ToUpperInvariant();
 
-    /// <summary>Human-friendly explainer for the class chip (BOTH/SP/MP/OFF). Used as a hover tooltip;
+    /// <summary>Human-friendly explainer for the class chip (BOTH/SP/MP). Used as a hover tooltip;
     /// the chip text itself stays terse. Switch is on the chip's literal value, which the VM derives
-    /// from the mod's loadout membership.</summary>
+    /// from the mod's loadout membership. No notify is wired because Mod.Class is immutable
+    /// post-construction (the whole row VM is replaced on rescan) - the default x:Bind OneTime
+    /// mode picks up the right value at first render and never goes stale.</summary>
     public string ClassChipTooltip => ClassChip switch
     {
         "BOTH" => "This mod is active in both your SP and MP loadouts.",
         "SP"   => "This mod is active only in your single-player loadout.",
         "MP"   => "This mod is active only in your multiplayer loadout.",
-        "OFF"  => "This mod is not in any loadout — currently disabled.",
         _      => $"Mod class: {ClassChip}",
     };
 
@@ -201,7 +202,7 @@ public sealed partial class ModRowViewModel : ObservableObject
         "MP-SAFE"  => "Author or verified-safe list says this works in MP. Click to override.",
         "MP-RISKY" => "Flagged as risky in MP (anti-cheat / desync). Click to override.",
         "SP-ONLY"  => "Marked SP-only — not in your MP loadout. Click to override.",
-        "MP?"      => "No MP stance claimed. Click to set MP-safe, MP-risky, or SP-only.",
+        "MP?"      => "No MP stance claimed. Click to override (MP-safe, MP-risky, or SP-only).",
         _          => "Multiplayer safety — click to set.",
     };
 
