@@ -28,6 +28,8 @@ public sealed class Mod
     // Set to a loader id ("ue4ss") when this mod's enable state is driven through a loader manifest
     // (Conductor posture) rather than by moving files. Null = file-move model.
     public string? Loader { get; set; }
+    // True for a UE4SS framework folder that ships with the loader (described from the bundled catalog).
+    public bool Builtin { get; set; }
 
     // enrichment (from Metadata.MergeMetadata)
     public string DisplayName { get; set; } = "";
