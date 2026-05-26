@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using ModManager.App.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
@@ -241,6 +243,59 @@ public sealed partial class MainWindow : Window
         var dialog = new ProfilesDialog(ctx) { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
         if (dialog.Changed) await ViewModel.RefreshAsync(); // a profile was applied
+    }
+
+    private async void OnShowChipGlossary(object sender, RoutedEventArgs e)
+    {
+        var content = new StackPanel { Spacing = 8 };
+        void Add(string chip, string explain)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var pill = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(6, 2, 6, 2),
+                Background = (Brush)Application.Current.Resources["ThemePanel"],
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = chip,
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11,
+                    MinWidth = 56,
+                    TextAlignment = TextAlignment.Center,
+                },
+            };
+            row.Children.Add(pill);
+            row.Children.Add(new TextBlock
+            {
+                Text = explain,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            content.Children.Add(row);
+        }
+        Add("BOTH",     "Active in both your SP and MP loadouts.");
+        Add("SP",       "Active only in your single-player loadout.");
+        Add("MP",       "Active only in your multiplayer loadout.");
+        Add("MP-SAFE",  "Author or verified-safe list says this works in MP.");
+        Add("MP-RISKY", "Flagged risky in MP (anti-cheat / desync). Use with care.");
+        Add("MP?",      "No MP stance claimed. Right-click the badge to set one.");
+        Add("[N]x",     "Active level of a variant family (the number is the level — e.g. 5x, 10x, 20x). Click another in the family to switch.");
+        Add("VARIANT",  "One of several variants of the same mod — pick whichever fits.");
+        Add("📄 readme",   "Open the mod's bundled readme.");
+        Add("⚙ config",    "Open the config cockpit (UE4SS keybinds + settings).");
+        Add("🗑 uninstall", "Permanently remove the mod from disk.");
+
+        var dialog = new ContentDialog
+        {
+            Title = "What do these mean?",
+            CloseButtonText = "Got it",
+            DefaultButton = ContentDialogButton.Close,
+            Content = new ScrollViewer { Content = content, MaxHeight = 420 },
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
     }
 
     private async void OnNewTheme(object sender, RoutedEventArgs e)

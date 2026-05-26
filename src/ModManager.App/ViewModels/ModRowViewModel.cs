@@ -126,6 +126,7 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MpBadge))]
     [NotifyPropertyChangedFor(nameof(MpBadgeBrush))]
     [NotifyPropertyChangedFor(nameof(MpBadgeOpacity))]
+    [NotifyPropertyChangedFor(nameof(MpBadgeTooltip))]
     private MpRisk? mpOverride;
 
     // Readme/description claim outranks the class hint ("unless the readme says otherwise"); a
@@ -163,6 +164,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string? SectionHeader { get; set; }
     public Visibility SectionHeaderVisibility => string.IsNullOrEmpty(SectionHeader) ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>True for the topmost row that carries a SectionHeader. Drives the one-time chip-legend
+    /// affordance — only the first header shows the "?" button to avoid noise across group-by views.</summary>
+    public bool IsFirstSectionHeader { get; set; }
+    public Visibility FirstSectionHelpVisibility =>
+        IsFirstSectionHeader && !string.IsNullOrEmpty(SectionHeader) ? Visibility.Visible : Visibility.Collapsed;
+
     // Ships with UE4SS (framework mod) — shown with a quiet built-in badge, described from the catalog.
     public bool IsBuiltin => Mod.Builtin;
     public Visibility BuiltinVisibility => Mod.Builtin ? Visibility.Visible : Visibility.Collapsed;
@@ -179,6 +186,31 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Visibility VariantVisibility => HasVariant ? Visibility.Visible : Visibility.Collapsed;
     public string VariantChip => Mod.Variant ?? "";
     public string ClassChip => (Mod.Class ?? "both").ToUpperInvariant();
+
+    /// <summary>Human-friendly explainer for the class chip (BOTH/SP/MP). Used as a hover tooltip;
+    /// the chip text itself stays terse. Switch is on the chip's literal value, which the VM derives
+    /// from the mod's loadout membership. No notify is wired because Mod.Class is immutable
+    /// post-construction (the whole row VM is replaced on rescan) - the default x:Bind OneTime
+    /// mode picks up the right value at first render and never goes stale.</summary>
+    public string ClassChipTooltip => ClassChip switch
+    {
+        "BOTH" => "This mod is active in both your SP and MP loadouts.",
+        "SP"   => "This mod is active only in your single-player loadout.",
+        "MP"   => "This mod is active only in your multiplayer loadout.",
+        _      => $"Mod class: {ClassChip}",
+    };
+
+    /// <summary>Human-friendly explainer for the MP-safety badge. Switches on the badge text the VM
+    /// renders (MP-SAFE / MP-RISKY / SP-ONLY / MP?). Replaces the previous static "click to set" line
+    /// with state-aware help.</summary>
+    public string MpBadgeTooltip => MpBadge switch
+    {
+        "MP-SAFE"  => "Author or verified-safe list says this works in MP. Click to override.",
+        "MP-RISKY" => "Flagged as risky in MP (anti-cheat / desync). Click to override.",
+        "SP-ONLY"  => "Marked SP-only — not in your MP loadout. Click to override.",
+        "MP?"      => "No MP stance claimed. Click to override (MP-safe, MP-risky, or SP-only).",
+        _          => "Multiplayer safety — click to set.",
+    };
 
     // Cockpit (config + Lua surfacing). Built on demand by the parent VM, which holds the GameContext.
     public string ModFolderAbs { get; init; } = "";   // set by parent: the mod's folder (for folder mods)

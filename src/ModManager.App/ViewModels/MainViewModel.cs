@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using ModManager.App.Services;
 using ModManager.Core;
 
@@ -108,9 +110,55 @@ public sealed partial class MainViewModel : ObservableObject
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
 
+    // Segmented Loadout control: the selected segment tints with the theme accent; the others stay
+    // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.
+    // Inactive segments return the resource-backed ThemeInk brush directly so theme switches
+    // propagate via the in-place color mutation in ThemeService.Set (no extra notify needed for
+    // inactive). The active foreground is currently Black - readable on the default cyan accent;
+    // a future text_on_accent theme slot would let this re-theme correctly on arbitrary accents.
+    private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
+
+    public Brush LoadoutAllBrush => SegmentBrushFor("all");
+    public Brush LoadoutMpBrush  => SegmentBrushFor("mp");
+    public Brush LoadoutSpBrush  => SegmentBrushFor("sp");
+    public Brush LoadoutAllForeground => SegmentForegroundFor("all");
+    public Brush LoadoutMpForeground  => SegmentForegroundFor("mp");
+    public Brush LoadoutSpForeground  => SegmentForegroundFor("sp");
+
+    private Brush SegmentBrushFor(string mode)
+        => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
+            ? (Application.Current.Resources["ThemeAccent"] as Brush ?? new SolidColorBrush(Colors.MediumPurple))
+            : TransparentBrush;
+
+    private Brush SegmentForegroundFor(string mode)
+        => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
+            ? new SolidColorBrush(Colors.Black)
+            : (Application.Current.Resources["ThemeInk"] as Brush ?? new SolidColorBrush(Colors.White));
+
+    partial void OnActiveModeChanged(string value)
+    {
+        NotifyLoadoutBrushes();
+    }
+
     partial void OnSelectedThemeChanged(Theme? value)
     {
         if (value is not null) _themes.Apply(value);
+        // Inactive-segment foreground uses the resource-backed ThemeInk brush, so its color tracks
+        // the theme via ThemeService.Set's in-place mutation. The ACTIVE segment's brush is
+        // ThemeAccent (also resource-backed) - same story. We still re-notify so any caller that
+        // wraps the brush (binding helpers, etc.) sees a fresh reference, and so the active-mode
+        // tint re-paints immediately on theme switch.
+        NotifyLoadoutBrushes();
+    }
+
+    private void NotifyLoadoutBrushes()
+    {
+        OnPropertyChanged(nameof(LoadoutAllBrush));
+        OnPropertyChanged(nameof(LoadoutMpBrush));
+        OnPropertyChanged(nameof(LoadoutSpBrush));
+        OnPropertyChanged(nameof(LoadoutAllForeground));
+        OnPropertyChanged(nameof(LoadoutMpForeground));
+        OnPropertyChanged(nameof(LoadoutSpForeground));
     }
 
     /// <summary>Refresh the theme list after an import and select (apply) the new one.</summary>
@@ -264,6 +312,9 @@ public sealed partial class MainViewModel : ObservableObject
             r.SectionHeader = label != prev ? label : null;
             prev = label;
         }
+        // Mark the first row carrying a SectionHeader as the legend host. Only one ? button per render.
+        var firstSection = ordered.FirstOrDefault(m => !string.IsNullOrEmpty(m.SectionHeader));
+        if (firstSection is not null) firstSection.IsFirstSectionHeader = true;
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
     }
 
@@ -373,7 +424,7 @@ public sealed partial class MainViewModel : ObservableObject
                 .GroupBy(m => m.Mod.Name).ToDictionary(g => g.Key, g => g.First());
             ordered = orderKeys.Where(byKey.ContainsKey).Select(k => byKey[k]).ToList();
         }
-        foreach (var r in ordered) r.InLoadOrder = true;
+        foreach (var r in ordered) { r.InLoadOrder = true; r.IsFirstSectionHeader = false; }
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
         Renumber();
         IsLoadOrderMode = true;
@@ -566,6 +617,14 @@ public sealed partial class MainViewModel : ObservableObject
     // ---------- Nexus connection ----------
 
     public bool NexusConnected => _nexus.IsConnected;
+
+    /// <summary>Status dot for the Nexus toolbar button — accent when connected, muted when not.
+    /// Returns resource-backed brushes so theme switches propagate via ThemeService.Set's in-place
+    /// color mutation.</summary>
+    public Brush NexusStatusBrush => NexusConnected
+        ? ((Brush)Application.Current.Resources["ThemeAccent"])
+        : ((Brush)Application.Current.Resources["ThemeInkSoft"]);
+
     public string? NexusUser => _nexus.ConnectedUser;
     public bool NexusPremium => _nexus.ConnectedPremium;
 
@@ -607,6 +666,8 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = user is null
                 ? "Nexus key rejected — check it on your account's API access page."
                 : $"Connected to Nexus as {NexusAccountLine}.";
+            OnPropertyChanged(nameof(NexusConnected));
+            OnPropertyChanged(nameof(NexusStatusBrush));
             return user is not null;
         }
         catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
@@ -616,6 +677,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _nexus.Disconnect();
         StatusText = "Disconnected from Nexus.";
+        OnPropertyChanged(nameof(NexusConnected));
+        OnPropertyChanged(nameof(NexusStatusBrush));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
