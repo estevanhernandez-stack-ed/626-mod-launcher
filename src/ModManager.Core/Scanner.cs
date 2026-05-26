@@ -1006,6 +1006,12 @@ public static class Scanner
 
     private static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)
     {
+        // Manual entries lock the row. Auto-identify (Nexus md5 / CF fingerprint / name search) never
+        // overrides what the user pasted via "Match to a mod…". Covers both parameter directions —
+        // Scanner.cs has call sites with existing on either side.
+        if (curated?.IsManual == true) return curated;
+        if (cf.IsManual) return cf;
+
         if (curated is null) return cf;
         return new ModMeta
         {
@@ -1019,6 +1025,7 @@ public static class Scanner
             Image = curated.Image ?? cf.Image,
             Downloads = curated.Downloads ?? cf.Downloads,
             CurseforgeId = curated.CurseforgeId ?? cf.CurseforgeId,
+            Category = curated.Category ?? cf.Category,
         };
     }
 

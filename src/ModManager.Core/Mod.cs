@@ -60,4 +60,8 @@ public sealed class ModMeta
     public long? Downloads { get; set; }
     public int? CurseforgeId { get; set; }
     public string? Category { get; set; }
+    /// <summary>True when this entry was set by the user via the manual-match dialog. Auto-identify
+    /// (Nexus md5, CF fingerprint, name search) never clobbers a manual entry — the row is locked
+    /// to whatever the user pasted, even when a later rescan would match the same key.</summary>
+    public bool IsManual { get; set; }
 }
