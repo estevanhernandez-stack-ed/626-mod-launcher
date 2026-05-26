@@ -48,17 +48,9 @@
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE721;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Find mods on CurseForge" Tag="curseforge" Click="OnFindMods">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE721;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutSeparator />
+                            <!-- Find mods on Nexus / CurseForge moved out of this menu into the MODS
+                                 toolbar section (Find mods dropdown) — they're discovery actions, not
+                                 game-options. The handler OnFindMods reads Tag and is reused there. -->
                             <MenuFlyoutItem Text="Backfill metadata from Nexus archives…" Click="OnNexusBackfill"
                                             ToolTipService.ToolTip="Point at your folder of downloaded Nexus .zip archives to fill metadata for installed mods">
                                 <MenuFlyoutItem.Icon>
@@ -118,12 +110,36 @@
                  align with the button row (not stretching up through the label area). -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="0"
                         Visibility="{x:Bind ViewModel.NormalBarVisibility, Mode=OneWay}">
-                <!-- MODS: bulk toggle + intake -->
+                <!-- MODS: bulk toggle + intake. Find mods opens Nexus/CurseForge search in the browser
+                     (discovery action — the user goes OUT to find mods, then comes back to drop or
+                     + Add them locally). -->
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="MODS" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
                         <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
+                        <DropDownButton ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
+                            <DropDownButton.Content>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE721;" FontSize="13" />
+                                    <TextBlock Text="Find mods" />
+                                </StackPanel>
+                            </DropDownButton.Content>
+                            <DropDownButton.Flyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE721;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="Find mods on CurseForge" Tag="curseforge" Click="OnFindMods">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE721;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                         <Button Content="+ Add mods" Click="OnAddMods" />
                     </StackPanel>
                 </StackPanel>
@@ -217,9 +233,9 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- SETTINGS: theme picker (future settings land here too) -->
+                <!-- THEME: picker only. Honest label - rename to SETTINGS once a second control lands. -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="SETTINGS" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
+                    <TextBlock Text="THEME" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
                     <ComboBox MinWidth="120" ToolTipService.ToolTip="Theme"
                               ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
