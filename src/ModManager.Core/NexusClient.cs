@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
 
@@ -28,6 +29,10 @@ public sealed class NexusClient : INexusClient
     private readonly HttpClient _http;
     private readonly NexusOptions _opts;
 
+    // Per-session, per-domain category cache. Populated lazily on first GetModAsync or
+    // GetByMd5Async call for a domain; a failed fetch stores nothing so the next call retries.
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _categoriesCache = new();
+
     public NexusClient(HttpClient http, NexusOptions? opts = null)
     {
         _http = http;
@@ -49,12 +54,44 @@ public sealed class NexusClient : INexusClient
         return doc.RootElement.Clone();
     }
 
+    /// <summary>
+    /// Fetch and cache the id→name category map for <paramref name="domain"/>.
+    /// Hits GET /v1/games/{domain}.json once per session; on any HTTP failure returns null
+    /// without caching (the next call will retry). A null result is non-fatal — callers
+    /// pass it straight to MapMod and Category is left null rather than failing the fetch.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, string>?> GetCategoriesAsync(string domain)
+    {
+        if (_categoriesCache.TryGetValue(domain, out var cached))
+            return cached;
+
+        try
+        {
+            var root = await SendAsync(NexusRequests.GameInfoRequest(domain, _opts));
+            var dict = NexusRequests.MapCategories(root);
+            _categoriesCache[domain] = dict;
+            return dict;
+        }
+        catch
+        {
+            // Non-fatal: category resolution is best-effort. Don't cache failures so
+            // the next request can retry (e.g. transient network error).
+            return null;
+        }
+    }
+
     public async Task<ModMeta?> GetModAsync(string gameDomain, int modId)
-        => NexusRequests.MapModResponse(gameDomain, await SendAsync(NexusRequests.ModRequest(gameDomain, modId, _opts)));
+    {
+        var categories = await GetCategoriesAsync(gameDomain);
+        var root = await SendAsync(NexusRequests.ModRequest(gameDomain, modId, _opts));
+        return NexusRequests.MapModResponse(gameDomain, root, categories);
+    }
 
     /// <summary>md5 file lookup. 404 means "not found" (normal) and returns null; other failures throw.</summary>
     public async Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5)
     {
+        var categories = await GetCategoriesAsync(gameDomain);
+
         var req = NexusRequests.Md5Request(gameDomain, md5, _opts);
         using var msg = new HttpRequestMessage(new HttpMethod(req.Method), req.Url);
         foreach (var (k, v) in req.Headers)
@@ -68,7 +105,7 @@ public sealed class NexusClient : INexusClient
 
         await using var stream = await res.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        return NexusRequests.MapMd5Response(gameDomain, doc.RootElement);
+        return NexusRequests.MapMd5Response(gameDomain, doc.RootElement, categories);
     }
 
     /// <summary>Verify the key + read the account name. 401 means a bad/expired key and returns null; other failures throw.</summary>

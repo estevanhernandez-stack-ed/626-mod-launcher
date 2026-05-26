@@ -57,6 +57,14 @@ public static class NexusRequests
         return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/md5_search/{md5}.json", "GET", Headers(opts.ApiKey));
     }
 
+    /// <summary>Game info (including the categories array): GET /v1/games/{domain}.json.</summary>
+    public static ApiRequest GameInfoRequest(string domain, NexusOptions? opts = null)
+    {
+        opts ??= new NexusOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}.json", "GET", Headers(opts.ApiKey));
+    }
+
     /// <summary>Verify the key + read the account identity: GET /v1/users/validate.json.</summary>
     public static ApiRequest ValidateRequest(NexusOptions? opts = null)
     {
@@ -65,10 +73,21 @@ public static class NexusRequests
         return new ApiRequest($"{baseUrl}/v1/users/validate.json", "GET", Headers(opts.ApiKey));
     }
 
-    /// <summary>Nexus mod object -> our metadata entry. Url is constructed from domain + mod_id.</summary>
-    public static ModMeta MapMod(string domain, JsonElement modObject)
+    /// <summary>
+    /// Nexus mod object -> our metadata entry. Url is constructed from domain + mod_id.
+    /// When <paramref name="categories"/> is supplied and the mod JSON contains a numeric
+    /// <c>category_id</c>, the id is resolved to a name and written to <see cref="ModMeta.Category"/>.
+    /// Unresolvable ids (id not in dict, dict null, or missing field) leave Category null.
+    /// </summary>
+    public static ModMeta MapMod(string domain, JsonElement modObject,
+        IReadOnlyDictionary<int, string>? categories = null)
     {
         var modId = Int(modObject, "mod_id");
+        var categoryId = Int(modObject, "category_id");
+        string? category = null;
+        if (categoryId.HasValue && categories != null)
+            categories.TryGetValue(categoryId.Value, out category);
+
         return new ModMeta
         {
             Title = Str(modObject, "name"),
@@ -80,12 +99,38 @@ public static class NexusRequests
             Source = null,
             Donate = null,
             Downloads = null,
+            Category = category,
         };
     }
 
     /// <summary>The GetMod response root IS the mod object. null if not an object.</summary>
-    public static ModMeta? MapModResponse(string domain, JsonElement root)
-        => root.ValueKind == JsonValueKind.Object ? MapMod(domain, root) : null;
+    public static ModMeta? MapModResponse(string domain, JsonElement root,
+        IReadOnlyDictionary<int, string>? categories = null)
+        => root.ValueKind == JsonValueKind.Object ? MapMod(domain, root, categories) : null;
+
+    /// <summary>
+    /// Reads the <c>categories</c> array from a Nexus game-info JSON body
+    /// (<c>GET /v1/games/{domain}.json</c>) and returns an id-to-name dict.
+    /// Entries missing either <c>category_id</c> or <c>name</c> are silently skipped;
+    /// malformed input never throws.
+    /// </summary>
+    public static IReadOnlyDictionary<int, string> MapCategories(JsonElement gameJson)
+    {
+        var dict = new Dictionary<int, string>();
+        if (gameJson.ValueKind != JsonValueKind.Object) return dict;
+        if (!gameJson.TryGetProperty("categories", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return dict;
+
+        foreach (var entry in arr.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object) continue;
+            var id = Int(entry, "category_id");
+            var name = Str(entry, "name");
+            if (id.HasValue && name != null)
+                dict[id.Value] = name;
+        }
+        return dict;
+    }
 
     /// <summary>validate.json body -> account identity. Tolerant of missing fields; null if not an object.</summary>
     public static NexusUser? MapValidateResponse(JsonElement root)
@@ -95,14 +140,15 @@ public static class NexusRequests
     /// md5_search returns an array of { mod, file_details }. Take the first element, map its
     /// mod object, return the match. Empty array / wrong shape -> null.
     /// </summary>
-    public static NexusMd5Match? MapMd5Response(string domain, JsonElement root)
+    public static NexusMd5Match? MapMd5Response(string domain, JsonElement root,
+        IReadOnlyDictionary<int, string>? categories = null)
     {
         if (root.ValueKind != JsonValueKind.Array) return null;
         foreach (var el in root.EnumerateArray())
         {
             if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty("mod", out var mod) || mod.ValueKind != JsonValueKind.Object)
                 return null;
-            var meta = MapMod(domain, mod);
+            var meta = MapMod(domain, mod, categories);
             return new NexusMd5Match(Int(mod, "mod_id"), meta);
         }
         return null;
