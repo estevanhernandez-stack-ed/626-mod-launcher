@@ -34,6 +34,7 @@ public partial class App : Application
                 services.AddSingleton<LudusaviService>();
                 services.AddSingleton<GameProfileResolver>();
                 services.AddSingleton<NexusService>();
+                services.AddSingleton<SaveEditorService>();
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
                 services.AddSingleton<UpdateChecker>();

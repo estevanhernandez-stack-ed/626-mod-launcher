@@ -71,6 +71,29 @@
         </ListView>
         <TextBlock x:Name="SaveFilesEmpty" Text="No save files detected in this folder." Opacity="0.6" FontSize="12" Visibility="Collapsed" />
 
+        <TextBlock Text="Characters" FontWeight="SemiBold" />
+        <ListView x:Name="CharacterList" MaxHeight="200" SelectionMode="None">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:CharacterRow">
+                    <Grid ColumnSpacing="8" Padding="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Headline}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Detail}" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Edit" Click="OnEditCharacter" VerticalAlignment="Center"
+                                ToolTipService.ToolTip="Edit stats, runes, name — snapshots before applying" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <TextBlock x:Name="CharactersEmpty" Text="No editable characters detected in this folder."
+                   Opacity="0.6" FontSize="12" Visibility="Collapsed" />
+        <TextBlock x:Name="EditorCredit" Opacity="0.5" FontSize="11" TextWrapping="Wrap" />
+
         <TextBlock Text="Installed save mods" FontWeight="SemiBold" />
         <ListView x:Name="SaveModList" MaxHeight="200" SelectionMode="None">
             <ListView.ItemTemplate>

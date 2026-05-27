@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.CharacterEditDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Edit character"
+    PrimaryButtonText="Save edit"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="460">
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+        <TextBox x:Name="NameBox" Header="Name" MaxLength="16"
+                 PlaceholderText="Character name (max 16)" />
+        <NumberBox x:Name="RunesBox" Header="Runes" Minimum="0" Maximum="999999999"
+                   SpinButtonPlacementMode="Compact" />
+
+        <TextBlock Text="Attributes" FontWeight="SemiBold" Margin="0,4,0,0" />
+        <Grid ColumnSpacing="12" RowSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+            <NumberBox x:Name="VigBox" Grid.Row="0" Grid.Column="0" Header="VIG" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="MndBox" Grid.Row="0" Grid.Column="1" Header="MND" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="EndBox" Grid.Row="1" Grid.Column="0" Header="END" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="StrBox" Grid.Row="1" Grid.Column="1" Header="STR" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="DexBox" Grid.Row="2" Grid.Column="0" Header="DEX" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="IntBox" Grid.Row="2" Grid.Column="1" Header="INT" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="FaiBox" Grid.Row="3" Grid.Column="0" Header="FAI" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+            <NumberBox x:Name="ArcBox" Grid.Row="3" Grid.Column="1" Header="ARC" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
+        </Grid>
+
+        <TextBlock x:Name="LevelText" Opacity="0.7" FontSize="12" />
+        <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11"
+                   Text="Saving creates a snapshot first. The previous state stays restorable from the Snapshots list — even if something goes wrong." />
+    </StackPanel>
+</ContentDialog>

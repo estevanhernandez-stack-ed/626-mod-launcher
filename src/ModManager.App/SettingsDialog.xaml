@@ -78,6 +78,27 @@
             </StackPanel>
 
             <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+
+            <!-- Divider -->
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
+            <!-- ============ ABOUT ============ -->
+            <TextBlock Text="About" FontWeight="SemiBold" FontSize="14" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,8,0,0">
+                <Run Text="Save editor format work based on community reverse-engineering. Credit to: " />
+                <Hyperlink NavigateUri="https://github.com/BenGrn/EldenRingSaveCopier">
+                    <Run Text="BenGrn/EldenRingSaveCopier" />
+                </Hyperlink>
+                <Run Text=" (MIT), " />
+                <Hyperlink NavigateUri="https://github.com/ClayAmore/ER-Save-Editor">
+                    <Run Text="ClayAmore/ER-Save-Editor" />
+                </Hyperlink>
+                <Run Text=" (Apache-2.0), " />
+                <Hyperlink NavigateUri="https://github.com/alfizari/Elden-Ring-Save-Editor">
+                    <Run Text="alfizari/Elden-Ring-Save-Editor" />
+                </Hyperlink>
+                <Run Text=" (MIT). Full license texts in THIRD_PARTY_NOTICES.md." />
+            </TextBlock>
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>
