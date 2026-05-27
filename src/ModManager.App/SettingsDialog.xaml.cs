@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Shapes;
 using ModManager.App.Services;
 using ModManager.App.ViewModels;
 using ModManager.Core;
+using ModManager.Core.Catalog;
 using ModManager.Core.Frameworks;
 using ModManager.Core.Tools;
 using Windows.Storage.Pickers;
@@ -24,6 +25,17 @@ public sealed record InstalledFrameworkRow(
 {
     public Uri? GetUriObj => string.IsNullOrEmpty(GetUrl) ? null : new Uri(GetUrl);
 }
+
+/// <summary>One row in the Settings → Direct-inject mod configs list. Subtitle shows the
+/// effective path (override if set, else catalog default) so the user can see at a glance
+/// whether they've customized + which file the pencil icon would open.</summary>
+public sealed record DirectInjectConfigRow(
+    string ModId,
+    string DisplayName,
+    string RelativeConfigPath,
+    string EffectivePath,
+    string Title,
+    string Subtitle);
 
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
@@ -85,6 +97,7 @@ public sealed partial class SettingsDialog : ContentDialog
         // Seed the About → Installed tools list. Pure file-read, fast — fine on the UI thread.
         RefreshInstalledTools();
         RefreshInstalledFrameworks();
+        RefreshDirectInjectConfigs();
     }
 
     /// <summary>
@@ -197,6 +210,99 @@ public sealed partial class SettingsDialog : ContentDialog
         RefreshInstalledFrameworks();
         Changed = true;  // Tell the main shell to reload mod rows (framework chip should reappear).
         StatusText.Text = $"Uninstalled {frameworkId}.";
+    }
+
+    /// <summary>
+    /// Populate the Settings → Direct-inject mod configs list. One row per (catalog mod ×
+    /// ConfigPath). Subtitle shows the EFFECTIVE path (override if set, catalog default
+    /// otherwise) plus an "(override)" tag when the user has set a custom location.
+    /// </summary>
+    private void RefreshDirectInjectConfigs()
+    {
+        var rows = new List<DirectInjectConfigRow>();
+        var dataDir = _vm.GameDataDirPublic();
+        var gameRoot = _vm.GameRootText;
+        if (string.IsNullOrEmpty(gameRoot) || string.IsNullOrEmpty(dataDir))
+        {
+            DirectInjectConfigsList.ItemsSource = rows;
+            DirectInjectConfigsEmpty.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var overrides = DirectInjectConfigOverrides.Load(dataDir);
+        var installRoot = ResolveInstallRoot(gameRoot);
+
+        foreach (var mod in KnownDirectInjectMod.Catalog)
+        {
+            if (mod.ConfigPaths.Count == 0) continue; // mods with no editable config are silent
+            overrides.OverridesByModId.TryGetValue(mod.ModId, out var modOverrides);
+            foreach (var rel in mod.ConfigPaths)
+            {
+                bool isOverridden = modOverrides is not null && modOverrides.TryGetValue(rel, out var customAbs);
+                string effective = isOverridden
+                    ? modOverrides![rel]
+                    : System.IO.Path.GetFullPath(System.IO.Path.Combine(installRoot, rel.Replace('/', System.IO.Path.DirectorySeparatorChar)));
+                rows.Add(new DirectInjectConfigRow(
+                    ModId: mod.ModId,
+                    DisplayName: mod.DisplayName,
+                    RelativeConfigPath: rel,
+                    EffectivePath: effective,
+                    Title: $"{mod.DisplayName} — {rel}",
+                    Subtitle: isOverridden ? $"{effective}  ·  (override)" : effective));
+            }
+        }
+
+        DirectInjectConfigsList.ItemsSource = rows;
+        DirectInjectConfigsEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string ResolveInstallRoot(string gameRoot)
+    {
+        if (string.IsNullOrEmpty(gameRoot)) return gameRoot;
+        var game = System.IO.Path.Combine(gameRoot, "Game");
+        return Directory.Exists(game) ? game : gameRoot;
+    }
+
+    /// <summary>
+    /// Override picker. File picker → save the chosen absolute path to the per-game override
+    /// store. Changed=true triggers a row reload on dialog close so the pencil icon updates.
+    /// </summary>
+    private async void OnDirectInjectOverrideClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not DirectInjectConfigRow row) return;
+
+        var dataDir = _vm.GameDataDirPublic();
+        if (string.IsNullOrEmpty(dataDir))
+        {
+            StatusText.Text = "No active game to override against.";
+            return;
+        }
+
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+        picker.FileTypeFilter.Add(".ini");
+        picker.FileTypeFilter.Add(".toml");
+        picker.FileTypeFilter.Add(".cfg");
+        picker.FileTypeFilter.Add("*");
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        var current = DirectInjectConfigOverrides.Load(dataDir);
+        var newMap = current.OverridesByModId.ToDictionary(
+            kv => kv.Key,
+            kv => new Dictionary<string, string>(kv.Value));
+        if (!newMap.TryGetValue(row.ModId, out var modOverrides))
+        {
+            modOverrides = new Dictionary<string, string>();
+            newMap[row.ModId] = modOverrides;
+        }
+        modOverrides[row.RelativeConfigPath] = file.Path;
+
+        DirectInjectConfigOverrides.Save(dataDir, new DirectInjectConfigOverrides(newMap));
+
+        Changed = true; // re-render mod rows on close so the pencil icon picks up the new path
+        RefreshDirectInjectConfigs();
+        StatusText.Text = $"Override saved for {row.DisplayName} → {file.Path}.";
     }
 
     private void OnBackdropChanged(object sender, SelectionChangedEventArgs e)
