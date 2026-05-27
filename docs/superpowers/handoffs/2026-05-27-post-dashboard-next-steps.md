@@ -6,6 +6,62 @@ Two lanes are queued — both can run in fresh-context sessions.
 
 ---
 
+## Smoke findings (2026-05-27 — fix these before or during lane work)
+
+Three issues surfaced during smoke. Triage and fix order is up to the next session.
+
+### F1 — ER Characters section shows empty (regression)
+
+**Symptom:** Saves dialog → Characters section says "No editable characters detected in this folder" on a real ER save folder containing `ESxxxx.sl2` / `.co2` / `.err`. **Worked yesterday on the same save** (the "before-edit Celestia 2026-05-26 2040" snapshot in the dialog proves a prior successful read+edit).
+
+**Diagnosis status:** Code in the save-editor read path is byte-identical to PR #49's working version (`git diff 7d5a035..061c95e -- src/ModManager.App/SavesDialog.xaml.cs src/ModManager.Core/SaveEditor/` is empty). The regression must be either (a) something in the published build that behaves differently from the dev build, OR (b) a non-source-code change (config, save-format drift after gameplay, file lock).
+
+**Immediate diagnostic gap:** [`SavesDialog.xaml.cs:160`](../../../src/ModManager.App/SavesDialog.xaml.cs#L160) silently swallows ALL exceptions from `ReadCharacters`:
+
+```csharp
+try { slots = svc.ReadCharacters(savePath); }
+catch { continue; }   // any parse failure — skip the file, don't fail the dialog
+```
+
+No visibility into what's actually throwing. **First fix:** narrow this catch — log the exception type + message to `StatusText` (or a `Debug.WriteLine`) so the next smoke immediately shows the real failure.
+
+**Hypotheses to test once the exception is visible:**
+- BND4 parse failure on the `.err` or `.co2` files (different file structure than `.sl2`?)
+- Save file locked because the game wrote after the launcher cached file metadata
+- An AOT-trim issue in the published build that doesn't affect the dev build (try `dotnet run --project src/ModManager.App` to compare)
+
+### F2 — ER DLL-proxy chip text confuses ModEngine 2 users
+
+**Symptom:** Every ER mod row shows `NEEDS DLL PROXY (DINPUT8/VERSION/WINHTTP)`. User dropped a Mod Engine 2 zip expecting it to clear; the launcher's intake replaced a file inside the zip but the chip persisted.
+
+**Root cause:** Two issues compounding:
+
+1. **Naming.** "DLL PROXY (DINPUT8/VERSION/WINHTTP)" is technically accurate but unparseable to a non-modder. The thing it actually wants is **ELDEN MOD LOADER** (`https://www.nexusmods.com/eldenring/mods/117`). Mod Engine 2 is a different thing entirely — folder-based, no DLL proxy.
+2. **Workflow.** Dropping a Mod Engine 2 zip into the launcher routes through mod intake; intake extracts to the mods folder, not the game root. ELDEN MOD LOADER's `dinput8.dll` has to land at the game root next to `eldenring.exe` — the launcher's intake doesn't do that by design (it'd violate the file-ops-stay-reversible invariant).
+
+**Proposed fixes (pick one or both):**
+- Rename the chip to `NEEDS ELDEN MOD LOADER` and the catalog `Name` field to "ELDEN MOD LOADER" — keep the dinput8/version/winhttp detect paths internal. Clearer call to action.
+- Improve the "Get it here" link surface so it's the obvious next step instead of just a clickable chip.
+- (Bigger) Teach the launcher to install root-level DLL proxies via a dedicated "Add framework" flow that drops the file at the game root with reversibility tracked separately from mods.
+
+### F3 — INI editor misses Seamless Co-op's INI (and any direct-inject mod's INI)
+
+**Symptom:** No pencil icon appears on the Seamless Co-op row. User expects to edit `seamlesscoopsettings.ini` (password, etc.) from inside the launcher.
+
+**Root cause:** The pencil-icon detection in [`MainViewModel.ReloadModsAsync`](../../../src/ModManager.App/ViewModels/MainViewModel.cs) globs `*.ini` recursively under `rep.ModFolderAbs` — the mod's tracked folder. Seamless Co-op is a **direct-inject mod**: its files (including the INI) land at `<gameRoot>/SeamlessCoop/seamlesscoopsettings.ini`, NOT inside a tracked mod folder. Direct-inject mods have no "mod folder" in the launcher's model — files spray into the game folder. So the INI is invisible to the current detector.
+
+**Proposed fix:** Add a per-mod **known-config-paths catalog** (parallel to `ToolCatalog`) that maps recognized direct-inject mods to their config files. Seamless Co-op → `SeamlessCoop/seamlesscoopsettings.ini` relative to game root. The pencil icon then appears for both regular-folder-tracked mods AND catalog-recognized direct-inject mods.
+
+This is a small new pure-core surface plus an extension to the row-build INI discovery. ~2-3 hour scope.
+
+### Additional smoke-list clarification
+
+The original BND4 smoke step said "Open a real Elden Ring save in the Saves dialog → Characters section populates" — the user interpreted "open" as a per-file action. Update wording: "Open the Saves dialog with a registered ER game — the Characters section auto-populates from every save type."
+
+---
+
+---
+
 ## Lane 1: Elden Ring inventory editing
 
 **Effort:** 17-24h, 12 tasks. **Spec + plan already on master** from PR #48.
@@ -57,20 +113,21 @@ Two lanes are queued — both can run in fresh-context sessions.
 Paste this into a fresh Claude Code session after compacting:
 
 ```
-Picking up where the prior session left off. Master is at 061c95e (mod dashboard PR #56 merged). Local portable build at dist/626-Mod-Launcher-portable-win-x64.zip is smoking; smoke list in docs/smoke-tests/pending.md has 17 items across three recent lanes.
+Picking up where the prior session left off. Master is at 061c95e (mod dashboard PR #56 merged). Local portable build at dist/626-Mod-Launcher-portable-win-x64.zip; smoke list in docs/smoke-tests/pending.md.
 
-Two lanes are queued. Pick one based on what I tell you:
+First — read docs/superpowers/handoffs/2026-05-27-post-dashboard-next-steps.md. Three smoke findings are captured there:
+  F1: ER Characters section shows empty (regression from yesterday's working build)
+  F2: ER DLL-proxy chip text confuses ModEngine 2 users
+  F3: INI editor misses Seamless Co-op's INI (and any direct-inject mod's INI)
 
-LANE 1: ER inventory editing.
-  Spec: docs/superpowers/specs/2026-05-26-saves-editor-fromsoft-inventory-design.md
-  Plan: docs/superpowers/plans/2026-05-26-saves-editor-fromsoft-inventory.md
-  Effort: ~17-24h, 12 tasks. Licenses clean (ClayAmore Apache-2.0 + alfizari MIT).
-  If I say "lane 1" or "ER inventory": cut feat/saves-editor-fromsoft-inventory off master and execute via superpowers:subagent-driven-development. Same pattern as PR #49/#51/#56.
+Then wait for me to pick what's next. Options:
+  - "F1" → investigate the ER characters regression (narrow the silent catch in SavesDialog.xaml.cs:160 first, then diagnose)
+  - "F2" → rename the chip / improve the get-link UX
+  - "F3" → add per-mod known-config-paths catalog
+  - "lane 1" or "ER inventory" → execute docs/superpowers/plans/2026-05-26-saves-editor-fromsoft-inventory.md via superpowers:subagent-driven-development (cut feat/saves-editor-fromsoft-inventory off master; ~17-24h, 12 tasks; ClayAmore Apache-2.0 + alfizari MIT)
+  - "lane 2" or "save-editor skill" → invoke superpowers:brainstorming for the save-editor-as-skill meta work
 
-LANE 2: Save-editor pipeline as a reusable skill.
-  Spec: not written yet.
-  Plan: not written yet.
-  If I say "lane 2" or "save-editor skill": invoke superpowers:brainstorming. The goal is to turn the FromSoft save editor pattern into a skill that mechanizes adding save editors for new games. Use Elden Ring as the canonical template. Memory notes: [[saves-editor-fromsoft]], [[fromsoft-two-mod-worlds]].
+Recommendation: F1 first (it's a real regression, not a UX issue), then F2+F3 quick fixes, then the lanes. But your call.
 
-Read docs/superpowers/handoffs/2026-05-27-post-dashboard-next-steps.md for the full handoff. Wait for me to pick which lane before doing anything beyond reading.
+Do not start any of these without my pick.
 ```
