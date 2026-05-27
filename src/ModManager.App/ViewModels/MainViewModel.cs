@@ -64,6 +64,18 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EmptyVisibility))]
     private bool hasGame;
 
+    /// <summary>Framework dependencies the active game is missing — surfaced as a status banner.
+    /// Refreshed at every <see cref="ReloadModsAsync"/>. Empty = nothing missing (banner hidden).</summary>
+    public ObservableCollection<FrameworkDep> MissingFrameworks { get; } = new();
+
+    /// <summary>Bound to the banner's Visibility — true when at least one framework is missing.</summary>
+    public bool HasMissingFrameworks => MissingFrameworks.Count > 0;
+
+    /// <summary>One-line summary for the banner ("Missing: UE4SS"). Multiple frameworks comma-joined.</summary>
+    public string MissingFrameworksSummary => MissingFrameworks.Count == 0
+        ? ""
+        : "Missing: " + string.Join(", ", MissingFrameworks.Select(d => d.Name));
+
     [ObservableProperty] private bool isBusy;
 
     [ObservableProperty]
@@ -229,6 +241,9 @@ public sealed partial class MainViewModel : ObservableObject
             Mods.Clear();
             GameRootText = "";
             StatusText = "No game registered. Add one in the wizard or the Electron app.";
+            MissingFrameworks.Clear();
+            OnPropertyChanged(nameof(HasMissingFrameworks));
+            OnPropertyChanged(nameof(MissingFrameworksSummary));
             return;
         }
         IsBusy = true;
@@ -255,6 +270,12 @@ public sealed partial class MainViewModel : ObservableObject
             // the members of a multi-variant family so the row shows a VARIANT chip. Toggles stay
             // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
+            // Refresh missing-framework state BEFORE building rows — the per-row chip reads from
+            // MissingFrameworks at row-construction time. The notify pings further down keep the
+            // banner binding fresh; this just lifts the source of truth to where rows see it.
+            MissingFrameworks.Clear();
+            foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
+                MissingFrameworks.Add(dep);
             var rows = new List<ModRowViewModel>();
             // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
             // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
@@ -274,12 +295,25 @@ public sealed partial class MainViewModel : ObservableObject
                             !m.ReadOnly || m.Loader is "ue4ss" or "bepinex"))
                         .ToList()
                     : System.Array.Empty<VariantOptionVM>();
+                // Row-level missing-framework chip. v1 attaches the chip to every row when the
+                // engine has a missing framework — keeps the model simple. FromSoft has two
+                // candidates; prefer ME2 for folder-mod rows, DLL proxy for direct-inject rows.
+                var primaryMissing = MissingFrameworks.FirstOrDefault();
+                if (_ctx.Game.Engine == "fromsoft" && MissingFrameworks.Count > 1)
+                {
+                    primaryMissing = rep.IsFolder
+                        ? MissingFrameworks.FirstOrDefault(d => d.Name == "Mod Engine 2") ?? primaryMissing
+                        : MissingFrameworks.FirstOrDefault(d => d.Name.StartsWith("DLL proxy")) ?? primaryMissing;
+                }
                 rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
                     ModFolderAbs = folderAbs,
                     VariantOptions = options,
+                    MissingFrameworkName = primaryMissing?.Name ?? "",
+                    MissingFrameworkUrl = primaryMissing?.GetUrl,
+                    MissingFrameworkNote = primaryMissing?.Note ?? "",
                 });
             }
             OrderAndStampSections(rows);
@@ -302,6 +336,10 @@ public sealed partial class MainViewModel : ObservableObject
                     ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable. Loose-file install, no Mod Engine 2 needed."
                     : "No mods yet — drop a mod archive to install, or set up Mod Engine 2 for folder-based mods.";
             else UpdateStatus();
+            // MissingFrameworks was refreshed above the row loop (the per-row chip reads from it);
+            // these notifies keep the banner bindings in lockstep with the new collection contents.
+            OnPropertyChanged(nameof(HasMissingFrameworks));
+            OnPropertyChanged(nameof(MissingFrameworksSummary));
             // Toggling a mod (especially Seamless) may change which target the Launch button fires.
             // Re-publish the computed properties so the toolbar label tracks state without a manual
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
@@ -319,6 +357,20 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
+
+    /// <summary>Suffix for the post-drop status line when the active game has a missing framework.
+    /// Empty string when nothing's missing. The drop status line gets ". Heads up: this mod needs X
+    /// — get it at &lt;url&gt;." appended so the user sees the gap the moment they drop.</summary>
+    private string MissingFrameworkDropSuffix()
+    {
+        if (MissingFrameworks.Count == 0) return "";
+        var dep = MissingFrameworks[0];
+        // Trim the URL to a host-ish form so the status line stays readable. The persistent chip
+        // carries the full clickable link; this is the just-dropped callout.
+        var host = "";
+        try { host = new Uri(dep.GetUrl).Host; } catch { host = dep.GetUrl; }
+        return $". Heads up: this mod needs {dep.Name} — get it at {host}.";
+    }
 
     // View toggle: group the list by source (paks / UE4SS installed / bundled) or by MP-safety class.
     public IReadOnlyList<string> GroupModes { get; } = new[] { "By source", "By class", "By category" };
@@ -930,7 +982,8 @@ public sealed partial class MainViewModel : ObservableObject
                 StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
                     + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : ".")
                     + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
-                    + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
+                    + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
+                    + MissingFrameworkDropSuffix();
             }
             catch (Exception e) { StatusText = e.Message; }
             finally { IsBusy = false; }
@@ -1014,7 +1067,8 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
                 + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
-                + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
+                + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
+                + MissingFrameworkDropSuffix();
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
