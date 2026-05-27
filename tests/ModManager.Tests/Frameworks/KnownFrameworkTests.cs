@@ -14,7 +14,9 @@ public class KnownFrameworkTests
         Assert.Equal("1245620", elm.SteamAppId);
         Assert.Equal("https://www.nexusmods.com/eldenring/mods/117", elm.GetUrl);
         Assert.Equal("TechieW", elm.Author);
-        Assert.Equal("GameRoot", elm.InstallRoot);
+        // PlayFolder, not GameRoot — FromSoft games (ER) put the exe under <gameRoot>/Game/
+        // and ELM's dinput8.dll proxy must sit next to the exe to load.
+        Assert.Equal("PlayFolder", elm.InstallRoot);
         Assert.Contains("dinput8.dll", elm.ZipSignatureFiles);
         Assert.Contains("mod_loader_config.ini", elm.ZipSignatureFiles);
         Assert.Contains("eldenring.exe", elm.ForbiddenPaths);
