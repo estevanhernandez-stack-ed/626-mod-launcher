@@ -218,6 +218,27 @@ public sealed partial class ModRowViewModel : ObservableObject
         _          => "Multiplayer safety — click to set.",
     };
 
+    /// <summary>Display name of the framework this mod's engine is missing ("UE4SS"); empty when
+    /// nothing's missing. Set by the parent VM from <see cref="MainViewModel.MissingFrameworks"/>.</summary>
+    public string MissingFrameworkName { get; init; } = "";
+
+    /// <summary>Get-link URL for the missing framework. Opened via HyperlinkButton.NavigateUri
+    /// (SafeUrl guards to https only).</summary>
+    public string? MissingFrameworkUrl { get; init; }
+
+    /// <summary>One-sentence why-it-matters for the tooltip.</summary>
+    public string MissingFrameworkNote { get; init; } = "";
+
+    public bool HasMissingFramework => !string.IsNullOrEmpty(MissingFrameworkName);
+    public Visibility MissingFrameworkVisibility => HasMissingFramework ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Chip label: "NEEDS UE4SS". Uppercased to match the existing chip convention.</summary>
+    public string MissingFrameworkChip => HasMissingFramework
+        ? "NEEDS " + MissingFrameworkName.ToUpperInvariant()
+        : "";
+
+    public Uri? MissingFrameworkUri => SafeUrl.IsHttpUrl(MissingFrameworkUrl) ? new Uri(MissingFrameworkUrl!) : null;
+
     // Cockpit (config + Lua surfacing). Built on demand by the parent VM, which holds the GameContext.
     public string ModFolderAbs { get; init; } = "";   // set by parent: the mod's folder (for folder mods)
     public bool HasCockpit => Mod.IsFolder && !string.IsNullOrEmpty(ModFolderAbs);

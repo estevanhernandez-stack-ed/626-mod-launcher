@@ -364,6 +364,17 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <HyperlinkButton NavigateUri="{x:Bind MissingFrameworkUri, Mode=OneWay}"
+                                             Padding="0" BorderThickness="0" Background="Transparent"
+                                             Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
+                                             ToolTipService.ToolTip="{x:Bind MissingFrameworkNote, Mode=OneWay}">
+                                <Border CornerRadius="3" Padding="6,2"
+                                        BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}">
+                                    <TextBlock Text="{x:Bind MissingFrameworkChip, Mode=OneWay}"
+                                               FontFamily="Consolas" FontSize="11"
+                                               Foreground="{StaticResource ThemeDanger}" />
+                                </Border>
+                            </HyperlinkButton>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemePanel}"
                                     BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
                                     ToolTipService.ToolTip="Managed by another mod tool — shown read-only here"

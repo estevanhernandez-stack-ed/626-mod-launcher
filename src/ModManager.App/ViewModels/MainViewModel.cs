@@ -270,6 +270,12 @@ public sealed partial class MainViewModel : ObservableObject
             // the members of a multi-variant family so the row shows a VARIANT chip. Toggles stay
             // per-row (the user enables as many as they want; disabling holds, never re-downloads).
             var mpOverrides = MpCompatStore.Load(_ctx.DataDir);
+            // Refresh missing-framework state BEFORE building rows — the per-row chip reads from
+            // MissingFrameworks at row-construction time. The notify pings further down keep the
+            // banner binding fresh; this just lifts the source of truth to where rows see it.
+            MissingFrameworks.Clear();
+            foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
+                MissingFrameworks.Add(dep);
             var rows = new List<ModRowViewModel>();
             // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
             // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
@@ -289,12 +295,25 @@ public sealed partial class MainViewModel : ObservableObject
                             !m.ReadOnly || m.Loader is "ue4ss" or "bepinex"))
                         .ToList()
                     : System.Array.Empty<VariantOptionVM>();
+                // Row-level missing-framework chip. v1 attaches the chip to every row when the
+                // engine has a missing framework — keeps the model simple. FromSoft has two
+                // candidates; prefer ME2 for folder-mod rows, DLL proxy for direct-inject rows.
+                var primaryMissing = MissingFrameworks.FirstOrDefault();
+                if (_ctx.Game.Engine == "fromsoft" && MissingFrameworks.Count > 1)
+                {
+                    primaryMissing = rep.IsFolder
+                        ? MissingFrameworks.FirstOrDefault(d => d.Name == "Mod Engine 2") ?? primaryMissing
+                        : MissingFrameworks.FirstOrDefault(d => d.Name.StartsWith("DLL proxy")) ?? primaryMissing;
+                }
                 rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
                     ModFolderAbs = folderAbs,
                     VariantOptions = options,
+                    MissingFrameworkName = primaryMissing?.Name ?? "",
+                    MissingFrameworkUrl = primaryMissing?.GetUrl,
+                    MissingFrameworkNote = primaryMissing?.Note ?? "",
                 });
             }
             OrderAndStampSections(rows);
@@ -317,12 +336,8 @@ public sealed partial class MainViewModel : ObservableObject
                     ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable. Loose-file install, no Mod Engine 2 needed."
                     : "No mods yet — drop a mod archive to install, or set up Mod Engine 2 for folder-based mods.";
             else UpdateStatus();
-            // Refresh missing-framework state every reload — game switch, post-drop, Redetect
-            // all funnel through here. Pure probe + a small collection diff so the banner binding
-            // updates without re-creating items needlessly.
-            MissingFrameworks.Clear();
-            foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
-                MissingFrameworks.Add(dep);
+            // MissingFrameworks was refreshed above the row loop (the per-row chip reads from it);
+            // these notifies keep the banner bindings in lockstep with the new collection contents.
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
             // Toggling a mod (especially Seamless) may change which target the Launch button fires.
