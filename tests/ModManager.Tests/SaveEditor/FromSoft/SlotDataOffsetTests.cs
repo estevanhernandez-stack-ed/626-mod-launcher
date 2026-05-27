@@ -5,8 +5,8 @@ namespace ModManager.Tests.SaveEditor.FromSoft;
 /// <summary>
 /// Round-trip tests for <see cref="SlotData"/> reads/writes against the FIXTURE anchor
 /// (all-zero GA-items region, where <c>magic_offset = 0x20 + 5120*8 + 0x1AF = 0xA1CF</c>).
-/// Real ER saves use a runtime-discovered anchor — Task 4 wires that up. Until then, all
-/// SlotData operations assume the fixture's empty-inventory layout.
+/// Real ER saves use a runtime-discovered anchor (see <see cref="EldenRingSave.DiscoverMagicOffset"/>);
+/// these tests pass the fixture anchor explicitly to keep the suite anchored at a known offset.
 /// </summary>
 public class SlotDataOffsetTests
 {
@@ -18,24 +18,24 @@ public class SlotDataOffsetTests
     public void Runes_round_trip_as_uint32_little_endian()
     {
         var slot = BlankSlot();
-        SlotData.WriteRunes(slot, 198_500u);
-        Assert.Equal(198_500u, SlotData.ReadRunes(slot));
+        SlotData.WriteRunes(slot, 198_500u, SlotData.FixtureMagicOffset);
+        Assert.Equal(198_500u, SlotData.ReadRunes(slot, SlotData.FixtureMagicOffset));
     }
 
     [Fact]
     public void Runes_zero_round_trips()
     {
         var slot = BlankSlot();
-        SlotData.WriteRunes(slot, 0u);
-        Assert.Equal(0u, SlotData.ReadRunes(slot));
+        SlotData.WriteRunes(slot, 0u, SlotData.FixtureMagicOffset);
+        Assert.Equal(0u, SlotData.ReadRunes(slot, SlotData.FixtureMagicOffset));
     }
 
     [Fact]
     public void All_eight_stats_round_trip_independently()
     {
         var slot = BlankSlot();
-        SlotData.WriteStats(slot, vig: 40, mnd: 16, end_: 30, str: 50, dex: 12, int_: 18, fai: 20, arc: 25);
-        var stats = SlotData.ReadStats(slot);
+        SlotData.WriteStats(slot, vig: 40, mnd: 16, end_: 30, str: 50, dex: 12, int_: 18, fai: 20, arc: 25, magicOffset: SlotData.FixtureMagicOffset);
+        var stats = SlotData.ReadStats(slot, SlotData.FixtureMagicOffset);
         Assert.Equal(40, stats.Vig);
         Assert.Equal(16, stats.Mnd);
         Assert.Equal(30, stats.End);
@@ -50,10 +50,10 @@ public class SlotDataOffsetTests
     public void Stats_writes_do_not_corrupt_runes_or_neighboring_bytes()
     {
         var slot = BlankSlot();
-        SlotData.WriteRunes(slot, 12_345u);
-        SlotData.WriteStats(slot, 40, 16, 30, 50, 12, 18, 20, 25);
-        Assert.Equal(12_345u, SlotData.ReadRunes(slot));   // runes intact
-        Assert.Equal((byte)40, SlotData.ReadStats(slot).Vig);
+        SlotData.WriteRunes(slot, 12_345u, SlotData.FixtureMagicOffset);
+        SlotData.WriteStats(slot, 40, 16, 30, 50, 12, 18, 20, 25, SlotData.FixtureMagicOffset);
+        Assert.Equal(12_345u, SlotData.ReadRunes(slot, SlotData.FixtureMagicOffset));   // runes intact
+        Assert.Equal((byte)40, SlotData.ReadStats(slot, SlotData.FixtureMagicOffset).Vig);
     }
 
     [Fact]

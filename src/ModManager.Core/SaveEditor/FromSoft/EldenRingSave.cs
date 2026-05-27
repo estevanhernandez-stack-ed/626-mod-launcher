@@ -21,10 +21,15 @@ namespace ModManager.Core.SaveEditor.FromSoft;
 /// - 0x1901D04 + i: active-flag byte for slot i.
 /// - 0x1901D0E + i * 0x24C: per-slot summary (name UTF-16 @ 0x00, level int16 @ 0x22).
 ///
+/// Anchor model: every active slot's stats / runes live at a runtime-discovered offset inside
+/// the slot body — <c>magic_offset = end_of_ga_items + 0x1AF</c>. The GA-items table at slot
+/// offset 0x20 has 5120 variable-size entries; <see cref="DiscoverMagicOffset"/> walks them.
+///
 /// References:
 /// - BenGrn/EldenRingSaveCopier (MIT) — slot stride, save-header layout, summary offsets.
-/// - alfizari/Elden-Ring-Save-Editor (MIT) — anchor-relative stat/rune offsets, MD5 ranges.
-/// - ClayAmore/ER-Save-Editor (Apache-2.0) — BND4 layout cross-reference.
+/// - alfizari/Elden-Ring-Save-Editor (MIT) — anchor-relative stat/rune offsets, MD5 ranges,
+///   GA-items per-entry sizes by handle type-bits.
+/// - ClayAmore/ER-Save-Editor (Apache-2.0) — BND4 layout + GA-items structure cross-reference.
 /// </summary>
 public static class EldenRingSave
 {
@@ -56,10 +61,9 @@ public static class EldenRingSave
     /// active-flag array is consulted too, but the stat-zero heuristic catches fixtures and
     /// any save where the flag is unreliable).
     ///
-    /// Throws <see cref="NotSupportedException"/> if any active slot has a non-empty GA-items
-    /// region (real saves with inventory). The fixed-anchor offsets only line up for the empty
-    /// GA-items case; non-empty inventory means stats/runes live elsewhere and we'd corrupt on
-    /// write. Task 9 smoke closes this gap with the full anchor walk.</summary>
+    /// For each active slot the GA-items table is walked to discover the magic anchor, then
+    /// stats / runes are read at the anchor-relative offsets. Real saves with inventory work
+    /// the same way as empty-inventory fixtures — only the anchor moves.</summary>
     public static IReadOnlyList<CharacterSlot> ReadCharacters(string savePath)
     {
         if (savePath is null) throw new ArgumentNullException(nameof(savePath));
@@ -75,12 +79,6 @@ public static class EldenRingSave
         var result = new List<CharacterSlot>(SlotCount);
         for (int i = 0; i < SlotCount; i++)
         {
-            // Only check inventory on slots the active-flag array says are populated; inactive
-            // slots have all-zero bodies by construction (empty inventory trivially).
-            if (bytes[CharActiveStatusOffset + i] != 0)
-            {
-                EnsureEmptyInventoryOrThrow(bytes, i);
-            }
             var slot = TryReadSlot(bytes, i);
             if (slot is not null) result.Add(slot);
         }
@@ -94,9 +92,9 @@ public static class EldenRingSave
     /// Guards (in order):
     /// 1. The target slot's active flag must be 1 — refuses to edit an empty slot to avoid
     ///    creating a phantom character (active header / no real body).
-    /// 2. The target slot's GA-items region must be entirely empty (MVP scope). Real saves
-    ///    with inventory throw <see cref="NotSupportedException"/> until Task 9 wires the
-    ///    full anchor walk.
+    /// 2. The GA-items table is walked to discover the slot's magic anchor; if the walk
+    ///    produces an offset outside the slot body we throw <see cref="InvalidDataException"/>
+    ///    rather than write garbage at a wrong anchor.
     /// 3. After the atomic write, the file is re-read and the touched fields are verified
     ///    against the edit, while every byte OUTSIDE the touched ranges (runes, 8 stats, name
     ///    region, slot MD5, save-header MD5) must be byte-identical to the pre-edit slot. Any
@@ -129,17 +127,17 @@ public static class EldenRingSave
                 $"Slot {slotIndex} is inactive — cannot edit an empty slot. Create a character in-game first.");
         }
 
-        // Guard 1: inventory check. The fixed-anchor offsets only line up for empty GA-items.
-        EnsureEmptyInventoryOrThrow(bytes, slotIndex);
-
         // Snapshot the pre-edit slot body for post-write verification (Step 6 below).
         var preSlot = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize).ToArray();
 
-        // 1) Patch the slot body — runes + stats at the runtime-discovered anchor (currently
-        //    fixed-anchor for the MVP fixture; real-save anchor discovery is a future-task wedge).
+        // Guard 1: walk GA-items to discover the magic anchor. Throws InvalidDataException if
+        // the walk produces an offset outside the slot body (unknown handle type → wrong sum).
         var slotData = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
-        SlotData.WriteRunes(slotData, edit.Runes);
-        SlotData.WriteStats(slotData, edit.Vig, edit.Mnd, edit.End, edit.Str, edit.Dex, edit.Int, edit.Fai, edit.Arc);
+        int magicOffset = DiscoverMagicOffset(slotData);
+
+        // 1) Patch the slot body — runes + stats at the discovered anchor.
+        SlotData.WriteRunes(slotData, edit.Runes, magicOffset);
+        SlotData.WriteStats(slotData, edit.Vig, edit.Mnd, edit.End, edit.Str, edit.Dex, edit.Int, edit.Fai, edit.Arc, magicOffset);
 
         // 2) Recompute the slot MD5 over the new slot bytes.
         var slotMd5 = bytes.AsSpan(FirstSlotMd5Offset + slotIndex * SlotStride, 0x10);
@@ -164,64 +162,77 @@ public static class EldenRingSave
         //    Re-read from disk, re-parse the slot via the same TryReadSlot path, and byte-compare
         //    the post-write slot body against preSlot masking out the touched ranges. Any drift
         //    outside the masks throws InvalidDataException so the caller's snapshot is the line back.
-        VerifyPostWrite(savePath, slotIndex, edit, preSlot);
+        VerifyPostWrite(savePath, slotIndex, edit, preSlot, magicOffset);
     }
 
-    /// <summary>Walk the GA-items table to find the anchor offset where stats/runes live.
-    /// In the MVP fixture (and any save with an entirely-empty inventory) the table is 5120
-    /// empty entries of 8 bytes each, so the anchor is the fixed value <see cref="SlotData.FixtureMagicOffset"/>.
-    /// Real saves require branching on <c>handle &amp; 0xF0000000</c> per entry — wired here as
-    /// the empty-entry path; non-empty entries are deferred (Task 9 smoke will surface them).</summary>
-    internal static int DiscoverMagicOffset(ReadOnlySpan<byte> slotBody)
+    /// <summary>Walk the GA-items table to find the magic anchor where stats/runes live.
+    ///
+    /// Algorithm: starting at slot offset 0x20, read 5120 entries. Each entry's first 4 bytes
+    /// are the <c>gaitem_handle</c>; the high nibble (<c>handle &amp; 0xF0000000</c>) determines
+    /// the entry's total size. After the walk, <c>magic_offset = end_of_ga_items + 0x1AF</c>.
+    ///
+    /// Type-bit table (alfizari/Final.py Item.from_bytes, MIT — cross-confirmed against
+    /// ClayAmore/ER-Save-Editor save_slot.rs, Apache-2.0):
+    /// <list type="bullet">
+    ///   <item>handle == 0 → empty, 8 bytes.</item>
+    ///   <item>0x80000000 → weapon, 21 bytes (handle + id + 3*u32 + 1 byte).</item>
+    ///   <item>0x90000000 → armor, 16 bytes (handle + id + 2*u32).</item>
+    ///   <item>0xC0000000 → ash of war, 8 bytes (handle + id).</item>
+    ///   <item>any other non-zero handle → 8 bytes (alfizari's fallback path — no extra read).</item>
+    /// </list>
+    ///
+    /// If the resulting anchor would put VIG outside the slot body, throws
+    /// <see cref="InvalidDataException"/> — that's the "unknown handle type" failure mode and we
+    /// fail loud instead of writing garbage at a wrong anchor.
+    ///
+    /// Public so diagnostic tooling and tests can verify the walk against known fixtures.</summary>
+    public static int DiscoverMagicOffset(ReadOnlySpan<byte> slotBody)
     {
-        // GA-items table starts at 0x20. Each empty entry (handle == 0) is 8 bytes. Non-empty
-        // entries vary by type bits — see alfizari/Final.py for the full branch table. For now
-        // the MVP fixture only uses empty entries, so we walk straight through.
         int cursor = SlotData.GaItemsStart;
-        for (int i = 0; i < SlotData.GaItemCountForFixture; i++)
+        for (int i = 0; i < SlotData.GaItemCount; i++)
         {
             uint handle = BitConverter.ToUInt32(slotBody.Slice(cursor, 4));
-            // type_bits = handle & 0xF0000000. 0 → empty (8 bytes). Other type-bit branches are
-            // documented in alfizari/Final.py; the MVP fixture only exercises the empty path.
-            uint typeBits = handle & 0xF0000000u;
-            int entrySize = typeBits switch
+            int entrySize;
+            if (handle == 0)
             {
-                0u => SlotData.EmptyGaItemSize,
-                _ => SlotData.EmptyGaItemSize, // TODO Task 9 smoke: branch to 13/16 for weapon/armor.
-            };
+                entrySize = SlotData.EmptyGaItemSize;
+            }
+            else
+            {
+                uint typeBits = handle & 0xF0000000u;
+                entrySize = typeBits switch
+                {
+                    0x80000000u => SlotData.WeaponGaItemSize,  // 21 bytes
+                    0x90000000u => SlotData.ArmorGaItemSize,   // 16 bytes
+                    // 0xC0000000 (AOW) and any other non-zero type-bits fall through to base
+                    // size 8 — matches alfizari's branch table where only weapon/armor read
+                    // additional fields beyond the 8-byte (handle + id) base.
+                    _ => SlotData.EmptyGaItemSize,
+                };
+            }
             cursor += entrySize;
         }
-        return cursor + SlotData.MagicAnchorOffset;
-    }
 
-    /// <summary>Number of bytes at the GA-items start to scan for non-zero (signals real
-    /// inventory). 64 bytes covers ≥ 8 GA-items entries; any real-save character with at least
-    /// one inventory item will have non-zero data inside this prefix.</summary>
-    internal const int EmptyInventoryProbeBytes = 64;
+        int magicOffset = cursor + SlotData.MagicAnchorOffset;
 
-    /// <summary>Throw <see cref="NotSupportedException"/> if the slot's GA-items region looks
-    /// non-empty. The MVP's fixed-anchor offsets only line up when the GA-items table is fully
-    /// empty (5120 empty 8-byte entries). Task 9 smoke will replace this with the full GA-items
-    /// walk (handle-bit decoding per alfizari/Final.py) that supports real inventory.</summary>
-    internal static void EnsureEmptyInventoryOrThrow(byte[] bytes, int slotIndex)
-    {
-        var probeStart = FirstSlotDataOffset + slotIndex * SlotStride + SlotData.GaItemsStart;
-        var probe = bytes.AsSpan(probeStart, EmptyInventoryProbeBytes);
-        foreach (var b in probe)
+        // Sanity: the lowest stat relative offset is VigorRelative (-379). If magic + Vigor
+        // would land outside the slot, the walk hit an unknown handle layout. Fail loud.
+        int lowestStatOffset = magicOffset + SlotData.MinRelativeOffset;
+        if (lowestStatOffset < 0 || magicOffset + 4 > slotBody.Length)
         {
-            if (b != 0)
-            {
-                throw new NotSupportedException(
-                    "Real Elden Ring saves with inventory are not yet supported. Task 9 smoke will close this gap. Use a freshly-created character with empty inventory for now.");
-            }
+            throw new InvalidDataException(
+                $"Discovered magic offset 0x{magicOffset:X} is outside the slot body (slot size 0x{slotBody.Length:X}). " +
+                $"The GA-items walk likely hit an unknown handle type. Bisect against a real save.");
         }
+
+        return magicOffset;
     }
 
     /// <summary>Post-write validation. Re-reads the file, re-parses the touched slot, confirms
     /// every edited field landed, and byte-compares the slot body against <paramref name="preSlot"/>
-    /// masking out the touched ranges (runes / 8 stats / name region / slot MD5 / save-header MD5).
-    /// Throws <see cref="InvalidDataException"/> with a diff location on any drift.</summary>
-    private static void VerifyPostWrite(string savePath, int slotIndex, CharacterEdit edit, byte[] preSlot)
+    /// masking out the touched ranges (runes / 8 stats at the discovered anchor). Throws
+    /// <see cref="InvalidDataException"/> with a diff location on any drift.</summary>
+    private static void VerifyPostWrite(string savePath, int slotIndex, CharacterEdit edit, byte[] preSlot, int magicOffset)
     {
         var verifyBytes = File.ReadAllBytes(savePath);
         if (verifyBytes.Length < MinimumFileSize)
@@ -256,17 +267,17 @@ public static class EldenRingSave
             throw new InvalidDataException($"Post-write verify: Arc mismatch — wrote {edit.Arc}, read back {verified.Arc}.");
 
         // 3) Byte-compare slot body against preSlot OUTSIDE the touched ranges. The touched ranges
-        //    inside the slot body are:
-        //      - runes: [OffsetRunes, OffsetRunes + 4)
-        //      - 8 stat uint32s: [OffsetVigor, OffsetArcane + 4)
+        //    inside the slot body, computed at the DISCOVERED anchor (not the fixture anchor), are:
+        //      - runes: [magicOffset + RunesRelative, magicOffset + RunesRelative + 4)
+        //      - 8 stat uint32s: [magicOffset + VigorRelative, magicOffset + ArcaneRelative + 4)
         //    (The slot MD5 lives OUTSIDE the slot body, so it doesn't appear in this mask. The
         //     name + save-header MD5 also live outside the slot body — they're in the save-header
         //     section. Those drift cases would surface as save-header MD5 mismatch causing a
         //     downstream parse to fail, not as a slot-body drift here.)
         var postSlot = verifyBytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
-        int statsStart = SlotData.OffsetVigor;
-        int statsEndExclusive = SlotData.OffsetArcane + 4;
-        int runesStart = SlotData.OffsetRunes;
+        int statsStart = magicOffset + SlotData.VigorRelative;
+        int statsEndExclusive = magicOffset + SlotData.ArcaneRelative + 4;
+        int runesStart = magicOffset + SlotData.RunesRelative;
         int runesEndExclusive = runesStart + 4;
 
         for (int i = 0; i < SlotDataSize; i++)
@@ -290,21 +301,34 @@ public static class EldenRingSave
         // 1) MD5 integrity — corrupt slots are skipped, not thrown over.
         if (!SlotChecksum.VerifyMd5(slotMd5, slotData)) return null;
 
-        // 2) Active-flag check + stat-zero fallback. The fixture sets the active flag; real
-        //    saves do too. If the flag is 0 AND all stats are zero we treat the slot as unused.
-        //    (If the flag is 1 we trust it. If the flag is 0 but stats are non-zero — possible
-        //    after the user deletes a character — we still skip; see comment.)
+        // 2) Active-flag check. Inactive slots are skipped. (Stat-zero fallback is applied below
+        //    at the discovered anchor — fixtures and unused slots both surface as all-zero.)
         byte activeFlag = bytes[CharActiveStatusOffset + slotIndex];
-        var stats = SlotData.ReadStats(slotData);
+        if (activeFlag == 0) return null;
+
+        // 3) Discover the magic anchor for this slot (handles real saves with inventory).
+        //    If the walk hits an unknown handle type, DiscoverMagicOffset throws — the slot is
+        //    skipped here rather than thrown over (caller's flow handles "X slots skipped" UX).
+        int magicOffset;
+        try
+        {
+            magicOffset = DiscoverMagicOffset(slotData);
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
+
+        // 4) Stats + runes from the discovered anchor.
+        var stats = SlotData.ReadStats(slotData, magicOffset);
         bool allStatsZero = stats.Vig == 0 && stats.Mnd == 0 && stats.End == 0 && stats.Str == 0
             && stats.Dex == 0 && stats.Int == 0 && stats.Fai == 0 && stats.Arc == 0;
-        if (activeFlag == 0 || allStatsZero) return null;
+        if (allStatsZero) return null;
 
-        // 3) Stats + runes from the anchor.
-        uint runes = SlotData.ReadRunes(slotData);
+        uint runes = SlotData.ReadRunes(slotData, magicOffset);
         int level = SlotData.LevelFromStats(stats);
 
-        // 4) Name from the per-slot summary in the save-header section.
+        // 5) Name from the per-slot summary in the save-header section.
         var summary = bytes.AsSpan(PerSlotSummaryStart + slotIndex * PerSlotSummaryStride, PerSlotSummaryStride);
         string name = ReadCharacterName(summary);
 
