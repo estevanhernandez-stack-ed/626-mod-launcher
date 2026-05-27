@@ -6,9 +6,11 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using ModManager.App.Frameworks;
 using ModManager.App.Services;
 using ModManager.App.Tools;
 using ModManager.Core;
+using ModManager.Core.Frameworks;
 using ModManager.Core.Tools;
 
 namespace ModManager.App.ViewModels;
@@ -1020,6 +1022,23 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
+
+        // Pre-check 0 (engine-agnostic): framework intake. KnownFramework.Classify scopes by
+        // engine + SteamAppId internally, so this is a no-op for games whose engine doesn't
+        // ship any catalog-recognized framework. Catalog match -> confirmation dialog -> install
+        // via FrameworkInstaller (game root, with backup snapshot). Looks-like-framework ->
+        // feedback nudge then fall through to the engine-specific intake (or cancel).
+        var frameworkOutcome = await TryInstallFrameworksAsync(paths);
+        paths = frameworkOutcome.Remaining;
+        if (paths.Count == 0)
+        {
+            // Everything dropped was a framework (or got cancelled). Surface results + return.
+            if (frameworkOutcome.StatusParts.Count > 0)
+                StatusText = string.Join(". ", frameworkOutcome.StatusParts) + ".";
+            if (frameworkOutcome.AnyInstalled) await ReloadModsAsync();
+            return;
+        }
+
         if (ConfigBacked)
         {
             // ME2 mods are folders registered in the config — drop-to-install isn't wired yet.
@@ -1259,6 +1278,99 @@ public sealed partial class MainViewModel : ObservableObject
         var label = $"before-{tool.DisplayName.Replace(' ', '-')}-{DateTime.Now:yyyy-MM-dd-HHmm}";
         var snap = SaveManager.Backup(_ctx.SaveDir, _ctx.SavesDir, label, auto: false);
         return snap.Label;
+    }
+
+    /// <summary>What <see cref="TryInstallFrameworksAsync"/> returns: the list of paths NOT
+    /// consumed by framework intake (caller's existing branches handle these), the status-line
+    /// snippets to surface, and whether anything was actually installed (so the caller can
+    /// trigger a reload).</summary>
+    private sealed record FrameworkPrecheckOutcome(
+        IReadOnlyList<string> Remaining,
+        IReadOnlyList<string> StatusParts,
+        bool AnyInstalled);
+
+    /// <summary>
+    /// Drop-pipeline Pre-check 0: detect + install catalog-known frameworks before the
+    /// engine-specific intake. For each dropped archive: peek its entries, run KnownFramework
+    /// .Classify, show the confirmation dialog on a hit, the unrecognized-nudge on
+    /// looks-like-framework, otherwise leave it for the caller's branches.
+    /// </summary>
+    private async Task<FrameworkPrecheckOutcome> TryInstallFrameworksAsync(IReadOnlyList<string> paths)
+    {
+        if (_ctx is null) return new FrameworkPrecheckOutcome(paths, Array.Empty<string>(), false);
+        var remaining = new List<string>();
+        var statusParts = new List<string>();
+        bool anyInstalled = false;
+
+        foreach (var src in paths)
+        {
+            if (string.IsNullOrEmpty(src) || !File.Exists(src)) { remaining.Add(src); continue; }
+            var lower = src.ToLowerInvariant();
+            if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) { remaining.Add(src); continue; }
+
+            IReadOnlyList<string>? zipEntries = null;
+            try
+            {
+                using var zip = System.IO.Compression.ZipFile.OpenRead(src);
+                zipEntries = zip.Entries.Select(e => e.FullName).ToList();
+            }
+            catch { /* can't peek — let the regular intake try */ }
+            if (zipEntries is null) { remaining.Add(src); continue; }
+
+            var classify = KnownFramework.Classify(zipEntries, _ctx.Game.Engine ?? "", _ctx.Game.SteamAppId);
+            if (classify.Match is not null)
+            {
+                var fileNames = zipEntries
+                    .Select(e => e.Replace('\\', '/'))
+                    .Where(e => !e.EndsWith("/", StringComparison.Ordinal))
+                    .ToList();
+                var willOverwrite = fileNames
+                    .Where(e => File.Exists(Path.Combine(_ctx.GameRoot, e)))
+                    .ToList();
+
+                var dlg = new FrameworkInstallDialog(classify.Match, fileNames, willOverwrite, _ctx.GameRoot)
+                { XamlRoot = App.MainWindow!.Content.XamlRoot };
+                var result = await dlg.ShowAsync();
+                if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
+                {
+                    statusParts.Add($"Skipped {classify.Match.DisplayName} install");
+                    continue;
+                }
+
+                try
+                {
+                    var r = FrameworkInstaller.Install(src, classify.Match, _ctx.GameRoot, _ctx.DataDir);
+                    statusParts.Add($"Installed {classify.Match.DisplayName} ({r.InstalledFiles.Count} file(s) at game root)");
+                    anyInstalled = true;
+                }
+                catch (Exception ex)
+                {
+                    statusParts.Add($"Couldn't install {classify.Match.DisplayName}: {ex.Message}");
+                }
+                continue;
+            }
+
+            if (classify.LooksLikeFramework)
+            {
+                var nudge = new FrameworkUnrecognizedNudgeDialog(Path.GetFileName(src))
+                { XamlRoot = App.MainWindow!.Content.XamlRoot };
+                var result = await nudge.ShowAsync();
+                if (result == Microsoft.UI.Xaml.Controls.ContentDialogResult.None)
+                {
+                    // Cancel — drop this archive entirely.
+                    statusParts.Add($"Skipped {Path.GetFileName(src)} (looked like a framework)");
+                    continue;
+                }
+                // Primary ("Continue as mod") or Secondary ("Open feedback link") — fall through
+                // to the regular mod intake. Secondary already launched the URL via the dialog.
+                remaining.Add(src);
+                continue;
+            }
+
+            remaining.Add(src);
+        }
+
+        return new FrameworkPrecheckOutcome(remaining, statusParts, anyInstalled);
     }
 
     /// <summary>Show the collision prompt for a plan and return the rel-paths to replace; null means
