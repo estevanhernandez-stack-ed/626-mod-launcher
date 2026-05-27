@@ -259,7 +259,8 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrEmpty(ctx.SaveDir) || !System.IO.Directory.Exists(ctx.SaveDir))
         {
             var ludu = App.AppHost.Services.GetRequiredService<Services.LudusaviService>();
-            var dir = await Services.SaveLocator.DetectAsync(ludu, ctx.Game.GameName, ctx.Game.Engine, ctx.Game.GameRoot, ctx.Game.SteamAppId);
+            var steam = App.AppHost.Services.GetRequiredService<Services.SteamService>();
+            var dir = await Services.SaveLocator.DetectAsync(ludu, ctx.Game.GameName, ctx.Game.Engine, ctx.Game.GameRoot, ctx.Game.SteamAppId, steam.CurrentUserId64());
             if (dir is not null) { svc.SetSaveDir(ctx.Game.Id, dir); ctx = svc.ActiveContext()!; }
         }
 

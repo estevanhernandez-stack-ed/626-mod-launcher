@@ -15,6 +15,26 @@ public sealed record SteamGame(string AppId, string Name, string InstallDir);
 /// </summary>
 public sealed class SteamService
 {
+    /// <summary>
+    /// The 64-bit SteamID of the currently signed-in Steam user, or null if Steam isn't installed
+    /// or no user is signed in. Used to expand <c>&lt;storeUserId&gt;</c> in Ludusavi save-path
+    /// templates (ER's save folder is <c>%APPDATA%/EldenRing/&lt;storeUserId&gt;/</c>, so without
+    /// this the save-dir autodetect can't resolve to a real folder). The 32-bit user id lives in
+    /// <c>HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser</c>; add the steamID64 offset to
+    /// widen it.
+    /// </summary>
+    public string? CurrentUserId64()
+    {
+        try
+        {
+            using var k = Win32Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam\ActiveProcess");
+            if (k?.GetValue("ActiveUser") is int u && u > 0)
+                return (76561197960265728L + u).ToString();
+        }
+        catch { /* no Steam / not signed in / registry unreadable */ }
+        return null;
+    }
+
     public IReadOnlyList<SteamGame> InstalledGames()
     {
         var steam = FindSteamPath();

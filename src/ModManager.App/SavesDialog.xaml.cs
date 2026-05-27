@@ -149,20 +149,26 @@ public sealed partial class SavesDialog : ContentDialog
         {
             var svc = App.AppHost.Services
                 .GetRequiredService<ModManager.App.Services.SaveEditorService>();
-            // Only scan .sl2 (ER) for MVP. Future engines plug in by adding more file-type checks.
-            foreach (var sl2 in System.IO.Directory.GetFiles(_saveDir, "*.sl2"))
+            // Scan every save-type extension this game declares. For ER that's .sl2 (Vanilla),
+            // .co2 (Seamless Co-op), .err (Reforged). Same BND4 internal shape across all three;
+            // SaveType.Label flows into the Character row so the user can tell at a glance which
+            // file the character lives in (Seamless players write to .co2, never .sl2).
+            foreach (var st in _saveTypes)
             {
-                IReadOnlyList<ModManager.Core.SaveEditor.FromSoft.CharacterSlot> slots;
-                try { slots = svc.ReadCharacters(sl2); }
-                catch (NotSupportedException) { skippedUnsupported++; continue; }
-                catch { continue; }   // any other parse failure — skip the file, don't fail the dialog
-                foreach (var slot in slots)
+                foreach (var savePath in System.IO.Directory.GetFiles(_saveDir, "*" + st.Extension))
                 {
-                    rows.Add(new CharacterRow(
-                        SavePath: sl2,
-                        Slot: slot,
-                        Headline: slot.Name,
-                        Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}"));
+                    IReadOnlyList<ModManager.Core.SaveEditor.FromSoft.CharacterSlot> slots;
+                    try { slots = svc.ReadCharacters(savePath); }
+                    catch (NotSupportedException) { skippedUnsupported++; continue; }
+                    catch { continue; }   // any other parse failure — skip the file, don't fail the dialog
+                    foreach (var slot in slots)
+                    {
+                        rows.Add(new CharacterRow(
+                            SavePath: savePath,
+                            Slot: slot,
+                            Headline: $"{slot.Name}  ·  {st.Label}",
+                            Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}"));
+                    }
                 }
             }
         }
