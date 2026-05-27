@@ -360,11 +360,21 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Suffix for the post-drop status line when the active game has a missing framework.
     /// Empty string when nothing's missing. The drop status line gets ". Heads up: this mod needs X
-    /// — get it at &lt;url&gt;." appended so the user sees the gap the moment they drop.</summary>
-    private string MissingFrameworkDropSuffix()
+    /// — get it at &lt;url&gt;." appended so the user sees the gap the moment they drop.
+    /// <para>FromSoft has two frameworks (ME2 + DLL proxy) that gate different mod classes. When
+    /// both are missing, pick the one that matches what the user just dropped: direct-inject →
+    /// DLL proxy; regular-intake (folder mods) → ME2. Otherwise the drop-line contradicts the
+    /// row chip and points the user at a launcher that conflicts with what they just installed.</para></summary>
+    private string MissingFrameworkDropSuffix(bool preferDllProxy = false)
     {
         if (MissingFrameworks.Count == 0) return "";
         var dep = MissingFrameworks[0];
+        if (_ctx?.Game.Engine == "fromsoft" && MissingFrameworks.Count > 1)
+        {
+            dep = preferDllProxy
+                ? MissingFrameworks.FirstOrDefault(d => d.Name.StartsWith("DLL proxy")) ?? dep
+                : MissingFrameworks.FirstOrDefault(d => d.Name == "Mod Engine 2") ?? dep;
+        }
         // Trim the URL to a host-ish form so the status line stays readable. The persistent chip
         // carries the full clickable link; this is the just-dropped callout.
         var host = "";
@@ -983,7 +993,7 @@ public sealed partial class MainViewModel : ObservableObject
                     + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : ".")
                     + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
                     + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
-                    + MissingFrameworkDropSuffix();
+                    + MissingFrameworkDropSuffix(preferDllProxy: true);
             }
             catch (Exception e) { StatusText = e.Message; }
             finally { IsBusy = false; }
