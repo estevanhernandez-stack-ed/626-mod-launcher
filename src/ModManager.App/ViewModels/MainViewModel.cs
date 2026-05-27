@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using ModManager.App.Services;
 using ModManager.Core;
+using ModManager.Core.Tools;
 
 namespace ModManager.App.ViewModels;
 
@@ -1036,6 +1037,36 @@ public sealed partial class MainViewModel : ObservableObject
                 catch { return true; }
             }).ToList();
 
+            // Pre-check 3: tool drops. ToolDetector.Classify routes recognized utility archives
+            // (e.g. WSE save editor) through ToolIntake — extracted under <DataDir>/tools/<id>/ and
+            // registered in tools.json. Mod-shape archives short-circuit back to Mod and stay in
+            // `remaining`; tool installs are carved out so PlanIntake doesn't classify their .exe /
+            // .ps1 contents as mods. The Tools collection itself lands in Task 8.
+            var installedTools = new List<ToolEntry>();
+            var ambiguousRunnables = new Dictionary<string, IReadOnlyList<string>>();
+            var toolFailures = new List<string>();
+            remaining = remaining.Where(p =>
+            {
+                if (string.IsNullOrEmpty(p) || !File.Exists(p)) return true;
+                var lower = p.ToLowerInvariant();
+                if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) return true;
+                try
+                {
+                    var (cls, known) = ToolDetector.Classify(p, _ctx!.Game.Engine ?? "", _ctx.Game.SteamAppId ?? "");
+                    if (cls != ToolClassification.Tool) return true;
+                    var result = ToolIntake.Install(p, _ctx.DataDir, known);
+                    installedTools.Add(result.Entry);
+                    if (result.Candidates.Count > 0)
+                        ambiguousRunnables[result.Entry.ToolId] = result.Candidates;
+                    return false; // carved out — don't run through mod intake
+                }
+                catch (Exception ex)
+                {
+                    toolFailures.Add($"{Path.GetFileName(p)}: {ex.Message}");
+                    return false; // tool install failed; don't fall back to mod intake for an exe-only zip
+                }
+            }).ToList();
+
             var plan = Scanner.PlanIntake(remaining, _ctx);
             var chosen = await ConfirmReplacementsAsync(plan);
             if (chosen is null) { StatusText = "Update cancelled."; return; }
@@ -1056,13 +1087,16 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             // Assemble a single status line that surfaces every outcome - save-mod installs first,
-            // any save-mod failures with their reasons, UE4SS Lua detections second, then the
-            // regular intake's add/update/skip counts.
+            // any save-mod failures with their reasons, UE4SS Lua detections second, tool installs
+            // third, then the regular intake's add/update/skip counts.
             var statusParts = new List<string>();
             if (savedCount > 0) statusParts.Add($"Installed {savedCount} save-mod world{(savedCount == 1 ? "" : "s")}");
             foreach (var reason in saveSkipReasons) statusParts.Add(reason);
             if (luaDetected.Count > 0)
                 statusParts.Add($"{string.Join(", ", luaDetected)} {(luaDetected.Count == 1 ? "looks like a" : "look like")} UE4SS Lua mod{(luaDetected.Count == 1 ? "" : "s")} — install via Vortex (ue4ss\\Mods is managed)");
+            foreach (var t in installedTools)
+                statusParts.Add($"Installed {t.DisplayName} as a tool for {_ctx.Game.GameName}");
+            foreach (var fail in toolFailures) statusParts.Add($"Tool install failed: {fail}");
             statusParts.Add($"updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}");
             StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
