@@ -182,6 +182,48 @@ public class Bnd4ReaderTests
         Assert.Contains("CCC", ex.Message);
     }
 
+    [Fact]
+    public void Parse_decodes_32_byte_entries_when_file_header_size_field_says_so()
+    {
+        // Real ER .sl2/.co2/.err files use 32-byte entries with int32 offsets, NOT the 40-byte
+        // long-offsets+IDs+compression entry the older format uses. The reader detects which
+        // stride to use from file_header_size at file offset 0x20; this test pins that path.
+        var bytes = BuildTinyBnd4Stride32(
+            new TinyEntry("USER_DATA000", DataOffset: 0x300, DataSize: 0x280010),
+            new TinyEntry("USER_DATA001", DataOffset: 0x280310, DataSize: 0x280010),
+            new TinyEntry("USER_DATA011", DataOffset: 0x19003B0, DataSize: 0x60000));
+
+        var entries = Bnd4Reader.Parse(bytes);
+
+        Assert.Equal(3, entries.Count);
+        Assert.Equal("USER_DATA000", entries[0].Name);
+        Assert.Equal(0x300L, entries[0].DataOffset);
+        Assert.Equal(0x280010L, entries[0].DataSize);
+        Assert.Equal("USER_DATA001", entries[1].Name);
+        Assert.Equal(0x280310L, entries[1].DataOffset);
+        Assert.Equal("USER_DATA011", entries[2].Name);
+        Assert.Equal(0x19003B0L, entries[2].DataOffset);
+        Assert.Equal(0x60000L, entries[2].DataSize);
+    }
+
+    [Fact]
+    public void Parse_falls_back_to_40_byte_stride_when_file_header_size_value_is_unrecognized()
+    {
+        // EldenRingFixture writes the total entry-table size at 0x20 (a value much larger than
+        // 0x20 / 0x28). The reader must NOT treat that as a stride — it has to fall back to the
+        // older 40-byte layout. This locks the back-compat path the fixture relies on.
+        var bytes = BuildTinyBnd4(new TinyEntry("A", 0x1000, 0x100));
+        // Stamp file_header_size to a clearly-not-a-stride value (the fixture writes the total
+        // table size, which is fileCount * 40 = some large number).
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x20, 8), 0x1B8L);
+
+        var entries = Bnd4Reader.Parse(bytes);
+
+        Assert.Single(entries);
+        Assert.Equal("A", entries[0].Name);
+        Assert.Equal(0x1000L, entries[0].DataOffset);
+    }
+
     // -------- Test helpers --------
 
     /// <summary>One synthetic file-table entry for the tiny BND4 builder.</summary>
@@ -262,6 +304,73 @@ public class Bnd4ReaderTests
         }
 
         // Names.
+        nameBytes.ToArray().CopyTo(buffer, entryTableEnd);
+
+        return buffer;
+    }
+
+    /// <summary>
+    /// Build a minimal BND4 buffer with 32-byte entries (the real-ER variant). Layout:
+    ///   0x00..0x04: "BND4" magic
+    ///   0x0C..0x10: file_count (int32 LE)
+    ///   0x10..0x18: file_header_offset (int64 LE) = 0x40
+    ///   0x20..0x28: file_header_size (int64 LE) = 0x20 — the per-entry stride
+    ///   0x40 + i*0x20: entry i (32 bytes)
+    ///     +0x00: file_flags (byte) = 0x50
+    ///     +0x04: reserved int32 = -1
+    ///     +0x08: uncompressed_size (int64) = DataSize
+    ///     +0x10: data_offset (int32) = DataOffset
+    ///     +0x14: name_offset (int32) -> name table region
+    ///     +0x18..+0x20: padding/id (zeros)
+    ///   Name table immediately follows the entry table.
+    /// Buffer is sized to cover both the name table AND every entry's data range (the reader's
+    /// per-entry bounds check rejects ranges outside the buffer).
+    /// </summary>
+    private static byte[] BuildTinyBnd4Stride32(params TinyEntry[] entries)
+    {
+        const int fileHeaderOffset = 0x40;
+        const int entryStride = 0x20;
+        var entryTableEnd = fileHeaderOffset + entries.Length * entryStride;
+
+        var nameOffsets = new int[entries.Length];
+        var nameBytes = new List<byte>();
+        var cursor = entryTableEnd;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            nameOffsets[i] = cursor;
+            var encoded = Encoding.Unicode.GetBytes(entries[i].Name);
+            nameBytes.AddRange(encoded);
+            nameBytes.Add(0x00);
+            nameBytes.Add(0x00);
+            cursor += encoded.Length + 2;
+        }
+
+        long maxDataEnd = 0;
+        foreach (var e in entries)
+        {
+            long end = e.DataOffset + e.DataSize;
+            if (end > maxDataEnd) maxDataEnd = end;
+        }
+
+        var totalSize = (int)Math.Max(cursor, maxDataEnd);
+        var buffer = new byte[totalSize];
+
+        Encoding.ASCII.GetBytes("BND4").CopyTo(buffer, 0);
+        BitConverter.TryWriteBytes(buffer.AsSpan(0x0C, 4), entries.Length);
+        BitConverter.TryWriteBytes(buffer.AsSpan(0x10, 8), (long)fileHeaderOffset);
+        // file_header_size = 0x20 — tells the reader to decode 32-byte entries.
+        BitConverter.TryWriteBytes(buffer.AsSpan(0x20, 8), (long)entryStride);
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            int start = fileHeaderOffset + i * entryStride;
+            buffer[start] = 0x50;
+            BitConverter.TryWriteBytes(buffer.AsSpan(start + 0x04, 4), -1);
+            BitConverter.TryWriteBytes(buffer.AsSpan(start + 0x08, 8), entries[i].DataSize);
+            BitConverter.TryWriteBytes(buffer.AsSpan(start + 0x10, 4), (int)entries[i].DataOffset);
+            BitConverter.TryWriteBytes(buffer.AsSpan(start + 0x14, 4), nameOffsets[i]);
+        }
+
         nameBytes.ToArray().CopyTo(buffer, entryTableEnd);
 
         return buffer;
