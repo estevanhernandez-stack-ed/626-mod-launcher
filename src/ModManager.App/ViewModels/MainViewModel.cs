@@ -358,6 +358,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
 
+    /// <summary>Suffix for the post-drop status line when the active game has a missing framework.
+    /// Empty string when nothing's missing. The drop status line gets ". Heads up: this mod needs X
+    /// — get it at &lt;url&gt;." appended so the user sees the gap the moment they drop.</summary>
+    private string MissingFrameworkDropSuffix()
+    {
+        if (MissingFrameworks.Count == 0) return "";
+        var dep = MissingFrameworks[0];
+        // Trim the URL to a host-ish form so the status line stays readable. The persistent chip
+        // carries the full clickable link; this is the just-dropped callout.
+        var host = "";
+        try { host = new Uri(dep.GetUrl).Host; } catch { host = dep.GetUrl; }
+        return $". Heads up: this mod needs {dep.Name} — get it at {host}.";
+    }
+
     // View toggle: group the list by source (paks / UE4SS installed / bundled) or by MP-safety class.
     public IReadOnlyList<string> GroupModes { get; } = new[] { "By source", "By class", "By category" };
 
@@ -968,7 +982,8 @@ public sealed partial class MainViewModel : ObservableObject
                 StatusText = $"Updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}"
                     + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : ".")
                     + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
-                    + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
+                    + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
+                    + MissingFrameworkDropSuffix();
             }
             catch (Exception e) { StatusText = e.Message; }
             finally { IsBusy = false; }
@@ -1052,7 +1067,8 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
                 + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
-                + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "");
+                + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
+                + MissingFrameworkDropSuffix();
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
