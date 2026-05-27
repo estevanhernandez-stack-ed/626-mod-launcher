@@ -262,6 +262,185 @@ public static class EldenRingFixture
         return shifted;
     }
 
+    /// <summary>Build a save like <see cref="BuildSaveWithOneCharacter(string, uint, byte, byte, byte, byte, byte, byte, byte, byte)"/>
+    /// but with one EXTRA entry in the BND4 file table — <c>USER_DATA012</c>, simulating
+    /// the same DLC-style addition the real Elden Ring DLC already shipped. The 10 slot entries
+    /// + the save-header entry (USER_DATA011) stay at their original absolute file offsets, so
+    /// the EldenRingSave constants for the save-header section (<c>0x019003B0</c> etc.) remain
+    /// valid; only the BND4 file table grows.
+    ///
+    /// Layout choices:
+    /// - File table at <c>0x40</c> grows from 11 × 0x28 to 12 × 0x28 = 0x1E0 bytes, ending at
+    ///   <c>0x220</c>. The legacy padding zone (<c>0x220..0x320</c>) absorbs the growth without
+    ///   touching the slot region.
+    /// - The name table is APPENDED past the save-header section (at
+    ///   <c>SaveHeaderTotalEnd</c> = 0x19603B0). Each <c>name_offset</c> field on every entry
+    ///   points at the appended name table. This keeps the slot-region start at 0x320, so we
+    ///   don't have to shift slot data and recompute every MD5.
+    /// - <c>USER_DATA012</c>'s <c>data_offset</c> points at a small zero-filled 0x100-byte
+    ///   region appended right after the name table. The test only cares that the walk doesn't
+    ///   fall over on the extra entry — it doesn't need to be a real save section.
+    ///
+    /// Used to prove that ReadCharacters / WriteEdit walk the BND4 file table by NAME to find
+    /// USER_DATA011 even when it's no longer the last entry — the contract that protects the
+    /// app against future ER patches that add entries.</summary>
+    public static byte[] BuildSaveWithExtraEntry(string name, uint runes,
+        byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
+    {
+        // 12 entries: 10 slots + USER_DATA011 (save header) + USER_DATA012 (DLC-style extra).
+        const int ExtendedEntryCount = SlotCount + 2;
+        // The extra USER_DATA012 region appended at the end of the file — its content is not
+        // meaningful, just zero-filled so the per-entry bounds check passes.
+        const int ExtraEntryDataSize = 0x100;
+
+        // Name table appended past the save-header section; extra data appended past that.
+        int nameTableStartExtended = SaveHeaderTotalEnd;
+        int extraDataStart = nameTableStartExtended + ExtendedEntryCount * NameByteLength;
+        int totalSize = extraDataStart + ExtraEntryDataSize;
+
+        var buffer = new byte[totalSize];
+
+        // BND4 magic + counts + file-header-offset + version_string + file_header_size + unicode flag.
+        Encoding.ASCII.GetBytes("BND4").CopyTo(buffer);
+        BitConverter.TryWriteBytes(buffer.AsSpan(0x0C, 4), ExtendedEntryCount);
+        BitConverter.TryWriteBytes(buffer.AsSpan(0x10, 8), (long)FileTableStart);
+        Encoding.ASCII.GetBytes("04E10231").CopyTo(buffer.AsSpan(0x18, 8));
+        BitConverter.TryWriteBytes(buffer.AsSpan(0x20, 8), (long)(ExtendedEntryCount * Bnd4EntrySize));
+        buffer[0x30] = 1;
+
+        // Per-entry name_offsets — point into the appended name table.
+        var nameOffsets = new int[ExtendedEntryCount];
+        for (int i = 0; i < ExtendedEntryCount; i++)
+        {
+            nameOffsets[i] = nameTableStartExtended + i * NameByteLength;
+        }
+
+        // File-table entries — slots, save header, extra DLC entry.
+        for (int i = 0; i < ExtendedEntryCount; i++)
+        {
+            int entryStart = FileTableStart + i * Bnd4EntrySize;
+
+            long dataOffset;
+            long dataSize;
+            int fileId;
+            if (i < SlotCount)
+            {
+                dataOffset = FirstSlotMd5Offset + (long)i * SlotStride;
+                dataSize = SlotStride;
+                fileId = i;
+            }
+            else if (i == SlotCount)
+            {
+                // USER_DATA011 — save header section (matches the standard fixture).
+                dataOffset = SaveHeadersSectionStart;
+                dataSize = SaveHeadersSectionLength;
+                fileId = SaveHeaderEntryFileId;
+            }
+            else
+            {
+                // USER_DATA012 — the DLC-style extra entry. Zero-filled region at end of file.
+                dataOffset = extraDataStart;
+                dataSize = ExtraEntryDataSize;
+                fileId = SaveHeaderEntryFileId + 1; // 12
+            }
+
+            buffer[entryStart] = 0x40;
+            BitConverter.TryWriteBytes(buffer.AsSpan(entryStart + 0x04, 4), -1);
+            BitConverter.TryWriteBytes(buffer.AsSpan(entryStart + 0x08, 8), dataSize);
+            BitConverter.TryWriteBytes(buffer.AsSpan(entryStart + 0x10, 8), dataSize);
+            BitConverter.TryWriteBytes(buffer.AsSpan(entryStart + 0x18, 8), dataOffset);
+            BitConverter.TryWriteBytes(buffer.AsSpan(entryStart + 0x20, 4), fileId);
+            BitConverter.TryWriteBytes(buffer.AsSpan(entryStart + 0x24, 4), nameOffsets[i]);
+        }
+
+        // Name table at the appended location.
+        for (int i = 0; i < ExtendedEntryCount; i++)
+        {
+            string entryName = i < SlotCount
+                ? $"USER_DATA00{i}"
+                : i == SlotCount
+                    ? SaveHeaderEntryName
+                    : "USER_DATA012";
+            var nameBytes = Encoding.Unicode.GetBytes(entryName);
+            nameBytes.CopyTo(buffer.AsSpan(nameOffsets[i], nameBytes.Length));
+        }
+
+        // Slot 0 — populate with the character (runes + stats at the fixture anchor) and MD5.
+        var slot0Data = buffer.AsSpan(FirstSlotDataOffset, SlotDataSize);
+        SlotData.WriteRunes(slot0Data, runes, SlotData.FixtureMagicOffset);
+        SlotData.WriteStats(slot0Data, vig, mnd, end_, str, dex, int_, fai, arc, SlotData.FixtureMagicOffset);
+
+        var slot0Md5Region = buffer.AsSpan(FirstSlotMd5Offset, 0x10);
+        SlotChecksum.ComputeMd5(slot0Data).CopyTo(slot0Md5Region);
+
+        // Slots 1-9: zero-filled with the zero-slot MD5.
+        var zeroSlotMd5 = SlotChecksum.ComputeMd5(new byte[SlotDataSize]);
+        for (int i = 1; i < SlotCount; i++)
+        {
+            var md5Region = buffer.AsSpan(FirstSlotMd5Offset + i * SlotStride, 0x10);
+            zeroSlotMd5.CopyTo(md5Region);
+        }
+
+        // Save-header section: active flag + per-slot summary + save-header MD5.
+        buffer[CharActiveStatusOffset + 0] = 1;
+        var slot0Summary = buffer.AsSpan(PerSlotSummaryStart, PerSlotSummaryStride);
+        WriteCharacterName(slot0Summary, name);
+        var stats = new SlotStats(vig, mnd, end_, str, dex, int_, fai, arc);
+        BitConverter.TryWriteBytes(slot0Summary.Slice(CharLevelOffsetInSummary, 2), (short)SlotData.LevelFromStats(stats));
+        BitConverter.TryWriteBytes(slot0Summary.Slice(CharPlayedSecondsOffsetInSummary, 4), 0);
+
+        var saveHeaderRegion = buffer.AsSpan(SaveHeadersSectionStart, SaveHeadersSectionLength);
+        var saveHeaderMd5Region = buffer.AsSpan(SaveHeaderMd5Offset, 0x10);
+        SlotChecksum.ComputeMd5(saveHeaderRegion).CopyTo(saveHeaderMd5Region);
+
+        return buffer;
+    }
+
+    /// <summary>Build a save like <see cref="BuildSaveWithOneCharacter(string, uint, byte, byte, byte, byte, byte, byte, byte, byte)"/>
+    /// but with the <c>USER_DATA011</c> name in the BND4 name table replaced with
+    /// <paramref name="renamedTo"/>. The save-header section + MD5 are unchanged; only the
+    /// name-table bytes for that entry are overwritten.
+    ///
+    /// Constraint: <paramref name="renamedTo"/> must be EXACTLY 12 characters so the UTF-16LE
+    /// encoding fits in the same 24 bytes that <c>USER_DATA011</c> occupies. Anything else would
+    /// require shifting subsequent name-table entries.
+    ///
+    /// Used to prove that the BND4 walk fails LOUD when the expected save-header entry is
+    /// missing — surfaces as an <see cref="InvalidDataException"/> listing the names that WERE
+    /// found, never a silent wrong-region read.</summary>
+    public static byte[] BuildSaveWithRenamedSaveHeader(string renamedTo, string name, uint runes,
+        byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
+    {
+        if (renamedTo is null) throw new ArgumentNullException(nameof(renamedTo));
+        if (renamedTo.Length != SaveHeaderEntryName.Length)
+        {
+            throw new ArgumentException(
+                $"renamedTo must be exactly {SaveHeaderEntryName.Length} characters (same byte width as " +
+                $"'{SaveHeaderEntryName}'); got '{renamedTo}' ({renamedTo.Length} chars).",
+                nameof(renamedTo));
+        }
+        if (string.Equals(renamedTo, SaveHeaderEntryName, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"renamedTo must differ from '{SaveHeaderEntryName}' — otherwise the fixture would " +
+                "not simulate a renamed save-header entry.",
+                nameof(renamedTo));
+        }
+
+        var buffer = BuildSaveWithOneCharacter(name, runes, vig, mnd, end_, str, dex, int_, fai, arc);
+
+        // The save-header entry is the 11th file-table entry (index SlotCount). Its name_offset
+        // points at nameOffsets[SlotCount] = NameTableStart + SlotCount * NameByteLength.
+        int saveHeaderNameOffset = NameTableStart + SlotCount * NameByteLength;
+        // Clear the existing name's UTF-16 bytes (24 bytes — 12 chars × 2). The trailing 2-byte
+        // null terminator at +0x18 stays zero.
+        buffer.AsSpan(saveHeaderNameOffset, SaveHeaderEntryName.Length * 2).Clear();
+        var newNameBytes = Encoding.Unicode.GetBytes(renamedTo);
+        newNameBytes.CopyTo(buffer.AsSpan(saveHeaderNameOffset, newNameBytes.Length));
+
+        return buffer;
+    }
+
     /// <summary>The offset of slot <paramref name="slotIndex"/>'s payload (post-MD5) in the
     /// returned buffer. Mirrors BenGrn's <c>SLOT_START_INDEX + slotIndex * 0x10 + slotIndex *
     /// SLOT_LENGTH</c>.</summary>
