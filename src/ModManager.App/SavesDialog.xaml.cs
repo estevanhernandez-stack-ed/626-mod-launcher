@@ -144,6 +144,7 @@ public sealed partial class SavesDialog : ContentDialog
     private void RefreshCharacters()
     {
         var rows = new List<CharacterRow>();
+        var skippedUnsupported = 0;  // saves with inventory the MVP doesn't yet handle
         if (!string.IsNullOrEmpty(_saveDir))
         {
             var svc = App.AppHost.Services
@@ -153,7 +154,8 @@ public sealed partial class SavesDialog : ContentDialog
             {
                 IReadOnlyList<ModManager.Core.SaveEditor.FromSoft.CharacterSlot> slots;
                 try { slots = svc.ReadCharacters(sl2); }
-                catch { continue; }   // unreadable save (e.g. non-empty inventory NotSupportedException) — skip, not fail
+                catch (NotSupportedException) { skippedUnsupported++; continue; }
+                catch { continue; }   // any other parse failure — skip the file, don't fail the dialog
                 foreach (var slot in slots)
                 {
                     rows.Add(new CharacterRow(
@@ -168,7 +170,11 @@ public sealed partial class SavesDialog : ContentDialog
         CharactersEmpty.Visibility = rows.Count == 0
             ? Microsoft.UI.Xaml.Visibility.Visible
             : Microsoft.UI.Xaml.Visibility.Collapsed;
-        EditorCredit.Text = "Save format support based on community reverse-engineering — see Settings → About for credits.";
+        // Surface the inventory-not-yet-supported gap so a user with a real save knows their save
+        // wasn't silently ignored. Without this, the empty Characters list looks like a bug.
+        EditorCredit.Text = skippedUnsupported > 0
+            ? $"Save format support based on community reverse-engineering — see Settings → About for credits. ({skippedUnsupported} save{(skippedUnsupported == 1 ? "" : "s")} skipped — real saves with inventory aren't supported in this MVP.)"
+            : "Save format support based on community reverse-engineering — see Settings → About for credits.";
     }
 
     private async void OnEditCharacter(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
