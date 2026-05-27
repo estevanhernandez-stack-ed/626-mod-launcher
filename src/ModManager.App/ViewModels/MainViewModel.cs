@@ -64,6 +64,18 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EmptyVisibility))]
     private bool hasGame;
 
+    /// <summary>Framework dependencies the active game is missing — surfaced as a status banner.
+    /// Refreshed at every <see cref="ReloadModsAsync"/>. Empty = nothing missing (banner hidden).</summary>
+    public ObservableCollection<FrameworkDep> MissingFrameworks { get; } = new();
+
+    /// <summary>Bound to the banner's Visibility — true when at least one framework is missing.</summary>
+    public bool HasMissingFrameworks => MissingFrameworks.Count > 0;
+
+    /// <summary>One-line summary for the banner ("Missing: UE4SS"). Multiple frameworks comma-joined.</summary>
+    public string MissingFrameworksSummary => MissingFrameworks.Count == 0
+        ? ""
+        : "Missing: " + string.Join(", ", MissingFrameworks.Select(d => d.Name));
+
     [ObservableProperty] private bool isBusy;
 
     [ObservableProperty]
@@ -229,6 +241,9 @@ public sealed partial class MainViewModel : ObservableObject
             Mods.Clear();
             GameRootText = "";
             StatusText = "No game registered. Add one in the wizard or the Electron app.";
+            MissingFrameworks.Clear();
+            OnPropertyChanged(nameof(HasMissingFrameworks));
+            OnPropertyChanged(nameof(MissingFrameworksSummary));
             return;
         }
         IsBusy = true;
@@ -302,6 +317,14 @@ public sealed partial class MainViewModel : ObservableObject
                     ? $"Detected {list.Count} mod{(list.Count == 1 ? "" : "s")} — toggle to enable/disable. Loose-file install, no Mod Engine 2 needed."
                     : "No mods yet — drop a mod archive to install, or set up Mod Engine 2 for folder-based mods.";
             else UpdateStatus();
+            // Refresh missing-framework state every reload — game switch, post-drop, Redetect
+            // all funnel through here. Pure probe + a small collection diff so the banner binding
+            // updates without re-creating items needlessly.
+            MissingFrameworks.Clear();
+            foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
+                MissingFrameworks.Add(dep);
+            OnPropertyChanged(nameof(HasMissingFrameworks));
+            OnPropertyChanged(nameof(MissingFrameworksSummary));
             // Toggling a mod (especially Seamless) may change which target the Launch button fires.
             // Re-publish the computed properties so the toolbar label tracks state without a manual
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
