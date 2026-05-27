@@ -144,6 +144,8 @@ public sealed partial class SavesDialog : ContentDialog
     private void RefreshCharacters()
     {
         var rows = new List<CharacterRow>();
+        int filesScanned = 0;
+        string? firstReadError = null;
         if (!string.IsNullOrEmpty(_saveDir))
         {
             var svc = App.AppHost.Services
@@ -156,9 +158,20 @@ public sealed partial class SavesDialog : ContentDialog
             {
                 foreach (var savePath in System.IO.Directory.GetFiles(_saveDir, "*" + st.Extension))
                 {
+                    filesScanned++;
                     IReadOnlyList<ModManager.Core.SaveEditor.FromSoft.CharacterSlot> slots;
                     try { slots = svc.ReadCharacters(savePath); }
-                    catch { continue; }   // any parse failure — skip the file, don't fail the dialog
+                    catch (FileNotFoundException) { continue; } // file removed mid-scan — race, not an error worth surfacing
+                    catch (Exception ex)
+                    {
+                        // Capture first failure so the empty-state surfaces a real reason instead of "no characters detected".
+                        // Log every failure to Debug for dev-build visibility; keep iterating so partial reads still populate.
+                        var fileName = System.IO.Path.GetFileName(savePath);
+                        var msg = $"{fileName}: {ex.GetType().Name} — {ex.Message}";
+                        System.Diagnostics.Debug.WriteLine($"[SavesDialog] ReadCharacters failed: {msg}");
+                        firstReadError ??= msg;
+                        continue;
+                    }
                     foreach (var slot in slots)
                     {
                         rows.Add(new CharacterRow(
@@ -171,9 +184,33 @@ public sealed partial class SavesDialog : ContentDialog
             }
         }
         CharacterList.ItemsSource = rows;
-        CharactersEmpty.Visibility = rows.Count == 0
-            ? Microsoft.UI.Xaml.Visibility.Visible
-            : Microsoft.UI.Xaml.Visibility.Collapsed;
+        if (rows.Count == 0)
+        {
+            // Differentiate the three empty-state causes so the next smoke immediately shows the real failure:
+            //  (a) no save folder picked → original message stands
+            //  (b) folder picked, files found, every read threw → name the first exception
+            //  (c) folder picked, files found, none threw but all slots skipped → "scanned N, no editable slots"
+            if (firstReadError is not null)
+            {
+                CharactersEmpty.Text = $"Couldn't read any saves — first error: {firstReadError}";
+            }
+            else if (filesScanned > 0)
+            {
+                CharactersEmpty.Text = $"Scanned {filesScanned} save file(s) — no editable character slots found. "
+                    + "Slots are skipped when the MD5 doesn't match or every stat is zero.";
+            }
+            else
+            {
+                CharactersEmpty.Text = "No editable characters detected in this folder.";
+            }
+            CharactersEmpty.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+        }
+        else
+        {
+            CharactersEmpty.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        }
+        // Mirror the first read error into StatusText too — the dialog's main status line is the spot the user reads.
+        if (firstReadError is not null) StatusText.Text = $"Save read error: {firstReadError}";
         EditorCredit.Text = "Save format support based on community reverse-engineering — see Settings → About for credits.";
     }
 
