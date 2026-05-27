@@ -55,7 +55,7 @@ public sealed class GameProfileResolver
 
         // Save dir: reuse the existing save-resolution entry point (Ludusavi by app id, then heuristics);
         // fall back to expanding the saveRoot enum + subpath when that finds nothing.
-        var saveDir = await SaveLocator.DetectAsync(_ludu, d.Name ?? "", d.Engine, gameRoot, d.SteamAppId);
+        var saveDir = await SaveLocator.DetectAsync(_ludu, d.Name ?? "", d.Engine, gameRoot, d.SteamAppId, _steam.CurrentUserId64());
         saveDir ??= ExpandSaveRoot(d.SaveRoot, d.SaveSubPath, gameRoot);
         checks.Add(Check("Save folder", saveDir, DirExists(saveDir)));
 

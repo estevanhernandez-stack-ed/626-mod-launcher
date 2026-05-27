@@ -26,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly LudusaviService _ludu;
     private readonly NexusService _nexus;
     private readonly AvatarService _avatars;
+    private readonly SteamService _steam;
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
@@ -106,7 +107,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam)
     {
         _svc = svc;
         _me2 = me2;
@@ -115,6 +116,7 @@ public sealed partial class MainViewModel : ObservableObject
         _ludu = ludu;
         _nexus = nexus;
         _avatars = avatars;
+        _steam = steam;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -1040,7 +1042,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Prefer the wizard's already-resolved save folder; else find it (Ludusavi by Steam id, then heuristics).
             var saveDir = !string.IsNullOrEmpty(resolvedSaveDir)
                 ? resolvedSaveDir
-                : await SaveLocator.DetectAsync(_ludu, entry.GameName, entry.Engine, entry.GameRoot, entry.SteamAppId);
+                : await SaveLocator.DetectAsync(_ludu, entry.GameName, entry.Engine, entry.GameRoot, entry.SteamAppId, _steam.CurrentUserId64());
             if (saveDir is not null) _svc.SetSaveDir(entry.Id, saveDir);
             await LoadAsync();
             StatusText = $"Added {entry.GameName}.";

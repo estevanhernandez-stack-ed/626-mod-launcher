@@ -14,12 +14,16 @@ public static class SaveLocator
     /// <summary>
     /// Authoritative-first: resolve the Ludusavi save templates for the Steam app id, then fall
     /// back to the folder heuristics. Best-effort — anything missing degrades to the heuristic.
+    /// Pass <paramref name="steamUserId"/> (64-bit SteamID) so templates that reference
+    /// <c>&lt;storeUserId&gt;</c> (Elden Ring, Sekiro, the FromSoft family) actually resolve;
+    /// without it those templates return null and the caller falls back to the heuristic which
+    /// doesn't know about the Steam-user-id subfolder.
     /// </summary>
-    public static async Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine, string? gameRoot, string? steamAppId)
+    public static async Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine, string? gameRoot, string? steamAppId, string? steamUserId = null)
     {
         if (!string.IsNullOrEmpty(steamAppId))
         {
-            var tokens = WindowsTokens(gameRoot);
+            var tokens = WindowsTokens(gameRoot, steamUserId);
             foreach (var template in await ludusavi.SaveTemplatesAsync(steamAppId))
             {
                 var resolved = LudusaviPaths.Resolve(template, tokens);
@@ -30,18 +34,26 @@ public static class SaveLocator
         return Detect(gameName, engine, gameRoot);
     }
 
-    private static Dictionary<string, string> WindowsTokens(string? gameRoot) => new()
+    private static Dictionary<string, string> WindowsTokens(string? gameRoot, string? steamUserId)
     {
-        ["base"] = gameRoot ?? "",
-        ["home"] = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ["winLocalAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        ["winAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        ["winDocuments"] = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        ["winProgramData"] = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        ["winPublic"] = Environment.GetEnvironmentVariable("PUBLIC") ?? @"C:\Users\Public",
-        ["winDir"] = Environment.GetEnvironmentVariable("WINDIR") ?? @"C:\Windows",
-        ["osUserName"] = Environment.UserName,
-    };
+        var tokens = new Dictionary<string, string>
+        {
+            ["base"] = gameRoot ?? "",
+            ["home"] = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ["winLocalAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            ["winAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            ["winDocuments"] = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            ["winProgramData"] = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            ["winPublic"] = Environment.GetEnvironmentVariable("PUBLIC") ?? @"C:\Users\Public",
+            ["winDir"] = Environment.GetEnvironmentVariable("WINDIR") ?? @"C:\Windows",
+            ["osUserName"] = Environment.UserName,
+        };
+        // Only set storeUserId when we actually have one — leaving the key absent lets the
+        // template-resolver's "unknown token = fail" guard reject ER's template cleanly and fall
+        // through to the heuristic for users not signed into Steam.
+        if (!string.IsNullOrEmpty(steamUserId)) tokens["storeUserId"] = steamUserId;
+        return tokens;
+    }
 
     public static string? Detect(string gameName, string? engine, string? gameRoot)
     {
