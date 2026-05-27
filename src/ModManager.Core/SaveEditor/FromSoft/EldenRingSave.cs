@@ -61,10 +61,18 @@ public static class EldenRingSave
     internal const int CharActiveStatusRelative = CharActiveStatusOffset - SaveHeadersSectionStart; // 0x196954
     internal const int PerSlotSummaryRelative = PerSlotSummaryStart - SaveHeadersSectionStart;     // 0x19695E
 
-    // BND4 file-table entry names. USER_DATA000..USER_DATA009 carry slot bodies (MD5 + data);
-    // USER_DATA011 carries the save-header section. (USER_DATA010 is reserved in real saves
-    // — the file table skips it.)
-    internal const string SaveHeaderEntryName = "USER_DATA011";
+    // BND4 file-table entry names. USER_DATA000..USER_DATA009 carry slot bodies (MD5 + data).
+    // The save-header section lives at either USER_DATA010 OR USER_DATA011 depending on the
+    // ER save-format generation (the synthetic fixture and pre-DLC saves put it at
+    // USER_DATA011; current real saves put it at USER_DATA010 and use USER_DATA011 for a
+    // newer appended section). The semantic difference: USER_DATA010 entries include the
+    // 16-byte MD5 prefix in DataOffset; USER_DATA011 entries start AT the section data with
+    // the MD5 sitting 16 bytes before. <see cref="ResolveSaveHeaderStart"/> handles both.
+    internal const string SaveHeaderEntryNameLegacy = "USER_DATA011";  // pre-DLC / fixture
+    internal const string SaveHeaderEntryNameCurrent = "USER_DATA010"; // current real saves
+    // Retained for callers that haven't moved off the single-name lookup. New code should use
+    // ResolveSaveHeaderStart instead.
+    internal const string SaveHeaderEntryName = SaveHeaderEntryNameLegacy;
     internal const int CharNameOffsetInSummary = 0x00;
     internal const int CharNameLengthBytes = 0x22;
     internal const int CharLevelOffsetInSummary = 0x22;
@@ -73,6 +81,49 @@ public static class EldenRingSave
     // The minimum file size we can meaningfully parse: the BND4 envelope + 10 slots + the
     // save-header MD5/section. Anything smaller is structurally invalid.
     internal const int MinimumFileSize = SaveHeaderTotalEnd;
+
+    /// <summary>
+    /// Locate the save-header section in the BND4 entries and return both the section start
+    /// (the first byte of the 0x60000-byte payload) and the MD5 start (16 bytes before). Two
+    /// shapes are supported:
+    /// <list type="bullet">
+    ///   <item><description><b>USER_DATA011 (fixture / pre-DLC)</b>: DataOffset points at the
+    ///     section data. MD5 sits at DataOffset - 0x10.</description></item>
+    ///   <item><description><b>USER_DATA010 (current real ER, post-DLC)</b>: DataOffset points
+    ///     at the MD5. Section starts at DataOffset + 0x10. (USER_DATA011 in this shape carries
+    ///     an unrelated DLC-introduced section we don't need here.)</description></item>
+    /// </list>
+    /// Prefer USER_DATA010 when it exists with the right size (0x60010 = MD5 + section) — that
+    /// matches current ER. Otherwise fall back to USER_DATA011 (fixture/pre-DLC).
+    /// </summary>
+    public static (int SectionStart, int Md5Start) ResolveSaveHeaderStart(
+        IReadOnlyList<Bnd4Entry> entries)
+    {
+        // Current real saves: USER_DATA010 is the MD5+section bundle.
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Name == SaveHeaderEntryNameCurrent
+                && entries[i].DataSize == SaveHeadersSectionLength + 0x10)
+            {
+                int md5Start = checked((int)entries[i].DataOffset);
+                return (md5Start + 0x10, md5Start);
+            }
+        }
+        // Pre-DLC / fixture: USER_DATA011 is the section (no MD5 prefix).
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Name == SaveHeaderEntryNameLegacy)
+            {
+                int sectionStart = checked((int)entries[i].DataOffset);
+                return (sectionStart, sectionStart - 0x10);
+            }
+        }
+        var foundNames = string.Join(", ", entries.Select(e => e.Name));
+        throw new InvalidDataException(
+            $"BND4 entry for the save-header section not found. Tried '{SaveHeaderEntryNameCurrent}' " +
+            $"(current ER) and '{SaveHeaderEntryNameLegacy}' (pre-DLC / fixture). " +
+            $"Found entries: {foundNames}");
+    }
 
     /// <summary>Read every populated character slot. Skips slots whose MD5 doesn't match their
     /// data (treated as corrupt) and slots whose 8 stats are all zero (treated as unused — the
@@ -98,8 +149,7 @@ public static class EldenRingSave
         // not by hardcoded offset. A future patch that shifts the layout (e.g. adds entries)
         // surfaces as a clear "entry not found" rather than reading garbage at a moved offset.
         var entries = Bnd4Reader.Parse(bytes);
-        var saveHeader = Bnd4Reader.GetByName(entries, SaveHeaderEntryName);
-        int saveHeaderStart = checked((int)saveHeader.DataOffset);
+        var (saveHeaderStart, _) = ResolveSaveHeaderStart(entries);
         int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
         int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
 
@@ -151,11 +201,9 @@ public static class EldenRingSave
         // agree on where the bytes live. A future layout shift (extra entries, padding) surfaces
         // as a clear "entry not found" instead of a silent corrupt write at a stale offset.
         var entries = Bnd4Reader.Parse(bytes);
-        var saveHeaderEntry = Bnd4Reader.GetByName(entries, SaveHeaderEntryName);
+        var (saveHeaderStart, saveHeaderMd5Start) = ResolveSaveHeaderStart(entries);
         var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{slotIndex:D3}");
 
-        int saveHeaderStart = checked((int)saveHeaderEntry.DataOffset);
-        int saveHeaderMd5Start = saveHeaderStart - 0x10;
         int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
         int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
         // The slot entry's data_offset points at the slot's MD5 (16 bytes); the slot body
@@ -288,8 +336,7 @@ public static class EldenRingSave
 
         // 1) Re-parse the slot via the same path the public reader uses (BND4 file-table walk).
         var entries = Bnd4Reader.Parse(verifyBytes);
-        var saveHeader = Bnd4Reader.GetByName(entries, SaveHeaderEntryName);
-        int saveHeaderStart = checked((int)saveHeader.DataOffset);
+        var (saveHeaderStart, _) = ResolveSaveHeaderStart(entries);
         int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
         int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
         var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{slotIndex:D3}");

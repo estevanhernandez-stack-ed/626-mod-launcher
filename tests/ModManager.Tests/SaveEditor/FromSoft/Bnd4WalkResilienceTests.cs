@@ -87,6 +87,64 @@ public class Bnd4WalkResilienceTests : IDisposable
     }
 
     [Fact]
+    public void ResolveSaveHeaderStart_picks_USER_DATA010_in_current_real_er_shape()
+    {
+        // Current real ER (.sl2/.co2/.err after the post-DLC patch) packs the save header into
+        // USER_DATA010 (size 0x60010 = 16-byte MD5 + 0x60000 section) and reserves USER_DATA011
+        // for an unrelated appended section. The resolver must prefer USER_DATA010 when it has
+        // the right size, and compute section/MD5 starts correctly from it.
+        var entries = new List<Bnd4Entry>
+        {
+            new("USER_DATA000", DataOffset: 0x300,     DataSize: 0x280010),
+            new("USER_DATA009", DataOffset: 0x1680390, DataSize: 0x280010),
+            new("USER_DATA010", DataOffset: 0x19003A0, DataSize: 0x60010),    // MD5 + section
+            new("USER_DATA011", DataOffset: 0x19603B0, DataSize: 0x240020),   // unrelated DLC section
+        };
+
+        var (sectionStart, md5Start) = EldenRingSave.ResolveSaveHeaderStart(entries);
+
+        // Section starts at MD5+0x10, MD5 starts at the entry's data_offset.
+        Assert.Equal(0x19003B0, sectionStart);
+        Assert.Equal(0x19003A0, md5Start);
+    }
+
+    [Fact]
+    public void ResolveSaveHeaderStart_falls_back_to_USER_DATA011_when_USER_DATA010_missing()
+    {
+        // Pre-DLC / fixture shape: only USER_DATA011 exists for the save header, and its
+        // data_offset points at the section data (NOT at the preceding MD5). The resolver
+        // must compute MD5 start as section - 0x10.
+        var entries = new List<Bnd4Entry>
+        {
+            new("USER_DATA000", DataOffset: 0x320,     DataSize: 0x280010),
+            new("USER_DATA009", DataOffset: 0x16803B0, DataSize: 0x280010),
+            new("USER_DATA011", DataOffset: 0x19003B0, DataSize: 0x60000),
+        };
+
+        var (sectionStart, md5Start) = EldenRingSave.ResolveSaveHeaderStart(entries);
+
+        Assert.Equal(0x19003B0, sectionStart);
+        Assert.Equal(0x19003A0, md5Start);
+    }
+
+    [Fact]
+    public void ResolveSaveHeaderStart_skips_USER_DATA010_when_size_doesnt_match_and_falls_back()
+    {
+        // Defensive: if a future variant adds a USER_DATA010 entry with a size that isn't the
+        // save-header bundle (0x60010), the resolver shouldn't blindly grab it — it should fall
+        // back to USER_DATA011.
+        var entries = new List<Bnd4Entry>
+        {
+            new("USER_DATA010", DataOffset: 0x100, DataSize: 0x500),       // wrong size — ignored
+            new("USER_DATA011", DataOffset: 0x19003B0, DataSize: 0x60000), // legacy fallback
+        };
+
+        var (sectionStart, _) = EldenRingSave.ResolveSaveHeaderStart(entries);
+
+        Assert.Equal(0x19003B0, sectionStart);
+    }
+
+    [Fact]
     public void Reader_fails_loud_when_save_header_entry_is_missing()
     {
         // Future patch renames USER_DATA011 — the global save-header slot — to something
