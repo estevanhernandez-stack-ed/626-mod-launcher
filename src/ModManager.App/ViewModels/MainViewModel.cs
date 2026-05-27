@@ -346,15 +346,22 @@ public sealed partial class MainViewModel : ObservableObject
                             !m.ReadOnly || m.Loader is "ue4ss" or "bepinex"))
                         .ToList()
                     : System.Array.Empty<VariantOptionVM>();
-                // Row-level missing-framework chip. v1 attaches the chip to every row when the
-                // engine has a missing framework — keeps the model simple. FromSoft has two
-                // candidates; prefer ME2 for folder-mod rows, Elden Mod Loader for direct-inject rows.
-                var primaryMissing = MissingFrameworks.FirstOrDefault();
-                if (_ctx.Game.Engine == "fromsoft" && MissingFrameworks.Count > 1)
+                // Row-level missing-framework chip. FromSoft has two candidates and each row only
+                // needs ONE of them: folder mods need Mod Engine 2, direct-inject mods need Elden
+                // Mod Loader. Critically there's NO cross-fallback — if a direct-inject row's ELM
+                // is satisfied, we don't show "NEEDS Mod Engine 2" instead (direct-inject mods
+                // don't load through ME2). Single-framework engines (UE4SS / BepInEx / SMAPI /
+                // Forge-Fabric) just show whatever's first in MissingFrameworks.
+                FrameworkDep? primaryMissing;
+                if (_ctx.Game.Engine == "fromsoft")
                 {
                     primaryMissing = rep.IsFolder
-                        ? MissingFrameworks.FirstOrDefault(d => d.Name == "Mod Engine 2") ?? primaryMissing
-                        : MissingFrameworks.FirstOrDefault(d => d.Name == "Elden Mod Loader") ?? primaryMissing;
+                        ? MissingFrameworks.FirstOrDefault(d => d.Name == "Mod Engine 2")
+                        : MissingFrameworks.FirstOrDefault(d => d.Name == "Elden Mod Loader");
+                }
+                else
+                {
+                    primaryMissing = MissingFrameworks.FirstOrDefault();
                 }
                 rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
