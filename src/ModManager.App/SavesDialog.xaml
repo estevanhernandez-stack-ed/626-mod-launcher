@@ -91,7 +91,8 @@
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="CharactersEmpty" Text="No editable characters detected in this folder."
-                   Opacity="0.6" FontSize="12" Visibility="Collapsed" />
+                   Opacity="0.6" FontSize="12" Visibility="Collapsed"
+                   TextWrapping="Wrap" IsTextSelectionEnabled="True" />
         <TextBlock x:Name="EditorCredit" Opacity="0.5" FontSize="11" TextWrapping="Wrap" />
 
         <TextBlock Text="Installed save mods" FontWeight="SemiBold" />
@@ -153,6 +154,6 @@
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="EmptyText" Text="No snapshots yet." Opacity="0.6" Visibility="Collapsed" />
-        <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
     </StackPanel>
 </ContentDialog>
