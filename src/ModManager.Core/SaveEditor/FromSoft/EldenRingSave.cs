@@ -50,10 +50,12 @@ public static class EldenRingSave
 
     // Relative offsets INSIDE the save-header section. These are the layout positions of
     // the active-flag array and per-slot summary table within the section — they do NOT
-    // depend on where the section sits in the file. (CharActiveStatusOffset and
+    // depend on where the section sits in the file. CharActiveStatusOffset and
     // PerSlotSummaryStart above are the absolute file offsets for the legacy pre-DLC
-    // layout, retained because WriteEdit / VerifyPostWrite still reference them; the read
-    // path now derives absolutes from the BND4 file-table-walked section start.)
+    // layout, retained ONLY as the compile-time seeds for these relative constants. Every
+    // runtime read/write path (ReadCharacters, WriteEdit, VerifyPostWrite, TryReadSlot) now
+    // resolves absolutes by adding these relatives to the BND4-file-table-walked section
+    // start — no method body computes a file offset from the absolute constants directly.
     //
     // Verified: 0x01901D04 - 0x019003B0 = 0x196954 and 0x01901D0E - 0x019003B0 = 0x19695E.
     internal const int CharActiveStatusRelative = CharActiveStatusOffset - SaveHeadersSectionStart; // 0x196954
