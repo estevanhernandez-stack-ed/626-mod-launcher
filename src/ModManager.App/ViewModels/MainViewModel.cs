@@ -346,13 +346,13 @@ public sealed partial class MainViewModel : ObservableObject
                     : System.Array.Empty<VariantOptionVM>();
                 // Row-level missing-framework chip. v1 attaches the chip to every row when the
                 // engine has a missing framework — keeps the model simple. FromSoft has two
-                // candidates; prefer ME2 for folder-mod rows, DLL proxy for direct-inject rows.
+                // candidates; prefer ME2 for folder-mod rows, Elden Mod Loader for direct-inject rows.
                 var primaryMissing = MissingFrameworks.FirstOrDefault();
                 if (_ctx.Game.Engine == "fromsoft" && MissingFrameworks.Count > 1)
                 {
                     primaryMissing = rep.IsFolder
                         ? MissingFrameworks.FirstOrDefault(d => d.Name == "Mod Engine 2") ?? primaryMissing
-                        : MissingFrameworks.FirstOrDefault(d => d.Name.StartsWith("DLL proxy")) ?? primaryMissing;
+                        : MissingFrameworks.FirstOrDefault(d => d.Name == "Elden Mod Loader") ?? primaryMissing;
                 }
                 rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
