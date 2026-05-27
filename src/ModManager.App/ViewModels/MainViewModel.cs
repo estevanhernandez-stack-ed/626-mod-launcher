@@ -315,6 +315,26 @@ public sealed partial class MainViewModel : ObservableObject
                 var folderAbs = rep.IsFolder
                     ? System.IO.Path.Combine(Scanner.LocByName(rep.Location, _ctx!).Abs, rep.Name)
                     : "";
+                // .ini files inside the mod's folder, capped at 20 so a pathological folder doesn't
+                // stall reload. Enumerate failures (locked folder, permission denied) fall through
+                // silently — the pencil-icon affordance just stays hidden for that row.
+                IReadOnlyList<string> iniFiles = Array.Empty<string>();
+                if (!string.IsNullOrEmpty(folderAbs) && Directory.Exists(folderAbs))
+                {
+                    try
+                    {
+                        iniFiles = Directory.EnumerateFiles(folderAbs, "*.ini", SearchOption.AllDirectories)
+                            .Take(20)
+                            .ToArray();
+                    }
+                    catch { /* leave empty on enumerate failure */ }
+                }
+                // ModId is a stable slug from the family display name — same row across reloads
+                // gets the same INI-history bucket. Falls back to the mod's Name when DisplayName
+                // would slug to empty (e.g. all-symbol titles).
+                var displayName = !string.IsNullOrEmpty(rep.DisplayName) ? rep.DisplayName : rep.Name;
+                var modId = Slugify(displayName);
+                if (string.IsNullOrEmpty(modId)) modId = Slugify(rep.Name);
                 var options = fam.IsMulti
                     ? (IReadOnlyList<VariantOptionVM>)fam.Members
                         .Select(m => new VariantOptionVM(
@@ -339,6 +359,8 @@ public sealed partial class MainViewModel : ObservableObject
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
                     ModFolderAbs = folderAbs,
+                    IniFiles = iniFiles,
+                    ModId = modId,
                     VariantOptions = options,
                     MissingFrameworkName = primaryMissing?.Name ?? "",
                     MissingFrameworkUrl = primaryMissing?.GetUrl,
@@ -1360,6 +1382,16 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Saved {key} in {System.IO.Path.GetFileName(configPath)}.";
         }
         catch (Exception e) { StatusText = $"Couldn't save {key}: {e.Message}"; }
+    }
+
+    /// <summary>Slug a display name into a filesystem-safe id (used as the INI-history bucket
+    /// directory name). Lowercases, replaces non-alphanumerics with '-', collapses dashes, trims.</summary>
+    private static string Slugify(string name)
+    {
+        var chars = name.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-');
+        var s = new string(chars.ToArray());
+        while (s.Contains("--")) s = s.Replace("--", "-");
+        return s.Trim('-');
     }
 
     private async Task BulkAsync(Func<Task> op)

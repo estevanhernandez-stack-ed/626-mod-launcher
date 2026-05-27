@@ -446,6 +446,16 @@
                                     <TextBlock Text="config" FontSize="9" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Button>
+                            <Button Click="OnEditIniClick" VerticalAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="Edit .ini files in this mod (snapshots before save)"
+                                    Visibility="{x:Bind IniIconVisibility, Mode=OneWay}"
+                                    Tag="{x:Bind}">
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
+                                    <SymbolIcon Symbol="Edit" />
+                                    <TextBlock Text="ini" FontSize="9" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
 
                         <ToggleSwitch Grid.Column="4" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
