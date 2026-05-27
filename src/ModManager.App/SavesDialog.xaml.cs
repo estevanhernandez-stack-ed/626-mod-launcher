@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.App.Services;
@@ -17,6 +18,12 @@ public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<Sa
 
 /// <summary>One installed-save-mod row: friendly title + when/source detail.</summary>
 public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail);
+
+/// <summary>One character-row for the editor. Bridges the Core CharacterSlot to the
+/// data-template's two-line display.</summary>
+public sealed record CharacterRow(
+    string SavePath, ModManager.Core.SaveEditor.FromSoft.CharacterSlot Slot,
+    string Headline, string Detail);
 
 public sealed partial class SavesDialog : ContentDialog
 {
@@ -50,6 +57,7 @@ public sealed partial class SavesDialog : ContentDialog
         Refresh();
         RefreshSaveFiles();
         RefreshSaveMods();
+        RefreshCharacters();
         _loaded = true;
     }
 
@@ -131,6 +139,62 @@ public sealed partial class SavesDialog : ContentDialog
             .ToList();
         SaveModList.ItemsSource = rows;
         SaveModEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RefreshCharacters()
+    {
+        var rows = new List<CharacterRow>();
+        if (!string.IsNullOrEmpty(_saveDir))
+        {
+            var svc = App.AppHost.Services
+                .GetRequiredService<ModManager.App.Services.SaveEditorService>();
+            // Only scan .sl2 (ER) for MVP. Future engines plug in by adding more file-type checks.
+            foreach (var sl2 in System.IO.Directory.GetFiles(_saveDir, "*.sl2"))
+            {
+                IReadOnlyList<ModManager.Core.SaveEditor.FromSoft.CharacterSlot> slots;
+                try { slots = svc.ReadCharacters(sl2); }
+                catch { continue; }   // unreadable save (e.g. non-empty inventory NotSupportedException) — skip, not fail
+                foreach (var slot in slots)
+                {
+                    rows.Add(new CharacterRow(
+                        SavePath: sl2,
+                        Slot: slot,
+                        Headline: slot.Name,
+                        Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}"));
+                }
+            }
+        }
+        CharacterList.ItemsSource = rows;
+        CharactersEmpty.Visibility = rows.Count == 0
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+        EditorCredit.Text = "Save format support based on community reverse-engineering — see Settings → About for credits.";
+    }
+
+    private async void OnEditCharacter(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Microsoft.UI.Xaml.FrameworkElement fe || fe.DataContext is not CharacterRow row) return;
+        var dialog = new CharacterEditDialog(row.Slot) { XamlRoot = this.XamlRoot };
+        var result = await dialog.ShowAsync();
+        if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary) return;
+        if (!dialog.IsValid())
+        {
+            StatusText.Text = "Name must be 1–16 characters. Edit was NOT applied.";
+            return;
+        }
+
+        var edit = dialog.GetEdit();
+        var svc = App.AppHost.Services.GetRequiredService<ModManager.App.Services.SaveEditorService>();
+        try
+        {
+            var snap = svc.EditCharacter(
+                saveDir: _saveDir!, snapshotsDir: _savesDir, savePath: row.SavePath,
+                slotIndex: row.Slot.SlotIndex, beforeEdit: row.Slot, edit: edit);
+            StatusText.Text = $"Edited \"{row.Slot.Name}\" → \"{edit.Name}\". Snapshot taken: {snap.Label}.";
+            Refresh();            // snapshots list
+            RefreshCharacters();  // characters list (new values)
+        }
+        catch (Exception ex) { StatusText.Text = ex.Message; }
     }
 
     private void OnSaveModReset(object sender, RoutedEventArgs e)
