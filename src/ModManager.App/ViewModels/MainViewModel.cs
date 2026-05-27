@@ -3,10 +3,13 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using ModManager.App.Services;
+using ModManager.App.Tools;
 using ModManager.Core;
+using ModManager.Core.Tools;
 
 namespace ModManager.App.ViewModels;
 
@@ -27,6 +30,10 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly NexusService _nexus;
     private readonly AvatarService _avatars;
     private readonly SteamService _steam;
+    // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
+    // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
+    // which fires on a thread-pool thread — back to the UI thread before touching VM state.
+    private readonly DispatcherQueue? _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
@@ -75,6 +82,22 @@ public sealed partial class MainViewModel : ObservableObject
     public string MissingFrameworksSummary => MissingFrameworks.Count == 0
         ? ""
         : "Missing: " + string.Join(", ", MissingFrameworks.Select(d => d.Name));
+
+    /// <summary>Tools installed for the active game. Refreshed at every <see cref="ReloadModsAsync"/>.</summary>
+    public ObservableCollection<ToolEntry> Tools { get; } = new();
+
+    /// <summary>Catalog entries that apply to the active game but aren't installed. Surfaced as
+    /// "Get it here" chips on the tools row.</summary>
+    public ObservableCollection<KnownTool> MissingTools { get; } = new();
+
+    public bool HasTools => Tools.Count > 0;
+    public bool HasMissingTools => MissingTools.Count > 0;
+    public Visibility ToolsRowVisible => _ctx is not null ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Empty-state hint visibility for the tools row — collapsed when there's at least
+    /// one installed tool or a "Get …" catalog chip showing.</summary>
+    public Visibility ToolsEmptyHintVisibility => HasTools || HasMissingTools
+        ? Visibility.Collapsed
+        : Visibility.Visible;
 
     [ObservableProperty] private bool isBusy;
 
@@ -244,6 +267,12 @@ public sealed partial class MainViewModel : ObservableObject
             MissingFrameworks.Clear();
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
+            Tools.Clear();
+            MissingTools.Clear();
+            OnPropertyChanged(nameof(HasTools));
+            OnPropertyChanged(nameof(HasMissingTools));
+            OnPropertyChanged(nameof(ToolsRowVisible));
+            OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
             return;
         }
         IsBusy = true;
@@ -286,6 +315,26 @@ public sealed partial class MainViewModel : ObservableObject
                 var folderAbs = rep.IsFolder
                     ? System.IO.Path.Combine(Scanner.LocByName(rep.Location, _ctx!).Abs, rep.Name)
                     : "";
+                // .ini files inside the mod's folder, capped at 20 so a pathological folder doesn't
+                // stall reload. Enumerate failures (locked folder, permission denied) fall through
+                // silently — the pencil-icon affordance just stays hidden for that row.
+                IReadOnlyList<string> iniFiles = Array.Empty<string>();
+                if (!string.IsNullOrEmpty(folderAbs) && Directory.Exists(folderAbs))
+                {
+                    try
+                    {
+                        iniFiles = Directory.EnumerateFiles(folderAbs, "*.ini", SearchOption.AllDirectories)
+                            .Take(20)
+                            .ToArray();
+                    }
+                    catch { /* leave empty on enumerate failure */ }
+                }
+                // ModId is a stable slug from the family display name — same row across reloads
+                // gets the same INI-history bucket. Falls back to the mod's Name when DisplayName
+                // would slug to empty (e.g. all-symbol titles).
+                var displayName = !string.IsNullOrEmpty(rep.DisplayName) ? rep.DisplayName : rep.Name;
+                var modId = Slugify(displayName);
+                if (string.IsNullOrEmpty(modId)) modId = Slugify(rep.Name);
                 var options = fam.IsMulti
                     ? (IReadOnlyList<VariantOptionVM>)fam.Members
                         .Select(m => new VariantOptionVM(
@@ -310,6 +359,8 @@ public sealed partial class MainViewModel : ObservableObject
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
                     ModFolderAbs = folderAbs,
+                    IniFiles = iniFiles,
+                    ModId = modId,
                     VariantOptions = options,
                     MissingFrameworkName = primaryMissing?.Name ?? "",
                     MissingFrameworkUrl = primaryMissing?.GetUrl,
@@ -340,6 +391,31 @@ public sealed partial class MainViewModel : ObservableObject
             // these notifies keep the banner bindings in lockstep with the new collection contents.
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
+
+            // Refresh tools collection from the per-game registry. Malformed tools.json doesn't fail
+            // the reload — leave the list empty and let the user fix or replace the file.
+            Tools.Clear();
+            try
+            {
+                foreach (var t in ToolRegistry.Load(_ctx.DataDir).Tools) Tools.Add(t);
+            }
+            catch (InvalidDataException) { /* malformed tools.json — leave empty */ }
+
+            // Derive missing-tools: catalog entries that apply to this game but aren't installed yet.
+            MissingTools.Clear();
+            var installedIds = new HashSet<string>(Tools.Select(t => t.ToolId));
+            foreach (var known in ToolCatalog.Catalog)
+            {
+                if (known.Engine != _ctx.Game.Engine) continue;
+                if (known.SteamAppId != _ctx.Game.SteamAppId) continue;
+                if (installedIds.Contains(known.ToolId)) continue;
+                MissingTools.Add(known);
+            }
+
+            OnPropertyChanged(nameof(HasTools));
+            OnPropertyChanged(nameof(HasMissingTools));
+            OnPropertyChanged(nameof(ToolsRowVisible));
+            OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
             // Toggling a mod (especially Seamless) may change which target the Launch button fires.
             // Re-publish the computed properties so the toolbar label tracks state without a manual
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
@@ -559,6 +635,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>
     public Task RefreshAsync() => ReloadModsAsync();
+
+    /// <summary>Public accessor for the active game's data dir — used by Tools dialogs to find
+    /// <c>tools.json</c>. Returns an empty string when no game is bound (caller short-circuits).</summary>
+    public string GameDataDirPublic() => _ctx?.DataDir ?? "";
 
     // ---------- inline load-order mode ----------
 
@@ -1036,6 +1116,36 @@ public sealed partial class MainViewModel : ObservableObject
                 catch { return true; }
             }).ToList();
 
+            // Pre-check 3: tool drops. ToolDetector.Classify routes recognized utility archives
+            // (e.g. WSE save editor) through ToolIntake — extracted under <DataDir>/tools/<id>/ and
+            // registered in tools.json. Mod-shape archives short-circuit back to Mod and stay in
+            // `remaining`; tool installs are carved out so PlanIntake doesn't classify their .exe /
+            // .ps1 contents as mods. The Tools collection itself lands in Task 8.
+            var installedTools = new List<ToolEntry>();
+            var ambiguousRunnables = new Dictionary<string, IReadOnlyList<string>>();
+            var toolFailures = new List<string>();
+            remaining = remaining.Where(p =>
+            {
+                if (string.IsNullOrEmpty(p) || !File.Exists(p)) return true;
+                var lower = p.ToLowerInvariant();
+                if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) return true;
+                try
+                {
+                    var (cls, known) = ToolDetector.Classify(p, _ctx!.Game.Engine ?? "", _ctx.Game.SteamAppId ?? "");
+                    if (cls != ToolClassification.Tool) return true;
+                    var result = ToolIntake.Install(p, _ctx.DataDir, known);
+                    installedTools.Add(result.Entry);
+                    if (result.Candidates.Count > 0)
+                        ambiguousRunnables[result.Entry.ToolId] = result.Candidates;
+                    return false; // carved out — don't run through mod intake
+                }
+                catch (Exception ex)
+                {
+                    toolFailures.Add($"{Path.GetFileName(p)}: {ex.Message}");
+                    return false; // tool install failed; don't fall back to mod intake for an exe-only zip
+                }
+            }).ToList();
+
             var plan = Scanner.PlanIntake(remaining, _ctx);
             var chosen = await ConfirmReplacementsAsync(plan);
             if (chosen is null) { StatusText = "Update cancelled."; return; }
@@ -1056,13 +1166,16 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             // Assemble a single status line that surfaces every outcome - save-mod installs first,
-            // any save-mod failures with their reasons, UE4SS Lua detections second, then the
-            // regular intake's add/update/skip counts.
+            // any save-mod failures with their reasons, UE4SS Lua detections second, tool installs
+            // third, then the regular intake's add/update/skip counts.
             var statusParts = new List<string>();
             if (savedCount > 0) statusParts.Add($"Installed {savedCount} save-mod world{(savedCount == 1 ? "" : "s")}");
             foreach (var reason in saveSkipReasons) statusParts.Add(reason);
             if (luaDetected.Count > 0)
                 statusParts.Add($"{string.Join(", ", luaDetected)} {(luaDetected.Count == 1 ? "looks like a" : "look like")} UE4SS Lua mod{(luaDetected.Count == 1 ? "" : "s")} — install via Vortex (ue4ss\\Mods is managed)");
+            foreach (var t in installedTools)
+                statusParts.Add($"Installed {t.DisplayName} as a tool for {_ctx.Game.GameName}");
+            foreach (var fail in toolFailures) statusParts.Add($"Tool install failed: {fail}");
             statusParts.Add($"updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}");
             StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
@@ -1073,6 +1186,79 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>Launch a registered tool. When the tool edits saves, take an explicit (non-auto)
+    /// snapshot FIRST — a snapshot failure (no save folder, disk full, etc.) blocks the launch so
+    /// we never run an editor against unprotected saves. The status line surfaces the snapshot
+    /// label on exit so the user can find it in Saves → Snapshots if they need to revert.</summary>
+    public async Task LaunchToolAsync(ToolEntry entry)
+    {
+        try
+        {
+            ToolLauncher.Launch(
+                entry,
+                snapshot: entry.EditsSaves ? () => SnapshotSavesForTool(entry) : null,
+                onExit: snapLabel =>
+                {
+                    // Process.Exited fires on a thread-pool thread — direct property writes here
+                    // would crash the UI. Marshal back to the dispatcher captured at VM ctor.
+                    void Update()
+                    {
+                        StatusText = snapLabel is null
+                            ? $"{entry.DisplayName} closed."
+                            : $"{entry.DisplayName} closed. Snapshot saved as '{snapLabel}'.";
+                    }
+                    if (_dispatcherQueue is not null) _dispatcherQueue.TryEnqueue(Update);
+                    else Update();
+                });
+
+            StatusText = entry.EditsSaves
+                ? $"Snapshotting save before launching {entry.DisplayName}…"
+                : $"Launching {entry.DisplayName}…";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Couldn't launch {entry.DisplayName}: {ex.Message}";
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>Open a file picker for a tool archive and route it through the regular drop pipeline.
+    /// ToolDetector.Classify carves tool archives out of the mod intake path automatically, so the
+    /// same <see cref="AddModsAsync"/> entry-point handles tool installs just like a drag-drop.</summary>
+    public async Task PromptAddToolAsync()
+    {
+        var window = App.MainWindow;
+        if (window is null)
+        {
+            StatusText = "Couldn't open the picker — main window not ready yet.";
+            return;
+        }
+
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        picker.FileTypeFilter.Add(".zip");
+        picker.FileTypeFilter.Add(".7z");
+        picker.FileTypeFilter.Add(".rar");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var file = await picker.PickSingleFileAsync();
+        if (file is not null)
+        {
+            await AddModsAsync(new[] { file.Path });
+        }
+    }
+
+    /// <summary>Snapshot the active save folder before a save-editing tool starts. Uses the same
+    /// SaveManager primitive as the Saves dialog (non-auto label so the user can find it), labelled
+    /// with the tool's display name + a wall-clock stamp.</summary>
+    private string SnapshotSavesForTool(ToolEntry tool)
+    {
+        if (_ctx is null) throw new InvalidOperationException("No active game.");
+        if (string.IsNullOrEmpty(_ctx.SaveDir))
+            throw new InvalidOperationException("No save folder configured — set one in Saves first.");
+        var label = $"before-{tool.DisplayName.Replace(' ', '-')}-{DateTime.Now:yyyy-MM-dd-HHmm}";
+        var snap = SaveManager.Backup(_ctx.SaveDir, _ctx.SavesDir, label, auto: false);
+        return snap.Label;
     }
 
     /// <summary>Show the collision prompt for a plan and return the rel-paths to replace; null means
@@ -1196,6 +1382,16 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Saved {key} in {System.IO.Path.GetFileName(configPath)}.";
         }
         catch (Exception e) { StatusText = $"Couldn't save {key}: {e.Message}"; }
+    }
+
+    /// <summary>Slug a display name into a filesystem-safe id (used as the INI-history bucket
+    /// directory name). Lowercases, replaces non-alphanumerics with '-', collapses dashes, trims.</summary>
+    private static string Slugify(string name)
+    {
+        var chars = name.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-');
+        var s = new string(chars.ToArray());
+        while (s.Contains("--")) s = s.Replace("--", "-");
+        return s.Trim('-');
     }
 
     private async Task BulkAsync(Func<Task> op)

@@ -242,6 +242,21 @@ public sealed partial class ModRowViewModel : ObservableObject
     // Cockpit (config + Lua surfacing). Built on demand by the parent VM, which holds the GameContext.
     public string ModFolderAbs { get; init; } = "";   // set by parent: the mod's folder (for folder mods)
     public bool HasCockpit => Mod.IsFolder && !string.IsNullOrEmpty(ModFolderAbs);
+
+    /// <summary>Absolute paths to .ini files inside this mod's folder. Capped at 20 hits at row build
+    /// time. Drives the pencil-icon affordance — surfaces .ini editing without forcing the user to
+    /// open the cockpit (which is folder-only and config-cockpit-style). Empty when the mod has no
+    /// INIs or isn't a folder mod.</summary>
+    public IReadOnlyList<string> IniFiles { get; init; } = Array.Empty<string>();
+
+    /// <summary>Stable id for this mod row, used as the namespace key for INI history backups
+    /// (<c>&lt;DataDir&gt;/.ini-history/&lt;ModId&gt;/...</c>). Derived from the family display name
+    /// at row build time so two same-titled mods from different sources don't share a snapshot bucket.</summary>
+    public string ModId { get; init; } = "";
+
+    public bool HasIniFiles => IniFiles.Count > 0;
+    public Visibility IniIconVisibility => HasIniFiles ? Visibility.Visible : Visibility.Collapsed;
+
     public string OwnedConfigWarning =>
         Mod.ReadOnly && !string.IsNullOrEmpty(Mod.Managed)
             ? $"Managed by {Mod.Managed!.ToUpperInvariant()} — config edits may be overwritten on its next deploy."

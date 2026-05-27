@@ -21,6 +21,9 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<MainViewModel>();
+        // Hand the same VM instance to the tools row. The control reads installed tools + catalog
+        // gaps off MainViewModel directly — no separate data context for this slim strip.
+        ToolsRow.ViewModel = ViewModel;
         // The collision prompt is a view concern (dialog + XamlRoot) — the VM builds the plan and
         // sequences intake, the window owns showing the dialog. null result = user cancelled.
         ViewModel.ConfirmReplacements = async plan =>
@@ -631,6 +634,51 @@ public sealed partial class MainWindow : Window
         if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
         if (!row.HasCockpit) return;
         await ShowCockpitForRowAsync(row);
+    }
+
+    // Pencil icon next to the row. Tag carries the row VM (Task 8 convention), so the handler
+    // works whether the row is a folder mod or a managed-folder mod. Single INI → straight to
+    // the editor; multiple → quick picker first. Restore previous lives inside the editor itself.
+    private async void OnEditIniClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el || el.Tag is not ModRowViewModel row) return;
+        if (row.IniFiles.Count == 0) return; // shouldn't fire — IniIconVisibility gates it
+
+        string? iniPath;
+        if (row.IniFiles.Count == 1)
+        {
+            iniPath = row.IniFiles[0];
+        }
+        else
+        {
+            // Picker dialog for multiple INIs. Strings are paths from our own enumerate — safe to
+            // render via the default ListView item template (textual).
+            var list = new ListView { ItemsSource = row.IniFiles, SelectionMode = ListViewSelectionMode.Single };
+            var picker = new ContentDialog
+            {
+                Title = $"Edit which INI in {row.DisplayName}?",
+                Content = list,
+                CloseButtonText = "Cancel",
+                PrimaryButtonText = "Open",
+                IsPrimaryButtonEnabled = false,
+                XamlRoot = Content.XamlRoot,
+            };
+            list.SelectionChanged += (_, _) => picker.IsPrimaryButtonEnabled = list.SelectedItem is not null;
+            var pickResult = await picker.ShowAsync();
+            iniPath = pickResult == ContentDialogResult.Primary ? list.SelectedItem as string : null;
+        }
+        if (iniPath is null) return;
+
+        var dataDir = ViewModel.GameDataDirPublic();
+        if (string.IsNullOrEmpty(dataDir))
+        {
+            ViewModel.StatusText = "No game data dir available — can't snapshot INI history.";
+            return;
+        }
+
+        var dialog = new IniEdit.IniEditorDialog(iniPath, dataDir, row.ModId) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+        if (dialog.StatusMessage is not null) ViewModel.StatusText = dialog.StatusMessage;
     }
 
     private async Task ShowCockpitForRowAsync(ModRowViewModel row)

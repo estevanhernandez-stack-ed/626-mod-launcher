@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Shapes;
 using ModManager.App.Services;
 using ModManager.App.ViewModels;
 using ModManager.Core;
+using ModManager.Core.Tools;
 using Windows.Storage.Pickers;
 using Windows.UI;
 
@@ -67,6 +68,43 @@ public sealed partial class SettingsDialog : ContentDialog
         // Seed the Nexus section. Re-validate the stored key first (offline-safe) so the account
         // name + premium tag are current before we render the banner.
         _ = InitializeNexusSectionAsync();
+
+        // Seed the About → Installed tools list. Pure file-read, fast — fine on the UI thread.
+        RefreshInstalledTools();
+    }
+
+    /// <summary>
+    /// Populate the About → Installed tools list from every per-game <c>tools.json</c> under the
+    /// launcher's <c>_626mods</c> root. Falls back to "active game only" when the root can't be
+    /// resolved (no game loaded yet). Malformed registries are skipped silently — this surface
+    /// is informational, not load-bearing.
+    /// </summary>
+    private void RefreshInstalledTools()
+    {
+        var all = new List<ToolEntry>();
+
+        // The active game's DataDir is <_626mods>/<gameId>. Its parent is the _626mods root that
+        // holds every game's per-game data dir. Enumerate them all to list tools across games.
+        var activeDataDir = _vm.GameDataDirPublic();
+        var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
+
+        if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
+        {
+            foreach (var gameDir in Directory.EnumerateDirectories(modsRoot))
+            {
+                try { all.AddRange(ToolRegistry.Load(gameDir).Tools); }
+                catch { /* skip malformed per-game registries */ }
+            }
+        }
+        else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
+        {
+            // Fallback: read only the active game's registry.
+            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools); }
+            catch { /* skip */ }
+        }
+
+        InstalledToolsList.ItemsSource = all;
+        InstalledToolsEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnBackdropChanged(object sender, SelectionChangedEventArgs e)

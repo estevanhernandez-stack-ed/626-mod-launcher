@@ -3,6 +3,7 @@
     x:Class="ModManager.App.SettingsDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:ModManager.Core.Tools"
     Title="Settings"
     PrimaryButtonText="Apply"
     CloseButtonText="Close"
@@ -99,6 +100,25 @@
                 </Hyperlink>
                 <Run Text=" (MIT). Full license texts in THIRD_PARTY_NOTICES.md." />
             </TextBlock>
+
+            <TextBlock Text="Installed tools" FontWeight="SemiBold" Margin="0,16,0,4" />
+            <TextBlock x:Name="InstalledToolsEmpty" Text="No third-party tools installed yet."
+                       Opacity="0.55" FontSize="12" Visibility="Collapsed" />
+            <ItemsRepeater x:Name="InstalledToolsList">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="8" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="core:ToolEntry">
+                        <StackPanel>
+                            <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
+                            <TextBlock Text="Catalog metadata only — never bundled. See NOTICE for full attribution."
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="12" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>

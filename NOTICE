@@ -1,0 +1,34 @@
+626 Mod Launcher — Third-Party Tool Attribution
+================================================================================
+
+This NOTICE file documents third-party tools the launcher recognizes by catalog
+metadata. The launcher does NOT bundle any of these tools, their binaries, or
+their assets. We carry only enough information to recognize them when a user
+drops their installer zip, and to surface a launch button + a download link.
+
+If you are the author of a tool listed here and would like the launcher to stop
+surfacing it, open an issue at the launcher repo and we'll remove the catalog
+entry.
+
+================================================================================
+WSE Save Editor and WSE Save Fix — by RimmyCode (WSE Project)
+================================================================================
+
+The launcher recognizes WSE Save Editor and WSE Save Fix as third-party tools for
+the game Windrose. These tools are surfaced as launch buttons in the launcher's
+mod dashboard when the user installs them (by dropping their zip into the
+launcher).
+
+NEVER BUNDLED. The launcher does not include the WSE Save Editor or WSE Save Fix
+source code, binaries, item-ID database, or any of their assets. We carry only:
+
+  - A fingerprint catalog of zip-filename hints (for drop classification)
+  - An expected runnable filename hint (for the launch button)
+  - The Nexus URL where the user can download the tool themselves
+
+Get WSE Save Editor:  https://www.nexusmods.com/windrose/mods/153
+Source:               https://github.com/RimmyCode/Windrose-Save-Editor
+License:              Personal use, per the tool's Nexus Mods page terms.
+
+If you are the author of these tools and would like the launcher to stop surfacing
+them, open an issue at the launcher repo and we'll remove the catalog entries.
