@@ -31,10 +31,20 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="core:ToolEntry">
                         <Button Padding="10,4"
-                                ToolTipService.ToolTip="{x:Bind DisplayName}"
                                 Click="OnToolClick"
                                 RightTapped="OnToolRightTapped"
                                 Tag="{x:Bind}">
+                            <ToolTipService.ToolTip>
+                                <ToolTip>
+                                    <TextBlock>
+                                        <Run Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
+                                        <LineBreak/>
+                                        <Run Text="Catalog metadata only — never bundled." />
+                                        <LineBreak/>
+                                        <Run Text="Click to launch." />
+                                    </TextBlock>
+                                </ToolTip>
+                            </ToolTipService.ToolTip>
                             <TextBlock Text="{x:Bind DisplayName}" />
                         </Button>
                     </DataTemplate>
