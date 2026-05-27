@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.Frameworks.FrameworkUnrecognizedNudgeDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Looks like a framework"
+    PrimaryButtonText="Continue as mod"
+    SecondaryButtonText="Open feedback link"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+    <!-- Shown when a dropped FromSoft zip has a DLL proxy at its root (dinput8/version/winhttp)
+         but doesn't match any KnownFramework catalog entry. Lets the user open a feedback link
+         so we can grow the catalog over time. -->
+    <StackPanel Spacing="12" Width="440">
+        <TextBlock TextWrapping="Wrap">
+            This zip looks like a game framework or loader (it has a proxy DLL at its root),
+            but it isn't in our catalog yet. We can't safely auto-install frameworks we don't
+            recognize — but if you've used this one before, we'd love to add it.
+        </TextBlock>
+        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12">
+            If you want to install it anyway, the launcher will route it through regular mod
+            intake (extracts to your mods folder). This usually doesn't work for frameworks
+            but is sometimes correct.
+        </TextBlock>
+        <TextBlock x:Name="FilenameText" Opacity="0.6" FontFamily="Consolas" FontSize="11" />
+    </StackPanel>
+</ContentDialog>

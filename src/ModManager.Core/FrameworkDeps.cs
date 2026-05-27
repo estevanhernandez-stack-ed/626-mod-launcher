@@ -77,8 +77,11 @@ public static class FrameworkDeps
 
         new FrameworkDep(
             Engine: "fromsoft",
-            Name: "DLL proxy (dinput8/version/winhttp)",
-            // Direct-inject mods chain off whichever DLL proxy is already installed. We check all three.
+            Name: "Elden Mod Loader",
+            // The catalog name calls out Elden Mod Loader specifically — it's the loader most ER
+            // mods chain through and the one the user is searching for. The DLL probes stay broad
+            // (dinput8 / version / winhttp) since the user might have a different proxy installed
+            // that also satisfies direct-inject mods' chain-load requirement.
             DetectRelativePaths: new[]
             {
                 "dinput8.dll",
@@ -86,7 +89,7 @@ public static class FrameworkDeps
                 "winhttp.dll",
             },
             GetUrl: "https://www.nexusmods.com/eldenring/mods/117",
-            Note: "DLL proxy chain-loader for direct-inject mods (ELDEN MOD LOADER and similar). Most ER mods chain off dinput8.dll."),
+            Note: "Elden Mod Loader — DLL proxy that direct-inject ER mods chain through (dinput8.dll). Most ER mods need this."),
 
         new FrameworkDep(
             Engine: "minecraft",

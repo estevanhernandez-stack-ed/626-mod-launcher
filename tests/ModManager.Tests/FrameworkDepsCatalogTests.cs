@@ -28,8 +28,21 @@ public class FrameworkDepsCatalogTests
         Assert.Contains("BepInEx", names);
         Assert.Contains("SMAPI", names);
         Assert.Contains("Mod Engine 2", names);
-        Assert.Contains("DLL proxy (dinput8/version/winhttp)", names);
+        Assert.Contains("Elden Mod Loader", names);
         Assert.Contains("Forge or Fabric", names);
+    }
+
+    [Fact]
+    public void Fromsoft_dll_proxy_entry_displays_as_Elden_Mod_Loader()
+    {
+        // "DLL proxy (dinput8/version/winhttp)" is technically accurate but unparseable; what the
+        // user is searching for is "Elden Mod Loader". Detection paths stay broad — different ER
+        // mods chain through dinput8 / version / winhttp.
+        var entry = FrameworkDeps.Catalog.Single(d => d.Engine == "fromsoft"
+            && d.DetectRelativePaths.Contains("dinput8.dll"));
+        Assert.Equal("Elden Mod Loader", entry.Name);
+        Assert.Equal("https://www.nexusmods.com/eldenring/mods/117", entry.GetUrl);
+        Assert.Contains("Elden Mod Loader", entry.Note);
     }
 
     [Fact]

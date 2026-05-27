@@ -92,7 +92,7 @@ public class FrameworkDepsCheckPresentTests
         var missing = FrameworkDeps.CheckPresent(ctx);
 
         Assert.Contains(missing, d => d.Name == "Mod Engine 2");
-        Assert.Contains(missing, d => d.Name.StartsWith("DLL proxy"));
+        Assert.Contains(missing, d => d.Name == "Elden Mod Loader");
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class FrameworkDepsCheckPresentTests
 
         var missing = FrameworkDeps.CheckPresent(ctx);
 
-        Assert.DoesNotContain(missing, d => d.Name.StartsWith("DLL proxy"));
+        Assert.DoesNotContain(missing, d => d.Name == "Elden Mod Loader");
         Assert.Contains(missing, d => d.Name == "Mod Engine 2"); // still missing
     }
 

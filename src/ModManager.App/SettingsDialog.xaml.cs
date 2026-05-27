@@ -6,11 +6,24 @@ using Microsoft.UI.Xaml.Shapes;
 using ModManager.App.Services;
 using ModManager.App.ViewModels;
 using ModManager.Core;
+using ModManager.Core.Frameworks;
 using ModManager.Core.Tools;
 using Windows.Storage.Pickers;
 using Windows.UI;
 
 namespace ModManager.App;
+
+/// <summary>One row in the Settings → Installed frameworks list. Pre-formats the detail
+/// string (author + install time + path) so the XAML template doesn't need a value converter.
+/// The Get-link is exposed as a Uri object because x:Bind requires the right binding type.</summary>
+public sealed record InstalledFrameworkRow(
+    string FrameworkId,
+    string DisplayName,
+    string Detail,
+    string GetUrl)
+{
+    public Uri? GetUriObj => string.IsNullOrEmpty(GetUrl) ? null : new Uri(GetUrl);
+}
 
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
@@ -71,6 +84,7 @@ public sealed partial class SettingsDialog : ContentDialog
 
         // Seed the About → Installed tools list. Pure file-read, fast — fine on the UI thread.
         RefreshInstalledTools();
+        RefreshInstalledFrameworks();
     }
 
     /// <summary>
@@ -105,6 +119,84 @@ public sealed partial class SettingsDialog : ContentDialog
 
         InstalledToolsList.ItemsSource = all;
         InstalledToolsEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Populate the About → Installed frameworks list. Mirrors RefreshInstalledTools' shape:
+    /// enumerate every per-game data dir under _626mods, read each one's framework manifests via
+    /// FrameworkRegistry.List, render rows with display name + author + install time + path.
+    /// </summary>
+    private void RefreshInstalledFrameworks()
+    {
+        var all = new List<InstalledFrameworkRow>();
+
+        var activeDataDir = _vm.GameDataDirPublic();
+        var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
+
+        var sources = new List<string>();
+        if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
+            sources.AddRange(Directory.EnumerateDirectories(modsRoot));
+        else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
+            sources.Add(activeDataDir);
+
+        foreach (var gameDataDir in sources)
+        {
+            try
+            {
+                foreach (var m in FrameworkRegistry.List(gameDataDir))
+                {
+                    all.Add(new InstalledFrameworkRow(
+                        FrameworkId: m.FrameworkId,
+                        DisplayName: m.DisplayName,
+                        Detail: $"by {m.Author}  ·  installed {m.InstalledUtc.ToLocalTime():g}  ·  {m.InstallPath}",
+                        GetUrl: GetUrlForFramework(m.FrameworkId)));
+                }
+            }
+            catch { /* skip malformed per-game registries */ }
+        }
+
+        InstalledFrameworksList.ItemsSource = all;
+        InstalledFrameworksEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string GetUrlForFramework(string frameworkId)
+        => KnownFramework.Catalog.FirstOrDefault(f => f.FrameworkId == frameworkId)?.GetUrl ?? "";
+
+    /// <summary>Uninstall handler. Walks every per-game data dir and uninstalls the framework
+    /// from any game where it's currently installed. Idempotent — a missing manifest in one
+    /// game is no problem if another game still has it.</summary>
+    private void OnUninstallFramework(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string frameworkId) return;
+
+        var activeDataDir = _vm.GameDataDirPublic();
+        var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
+
+        var sources = new List<string>();
+        if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
+            sources.AddRange(Directory.EnumerateDirectories(modsRoot));
+        else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
+            sources.Add(activeDataDir);
+
+        foreach (var gameDataDir in sources)
+        {
+            try
+            {
+                var match = FrameworkRegistry.List(gameDataDir)
+                    .FirstOrDefault(m => m.FrameworkId == frameworkId);
+                if (match is null) continue;
+                FrameworkRegistry.Uninstall(gameDataDir, frameworkId, match.InstallPath);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Couldn't uninstall {frameworkId}: {ex.Message}";
+                return;
+            }
+        }
+
+        RefreshInstalledFrameworks();
+        Changed = true;  // Tell the main shell to reload mod rows (framework chip should reappear).
+        StatusText.Text = $"Uninstalled {frameworkId}.";
     }
 
     private void OnBackdropChanged(object sender, SelectionChangedEventArgs e)

@@ -32,3 +32,28 @@ License:              Personal use, per the tool's Nexus Mods page terms.
 
 If you are the author of these tools and would like the launcher to stop surfacing
 them, open an issue at the launcher repo and we'll remove the catalog entries.
+
+================================================================================
+Frameworks (catalog metadata only, never bundled)
+================================================================================
+
+The launcher's framework-intake flow recognizes a small set of game frameworks
+(loaders / chain-load DLLs). When a user drops a recognized framework zip the
+launcher offers to install it at the right location with reversibility tracked.
+Detection-only frameworks (UE4SS, BepInEx, ME2, etc.) are surfaced via the
+"NEEDS X" chip but are NOT install-capable through the launcher.
+
+NEVER BUNDLED. The launcher does not include any framework's source code,
+binaries, or assets. We carry only:
+
+  - A fingerprint catalog of zip-signature files (for drop classification)
+  - The canonical project URL where the user can download the framework
+  - The author's name (so the Settings → Installed frameworks list credits them)
+
+If you are the author of a framework listed here and would like the launcher to
+stop surfacing it, open an issue at the launcher repo and we'll remove the catalog
+entry.
+
+  - Elden Mod Loader — by TechieW
+    Source:  https://www.nexusmods.com/eldenring/mods/117
+    Used by: launcher's framework intake catalog (Core.Frameworks.KnownFramework)
