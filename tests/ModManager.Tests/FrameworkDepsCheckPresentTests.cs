@@ -109,6 +109,22 @@ public class FrameworkDepsCheckPresentTests
     }
 
     [Fact]
+    public void Fromsoft_with_dinput8_in_Game_subfolder_satisfies_Elden_Mod_Loader()
+    {
+        // ER's eldenring.exe lives under <gameRoot>/Game/. ELM's dinput8.dll proxy must sit
+        // next to the exe to load, so the file ACTUALLY lands at <gameRoot>/Game/dinput8.dll
+        // when installed correctly. The probe must check there, not just the ship root.
+        var root = TestSupport.TempDir("fwdep-");
+        Directory.CreateDirectory(Path.Combine(root, "Game"));
+        File.WriteAllText(Path.Combine(root, "Game", "dinput8.dll"), "x");
+        var ctx = Ctx(root, "fromsoft", "mod");
+
+        var missing = FrameworkDeps.CheckPresent(ctx);
+
+        Assert.DoesNotContain(missing, d => d.Name == "Elden Mod Loader");
+    }
+
+    [Fact]
     public void Unknown_engine_returns_empty()
     {
         var root = TestSupport.TempDir("fwdep-");

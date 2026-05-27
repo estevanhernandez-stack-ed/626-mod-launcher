@@ -39,7 +39,11 @@ public sealed record KnownFramework(
             // Signature files that prove a zip is ELM. mod_loader_config.ini is unique to ELM
             // (dinput8.dll alone is shared by many DLL proxies); both must be present.
             ZipSignatureFiles: new[] { "dinput8.dll", "mod_loader_config.ini" },
-            InstallRoot: "GameRoot",
+            // FromSoft games (ER / Sekiro / DS3) put the exe under <gameRoot>/Game/. ELM's
+            // dinput8.dll proxy chain-loads ONLY when next to the exe — so install must land
+            // in Game/, not at the ship root. PlayFolder resolves <gameRoot>/Game when it
+            // exists, else gameRoot (which keeps non-Game-subfolder layouts working).
+            InstallRoot: "PlayFolder",
             // ER's game executable must never be overwritten by a framework install.
             ForbiddenPaths: new[] { "eldenring.exe", "start_protected_game.exe" }),
     };
