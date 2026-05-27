@@ -99,4 +99,75 @@ public static class FrameworkDeps
             GetUrl: "https://files.minecraftforge.net/",
             Note: "Minecraft mod loader. Forge OR Fabric — install whichever matches your modpack."),
     };
+
+    /// <summary>
+    /// Return the catalog entries that are NOT present on disk for the active engine.
+    /// Empty = nothing missing. For UE-pak games, detect paths are probed under each
+    /// mod-location's project subfolder (e.g. <c>R5/Binaries/Win64/ue4ss/UE4SS.dll</c>),
+    /// then under the bare game root as a fallback. For non-UE engines, detect paths are
+    /// resolved relative to the game root only.
+    /// </summary>
+    public static IReadOnlyList<FrameworkDep> CheckPresent(GameContext ctx)
+    {
+        var engine = ctx.Game.Engine ?? "";
+        var entries = Catalog.Where(d => d.Engine == engine).ToList();
+        if (entries.Count == 0) return Array.Empty<FrameworkDep>();
+
+        var roots = ResolveProbeRoots(ctx);
+        var missing = new List<FrameworkDep>();
+        foreach (var dep in entries)
+        {
+            if (!IsAnyPathPresent(dep.DetectRelativePaths, roots))
+                missing.Add(dep);
+        }
+        return missing;
+    }
+
+    // For UE-pak: the project subfolders extracted from each resolved primary mod-location path
+    // (the first path segment of the relative form: "R5/Content/Paks/~mods" -> "R5"), plus the
+    // bare game root as a fallback. For everything else: just the game root.
+    private static IReadOnlyList<string> ResolveProbeRoots(GameContext ctx)
+    {
+        var roots = new List<string>();
+        if (ctx.Game.Engine == "ue-pak")
+        {
+            foreach (var loc in ctx.Game.ModLocations)
+            {
+                var sub = ProjectSubfolder(loc.Path);
+                if (sub is null) continue;
+                var abs = System.IO.Path.Combine(ctx.GameRoot, sub);
+                if (!roots.Contains(abs)) roots.Add(abs);
+            }
+        }
+        if (!roots.Contains(ctx.GameRoot)) roots.Add(ctx.GameRoot);
+        return roots;
+    }
+
+    // Pull the project subfolder from a UE mod-location path: "R5/Content/Paks/~mods" -> "R5".
+    // A path that starts with "Content/" (root-level fallback) has no project subfolder.
+    private static string? ProjectSubfolder(string relPath)
+    {
+        if (string.IsNullOrWhiteSpace(relPath)) return null;
+        var norm = relPath.Replace('\\', '/').TrimStart('/');
+        var first = norm.Split('/')[0];
+        if (string.IsNullOrEmpty(first)) return null;
+        if (string.Equals(first, "Content", StringComparison.OrdinalIgnoreCase)) return null;
+        return first;
+    }
+
+    private static bool IsAnyPathPresent(IReadOnlyList<string> relPaths, IReadOnlyList<string> roots)
+    {
+        foreach (var root in roots)
+            foreach (var rel in relPaths)
+                if (PathExists(System.IO.Path.Combine(root, rel)))
+                    return true;
+        return false;
+    }
+
+    // File.Exists for files; Directory.Exists for directories (Forge/Fabric libraries/ subtrees).
+    private static bool PathExists(string p)
+    {
+        try { return System.IO.File.Exists(p) || System.IO.Directory.Exists(p); }
+        catch { return false; }
+    }
 }
