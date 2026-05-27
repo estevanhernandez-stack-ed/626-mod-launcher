@@ -180,27 +180,56 @@ public sealed partial class SavesDialog : ContentDialog
     private async void OnEditCharacter(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         if (sender is not Microsoft.UI.Xaml.FrameworkElement fe || fe.DataContext is not CharacterRow row) return;
-        var dialog = new CharacterEditDialog(row.Slot) { XamlRoot = this.XamlRoot };
-        var result = await dialog.ShowAsync();
-        if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary) return;
-        if (!dialog.IsValid())
+
+        // WinUI 3 only allows one ContentDialog at a time per XamlRoot. SavesDialog is itself a
+        // ContentDialog, so opening CharacterEditDialog directly on top throws
+        // InvalidOperationException("Only one ContentDialog can be open at a time."). The pattern:
+        // hide this dialog → open the editor → re-show this dialog with refreshed lists. Hide()
+        // makes the outer ShowAsync return None; MainWindow.OnSaves doesn't act on the result.
+        var xamlRoot = this.XamlRoot;
+        var slot = row.Slot;
+        var savePath = row.SavePath;
+        this.Hide();
+
+        var dialog = new CharacterEditDialog(slot) { XamlRoot = xamlRoot };
+        Microsoft.UI.Xaml.Controls.ContentDialogResult result;
+        string? statusAfter = null;
+        try { result = await dialog.ShowAsync(); }
+        catch (Exception ex)
         {
-            StatusText.Text = "Name must be 1–16 characters. Edit was NOT applied.";
-            return;
+            // Surface what actually went wrong — name the type so we can chase the root cause
+            // if it's something other than the nested-dialog rule.
+            statusAfter = $"Couldn't open editor ({ex.GetType().Name}): {ex.Message}";
+            result = Microsoft.UI.Xaml.Controls.ContentDialogResult.None;
         }
 
-        var edit = dialog.GetEdit();
-        var svc = App.AppHost.Services.GetRequiredService<ModManager.App.Services.SaveEditorService>();
-        try
+        if (statusAfter is null && result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
         {
-            var snap = svc.EditCharacter(
-                saveDir: _saveDir!, snapshotsDir: _savesDir, savePath: row.SavePath,
-                slotIndex: row.Slot.SlotIndex, beforeEdit: row.Slot, edit: edit);
-            StatusText.Text = $"Edited \"{row.Slot.Name}\" → \"{edit.Name}\". Snapshot taken: {snap.Label}.";
-            Refresh();            // snapshots list
-            RefreshCharacters();  // characters list (new values)
+            if (!dialog.IsValid())
+            {
+                statusAfter = "Name must be 1–16 characters. Edit was NOT applied.";
+            }
+            else
+            {
+                var edit = dialog.GetEdit();
+                var svc = App.AppHost.Services.GetRequiredService<ModManager.App.Services.SaveEditorService>();
+                try
+                {
+                    var snap = svc.EditCharacter(
+                        saveDir: _saveDir!, snapshotsDir: _savesDir, savePath: savePath,
+                        slotIndex: slot.SlotIndex, beforeEdit: slot, edit: edit);
+                    statusAfter = $"Edited \"{slot.Name}\" → \"{edit.Name}\". Snapshot taken: {snap.Label}.";
+                }
+                catch (Exception ex) { statusAfter = ex.Message; }
+            }
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+
+        // Re-show SavesDialog with the new snapshot / character state and the status message.
+        Refresh();
+        RefreshCharacters();
+        if (statusAfter is not null) StatusText.Text = statusAfter;
+        try { await this.ShowAsync(); }
+        catch { /* re-show race — the user can re-open Saves from the More menu */ }
     }
 
     private void OnSaveModReset(object sender, RoutedEventArgs e)
