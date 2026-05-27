@@ -21,6 +21,9 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<MainViewModel>();
+        // Hand the same VM instance to the tools row. The control reads installed tools + catalog
+        // gaps off MainViewModel directly — no separate data context for this slim strip.
+        ToolsRow.ViewModel = ViewModel;
         // The collision prompt is a view concern (dialog + XamlRoot) — the VM builds the plan and
         // sequences intake, the window owns showing the dialog. null result = user cancelled.
         ViewModel.ConfirmReplacements = async plan =>

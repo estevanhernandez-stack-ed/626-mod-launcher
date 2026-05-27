@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ModManager.App.Tools.ToolsPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:ModManager.Core.Tools"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Slim tools row, sits above the mod list. Three states share the same StackPanel:
+         installed tools render as buttons, catalog entries that apply but aren't installed
+         render as HyperlinkButton "Get …" chips, and an empty-state hint appears when both
+         lists are empty. The + button is always present so the user can install ad-hoc tools. -->
+    <Border BorderThickness="0,0,0,1"
+            BorderBrush="{StaticResource ThemeBorder}"
+            Background="{StaticResource ThemeBarBg}"
+            Padding="12,6">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+
+            <TextBlock Text="TOOLS"
+                       Foreground="{StaticResource ThemeInkSoft}"
+                       FontSize="10"
+                       CharacterSpacing="80"
+                       VerticalAlignment="Center" />
+
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Tools, Mode=OneWay}" VerticalAlignment="Center">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Horizontal" Spacing="6" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="core:ToolEntry">
+                        <Button Padding="10,4"
+                                ToolTipService.ToolTip="{x:Bind DisplayName}"
+                                Click="OnToolClick"
+                                Tag="{x:Bind}">
+                            <TextBlock Text="{x:Bind DisplayName}" />
+                        </Button>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.MissingTools, Mode=OneWay}" VerticalAlignment="Center">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Horizontal" Spacing="6" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="core:KnownTool">
+                        <HyperlinkButton Padding="10,4"
+                                         Click="OnGetToolClick"
+                                         Tag="{x:Bind}"
+                                         ToolTipService.ToolTip="Open the download page in your browser">
+                            <TextBlock Text="{x:Bind DisplayName}" />
+                        </HyperlinkButton>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+
+            <Button Padding="8,4"
+                    Click="OnAddToolClick"
+                    ToolTipService.ToolTip="Install a tool from a zip">
+                <SymbolIcon Symbol="Add" />
+            </Button>
+
+            <TextBlock Text="No tools yet. Drop a zip to install, or click +."
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource ThemeInkSoft}"
+                       Visibility="{x:Bind ViewModel.ToolsEmptyHintVisibility, Mode=OneWay}" />
+        </StackPanel>
+    </Border>
+</UserControl>

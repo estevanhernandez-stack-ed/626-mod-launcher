@@ -77,6 +77,22 @@ public sealed partial class MainViewModel : ObservableObject
         ? ""
         : "Missing: " + string.Join(", ", MissingFrameworks.Select(d => d.Name));
 
+    /// <summary>Tools installed for the active game. Refreshed at every <see cref="ReloadModsAsync"/>.</summary>
+    public ObservableCollection<ToolEntry> Tools { get; } = new();
+
+    /// <summary>Catalog entries that apply to the active game but aren't installed. Surfaced as
+    /// "Get it here" chips on the tools row.</summary>
+    public ObservableCollection<KnownTool> MissingTools { get; } = new();
+
+    public bool HasTools => Tools.Count > 0;
+    public bool HasMissingTools => MissingTools.Count > 0;
+    public Visibility ToolsRowVisible => _ctx is not null ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Empty-state hint visibility for the tools row — collapsed when there's at least
+    /// one installed tool or a "Get …" catalog chip showing.</summary>
+    public Visibility ToolsEmptyHintVisibility => HasTools || HasMissingTools
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
     [ObservableProperty] private bool isBusy;
 
     [ObservableProperty]
@@ -245,6 +261,12 @@ public sealed partial class MainViewModel : ObservableObject
             MissingFrameworks.Clear();
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
+            Tools.Clear();
+            MissingTools.Clear();
+            OnPropertyChanged(nameof(HasTools));
+            OnPropertyChanged(nameof(HasMissingTools));
+            OnPropertyChanged(nameof(ToolsRowVisible));
+            OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
             return;
         }
         IsBusy = true;
@@ -341,6 +363,31 @@ public sealed partial class MainViewModel : ObservableObject
             // these notifies keep the banner bindings in lockstep with the new collection contents.
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
+
+            // Refresh tools collection from the per-game registry. Malformed tools.json doesn't fail
+            // the reload — leave the list empty and let the user fix or replace the file.
+            Tools.Clear();
+            try
+            {
+                foreach (var t in ToolRegistry.Load(_ctx.DataDir).Tools) Tools.Add(t);
+            }
+            catch (InvalidDataException) { /* malformed tools.json — leave empty */ }
+
+            // Derive missing-tools: catalog entries that apply to this game but aren't installed yet.
+            MissingTools.Clear();
+            var installedIds = new HashSet<string>(Tools.Select(t => t.ToolId));
+            foreach (var known in ToolCatalog.Catalog)
+            {
+                if (known.Engine != _ctx.Game.Engine) continue;
+                if (known.SteamAppId != _ctx.Game.SteamAppId) continue;
+                if (installedIds.Contains(known.ToolId)) continue;
+                MissingTools.Add(known);
+            }
+
+            OnPropertyChanged(nameof(HasTools));
+            OnPropertyChanged(nameof(HasMissingTools));
+            OnPropertyChanged(nameof(ToolsRowVisible));
+            OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
             // Toggling a mod (especially Seamless) may change which target the Launch button fires.
             // Re-publish the computed properties so the toolbar label tracks state without a manual
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
