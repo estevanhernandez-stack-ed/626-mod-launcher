@@ -47,6 +47,22 @@ public static class EldenRingSave
     internal const int CharActiveStatusOffset = 0x01901D04;
     internal const int PerSlotSummaryStart = 0x01901D0E;
     internal const int PerSlotSummaryStride = 0x24C;
+
+    // Relative offsets INSIDE the save-header section. These are the layout positions of
+    // the active-flag array and per-slot summary table within the section — they do NOT
+    // depend on where the section sits in the file. (CharActiveStatusOffset and
+    // PerSlotSummaryStart above are the absolute file offsets for the legacy pre-DLC
+    // layout, retained because WriteEdit / VerifyPostWrite still reference them; the read
+    // path now derives absolutes from the BND4 file-table-walked section start.)
+    //
+    // Verified: 0x01901D04 - 0x019003B0 = 0x196954 and 0x01901D0E - 0x019003B0 = 0x19695E.
+    internal const int CharActiveStatusRelative = CharActiveStatusOffset - SaveHeadersSectionStart; // 0x196954
+    internal const int PerSlotSummaryRelative = PerSlotSummaryStart - SaveHeadersSectionStart;     // 0x19695E
+
+    // BND4 file-table entry names. USER_DATA000..USER_DATA009 carry slot bodies (MD5 + data);
+    // USER_DATA011 carries the save-header section. (USER_DATA010 is reserved in real saves
+    // — the file table skips it.)
+    internal const string SaveHeaderEntryName = "USER_DATA011";
     internal const int CharNameOffsetInSummary = 0x00;
     internal const int CharNameLengthBytes = 0x22;
     internal const int CharLevelOffsetInSummary = 0x22;
@@ -76,10 +92,20 @@ public static class EldenRingSave
                 $"Save file is too small ({bytes.Length} bytes) to be a valid Elden Ring .sl2 — expected at least {MinimumFileSize}.");
         }
 
+        // Walk the BND4 file table — locate the save-header section + each slot by NAME,
+        // not by hardcoded offset. A future patch that shifts the layout (e.g. adds entries)
+        // surfaces as a clear "entry not found" rather than reading garbage at a moved offset.
+        var entries = Bnd4Reader.Parse(bytes);
+        var saveHeader = Bnd4Reader.GetByName(entries, SaveHeaderEntryName);
+        int saveHeaderStart = checked((int)saveHeader.DataOffset);
+        int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
+        int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
+
         var result = new List<CharacterSlot>(SlotCount);
         for (int i = 0; i < SlotCount; i++)
         {
-            var slot = TryReadSlot(bytes, i);
+            var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{i:D3}");
+            var slot = TryReadSlot(bytes, slotEntry, charActiveStatusAbs, perSlotSummaryStartAbs, i);
             if (slot is not null) result.Add(slot);
         }
         return result;
@@ -241,8 +267,14 @@ public static class EldenRingSave
                 $"Post-write verify: file is too small ({verifyBytes.Length} bytes) — expected at least {MinimumFileSize}.");
         }
 
-        // 1) Re-parse the slot via the same path the public reader uses.
-        var verified = TryReadSlot(verifyBytes, slotIndex)
+        // 1) Re-parse the slot via the same path the public reader uses (BND4 file-table walk).
+        var entries = Bnd4Reader.Parse(verifyBytes);
+        var saveHeader = Bnd4Reader.GetByName(entries, SaveHeaderEntryName);
+        int saveHeaderStart = checked((int)saveHeader.DataOffset);
+        int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
+        int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
+        var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{slotIndex:D3}");
+        var verified = TryReadSlot(verifyBytes, slotEntry, charActiveStatusAbs, perSlotSummaryStartAbs, slotIndex)
             ?? throw new InvalidDataException(
                 $"Post-write verify: slot {slotIndex} failed to re-read (MD5 mismatch or all-zero stats). The edit did not land cleanly.");
 
@@ -293,17 +325,27 @@ public static class EldenRingSave
         }
     }
 
-    private static CharacterSlot? TryReadSlot(byte[] bytes, int slotIndex)
+    private static CharacterSlot? TryReadSlot(
+        byte[] bytes,
+        Bnd4Entry slotEntry,
+        int charActiveStatusAbs,
+        int perSlotSummaryStartAbs,
+        int slotIndex)
     {
-        var slotMd5 = bytes.AsSpan(FirstSlotMd5Offset + slotIndex * SlotStride, 0x10);
-        var slotData = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
+        // The BND4 entry's data_offset points at the slot's MD5 (16 bytes), followed by the
+        // slot data (SlotDataSize). We derive both regions from the entry so a layout shift
+        // (extra entries, padding) is handled transparently.
+        int slotMd5Start = checked((int)slotEntry.DataOffset);
+        int slotDataStart = slotMd5Start + 0x10;
+        var slotMd5 = bytes.AsSpan(slotMd5Start, 0x10);
+        var slotData = bytes.AsSpan(slotDataStart, SlotDataSize);
 
         // 1) MD5 integrity — corrupt slots are skipped, not thrown over.
         if (!SlotChecksum.VerifyMd5(slotMd5, slotData)) return null;
 
         // 2) Active-flag check. Inactive slots are skipped. (Stat-zero fallback is applied below
         //    at the discovered anchor — fixtures and unused slots both surface as all-zero.)
-        byte activeFlag = bytes[CharActiveStatusOffset + slotIndex];
+        byte activeFlag = bytes[charActiveStatusAbs + slotIndex];
         if (activeFlag == 0) return null;
 
         // 3) Discover the magic anchor for this slot (handles real saves with inventory).
@@ -328,8 +370,9 @@ public static class EldenRingSave
         uint runes = SlotData.ReadRunes(slotData, magicOffset);
         int level = SlotData.LevelFromStats(stats);
 
-        // 5) Name from the per-slot summary in the save-header section.
-        var summary = bytes.AsSpan(PerSlotSummaryStart + slotIndex * PerSlotSummaryStride, PerSlotSummaryStride);
+        // 5) Name from the per-slot summary in the save-header section. The summary start
+        //    is anchored to the walked save-header section, not the hardcoded 0x01901D0E.
+        var summary = bytes.AsSpan(perSlotSummaryStartAbs + slotIndex * PerSlotSummaryStride, PerSlotSummaryStride);
         string name = ReadCharacterName(summary);
 
         return new CharacterSlot(
