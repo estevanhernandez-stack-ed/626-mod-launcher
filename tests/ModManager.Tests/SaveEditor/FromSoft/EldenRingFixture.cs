@@ -5,13 +5,18 @@ namespace ModManager.Tests.SaveEditor.FromSoft;
 
 /// <summary>
 /// Builds a synthetic ER <c>.sl2</c> byte array entirely in memory. The output is structurally
-/// parseable by a BenGrn-style "use the SLOT_START_INDEX + stride formula" reader (Task 4 will
-/// implement that). It is NOT a byte-identical real save — the BND4 file-table entries are
-/// minimal (enough for slot location, not full BND4 v4 compliance). If Task 4 needs richer
-/// envelope details to round-trip a real save, this fixture is the place to extend them.
+/// parseable by a BenGrn-style "use the SLOT_START_INDEX + stride formula" reader. It is NOT a
+/// byte-identical real save — the BND4 file-table entries are minimal (enough for slot location,
+/// not full BND4 v4 compliance), and the save-header section is the bare minimum to carry an
+/// active flag + per-slot name/level/playtime summary.
 ///
 /// NO real save files are committed to the repo. Test characters are synthesized with given
 /// runes + stats; all other slot bytes are zero.
+///
+/// Task 4 extension — the buffer now extends past the 10 slots to include the save-header
+/// section (0x19003B0..0x19603B0). Slot 0's active flag is set, slot 0's per-slot summary
+/// carries the character name + computed level, and the save-header MD5 (at 0x019003A0) is
+/// recomputed over [0x19003B0, 0x19603B0).
 /// </summary>
 public static class EldenRingFixture
 {
@@ -24,14 +29,37 @@ public static class EldenRingFixture
     public const int FirstSlotMd5Offset = SlotsRegionStart;    // 0x300
     public const int FirstSlotDataOffset = SlotsRegionStart + 0x10; // 0x310
 
+    // --- Save-header section (BenGrn SaveGame.cs constants) ---
+    public const int SaveHeaderMd5Offset = 0x019003A0;             // 16 bytes immediately before header
+    public const int SaveHeadersSectionStart = 0x019003B0;
+    public const int SaveHeadersSectionLength = 0x60000;
+    public const int SaveHeaderTotalEnd = SaveHeadersSectionStart + SaveHeadersSectionLength; // 0x19603B0
+    public const int CharActiveStatusOffset = 0x01901D04;          // 10 bytes (one per slot)
+    public const int PerSlotSummaryStart = 0x01901D0E;             // slot 0 summary
+    public const int PerSlotSummaryStride = 0x24C;
+    public const int CharNameOffsetInSummary = 0x00;               // UTF-16
+    public const int CharNameLengthBytes = 0x22;                   // 17 chars + null
+    public const int CharLevelOffsetInSummary = 0x22;              // int16
+    public const int CharPlayedSecondsOffsetInSummary = 0x26;      // int32
+
+    public const string DefaultFixtureName = "TestChar";
+
     /// <summary>Build a minimal .sl2 with all 10 slots blank EXCEPT slot 0, which carries the
-    /// given runes + stats. MD5s computed via SlotChecksum. The BND4 envelope is the bare
-    /// minimum a BenGrn-style reader (Task 4) needs to find the slots by stride formula. Full
-    /// BND4 v4 file-table compliance is deferred; see class-level comment.</summary>
+    /// given runes + stats. Slot 0 is marked active in the save-header active-flag array,
+    /// and its per-slot summary is populated with <see cref="DefaultFixtureName"/> + the
+    /// computed level + zero playtime. Slot + save-header MD5s recomputed.</summary>
     public static byte[] BuildSaveWithOneCharacter(uint runes,
         byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
+        => BuildSaveWithOneCharacter(DefaultFixtureName, runes, vig, mnd, end_, str, dex, int_, fai, arc);
+
+    /// <summary>Same as the parameterless-name overload but takes an explicit character name
+    /// (UTF-16 in the save header; truncated to 17 chars).</summary>
+    public static byte[] BuildSaveWithOneCharacter(string name, uint runes,
+        byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
     {
-        var totalSize = BndHeaderSize + SlotCount * SlotStride;
+        // The buffer must reach past the save-header MD5 region. SaveHeaderTotalEnd = 0x19603B0
+        // is the end of the hashed region; everything past the slots is zero-filled by default.
+        var totalSize = SaveHeaderTotalEnd;
         var buffer = new byte[totalSize];
 
         WriteBnd4Header(buffer);
@@ -54,7 +82,33 @@ public static class EldenRingFixture
             zeroSlotMd5.CopyTo(md5Region);
         }
 
+        // --- Save-header section ---
+        // Active-flag array: mark slot 0 active, others inactive.
+        buffer[CharActiveStatusOffset + 0] = 1;
+
+        // Slot 0 summary — name (UTF-16), level (int16), playtime (int32).
+        var slot0Summary = buffer.AsSpan(PerSlotSummaryStart, PerSlotSummaryStride);
+        WriteCharacterName(slot0Summary, name);
+        var stats = new SlotStats(vig, mnd, end_, str, dex, int_, fai, arc);
+        BitConverter.TryWriteBytes(slot0Summary.Slice(CharLevelOffsetInSummary, 2), (short)SlotData.LevelFromStats(stats));
+        BitConverter.TryWriteBytes(slot0Summary.Slice(CharPlayedSecondsOffsetInSummary, 4), 0);
+
+        // Save-header MD5: covers [SaveHeadersSectionStart, SaveHeaderTotalEnd).
+        var saveHeaderRegion = buffer.AsSpan(SaveHeadersSectionStart, SaveHeadersSectionLength);
+        var saveHeaderMd5Region = buffer.AsSpan(SaveHeaderMd5Offset, 0x10);
+        SlotChecksum.ComputeMd5(saveHeaderRegion).CopyTo(saveHeaderMd5Region);
+
         return buffer;
+    }
+
+    private static void WriteCharacterName(Span<byte> summary, string name)
+    {
+        // Clear the name region first.
+        summary.Slice(CharNameOffsetInSummary, CharNameLengthBytes).Clear();
+        // UTF-16 LE. Cap at 16 chars to leave room for the null terminator.
+        var capped = name.Length > 16 ? name.Substring(0, 16) : name;
+        var nameBytes = Encoding.Unicode.GetBytes(capped);
+        nameBytes.CopyTo(summary.Slice(CharNameOffsetInSummary, Math.Min(nameBytes.Length, CharNameLengthBytes)));
     }
 
     /// <summary>The offset of slot <paramref name="slotIndex"/>'s payload (post-MD5) in the
