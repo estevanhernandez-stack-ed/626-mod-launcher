@@ -183,6 +183,42 @@ public class EldenRingSaveTests : IDisposable
     }
 
     [Fact]
+    public void Read_finds_save_header_by_name_when_section_is_relocated()
+    {
+        // Resilience claim: ReadCharacters looks up the save-header section by NAME
+        // (USER_DATA011) via the BND4 file-table walk, not by the hardcoded 0x019003B0.
+        //
+        // We shift the save-header section + its MD5 by 0x1000 bytes and update the
+        // USER_DATA011 entry's data_offset accordingly. A hardcoded reader would read
+        // garbage (zeros) at the old offset, find an all-zero active flag, and return
+        // zero characters. The walking reader follows the file table to the new offset
+        // and returns the correct character.
+        const int PadBytes = 0x1000;
+        Directory.CreateDirectory(_tmp);
+        var savePath = Path.Combine(_tmp, "ER0000.sl2");
+        var bytes = EldenRingFixture.BuildSaveWithShiftedSaveHeader(
+            name: "Shifted",
+            runes: 12_345u,
+            vig: 25, mnd: 14, end_: 22, str: 35, dex: 11, int_: 9, fai: 9, arc: 9,
+            extraPadBytes: PadBytes);
+        File.WriteAllBytes(savePath, bytes);
+
+        var slots = EldenRingSave.ReadCharacters(savePath);
+
+        var slot = Assert.Single(slots);
+        Assert.Equal("Shifted", slot.Name);
+        Assert.Equal(12_345u, slot.Runes);
+        Assert.Equal(25, slot.Vig);
+        Assert.Equal(14, slot.Mnd);
+        Assert.Equal(22, slot.End);
+        Assert.Equal(35, slot.Str);
+        Assert.Equal(11, slot.Dex);
+        Assert.Equal(9, slot.Int);
+        Assert.Equal(9, slot.Fai);
+        Assert.Equal(9, slot.Arc);
+    }
+
+    [Fact]
     public void Read_and_edit_round_trip_against_save_with_inventory()
     {
         // Real ER saves always have at least one inventory item (every starting class spawns

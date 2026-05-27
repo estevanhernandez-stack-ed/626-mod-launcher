@@ -211,6 +211,57 @@ public static class EldenRingFixture
         return buffer;
     }
 
+    /// <summary>Build a save like <see cref="BuildSaveWithOneCharacter(string, uint, byte, byte, byte, byte, byte, byte, byte, byte)"/>
+    /// but with the save-header section relocated to a different file offset, and the
+    /// <c>USER_DATA011</c> file-table entry's <c>data_offset</c> field updated to point at the
+    /// new location. The MD5 region (16 bytes immediately preceding the section) moves with it.
+    ///
+    /// Used to prove that <see cref="EldenRingSave.ReadCharacters"/> finds the save header by
+    /// NAME via the BND4 file-table walk, not by the hardcoded <c>0x019003B0</c>. A pre-walk
+    /// reader will read garbage at the original offset and produce wrong / no characters.
+    ///
+    /// <paramref name="extraPadBytes"/> is the number of zero bytes inserted between the slots
+    /// and the save-header section. Slot entries remain at their original offsets; only the
+    /// save-header section + MD5 move (by <c>extraPadBytes</c>). Pre-DLC ER puts the section
+    /// at <c>0x019003B0</c>; with a 0x1000 pad it lands at <c>0x019013B0</c>.</summary>
+    public static byte[] BuildSaveWithShiftedSaveHeader(string name, uint runes,
+        byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc,
+        int extraPadBytes)
+    {
+        if (extraPadBytes < 0) throw new ArgumentOutOfRangeException(nameof(extraPadBytes));
+
+        // Start with the standard fixture. Then build a larger buffer where the save-header
+        // section + its preceding MD5 are shifted by extraPadBytes. The 10 slot entries stay put.
+        var standard = BuildSaveWithOneCharacter(name, runes, vig, mnd, end_, str, dex, int_, fai, arc);
+
+        // New total length: standard length + pad.
+        var shifted = new byte[standard.Length + extraPadBytes];
+
+        // Region A — bytes [0, SaveHeaderMd5Offset) — copy as-is. Covers BND4 header,
+        // file table, name table, slot MD5s + slot data. Untouched by the shift.
+        Array.Copy(standard, 0, shifted, 0, SaveHeaderMd5Offset);
+
+        // Region B — the save-header MD5 (16 bytes) + save-header section (0x60000 bytes) —
+        // relocated by extraPadBytes. Bytes between [SaveHeaderMd5Offset, SaveHeaderMd5Offset
+        // + extraPadBytes) in the new buffer stay zero (the pad).
+        int oldMd5Start = SaveHeaderMd5Offset;
+        int newMd5Start = SaveHeaderMd5Offset + extraPadBytes;
+        // 0x10 MD5 bytes + 0x60000 section bytes = SaveHeaderTotalEnd - SaveHeaderMd5Offset.
+        int regionBLength = SaveHeaderTotalEnd - SaveHeaderMd5Offset;
+        Array.Copy(standard, oldMd5Start, shifted, newMd5Start, regionBLength);
+
+        // Update USER_DATA011's data_offset field in the file table to point at the new
+        // save-header section location (newMd5Start + 0x10 = old SaveHeadersSectionStart + pad).
+        // The file-table entry for the save-header entry is the 11th entry (index SlotCount).
+        int saveHeaderEntryStart = FileTableStart + SlotCount * Bnd4EntrySize;
+        long newSaveHeaderDataOffset = SaveHeadersSectionStart + extraPadBytes;
+        BitConverter.TryWriteBytes(
+            shifted.AsSpan(saveHeaderEntryStart + 0x18, 8),
+            newSaveHeaderDataOffset);
+
+        return shifted;
+    }
+
     /// <summary>The offset of slot <paramref name="slotIndex"/>'s payload (post-MD5) in the
     /// returned buffer. Mirrors BenGrn's <c>SLOT_START_INDEX + slotIndex * 0x10 + slotIndex *
     /// SLOT_LENGTH</c>.</summary>
