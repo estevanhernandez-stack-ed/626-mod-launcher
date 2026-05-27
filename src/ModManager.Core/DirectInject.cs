@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ModManager.Core.Catalog;
 
 namespace ModManager.Core;
 
@@ -27,27 +28,10 @@ public static class DirectInject
     private static bool IsArchive(string src)
         => Intake.ArchiveExtensions.Any(a => src.EndsWith(a, StringComparison.OrdinalIgnoreCase));
 
-    // Files/Dirs match by exact name; FileContains matches anywhere in a filename (for mods whose
-    // exact filename varies between releases, e.g. ultrawide fixes). Empty arrays just don't match.
-    private sealed record Signature(string Name, string Kind, string[] Files, string[] Dirs, string[] FileContains);
-
-    // Each mod's tell-tale files/dirs. Curated to mod-OWNED names only — never a shared proxy
-    // loader (d3d12/dxgi/dinput8/version/winmm) or a vanilla game file — so moving the matched
-    // set disables the mod without breaking the game or another mod.
-    private static readonly Signature[] Catalog =
-    {
-        Sig("ReShade", "graphics", files: new[] { "reshadepreset.ini", "reshade.ini" }, dirs: new[] { "reshade-shaders" }),
-        Sig("Seamless Co-op", "co-op", files: new[] { "ersc.dll", "ersc_settings.ini", "launch_elden_ring_seamlesscoop.exe" }, dirs: new[] { "seamlesscoop" }),
-        Sig("ERSS2 Frame Gen", "upscaler", files: new[] { "erss-fg.dll", "erss-fg.toml", "erss2loader.log" }, dirs: new[] { "erss2" }),
-        // Ultrawide/widescreen mods ship under varying filenames (ultrawidescreenfix.dll,
-        // EldenRing_Ultrawide.dll, WidescreenFix.dll, ...) — match the name fragment, not an exact string.
-        Sig("Ultrawide / Widescreen Fix", "display", contains: new[] { "ultrawide", "widescreen" }),
-        Sig("Modded regulation.bin", "gameplay", files: new[] { "regulation.bin" }),
-        Sig("DLL mod loader", "dll", files: new[] { "dinput8.dll" }),
-    };
-
-    private static Signature Sig(string name, string kind, string[]? files = null, string[]? dirs = null, string[]? contains = null)
-        => new(name, kind, files ?? Array.Empty<string>(), dirs ?? Array.Empty<string>(), contains ?? Array.Empty<string>());
+    // Detection catalog now lives in KnownDirectInjectMod.Catalog — Phase 1 of the unified
+    // mod/tool/framework catalog. Same six entries, same matching behavior (Files / Dirs /
+    // FileContains renamed to InstallSignatureFiles / Dirs / Contains); plus a new ConfigPaths
+    // field that drives the pencil icon for direct-inject mods.
 
     /// <summary>
     /// Recognize which catalog-named direct-inject mods a zip archive INSTALLS, by running the same
@@ -74,14 +58,14 @@ public static class DirectInject
             .ToHashSet();
 
         var hits = new List<string>();
-        foreach (var sig in Catalog)
+        foreach (var sig in KnownDirectInjectMod.Catalog)
         {
-            if (sig.Files.Any(f => basenamesLower.Contains(f.ToLowerInvariant()))) { hits.Add(sig.Name); continue; }
-            if (sig.Dirs.Any(d => dirSegmentsLower.Contains(d.ToLowerInvariant())))  { hits.Add(sig.Name); continue; }
-            if (sig.FileContains.Any(f =>
+            if (sig.InstallSignatureFiles.Any(f => basenamesLower.Contains(f.ToLowerInvariant()))) { hits.Add(sig.DisplayName); continue; }
+            if (sig.InstallSignatureDirs.Any(d => dirSegmentsLower.Contains(d.ToLowerInvariant()))) { hits.Add(sig.DisplayName); continue; }
+            if (sig.InstallSignatureContains.Any(f =>
                 basenamesLower.Any(b => b.Contains(f, StringComparison.OrdinalIgnoreCase))))
             {
-                hits.Add(sig.Name);
+                hits.Add(sig.DisplayName);
             }
         }
         return hits.Distinct().ToList();
@@ -111,15 +95,15 @@ public static class DirectInject
         var dirSet = new HashSet<string>(dirList, StringComparer.OrdinalIgnoreCase);
 
         var found = new List<DirectInjectMod>();
-        foreach (var sig in Catalog)
+        foreach (var sig in KnownDirectInjectMod.Catalog)
         {
             // Every owned entry present in the folder — what a toggle will move, most-specific first.
             var entries = new List<string>();
-            entries.AddRange(dirList.Where(d => sig.Dirs.Contains(d, StringComparer.OrdinalIgnoreCase)));
-            entries.AddRange(fileList.Where(f => sig.Files.Contains(f, StringComparer.OrdinalIgnoreCase)));
-            entries.AddRange(fileList.Where(f => sig.FileContains.Any(c => f.Contains(c, StringComparison.OrdinalIgnoreCase))));
+            entries.AddRange(dirList.Where(d => sig.InstallSignatureDirs.Contains(d, StringComparer.OrdinalIgnoreCase)));
+            entries.AddRange(fileList.Where(f => sig.InstallSignatureFiles.Contains(f, StringComparer.OrdinalIgnoreCase)));
+            entries.AddRange(fileList.Where(f => sig.InstallSignatureContains.Any(c => f.Contains(c, StringComparison.OrdinalIgnoreCase))));
             if (entries.Count == 0) continue;
-            found.Add(new DirectInjectMod(sig.Name, sig.Kind, entries[0], entries));
+            found.Add(new DirectInjectMod(sig.DisplayName, sig.ChipKind, entries[0], entries));
         }
         return found;
     }

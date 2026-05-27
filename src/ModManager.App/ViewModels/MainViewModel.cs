@@ -307,6 +307,10 @@ public sealed partial class MainViewModel : ObservableObject
             MissingFrameworks.Clear();
             foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
                 MissingFrameworks.Add(dep);
+            // Load direct-inject mod config-path overrides once. The resolver consults these to
+            // pick a user-chosen path over the catalog default when set. Empty overrides for the
+            // common case (no per-user customization) — no disk hit if file missing.
+            var directInjectOverrides = ModManager.Core.Catalog.DirectInjectConfigOverrides.Load(_ctx.DataDir);
             var rows = new List<ModRowViewModel>();
             // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
             // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
@@ -317,11 +321,20 @@ public sealed partial class MainViewModel : ObservableObject
                 var folderAbs = rep.IsFolder
                     ? System.IO.Path.Combine(Scanner.LocByName(rep.Location, _ctx!).Abs, rep.Name)
                     : "";
-                // .ini files inside the mod's folder, capped at 20 so a pathological folder doesn't
-                // stall reload. Enumerate failures (locked folder, permission denied) fall through
-                // silently — the pencil-icon affordance just stays hidden for that row.
+                // .ini files for the row's pencil icon. Two branches:
+                //   - Direct-inject rows (Location == "direct-inject"): no folderAbs to glob;
+                //     pull from KnownDirectInjectMod.Catalog.ConfigPaths via the resolver, with
+                //     per-user overrides applied. Resolver returns only paths that exist on disk
+                //     so the icon stays hidden when the catalog default isn't installed.
+                //   - Folder-tracked rows: existing recursive *.ini glob, capped at 20 so a
+                //     pathological folder doesn't stall reload.
                 IReadOnlyList<string> iniFiles = Array.Empty<string>();
-                if (!string.IsNullOrEmpty(folderAbs) && Directory.Exists(folderAbs))
+                if (rep.Location == "direct-inject")
+                {
+                    iniFiles = ModManager.Core.Catalog.DirectInjectModConfigResolver
+                        .Resolve(rep.Name, _ctx.GameRoot, directInjectOverrides);
+                }
+                else if (!string.IsNullOrEmpty(folderAbs) && Directory.Exists(folderAbs))
                 {
                     try
                     {

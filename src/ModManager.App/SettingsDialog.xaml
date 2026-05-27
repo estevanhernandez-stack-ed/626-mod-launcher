@@ -152,6 +152,36 @@
             </ItemsRepeater>
             <TextBlock Opacity="0.5" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
                        Text="The launcher never bundles frameworks. Drop a recognized framework zip to install; this section tracks what's been installed and reverses it." />
+
+            <TextBlock Text="Direct-inject mod configs" FontWeight="SemiBold" Margin="0,16,0,4" />
+            <TextBlock Opacity="0.55" FontSize="12" TextWrapping="Wrap"
+                       Text="Per-mod config-file path overrides for direct-inject mods (Seamless Co-op, ReShade, etc.). Leave alone to use the catalog default; Override when your install is in an unusual location." />
+            <ItemsRepeater x:Name="DirectInjectConfigsList">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="8" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="local:DirectInjectConfigRow">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind Subtitle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           FontSize="12" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Override…" Tag="{x:Bind}"
+                                    Click="OnDirectInjectOverrideClick" VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+            <TextBlock x:Name="DirectInjectConfigsEmpty"
+                       Text="No catalog-known direct-inject mods for the active engine."
+                       Opacity="0.55" FontSize="12" Visibility="Collapsed" />
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>
