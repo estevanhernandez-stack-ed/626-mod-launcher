@@ -27,12 +27,14 @@ public sealed partial class ToolsPanel : UserControl
     /// MainViewModel — they fire at every <c>ReloadModsAsync</c> tick.</summary>
     public MainViewModel? ViewModel { get; set; }
 
-    // Task 9 wires the actual launch. Until then the click flips a status-bar message so the
-    // affordance is visibly hot — easy to verify the binding is correct before we attach behavior.
-    private void OnToolClick(object sender, RoutedEventArgs e)
+    // Snapshot-then-launch lives on the VM. The handler reads the tool entry off the button's Tag
+    // (Task 8 convention — the slim row uses Tag rather than CommandParameter) and delegates.
+    private async void OnToolClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is ToolEntry entry && ViewModel is not null)
-            ViewModel.StatusText = $"(Task 9 will launch {entry.DisplayName})";
+        if (sender is FrameworkElement el && el.Tag is ToolEntry entry && ViewModel is not null)
+        {
+            await ViewModel.LaunchToolAsync(entry);
+        }
     }
 
     // Catalog "Get …" chip: open the Nexus / vendor page in the system browser. Some catalog entries
@@ -46,10 +48,13 @@ public sealed partial class ToolsPanel : UserControl
         }
     }
 
-    // Task 9 wires the file picker → AddModsAsync. Stub-status for now so the button is visibly wired.
-    private void OnAddToolClick(object sender, RoutedEventArgs e)
+    // Open a file picker for a tool archive — the drop pipeline (ToolDetector.Classify → ToolIntake)
+    // carves tools out of the mod intake, so we reuse AddModsAsync just like the drag-drop path.
+    private async void OnAddToolClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel is not null)
-            ViewModel.StatusText = "(Task 9 will open file picker for tool install)";
+        {
+            await ViewModel.PromptAddToolAsync();
+        }
     }
 }

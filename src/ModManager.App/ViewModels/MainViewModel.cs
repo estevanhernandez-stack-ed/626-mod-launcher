@@ -3,9 +3,11 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using ModManager.App.Services;
+using ModManager.App.Tools;
 using ModManager.Core;
 using ModManager.Core.Tools;
 
@@ -28,6 +30,10 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly NexusService _nexus;
     private readonly AvatarService _avatars;
     private readonly SteamService _steam;
+    // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
+    // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
+    // which fires on a thread-pool thread — back to the UI thread before touching VM state.
+    private readonly DispatcherQueue? _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     private GameContext? _ctx;
     private bool _suppressActiveSwitch;
 
@@ -1154,6 +1160,79 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>Launch a registered tool. When the tool edits saves, take an explicit (non-auto)
+    /// snapshot FIRST — a snapshot failure (no save folder, disk full, etc.) blocks the launch so
+    /// we never run an editor against unprotected saves. The status line surfaces the snapshot
+    /// label on exit so the user can find it in Saves → Snapshots if they need to revert.</summary>
+    public async Task LaunchToolAsync(ToolEntry entry)
+    {
+        try
+        {
+            ToolLauncher.Launch(
+                entry,
+                snapshot: entry.EditsSaves ? () => SnapshotSavesForTool(entry) : null,
+                onExit: snapLabel =>
+                {
+                    // Process.Exited fires on a thread-pool thread — direct property writes here
+                    // would crash the UI. Marshal back to the dispatcher captured at VM ctor.
+                    void Update()
+                    {
+                        StatusText = snapLabel is null
+                            ? $"{entry.DisplayName} closed."
+                            : $"{entry.DisplayName} closed. Snapshot saved as '{snapLabel}'.";
+                    }
+                    if (_dispatcherQueue is not null) _dispatcherQueue.TryEnqueue(Update);
+                    else Update();
+                });
+
+            StatusText = entry.EditsSaves
+                ? $"Snapshotting save before launching {entry.DisplayName}…"
+                : $"Launching {entry.DisplayName}…";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Couldn't launch {entry.DisplayName}: {ex.Message}";
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>Open a file picker for a tool archive and route it through the regular drop pipeline.
+    /// ToolDetector.Classify carves tool archives out of the mod intake path automatically, so the
+    /// same <see cref="AddModsAsync"/> entry-point handles tool installs just like a drag-drop.</summary>
+    public async Task PromptAddToolAsync()
+    {
+        var window = App.MainWindow;
+        if (window is null)
+        {
+            StatusText = "Couldn't open the picker — main window not ready yet.";
+            return;
+        }
+
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        picker.FileTypeFilter.Add(".zip");
+        picker.FileTypeFilter.Add(".7z");
+        picker.FileTypeFilter.Add(".rar");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var file = await picker.PickSingleFileAsync();
+        if (file is not null)
+        {
+            await AddModsAsync(new[] { file.Path });
+        }
+    }
+
+    /// <summary>Snapshot the active save folder before a save-editing tool starts. Uses the same
+    /// SaveManager primitive as the Saves dialog (non-auto label so the user can find it), labelled
+    /// with the tool's display name + a wall-clock stamp.</summary>
+    private string SnapshotSavesForTool(ToolEntry tool)
+    {
+        if (_ctx is null) throw new InvalidOperationException("No active game.");
+        if (string.IsNullOrEmpty(_ctx.SaveDir))
+            throw new InvalidOperationException("No save folder configured — set one in Saves first.");
+        var label = $"before-{tool.DisplayName.Replace(' ', '-')}-{DateTime.Now:yyyy-MM-dd-HHmm}";
+        var snap = SaveManager.Backup(_ctx.SaveDir, _ctx.SavesDir, label, auto: false);
+        return snap.Label;
     }
 
     /// <summary>Show the collision prompt for a plan and return the rel-paths to replace; null means

@@ -15,6 +15,11 @@ public partial class App : Application
 
     public static IHost AppHost { get; private set; } = null!;
 
+    /// <summary>The active main window — set once during <see cref="OnLaunched"/>. Exposed so non-window
+    /// surfaces (e.g. the tools panel) can wire <c>InitializeWithWindow</c> on Win11 pickers without
+    /// walking the visual tree.</summary>
+    public static Window? MainWindow { get; private set; }
+
     private Window? _window;
 
     public App()
@@ -46,6 +51,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _window = new MainWindow();
+        MainWindow = _window;
         _window.Activate();
 
         // Fire-and-forget update check (debounced 24h, fails silently). Comfort, not load-bearing.
