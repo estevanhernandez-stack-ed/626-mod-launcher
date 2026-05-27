@@ -46,7 +46,17 @@ public sealed record KnownDirectInjectMod(
            getUrl: "https://www.nexusmods.com/eldenring/mods/510",
            files: new[] { "ersc.dll", "ersc_settings.ini", "launch_elden_ring_seamlesscoop.exe" },
            dirs: new[] { "seamlesscoop" },
-           configs: new[] { "SeamlessCoop/seamlesscoopsettings.ini", "ersc_settings.ini" }),
+           // Seamless ships under three install layouts across the project's history:
+           //   - Current rewrite:  <playFolder>/SeamlessCoop/seamlesscoopsettings.ini
+           //   - LukeYui middle:   <playFolder>/SeamlessCoop/ersc_settings.ini  (subfolder, OLD name)
+           //   - LukeYui original: <playFolder>/ersc_settings.ini               (loose at game root)
+           // Resolver checks all three, returns whichever exists on disk.
+           configs: new[]
+           {
+               "SeamlessCoop/seamlesscoopsettings.ini",
+               "SeamlessCoop/ersc_settings.ini",
+               "ersc_settings.ini",
+           }),
 
         Mk(modId: "erss2-frame-gen", display: "ERSS2 Frame Gen", chip: "upscaler", author: "(unknown)",
            files: new[] { "erss-fg.dll", "erss-fg.toml", "erss2loader.log" },

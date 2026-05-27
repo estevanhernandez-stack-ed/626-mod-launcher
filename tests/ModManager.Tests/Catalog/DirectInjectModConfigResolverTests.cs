@@ -72,6 +72,24 @@ public class DirectInjectModConfigResolverTests : IDisposable
     }
 
     [Fact]
+    public void Resolve_finds_LukeYui_middle_layout_subfolder_with_old_filename()
+    {
+        // Real install from the smoke: <gameRoot>/Game/SeamlessCoop/ersc_settings.ini.
+        // Older Seamless versions ship the ini under the SeamlessCoop subfolder but with
+        // the legacy `ersc_settings.ini` name. Catalog must cover this variant.
+        var gameRoot = Path.Combine(_tmp, "GameRoot");
+        var seamlessFolder = Path.Combine(gameRoot, "Game", "SeamlessCoop");
+        Directory.CreateDirectory(seamlessFolder);
+        var iniPath = Path.Combine(seamlessFolder, "ersc_settings.ini");
+        File.WriteAllText(iniPath, "test");
+
+        var result = DirectInjectModConfigResolver.Resolve(
+            "Seamless Co-op", gameRoot, DirectInjectConfigOverrides.Empty);
+
+        Assert.Contains(iniPath, result, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Resolve_falls_back_to_gameRoot_when_no_Game_subfolder()
     {
         // Some FromSoft games (pre-DLC ER on older Steam manifests, or test fixtures) put

@@ -15,6 +15,9 @@ public class KnownDirectInjectModTests
         Assert.Equal("Yui", seamless.Author);
         Assert.Equal("PlayFolder", seamless.InstallRoot);
         Assert.Contains("SeamlessCoop/seamlesscoopsettings.ini", seamless.ConfigPaths);
+        // Older Seamless layouts ship the ini under different names / locations — catalog covers all three.
+        Assert.Contains("SeamlessCoop/ersc_settings.ini", seamless.ConfigPaths);
+        Assert.Contains("ersc_settings.ini", seamless.ConfigPaths);
         Assert.Contains("ersc.dll", seamless.InstallSignatureFiles);
         Assert.Contains("seamlesscoop", seamless.InstallSignatureDirs);
     }
