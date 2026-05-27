@@ -94,6 +94,59 @@ public class Bnd4ReaderTests
     }
 
     [Fact]
+    public void Parse_throws_InvalidDataException_when_data_offset_is_far_past_buffer_end()
+    {
+        // A malicious save with data_offset = long.MaxValue would overflow checked((int)long)
+        // at the call site (EldenRingSave.cs) and throw OverflowException — NOT the
+        // InvalidDataException UI code expects. The parser must reject this at the seam.
+        var bytes = BuildTinyBnd4(new TinyEntry("A", 0x1000, 0x100));
+        // The single entry sits at 0x40. data_offset is at entry+0x18.
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x40 + 0x18, 8), long.MaxValue);
+
+        var ex = Assert.Throws<InvalidDataException>(() => Bnd4Reader.Parse(bytes));
+        Assert.Contains("entry 0", ex.Message);
+        Assert.Contains("data", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Parse_throws_InvalidDataException_when_data_size_is_far_past_buffer_end()
+    {
+        // data_offset = 0 but data_size = long.MaxValue — the data range still overruns
+        // the buffer. Use long arithmetic for offset+size or it wraps around to look valid.
+        var bytes = BuildTinyBnd4(new TinyEntry("A", 0x1000, 0x100));
+        // Set data_offset to 0 (in-bounds) and data_size to long.MaxValue (overruns).
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x40 + 0x18, 8), 0L);
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x40 + 0x10, 8), long.MaxValue);
+
+        var ex = Assert.Throws<InvalidDataException>(() => Bnd4Reader.Parse(bytes));
+        Assert.Contains("entry 0", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_throws_InvalidDataException_when_data_offset_is_negative()
+    {
+        // A small-negative data_offset would pass checked((int)long) and blow up at
+        // AsSpan(offset, size) as ArgumentOutOfRangeException — wrong exception type for UI.
+        var bytes = BuildTinyBnd4(new TinyEntry("A", 0x1000, 0x100));
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x40 + 0x18, 8), -1L);
+
+        var ex = Assert.Throws<InvalidDataException>(() => Bnd4Reader.Parse(bytes));
+        Assert.Contains("entry 0", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_throws_InvalidDataException_when_data_size_is_negative()
+    {
+        var bytes = BuildTinyBnd4(new TinyEntry("A", 0x1000, 0x100));
+        // data_offset valid, data_size negative.
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x40 + 0x18, 8), 0L);
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x40 + 0x10, 8), -1L);
+
+        var ex = Assert.Throws<InvalidDataException>(() => Bnd4Reader.Parse(bytes));
+        Assert.Contains("entry 0", ex.Message);
+    }
+
+    [Fact]
     public void GetByName_returns_the_matching_entry()
     {
         var bytes = BuildTinyBnd4(
@@ -148,8 +201,11 @@ public class Bnd4ReaderTests
     ///     +0x20: id (int32) = i
     ///     +0x24: name_offset (int32) -> name table region
     ///   Name table immediately follows the entry table; each name is UTF-16LE null-terminated.
-    /// The buffer is sized to comfortably hold header + entries + names. No file data is written
-    /// (the reader only reads header/entries/names — DataOffset is recorded verbatim).
+    /// The buffer is sized to hold header + entries + names AND to extend through the
+    /// largest <c>DataOffset + DataSize</c> any entry points at. That way the reader's
+    /// per-entry data-range bounds check (which rejects ranges outside the buffer) doesn't
+    /// fire on these happy-path fixtures. No file data is written — the reader records
+    /// <c>DataOffset</c> verbatim and never reads bytes from it.
     /// </summary>
     private static byte[] BuildTinyBnd4(params TinyEntry[] entries)
     {
@@ -172,7 +228,17 @@ public class Bnd4ReaderTests
             cursor += encoded.Length + 2;
         }
 
-        var totalSize = cursor;
+        // Extend the buffer to cover every entry's data range (DataOffset + DataSize). The
+        // happy-path fixtures point at 0x1000+ but never have payload bytes written — we
+        // just need the buffer length to satisfy the parser's bounds check.
+        long maxDataEnd = 0;
+        foreach (var e in entries)
+        {
+            long end = e.DataOffset + e.DataSize;
+            if (end > maxDataEnd) maxDataEnd = end;
+        }
+
+        var totalSize = (int)Math.Max(cursor, maxDataEnd);
         var buffer = new byte[totalSize];
 
         // Magic.
