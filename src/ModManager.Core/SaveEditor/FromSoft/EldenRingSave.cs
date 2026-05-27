@@ -144,21 +144,38 @@ public static class EldenRingSave
                 $"Save file is too small ({bytes.Length} bytes) to be a valid Elden Ring .sl2 — expected at least {MinimumFileSize}.");
         }
 
+        // Walk the BND4 file table — resolve the save-header section + this slot by NAME, not
+        // by hardcoded offset. Mirrors ReadCharacters / TryReadSlot so read and write always
+        // agree on where the bytes live. A future layout shift (extra entries, padding) surfaces
+        // as a clear "entry not found" instead of a silent corrupt write at a stale offset.
+        var entries = Bnd4Reader.Parse(bytes);
+        var saveHeaderEntry = Bnd4Reader.GetByName(entries, SaveHeaderEntryName);
+        var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{slotIndex:D3}");
+
+        int saveHeaderStart = checked((int)saveHeaderEntry.DataOffset);
+        int saveHeaderMd5Start = saveHeaderStart - 0x10;
+        int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
+        int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
+        // The slot entry's data_offset points at the slot's MD5 (16 bytes); the slot body
+        // follows at +0x10. Same convention as TryReadSlot — read and write stay in lockstep.
+        int slotMd5Start = checked((int)slotEntry.DataOffset);
+        int slotDataStart = slotMd5Start + 0x10;
+
         // Guard 0: active-flag check. Editing an inactive slot would create a phantom character
         // — the save header says the slot is active but the body has no real character. The user
         // must create a character in-game first.
-        if (bytes[CharActiveStatusOffset + slotIndex] == 0)
+        if (bytes[charActiveStatusAbs + slotIndex] == 0)
         {
             throw new InvalidOperationException(
                 $"Slot {slotIndex} is inactive — cannot edit an empty slot. Create a character in-game first.");
         }
 
         // Snapshot the pre-edit slot body for post-write verification (Step 6 below).
-        var preSlot = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize).ToArray();
+        var preSlot = bytes.AsSpan(slotDataStart, SlotDataSize).ToArray();
 
         // Guard 1: walk GA-items to discover the magic anchor. Throws InvalidDataException if
         // the walk produces an offset outside the slot body (unknown handle type → wrong sum).
-        var slotData = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
+        var slotData = bytes.AsSpan(slotDataStart, SlotDataSize);
         int magicOffset = DiscoverMagicOffset(slotData);
 
         // 1) Patch the slot body — runes + stats at the discovered anchor.
@@ -166,19 +183,19 @@ public static class EldenRingSave
         SlotData.WriteStats(slotData, edit.Vig, edit.Mnd, edit.End, edit.Str, edit.Dex, edit.Int, edit.Fai, edit.Arc, magicOffset);
 
         // 2) Recompute the slot MD5 over the new slot bytes.
-        var slotMd5 = bytes.AsSpan(FirstSlotMd5Offset + slotIndex * SlotStride, 0x10);
+        var slotMd5 = bytes.AsSpan(slotMd5Start, 0x10);
         SlotChecksum.ComputeMd5(slotData).CopyTo(slotMd5);
 
         // 3) Update the per-slot summary in the save-header section (name + level). The active
         //    flag is NOT touched — Guard 0 above already verified it was 1.
-        var summary = bytes.AsSpan(PerSlotSummaryStart + slotIndex * PerSlotSummaryStride, PerSlotSummaryStride);
+        var summary = bytes.AsSpan(perSlotSummaryStartAbs + slotIndex * PerSlotSummaryStride, PerSlotSummaryStride);
         WriteCharacterName(summary, edit.Name);
         var stats = new SlotStats(edit.Vig, edit.Mnd, edit.End, edit.Str, edit.Dex, edit.Int, edit.Fai, edit.Arc);
         BitConverter.TryWriteBytes(summary.Slice(CharLevelOffsetInSummary, 2), (short)SlotData.LevelFromStats(stats));
 
-        // 4) Recompute the save-header MD5 over [SaveHeadersSectionStart, SaveHeaderTotalEnd).
-        var saveHeader = bytes.AsSpan(SaveHeadersSectionStart, SaveHeadersSectionLength);
-        var saveHeaderMd5 = bytes.AsSpan(SaveHeaderMd5Offset, 0x10);
+        // 4) Recompute the save-header MD5 over [saveHeaderStart, saveHeaderStart + SaveHeadersSectionLength).
+        var saveHeader = bytes.AsSpan(saveHeaderStart, SaveHeadersSectionLength);
+        var saveHeaderMd5 = bytes.AsSpan(saveHeaderMd5Start, 0x10);
         SlotChecksum.ComputeMd5(saveHeader).CopyTo(saveHeaderMd5);
 
         // 5) Atomic write: temp file + rename. Mirrors AtomicJson.WriteJsonAtomic.
@@ -274,6 +291,12 @@ public static class EldenRingSave
         int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
         int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
         var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{slotIndex:D3}");
+        // Same convention as TryReadSlot + WriteEdit — entry data_offset points at the slot MD5,
+        // body lives at +0x10. We resolve this once here so the post-write byte mask uses the
+        // SAME absolute offset the writer just wrote to, even if the layout has been shifted.
+        int slotMd5StartAbs = checked((int)slotEntry.DataOffset);
+        int slotDataStartAbs = slotMd5StartAbs + 0x10;
+
         var verified = TryReadSlot(verifyBytes, slotEntry, charActiveStatusAbs, perSlotSummaryStartAbs, slotIndex)
             ?? throw new InvalidDataException(
                 $"Post-write verify: slot {slotIndex} failed to re-read (MD5 mismatch or all-zero stats). The edit did not land cleanly.");
@@ -306,7 +329,7 @@ public static class EldenRingSave
         //     name + save-header MD5 also live outside the slot body — they're in the save-header
         //     section. Those drift cases would surface as save-header MD5 mismatch causing a
         //     downstream parse to fail, not as a slot-body drift here.)
-        var postSlot = verifyBytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
+        var postSlot = verifyBytes.AsSpan(slotDataStartAbs, SlotDataSize);
         int statsStart = magicOffset + SlotData.VigorRelative;
         int statsEndExclusive = magicOffset + SlotData.ArcaneRelative + 4;
         int runesStart = magicOffset + SlotData.RunesRelative;
