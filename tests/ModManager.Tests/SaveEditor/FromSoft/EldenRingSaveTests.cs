@@ -167,4 +167,48 @@ public class EldenRingSaveTests : IDisposable
         // File too small to even contain the BND4 envelope + 10 slots — should report clearly.
         Assert.Throws<InvalidDataException>(() => EldenRingSave.ReadCharacters(savePath));
     }
+
+    [Fact]
+    public void WriteEdit_throws_on_inactive_slot()
+    {
+        // BuildEmptySave produces a file where every slot's active flag is 0. WriteEdit must
+        // refuse rather than create a phantom character (header says active, body has nothing).
+        Directory.CreateDirectory(_tmp);
+        var savePath = Path.Combine(_tmp, "ER0000.sl2");
+        File.WriteAllBytes(savePath, EldenRingFixture.BuildEmptySave());
+
+        Assert.Throws<InvalidOperationException>(() =>
+            EldenRingSave.WriteEdit(savePath, slotIndex: 0,
+                new CharacterEdit("X", 0u, 1, 1, 1, 1, 1, 1, 1, 1)));
+    }
+
+    [Fact]
+    public void ReadCharacters_throws_NotSupportedException_when_inventory_is_non_empty()
+    {
+        // A save with any non-zero byte in slot 0's GA-items prefix must surface as the clear
+        // unsupported error — not corrupt reads at the wrong anchor.
+        Directory.CreateDirectory(_tmp);
+        var savePath = Path.Combine(_tmp, "ER0000.sl2");
+        var bytes = EldenRingFixture.BuildSaveWithSomeInventory(
+            runes: 1000u, vig: 10, mnd: 10, end_: 10, str: 10, dex: 10, int_: 10, fai: 10, arc: 10);
+        File.WriteAllBytes(savePath, bytes);
+
+        Assert.Throws<NotSupportedException>(() => EldenRingSave.ReadCharacters(savePath));
+    }
+
+    [Fact]
+    public void WriteEdit_throws_NotSupportedException_when_inventory_is_non_empty()
+    {
+        // Same guard on the write path — refuses BEFORE touching the file, so a real save with
+        // inventory never gets a fixed-anchor corrupting write.
+        Directory.CreateDirectory(_tmp);
+        var savePath = Path.Combine(_tmp, "ER0000.sl2");
+        var bytes = EldenRingFixture.BuildSaveWithSomeInventory(
+            runes: 1000u, vig: 10, mnd: 10, end_: 10, str: 10, dex: 10, int_: 10, fai: 10, arc: 10);
+        File.WriteAllBytes(savePath, bytes);
+
+        Assert.Throws<NotSupportedException>(() =>
+            EldenRingSave.WriteEdit(savePath, slotIndex: 0,
+                new CharacterEdit("X", 1u, 11, 11, 11, 11, 11, 11, 11, 11)));
+    }
 }

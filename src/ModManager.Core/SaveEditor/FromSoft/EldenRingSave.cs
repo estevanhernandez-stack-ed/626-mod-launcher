@@ -54,7 +54,12 @@ public static class EldenRingSave
     /// <summary>Read every populated character slot. Skips slots whose MD5 doesn't match their
     /// data (treated as corrupt) and slots whose 8 stats are all zero (treated as unused — the
     /// active-flag array is consulted too, but the stat-zero heuristic catches fixtures and
-    /// any save where the flag is unreliable).</summary>
+    /// any save where the flag is unreliable).
+    ///
+    /// Throws <see cref="NotSupportedException"/> if any active slot has a non-empty GA-items
+    /// region (real saves with inventory). The fixed-anchor offsets only line up for the empty
+    /// GA-items case; non-empty inventory means stats/runes live elsewhere and we'd corrupt on
+    /// write. Task 9 smoke closes this gap with the full anchor walk.</summary>
     public static IReadOnlyList<CharacterSlot> ReadCharacters(string savePath)
     {
         if (savePath is null) throw new ArgumentNullException(nameof(savePath));
@@ -70,6 +75,12 @@ public static class EldenRingSave
         var result = new List<CharacterSlot>(SlotCount);
         for (int i = 0; i < SlotCount; i++)
         {
+            // Only check inventory on slots the active-flag array says are populated; inactive
+            // slots have all-zero bodies by construction (empty inventory trivially).
+            if (bytes[CharActiveStatusOffset + i] != 0)
+            {
+                EnsureEmptyInventoryOrThrow(bytes, i);
+            }
             var slot = TryReadSlot(bytes, i);
             if (slot is not null) result.Add(slot);
         }
@@ -78,7 +89,19 @@ public static class EldenRingSave
 
     /// <summary>Apply an edit to one slot. Recomputes the slot MD5 and the save-header MD5
     /// (the latter covers the name/level summary). Writes atomically (temp + rename) so a
-    /// crash mid-write can't corrupt the user's save.</summary>
+    /// crash mid-write can't corrupt the user's save.
+    ///
+    /// Guards (in order):
+    /// 1. The target slot's active flag must be 1 — refuses to edit an empty slot to avoid
+    ///    creating a phantom character (active header / no real body).
+    /// 2. The target slot's GA-items region must be entirely empty (MVP scope). Real saves
+    ///    with inventory throw <see cref="NotSupportedException"/> until Task 9 wires the
+    ///    full anchor walk.
+    /// 3. After the atomic write, the file is re-read and the touched fields are verified
+    ///    against the edit, while every byte OUTSIDE the touched ranges (runes, 8 stats, name
+    ///    region, slot MD5, save-header MD5) must be byte-identical to the pre-edit slot. Any
+    ///    drift throws <see cref="InvalidDataException"/> — the snapshot taken by the caller
+    ///    is the user's line back.</summary>
     public static void WriteEdit(string savePath, int slotIndex, CharacterEdit edit)
     {
         if (savePath is null) throw new ArgumentNullException(nameof(savePath));
@@ -97,6 +120,21 @@ public static class EldenRingSave
                 $"Save file is too small ({bytes.Length} bytes) to be a valid Elden Ring .sl2 — expected at least {MinimumFileSize}.");
         }
 
+        // Guard 0: active-flag check. Editing an inactive slot would create a phantom character
+        // — the save header says the slot is active but the body has no real character. The user
+        // must create a character in-game first.
+        if (bytes[CharActiveStatusOffset + slotIndex] == 0)
+        {
+            throw new InvalidOperationException(
+                $"Slot {slotIndex} is inactive — cannot edit an empty slot. Create a character in-game first.");
+        }
+
+        // Guard 1: inventory check. The fixed-anchor offsets only line up for empty GA-items.
+        EnsureEmptyInventoryOrThrow(bytes, slotIndex);
+
+        // Snapshot the pre-edit slot body for post-write verification (Step 6 below).
+        var preSlot = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize).ToArray();
+
         // 1) Patch the slot body — runes + stats at the runtime-discovered anchor (currently
         //    fixed-anchor for the MVP fixture; real-save anchor discovery is a future-task wedge).
         var slotData = bytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
@@ -107,9 +145,8 @@ public static class EldenRingSave
         var slotMd5 = bytes.AsSpan(FirstSlotMd5Offset + slotIndex * SlotStride, 0x10);
         SlotChecksum.ComputeMd5(slotData).CopyTo(slotMd5);
 
-        // 3) Update the per-slot summary in the save-header section (name + level). Also flip
-        //    the active flag on for this slot so a reader's active-flag check stays consistent.
-        bytes[CharActiveStatusOffset + slotIndex] = 1;
+        // 3) Update the per-slot summary in the save-header section (name + level). The active
+        //    flag is NOT touched — Guard 0 above already verified it was 1.
         var summary = bytes.AsSpan(PerSlotSummaryStart + slotIndex * PerSlotSummaryStride, PerSlotSummaryStride);
         WriteCharacterName(summary, edit.Name);
         var stats = new SlotStats(edit.Vig, edit.Mnd, edit.End, edit.Str, edit.Dex, edit.Int, edit.Fai, edit.Arc);
@@ -122,6 +159,12 @@ public static class EldenRingSave
 
         // 5) Atomic write: temp file + rename. Mirrors AtomicJson.WriteJsonAtomic.
         WriteBytesAtomic(savePath, bytes);
+
+        // 6) Post-write validation guard — the spec's safety net for the bricked-save risk class.
+        //    Re-read from disk, re-parse the slot via the same TryReadSlot path, and byte-compare
+        //    the post-write slot body against preSlot masking out the touched ranges. Any drift
+        //    outside the masks throws InvalidDataException so the caller's snapshot is the line back.
+        VerifyPostWrite(savePath, slotIndex, edit, preSlot);
     }
 
     /// <summary>Walk the GA-items table to find the anchor offset where stats/runes live.
@@ -149,6 +192,94 @@ public static class EldenRingSave
             cursor += entrySize;
         }
         return cursor + SlotData.MagicAnchorOffset;
+    }
+
+    /// <summary>Number of bytes at the GA-items start to scan for non-zero (signals real
+    /// inventory). 64 bytes covers ≥ 8 GA-items entries; any real-save character with at least
+    /// one inventory item will have non-zero data inside this prefix.</summary>
+    internal const int EmptyInventoryProbeBytes = 64;
+
+    /// <summary>Throw <see cref="NotSupportedException"/> if the slot's GA-items region looks
+    /// non-empty. The MVP's fixed-anchor offsets only line up when the GA-items table is fully
+    /// empty (5120 empty 8-byte entries). Task 9 smoke will replace this with the full GA-items
+    /// walk (handle-bit decoding per alfizari/Final.py) that supports real inventory.</summary>
+    internal static void EnsureEmptyInventoryOrThrow(byte[] bytes, int slotIndex)
+    {
+        var probeStart = FirstSlotDataOffset + slotIndex * SlotStride + SlotData.GaItemsStart;
+        var probe = bytes.AsSpan(probeStart, EmptyInventoryProbeBytes);
+        foreach (var b in probe)
+        {
+            if (b != 0)
+            {
+                throw new NotSupportedException(
+                    "Real Elden Ring saves with inventory are not yet supported. Task 9 smoke will close this gap. Use a freshly-created character with empty inventory for now.");
+            }
+        }
+    }
+
+    /// <summary>Post-write validation. Re-reads the file, re-parses the touched slot, confirms
+    /// every edited field landed, and byte-compares the slot body against <paramref name="preSlot"/>
+    /// masking out the touched ranges (runes / 8 stats / name region / slot MD5 / save-header MD5).
+    /// Throws <see cref="InvalidDataException"/> with a diff location on any drift.</summary>
+    private static void VerifyPostWrite(string savePath, int slotIndex, CharacterEdit edit, byte[] preSlot)
+    {
+        var verifyBytes = File.ReadAllBytes(savePath);
+        if (verifyBytes.Length < MinimumFileSize)
+        {
+            throw new InvalidDataException(
+                $"Post-write verify: file is too small ({verifyBytes.Length} bytes) — expected at least {MinimumFileSize}.");
+        }
+
+        // 1) Re-parse the slot via the same path the public reader uses.
+        var verified = TryReadSlot(verifyBytes, slotIndex)
+            ?? throw new InvalidDataException(
+                $"Post-write verify: slot {slotIndex} failed to re-read (MD5 mismatch or all-zero stats). The edit did not land cleanly.");
+
+        // 2) Every edited field must equal the edit.
+        if (verified.Runes != edit.Runes)
+            throw new InvalidDataException($"Post-write verify: Runes mismatch — wrote {edit.Runes}, read back {verified.Runes}.");
+        if (verified.Vig != edit.Vig)
+            throw new InvalidDataException($"Post-write verify: Vig mismatch — wrote {edit.Vig}, read back {verified.Vig}.");
+        if (verified.Mnd != edit.Mnd)
+            throw new InvalidDataException($"Post-write verify: Mnd mismatch — wrote {edit.Mnd}, read back {verified.Mnd}.");
+        if (verified.End != edit.End)
+            throw new InvalidDataException($"Post-write verify: End mismatch — wrote {edit.End}, read back {verified.End}.");
+        if (verified.Str != edit.Str)
+            throw new InvalidDataException($"Post-write verify: Str mismatch — wrote {edit.Str}, read back {verified.Str}.");
+        if (verified.Dex != edit.Dex)
+            throw new InvalidDataException($"Post-write verify: Dex mismatch — wrote {edit.Dex}, read back {verified.Dex}.");
+        if (verified.Int != edit.Int)
+            throw new InvalidDataException($"Post-write verify: Int mismatch — wrote {edit.Int}, read back {verified.Int}.");
+        if (verified.Fai != edit.Fai)
+            throw new InvalidDataException($"Post-write verify: Fai mismatch — wrote {edit.Fai}, read back {verified.Fai}.");
+        if (verified.Arc != edit.Arc)
+            throw new InvalidDataException($"Post-write verify: Arc mismatch — wrote {edit.Arc}, read back {verified.Arc}.");
+
+        // 3) Byte-compare slot body against preSlot OUTSIDE the touched ranges. The touched ranges
+        //    inside the slot body are:
+        //      - runes: [OffsetRunes, OffsetRunes + 4)
+        //      - 8 stat uint32s: [OffsetVigor, OffsetArcane + 4)
+        //    (The slot MD5 lives OUTSIDE the slot body, so it doesn't appear in this mask. The
+        //     name + save-header MD5 also live outside the slot body — they're in the save-header
+        //     section. Those drift cases would surface as save-header MD5 mismatch causing a
+        //     downstream parse to fail, not as a slot-body drift here.)
+        var postSlot = verifyBytes.AsSpan(FirstSlotDataOffset + slotIndex * SlotStride, SlotDataSize);
+        int statsStart = SlotData.OffsetVigor;
+        int statsEndExclusive = SlotData.OffsetArcane + 4;
+        int runesStart = SlotData.OffsetRunes;
+        int runesEndExclusive = runesStart + 4;
+
+        for (int i = 0; i < SlotDataSize; i++)
+        {
+            bool inStats = i >= statsStart && i < statsEndExclusive;
+            bool inRunes = i >= runesStart && i < runesEndExclusive;
+            if (inStats || inRunes) continue;
+            if (postSlot[i] != preSlot[i])
+            {
+                throw new InvalidDataException(
+                    $"Post-write verify: unexpected byte drift in slot {slotIndex} body at offset 0x{i:X} (pre=0x{preSlot[i]:X2}, post=0x{postSlot[i]:X2}). The write touched bytes outside the edit's mask — the file may be corrupt.");
+            }
+        }
     }
 
     private static CharacterSlot? TryReadSlot(byte[] bytes, int slotIndex)

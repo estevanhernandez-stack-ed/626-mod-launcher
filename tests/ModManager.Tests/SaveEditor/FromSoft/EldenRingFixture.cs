@@ -111,6 +111,61 @@ public static class EldenRingFixture
         nameBytes.CopyTo(summary.Slice(CharNameOffsetInSummary, Math.Min(nameBytes.Length, CharNameLengthBytes)));
     }
 
+    /// <summary>Build a minimal .sl2 with ALL 10 slots inactive (active-flag array zeroed) and
+    /// every slot body zero-filled. The slot MD5s match MD5(zero-filled slot data); the save-
+    /// header MD5 covers the zero-filled header region. Used to exercise the inactive-slot guard
+    /// in <see cref="EldenRingSave.WriteEdit"/>.</summary>
+    public static byte[] BuildEmptySave()
+    {
+        var totalSize = SaveHeaderTotalEnd;
+        var buffer = new byte[totalSize];
+
+        WriteBnd4Header(buffer);
+
+        // All 10 slots zero — compute MD5 once and copy into each slot's MD5 region.
+        var zeroSlotMd5 = SlotChecksum.ComputeMd5(new byte[SlotDataSize]);
+        for (int i = 0; i < SlotCount; i++)
+        {
+            var md5Region = buffer.AsSpan(FirstSlotMd5Offset + i * SlotStride, 0x10);
+            zeroSlotMd5.CopyTo(md5Region);
+        }
+
+        // Active-flag array stays all zeros. Per-slot summaries stay zeroed.
+        // Save-header MD5 covers the zero-filled section.
+        var saveHeaderRegion = buffer.AsSpan(SaveHeadersSectionStart, SaveHeadersSectionLength);
+        var saveHeaderMd5Region = buffer.AsSpan(SaveHeaderMd5Offset, 0x10);
+        SlotChecksum.ComputeMd5(saveHeaderRegion).CopyTo(saveHeaderMd5Region);
+
+        return buffer;
+    }
+
+    /// <summary>Build a save that looks like <see cref="BuildSaveWithOneCharacter"/> but with a
+    /// fake non-zero byte planted in slot 0's GA-items region — enough to trip the empty-inventory
+    /// detection guard in <see cref="EldenRingSave"/>. The slot MD5 is recomputed AFTER the
+    /// tamper so the slot itself reads cleanly past the integrity check; the inventory guard is
+    /// what should fire.</summary>
+    public static byte[] BuildSaveWithSomeInventory(uint runes,
+        byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
+    {
+        var buffer = BuildSaveWithOneCharacter(runes, vig, mnd, end_, str, dex, int_, fai, arc);
+
+        // Plant a non-zero byte inside the first 64 bytes of slot 0's GA-items region. The
+        // EldenRingSave.EnsureEmptyInventoryOrThrow probe scans this prefix and throws on any
+        // non-zero — this mimics a real save where slot 0 has at least one inventory item.
+        // GA-items table starts at slot-body offset 0x20 (alfizari/Final.py + SlotData.GaItemsStart).
+        const int GaItemsStartOffset = 0x20;
+        int slot0GaItemsStart = FirstSlotDataOffset + GaItemsStartOffset;
+        buffer[slot0GaItemsStart + 8] = 0xAB; // arbitrary non-zero somewhere in the probed prefix
+
+        // Recompute slot 0's MD5 so the integrity check still passes — the guard we want to
+        // trip is the inventory check, not the MD5 check.
+        var slot0Data = buffer.AsSpan(FirstSlotDataOffset, SlotDataSize);
+        var slot0Md5Region = buffer.AsSpan(FirstSlotMd5Offset, 0x10);
+        SlotChecksum.ComputeMd5(slot0Data).CopyTo(slot0Md5Region);
+
+        return buffer;
+    }
+
     /// <summary>The offset of slot <paramref name="slotIndex"/>'s payload (post-MD5) in the
     /// returned buffer. Mirrors BenGrn's <c>SLOT_START_INDEX + slotIndex * 0x10 + slotIndex *
     /// SLOT_LENGTH</c>.</summary>
