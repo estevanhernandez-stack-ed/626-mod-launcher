@@ -1324,11 +1324,19 @@ public sealed partial class MainViewModel : ObservableObject
                     .Select(e => e.Replace('\\', '/'))
                     .Where(e => !e.EndsWith("/", StringComparison.Ordinal))
                     .ToList();
+                // Resolve the symbolic InstallRoot ("PlayFolder", "GameRoot") to the actual
+                // absolute path the installer will use. Two reasons: (1) the dialog has to show
+                // the user the TRUTH about where files land — "ELDEN RING" hides the \Game
+                // suffix and confused F2's first smoke; (2) the overwrite-check has to look in
+                // the same place the installer will write, or it'll miss / falsely report
+                // existing files.
+                var resolvedInstallRoot = FrameworkInstaller.ResolveInstallRoot(
+                    classify.Match.InstallRoot, _ctx.GameRoot);
                 var willOverwrite = fileNames
-                    .Where(e => File.Exists(Path.Combine(_ctx.GameRoot, e)))
+                    .Where(e => File.Exists(Path.Combine(resolvedInstallRoot, e)))
                     .ToList();
 
-                var dlg = new FrameworkInstallDialog(classify.Match, fileNames, willOverwrite, _ctx.GameRoot)
+                var dlg = new FrameworkInstallDialog(classify.Match, fileNames, willOverwrite, resolvedInstallRoot)
                 { XamlRoot = App.MainWindow!.Content.XamlRoot };
                 var result = await dlg.ShowAsync();
                 if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
