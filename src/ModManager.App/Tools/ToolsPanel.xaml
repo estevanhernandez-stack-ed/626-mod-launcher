@@ -33,6 +33,7 @@
                         <Button Padding="10,4"
                                 ToolTipService.ToolTip="{x:Bind DisplayName}"
                                 Click="OnToolClick"
+                                RightTapped="OnToolRightTapped"
                                 Tag="{x:Bind}">
                             <TextBlock Text="{x:Bind DisplayName}" />
                         </Button>

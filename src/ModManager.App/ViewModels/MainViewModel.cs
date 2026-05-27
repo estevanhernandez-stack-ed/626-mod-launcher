@@ -614,6 +614,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>
     public Task RefreshAsync() => ReloadModsAsync();
 
+    /// <summary>Public accessor for the active game's data dir — used by Tools dialogs to find
+    /// <c>tools.json</c>. Returns an empty string when no game is bound (caller short-circuits).</summary>
+    public string GameDataDirPublic() => _ctx?.DataDir ?? "";
+
     // ---------- inline load-order mode ----------
 
     /// <summary>Enter load-order mode: show only enabled mods, in saved order, numbered + draggable.</summary>

@@ -37,6 +37,24 @@ public sealed partial class ToolsPanel : UserControl
         }
     }
 
+    // Right-click on an installed tool opens the configure dialog (rename / change runnable /
+    // toggle EditsSaves / uninstall). The dialog writes through ToolRegistry.Save itself; we just
+    // kick a RefreshAsync after it closes so the slim row repaints with the new shape.
+    private async void OnToolRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.Tag is ToolEntry entry && ViewModel is not null)
+        {
+            var dataDir = ViewModel.GameDataDirPublic();
+            if (string.IsNullOrEmpty(dataDir)) return;
+
+            var dialog = new ToolConfigureDialog(entry, dataDir) { XamlRoot = this.XamlRoot };
+            await dialog.ShowAsync();
+            // Refresh tools — the dialog wrote through ToolRegistry.Save (Save or Uninstall path).
+            // RefreshAsync is the public wrapper around the VM's private ReloadModsAsync.
+            await ViewModel.RefreshAsync();
+        }
+    }
+
     // Catalog "Get …" chip: open the Nexus / vendor page in the system browser. Some catalog entries
     // ship with a null/empty GetUrl (pin not landed yet) — guard so the click is a no-op there.
     private async void OnGetToolClick(object sender, RoutedEventArgs e)
