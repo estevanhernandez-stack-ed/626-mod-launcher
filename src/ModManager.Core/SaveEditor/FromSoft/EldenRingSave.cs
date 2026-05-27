@@ -13,9 +13,9 @@ namespace ModManager.Core.SaveEditor.FromSoft;
 ///    save-header MD5 (the per-slot summary name/level lives there), and writes atomically.
 ///
 /// File format (BND4 container, per <c>docs/superpowers/research/2026-05-26-fromsoft-save-libs.md</c>):
-/// - 0x000..0x300: BND4 header + file table.
-/// - 0x300 + i * 0x280010: slot i MD5 (16 bytes).
-/// - 0x310 + i * 0x280010: slot i data (0x280000 bytes).
+/// - 0x000..0x320: BND4 header + file table + name table.
+/// - 0x320 + i * 0x280010: slot i MD5 (16 bytes).
+/// - 0x330 + i * 0x280010: slot i data (0x280000 bytes).
 /// - 0x19003A0..0x19003B0: save-header MD5 (16 bytes).
 /// - 0x19003B0..0x19603B0: save-header section (0x60000 bytes; per-slot summaries + flags).
 /// - 0x1901D04 + i: active-flag byte for slot i.
@@ -37,8 +37,8 @@ public static class EldenRingSave
     internal const int SlotCount = 10;
     internal const int SlotDataSize = SlotData.SlotSize;        // 0x280000
     internal const int SlotStride = SlotDataSize + 0x10;         // 0x280010
-    internal const int FirstSlotMd5Offset = 0x300;
-    internal const int FirstSlotDataOffset = 0x310;
+    internal const int FirstSlotMd5Offset = 0x320;
+    internal const int FirstSlotDataOffset = 0x330;
 
     internal const int SaveHeaderMd5Offset = 0x019003A0;
     internal const int SaveHeadersSectionStart = 0x019003B0;

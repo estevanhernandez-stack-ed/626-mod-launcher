@@ -143,7 +143,7 @@ public class EldenRingSaveTests : IDisposable
         var bytes = EldenRingFixture.BuildSaveWithOneCharacter(
             runes: 1000u, vig: 10, mnd: 10, end_: 10, str: 10, dex: 10, int_: 10, fai: 10, arc: 10);
         // Tamper slot 0's data without recomputing the MD5.
-        bytes[0x310 + 0x100] ^= 0xFF;
+        bytes[0x330 + 0x100] ^= 0xFF;
         File.WriteAllBytes(savePath, bytes);
 
         var slots = EldenRingSave.ReadCharacters(savePath);
@@ -199,7 +199,7 @@ public class EldenRingSaveTests : IDisposable
         File.WriteAllBytes(savePath, bytes);
 
         // i) DiscoverMagicOffset walks the weapon entry and lands on 0xA1DC.
-        var slotData = bytes.AsSpan(0x310, SlotData.SlotSize);
+        var slotData = bytes.AsSpan(0x330, SlotData.SlotSize);
         int discovered = EldenRingSave.DiscoverMagicOffset(slotData);
         Assert.Equal(0xA1DC, discovered);
 
