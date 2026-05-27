@@ -107,6 +107,23 @@ public static class Bnd4Reader
             long dataOffset = BitConverter.ToInt64(bytes, entryStart + EntryDataOffsetOffset);
             int nameOffset = BitConverter.ToInt32(bytes, entryStart + EntryNameOffsetOffset);
 
+            // Per-entry data-range bounds check. Without this, a malformed save with
+            // data_offset = long.MaxValue would slip past Parse and only blow up later at
+            // checked((int)long) inside EldenRingSave as OverflowException — not the
+            // InvalidDataException UI code expects. Reject the individual fields first
+            // (negative or already past the buffer) before computing the sum, otherwise
+            // long.MaxValue + dataSize wraps to a negative value and looks valid.
+            if (dataOffset < 0
+                || dataSize < 0
+                || dataOffset > bytes.Length
+                || dataSize > bytes.Length
+                || dataOffset + dataSize > bytes.Length)
+            {
+                throw new InvalidDataException(
+                    $"BND4 entry {i} data range (offset 0x{dataOffset:X}, size 0x{dataSize:X}) " +
+                    $"is outside the buffer (length {bytes.Length}).");
+            }
+
             string name = ReadUtf16Name(bytes, nameOffset, entryIndex: i);
             entries.Add(new Bnd4Entry(name, dataOffset, dataSize));
         }
