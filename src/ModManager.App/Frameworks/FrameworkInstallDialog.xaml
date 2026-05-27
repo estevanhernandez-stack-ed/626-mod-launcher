@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.Frameworks.FrameworkInstallDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Install framework"
+    PrimaryButtonText="Install"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <!-- Confirmation dialog before the launcher extracts a recognized framework zip into the game
+         root. Surfaces the framework's author + URL, the file list from the zip, and (if any) a
+         warning about files that will be replaced + where their backup will live. Primary action
+         runs FrameworkInstaller.Install via the caller (MainViewModel). -->
+    <StackPanel Spacing="12" Width="440">
+        <TextBlock x:Name="HeadlineText" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock x:Name="AuthorText" Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock Text="Files that will be installed:" FontWeight="SemiBold" FontSize="12" />
+        <ListView x:Name="FilesList" MaxHeight="200" SelectionMode="None">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{x:Bind}" FontFamily="Consolas" FontSize="11" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <TextBlock x:Name="OverwriteWarning" Opacity="0.8" FontSize="12" TextWrapping="Wrap"
+                   Visibility="Collapsed" />
+        <TextBlock x:Name="LocationText" Opacity="0.6" FontSize="11" TextWrapping="Wrap" />
+        <TextBlock Opacity="0.5" FontSize="11" TextWrapping="Wrap"
+                   Text="Reversible from Settings → Installed frameworks. The launcher snapshots replaced files before extraction." />
+    </StackPanel>
+</ContentDialog>
