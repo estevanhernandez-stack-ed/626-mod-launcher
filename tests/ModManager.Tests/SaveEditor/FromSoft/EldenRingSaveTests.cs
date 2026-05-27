@@ -183,32 +183,53 @@ public class EldenRingSaveTests : IDisposable
     }
 
     [Fact]
-    public void ReadCharacters_throws_NotSupportedException_when_inventory_is_non_empty()
+    public void Read_and_edit_round_trip_against_save_with_inventory()
     {
-        // A save with any non-zero byte in slot 0's GA-items prefix must surface as the clear
-        // unsupported error — not corrupt reads at the wrong anchor.
+        // Real ER saves always have at least one inventory item (every starting class spawns
+        // with a weapon). This fixture plants a 21-byte weapon entry at GA-items index 0, which
+        // shifts the magic anchor from 0xA1CF (empty inventory) to 0xA1DC. The point of this
+        // test is to lock that DiscoverMagicOffset finds the shifted anchor and reads/writes
+        // stats from the correct place — without it, the previous EnsureEmptyInventoryOrThrow
+        // guard would have rejected every real save.
         Directory.CreateDirectory(_tmp);
         var savePath = Path.Combine(_tmp, "ER0000.sl2");
-        var bytes = EldenRingFixture.BuildSaveWithSomeInventory(
-            runes: 1000u, vig: 10, mnd: 10, end_: 10, str: 10, dex: 10, int_: 10, fai: 10, arc: 10);
+        var bytes = EldenRingFixture.BuildSaveWithInventory("Tarnished",
+            runes: 198_500u,
+            vig: 40, mnd: 16, end_: 30, str: 50, dex: 12, int_: 12, fai: 12, arc: 12);
         File.WriteAllBytes(savePath, bytes);
 
-        Assert.Throws<NotSupportedException>(() => EldenRingSave.ReadCharacters(savePath));
-    }
+        // i) DiscoverMagicOffset walks the weapon entry and lands on 0xA1DC.
+        var slotData = bytes.AsSpan(0x310, SlotData.SlotSize);
+        int discovered = EldenRingSave.DiscoverMagicOffset(slotData);
+        Assert.Equal(0xA1DC, discovered);
 
-    [Fact]
-    public void WriteEdit_throws_NotSupportedException_when_inventory_is_non_empty()
-    {
-        // Same guard on the write path — refuses BEFORE touching the file, so a real save with
-        // inventory never gets a fixed-anchor corrupting write.
-        Directory.CreateDirectory(_tmp);
-        var savePath = Path.Combine(_tmp, "ER0000.sl2");
-        var bytes = EldenRingFixture.BuildSaveWithSomeInventory(
-            runes: 1000u, vig: 10, mnd: 10, end_: 10, str: 10, dex: 10, int_: 10, fai: 10, arc: 10);
-        File.WriteAllBytes(savePath, bytes);
+        // ii) Reading stats works — the values we planted at the shifted anchor come back.
+        var slots = EldenRingSave.ReadCharacters(savePath);
+        var slot = Assert.Single(slots);
+        Assert.Equal("Tarnished", slot.Name);
+        Assert.Equal(198_500u, slot.Runes);
+        Assert.Equal(40, slot.Vig);
+        Assert.Equal(50, slot.Str);
 
-        Assert.Throws<NotSupportedException>(() =>
-            EldenRingSave.WriteEdit(savePath, slotIndex: 0,
-                new CharacterEdit("X", 1u, 11, 11, 11, 11, 11, 11, 11, 11)));
+        // iii) WriteEdit round-trips correctly. The post-write verification mask uses the
+        // discovered anchor, so a wrong-anchor write would either fail VerifyPostWrite or fail
+        // the round-trip read below.
+        EldenRingSave.WriteEdit(savePath, slotIndex: 0, new CharacterEdit(
+            Name: "Renamed",
+            Runes: 1_000_000u,
+            Vig: 50, Mnd: 18, End: 32, Str: 55, Dex: 14, Int: 14, Fai: 14, Arc: 14));
+
+        var afterEdit = EldenRingSave.ReadCharacters(savePath);
+        var edited = Assert.Single(afterEdit);
+        Assert.Equal("Renamed", edited.Name);
+        Assert.Equal(1_000_000u, edited.Runes);
+        Assert.Equal(50, edited.Vig);
+        Assert.Equal(18, edited.Mnd);
+        Assert.Equal(32, edited.End);
+        Assert.Equal(55, edited.Str);
+        Assert.Equal(14, edited.Dex);
+        Assert.Equal(14, edited.Int);
+        Assert.Equal(14, edited.Fai);
+        Assert.Equal(14, edited.Arc);
     }
 }

@@ -66,8 +66,8 @@ public static class EldenRingFixture
 
         // Populate slot 0's data (runes + stats) at the fixture anchor.
         var slot0Data = buffer.AsSpan(FirstSlotDataOffset, SlotDataSize);
-        SlotData.WriteRunes(slot0Data, runes);
-        SlotData.WriteStats(slot0Data, vig, mnd, end_, str, dex, int_, fai, arc);
+        SlotData.WriteRunes(slot0Data, runes, SlotData.FixtureMagicOffset);
+        SlotData.WriteStats(slot0Data, vig, mnd, end_, str, dex, int_, fai, arc, SlotData.FixtureMagicOffset);
 
         // Compute and write slot 0's MD5.
         var slot0Md5Region = buffer.AsSpan(FirstSlotMd5Offset, 0x10);
@@ -139,29 +139,68 @@ public static class EldenRingFixture
         return buffer;
     }
 
-    /// <summary>Build a save that looks like <see cref="BuildSaveWithOneCharacter"/> but with a
-    /// fake non-zero byte planted in slot 0's GA-items region — enough to trip the empty-inventory
-    /// detection guard in <see cref="EldenRingSave"/>. The slot MD5 is recomputed AFTER the
-    /// tamper so the slot itself reads cleanly past the integrity check; the inventory guard is
-    /// what should fire.</summary>
-    public static byte[] BuildSaveWithSomeInventory(uint runes,
+    /// <summary>Build a save like <see cref="BuildSaveWithOneCharacter"/> but with a real weapon
+    /// entry planted at GA-items index 0. The weapon entry is 21 bytes (per alfizari Item.from_bytes
+    /// for handle type-bits 0x80000000), which shifts the magic anchor:
+    /// <code>
+    /// end_of_ga = 0x20 + 21 + 5119 * 8 = 0xA02D
+    /// anchor    = end_of_ga + 0x1AF     = 0xA1DC   (vs 0xA1CF for an all-empty fixture)
+    /// </code>
+    /// Stats + runes are written at the SHIFTED anchor — round-trip tests that read this fixture
+    /// validate that <see cref="EldenRingSave.DiscoverMagicOffset"/> finds 0xA1DC, not 0xA1CF.</summary>
+    public static byte[] BuildSaveWithInventory(uint runes,
+        byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
+        => BuildSaveWithInventory(DefaultFixtureName, runes, vig, mnd, end_, str, dex, int_, fai, arc);
+
+    /// <summary>Named-character overload of <see cref="BuildSaveWithInventory(uint, byte, byte, byte, byte, byte, byte, byte, byte)"/>.</summary>
+    public static byte[] BuildSaveWithInventory(string name, uint runes,
         byte vig, byte mnd, byte end_, byte str, byte dex, byte int_, byte fai, byte arc)
     {
-        var buffer = BuildSaveWithOneCharacter(runes, vig, mnd, end_, str, dex, int_, fai, arc);
+        // Magic anchor when slot 0's first GA-items entry is a weapon (21 bytes):
+        //   0x20 + 21 + 5119 * 8 + 0x1AF = 0xA1DC
+        const uint WeaponHandle = 0x80000001u;            // handle != 0, type-bits = 0x80000000
+        const uint WeaponItemId = 0x40000000u;            // any valid item_id; not load-bearing
+        const int InventoryAnchor = 0xA1DC;
 
-        // Plant a non-zero byte inside the first 64 bytes of slot 0's GA-items region. The
-        // EldenRingSave.EnsureEmptyInventoryOrThrow probe scans this prefix and throws on any
-        // non-zero — this mimics a real save where slot 0 has at least one inventory item.
-        // GA-items table starts at slot-body offset 0x20 (alfizari/Final.py + SlotData.GaItemsStart).
-        const int GaItemsStartOffset = 0x20;
-        int slot0GaItemsStart = FirstSlotDataOffset + GaItemsStartOffset;
-        buffer[slot0GaItemsStart + 8] = 0xAB; // arbitrary non-zero somewhere in the probed prefix
+        var totalSize = SaveHeaderTotalEnd;
+        var buffer = new byte[totalSize];
+        WriteBnd4Header(buffer);
 
-        // Recompute slot 0's MD5 so the integrity check still passes — the guard we want to
-        // trip is the inventory check, not the MD5 check.
         var slot0Data = buffer.AsSpan(FirstSlotDataOffset, SlotDataSize);
+
+        // Plant a 21-byte weapon entry at GA-items index 0 (slot offset 0x20). Only the first
+        // 8 bytes (handle + item_id) carry meaning for the walk; the remaining 13 bytes can be
+        // anything (the walk just skips past them based on the handle's type-bits).
+        BitConverter.TryWriteBytes(slot0Data.Slice(0x20, 4), WeaponHandle);
+        BitConverter.TryWriteBytes(slot0Data.Slice(0x24, 4), WeaponItemId);
+        // bytes 0x28..0x35 stay zero — fine, the walk doesn't inspect them.
+
+        // Write stats + runes at the SHIFTED anchor (0xA1DC, not the empty-fixture 0xA1CF).
+        SlotData.WriteRunes(slot0Data, runes, InventoryAnchor);
+        SlotData.WriteStats(slot0Data, vig, mnd, end_, str, dex, int_, fai, arc, InventoryAnchor);
+
+        // Slot 0 MD5 over the tampered body.
         var slot0Md5Region = buffer.AsSpan(FirstSlotMd5Offset, 0x10);
         SlotChecksum.ComputeMd5(slot0Data).CopyTo(slot0Md5Region);
+
+        // Slots 1-9 stay zero-filled.
+        var zeroSlotMd5 = SlotChecksum.ComputeMd5(new byte[SlotDataSize]);
+        for (int i = 1; i < SlotCount; i++)
+        {
+            var md5Region = buffer.AsSpan(FirstSlotMd5Offset + i * SlotStride, 0x10);
+            zeroSlotMd5.CopyTo(md5Region);
+        }
+
+        // Save-header section: active flag + summary + save-header MD5.
+        buffer[CharActiveStatusOffset + 0] = 1;
+        var slot0Summary = buffer.AsSpan(PerSlotSummaryStart, PerSlotSummaryStride);
+        WriteCharacterName(slot0Summary, name);
+        var stats = new SlotStats(vig, mnd, end_, str, dex, int_, fai, arc);
+        BitConverter.TryWriteBytes(slot0Summary.Slice(CharLevelOffsetInSummary, 2), (short)SlotData.LevelFromStats(stats));
+        BitConverter.TryWriteBytes(slot0Summary.Slice(CharPlayedSecondsOffsetInSummary, 4), 0);
+        var saveHeaderRegion = buffer.AsSpan(SaveHeadersSectionStart, SaveHeadersSectionLength);
+        var saveHeaderMd5Region = buffer.AsSpan(SaveHeaderMd5Offset, 0x10);
+        SlotChecksum.ComputeMd5(saveHeaderRegion).CopyTo(saveHeaderMd5Region);
 
         return buffer;
     }
