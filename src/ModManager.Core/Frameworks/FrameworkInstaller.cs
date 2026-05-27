@@ -37,6 +37,39 @@ public sealed record FrameworkInstallResult(
 /// </summary>
 public static class FrameworkInstaller
 {
+    /// <summary>
+    /// Resolve a symbolic <see cref="KnownFramework.InstallRoot"/> value to an absolute path.
+    /// Two values are recognized:
+    /// <list type="bullet">
+    ///   <item><description><c>GameRoot</c> — the game's ship-root folder (the value the
+    ///     launcher already calls "game root"). Right for non-FromSoft engines whose exe sits
+    ///     at the root.</description></item>
+    ///   <item><description><c>PlayFolder</c> — <c>&lt;gameRoot&gt;/Game/</c> if that
+    ///     subfolder exists, else falls back to <c>gameRoot</c>. Right for FromSoft games
+    ///     (Elden Ring, Sekiro, DS3) where the exe lives under <c>Game/</c>; a chain-load
+    ///     proxy DLL (dinput8.dll for ELM) MUST sit next to the exe to load.</description></item>
+    /// </list>
+    /// Mirrors <c>DirectInjectService.PlayFolder</c>'s shape but lives in Core so the
+    /// installer has no App dependency.
+    /// </summary>
+    public static string ResolveInstallRoot(string installRootSymbol, string gameRoot)
+    {
+        return installRootSymbol switch
+        {
+            "GameRoot" => gameRoot,
+            "PlayFolder" => ResolvePlayFolder(gameRoot),
+            _ => throw new InvalidOperationException(
+                $"Unknown framework install root '{installRootSymbol}'."),
+        };
+    }
+
+    private static string ResolvePlayFolder(string gameRoot)
+    {
+        if (string.IsNullOrEmpty(gameRoot)) return gameRoot;
+        var game = Path.Combine(gameRoot, "Game");
+        return Directory.Exists(game) ? game : gameRoot;
+    }
+
     public static FrameworkInstallResult Install(
         string archivePath, KnownFramework framework, string gameRoot, string gameDataDir)
     {
@@ -46,12 +79,7 @@ public static class FrameworkInstaller
         if (string.IsNullOrEmpty(gameDataDir)) throw new ArgumentException("gameDataDir empty", nameof(gameDataDir));
         if (!File.Exists(archivePath)) throw new FileNotFoundException("Archive missing.", archivePath);
 
-        string installRoot = framework.InstallRoot switch
-        {
-            "GameRoot" => gameRoot,
-            _ => throw new InvalidOperationException(
-                $"Unknown framework install root '{framework.InstallRoot}'."),
-        };
+        string installRoot = ResolveInstallRoot(framework.InstallRoot, gameRoot);
 
         var frameworkDir = Path.Combine(gameDataDir, "frameworks", framework.FrameworkId);
         var backupRoot = Path.Combine(frameworkDir, "backup", DateTime.UtcNow.ToString("yyyyMMddHHmmss"));

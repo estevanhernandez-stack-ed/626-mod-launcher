@@ -128,7 +128,9 @@ public static class FrameworkDeps
 
     // For UE-pak: the project subfolders extracted from each resolved primary mod-location path
     // (the first path segment of the relative form: "R5/Content/Paks/~mods" -> "R5"), plus the
-    // bare game root as a fallback. For everything else: just the game root.
+    // bare game root as a fallback. For FromSoft: the play folder (<gameRoot>/Game) if that
+    // subfolder exists (the exe lives there + DLL proxies must sit next to the exe), plus the
+    // bare game root. For everything else: just the game root.
     private static IReadOnlyList<string> ResolveProbeRoots(GameContext ctx)
     {
         var roots = new List<string>();
@@ -141,6 +143,12 @@ public static class FrameworkDeps
                 var abs = System.IO.Path.Combine(ctx.GameRoot, sub);
                 if (!roots.Contains(abs)) roots.Add(abs);
             }
+        }
+        else if (ctx.Game.Engine == "fromsoft")
+        {
+            var gameFolder = System.IO.Path.Combine(ctx.GameRoot, "Game");
+            if (System.IO.Directory.Exists(gameFolder) && !roots.Contains(gameFolder))
+                roots.Add(gameFolder);
         }
         if (!roots.Contains(ctx.GameRoot)) roots.Add(ctx.GameRoot);
         return roots;
