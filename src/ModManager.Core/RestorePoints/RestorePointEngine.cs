@@ -114,6 +114,111 @@ public static partial class RestorePointEngine
             ? Directory.GetDirectories(root).Select(d => Path.GetFileName(d)!)
             : Enumerable.Empty<string>();
 
+    /// <summary>Restore one game from its archive: data dir copy-back, vanilla-moved files back into
+    /// the game folder (PathGate-gated per destination — Law B; sha-verified — Law C), framework
+    /// files back to InstallPath, loader enable-state re-applied. No File.Delete loop in the game
+    /// folder — verified per-file overwrite only.</summary>
+    public static void ReplayGame(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
+    {
+        var gameRootFull = Path.GetFullPath(liveCtx.GameRoot);
+
+        // 1. Copy data dir back over the live data dir (launcher-owned; overwrite is safe).
+        var archivedData = Path.Combine(gameArchiveDir, "data");
+        if (Directory.Exists(archivedData))
+            CopyTreeVerifiedOverwrite(archivedData, liveCtx.DataDir);
+
+        // 2. Move vanilla-moved files back into the game folder.
+        foreach (var mf in ga.MovedFiles)
+        {
+            // Law B: gate every destination against the game root.
+            if (!PathGate.IsContained(mf.Rel, gameRootFull))
+                throw new InvalidOperationException($"Restore refused: \"{mf.Rel}\" escapes the game folder.");
+
+            var srcAbs = Path.Combine(gameArchiveDir, "vanilla-moved", mf.Rel);
+            var destAbs = Path.Combine(liveCtx.GameRoot, mf.Rel);
+
+            if (File.Exists(srcAbs))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
+                // Overwrite-safe copy (temp + verify + atomic replace).
+                var tmp = destAbs + ".rp-tmp";
+                File.Copy(srcAbs, tmp, overwrite: true);
+                if (new FileInfo(tmp).Length != new FileInfo(srcAbs).Length)
+                { try { File.Delete(tmp); } catch { } throw new IOException($"Restore verify failed copying \"{mf.Rel}\"."); }
+                if (File.Exists(destAbs)) File.Delete(destAbs);
+                File.Move(tmp, destAbs);
+
+                // Law C: sha-verify after write.
+                if (mf.Sha256 is not null && !string.Equals(FileTally.Sha256(destAbs), mf.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"Restore checksum mismatch on \"{mf.Rel}\".");
+            }
+            else if (Directory.Exists(srcAbs))
+            {
+                CopyTreeVerifiedOverwrite(srcAbs, destAbs);
+            }
+        }
+
+        // 3. Restore framework files back to their InstallPath.
+        foreach (var fw in ga.Frameworks)
+        {
+            if (fw.CapturedStateRel is null) continue;
+            var capturedAbs = Path.Combine(gameArchiveDir, fw.CapturedStateRel);
+            if (!Directory.Exists(capturedAbs)) continue;
+            var installFull = Path.GetFullPath(fw.InstallPath);
+            foreach (var rel in fw.InstalledFiles)
+            {
+                if (!PathGate.IsContained(rel, installFull))
+                    throw new InvalidOperationException($"Restore refused: framework file \"{rel}\" escapes the install root.");
+                var srcAbs = Path.Combine(capturedAbs, rel);
+                if (!File.Exists(srcAbs)) continue;
+                var destAbs = Path.Combine(fw.InstallPath, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(destAbs)!);
+                var tmp = destAbs + ".rp-tmp";
+                File.Copy(srcAbs, tmp, overwrite: true);
+                if (new FileInfo(tmp).Length != new FileInfo(srcAbs).Length)
+                { try { File.Delete(tmp); } catch { } throw new IOException($"Restore verify failed copying framework file \"{rel}\"."); }
+                if (File.Exists(destAbs)) File.Delete(destAbs);
+                File.Move(tmp, destAbs);
+            }
+        }
+
+        // 4. Re-apply loader enable state (best effort — loader manifest may be absent).
+        foreach (var lm in ga.LoaderMods)
+        {
+            var abs = liveCtx.Locations.FirstOrDefault()?.Abs;
+            if (abs is null) continue;
+            try
+            {
+                if (lm.Loader == "ue4ss") Ue4ssManifest.SetEnabled(abs, lm.Name, lm.Enabled);
+                else if (lm.Loader == "bepinex") BepInExPlugins.SetEnabled(abs, lm.Name, lm.Enabled);
+            }
+            catch { /* best effort */ }
+        }
+
+        // 5. Remove the launcher-authored off-boarding sheet if present.
+        if (ga.OffboardingSheetGameFolderPath is not null && File.Exists(ga.OffboardingSheetGameFolderPath))
+            try { File.Delete(ga.OffboardingSheetGameFolderPath); } catch { /* best effort */ }
+    }
+
+    // Verified copy that OVERWRITES existing files (restore replays over a known layout — NOT a
+    // delete-then-extract). Per-file: copy to temp sibling, verify size, atomic replace. No game-folder
+    // File.Delete loop. (SafeMove.CopyDirVerified refuses pre-existing dests, so it can't be used here.)
+    private static void CopyTreeVerifiedOverwrite(string src, string dest)
+    {
+        Directory.CreateDirectory(dest);
+        foreach (var f in Directory.GetFiles(src))
+        {
+            var target = Path.Combine(dest, Path.GetFileName(f));
+            var tmp = target + ".rp-tmp";
+            File.Copy(f, tmp, overwrite: true);
+            if (new FileInfo(tmp).Length != new FileInfo(f).Length)
+            { try { File.Delete(tmp); } catch { } throw new IOException($"Restore verify failed copying \"{f}\"."); }
+            if (File.Exists(target)) File.Delete(target);
+            File.Move(tmp, target);
+        }
+        foreach (var d in Directory.GetDirectories(src))
+            CopyTreeVerifiedOverwrite(d, Path.Combine(dest, Path.GetFileName(d)));
+    }
 
     /// <summary>Copy the game's data dir + framework install state into the archive, and build its
     /// manifest entry. Non-destructive: the live data dir and game folder are untouched.
