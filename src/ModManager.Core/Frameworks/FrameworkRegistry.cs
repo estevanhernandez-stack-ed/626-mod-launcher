@@ -52,21 +52,24 @@ public static class FrameworkRegistry
         var m = JsonSerializer.Deserialize<FrameworkInstallManifest>(File.ReadAllText(manifestPath), Json)
                 ?? throw new InvalidDataException($"Couldn't parse manifest for '{frameworkId}'.");
 
+        // Resolve against the manifest's recorded install root, not gameRoot. Old manifests that
+        // predate a reliable InstallPath fall back to gameRoot (the historic behavior).
+        var installRoot = string.IsNullOrEmpty(m.InstallPath) ? gameRoot : m.InstallPath;
+
         // Delete every installed file. Idempotent — already-gone files are fine.
         foreach (var rel in m.InstalledFiles)
         {
-            var abs = Path.Combine(gameRoot, rel);
+            var abs = Path.Combine(installRoot, rel);
             try { if (File.Exists(abs)) File.Delete(abs); } catch { /* leave for manual */ }
         }
 
-        // Restore the backup (if any) — copy each file from the backup tree back over the
-        // install root. This puts back the original files the install replaced.
+        // Restore the backup (if any) back over the install root.
         if (!string.IsNullOrEmpty(m.BackupSnapshotPath) && Directory.Exists(m.BackupSnapshotPath))
         {
             foreach (var src in Directory.EnumerateFiles(m.BackupSnapshotPath, "*", SearchOption.AllDirectories))
             {
                 var rel = Path.GetRelativePath(m.BackupSnapshotPath, src);
-                var dst = Path.Combine(gameRoot, rel);
+                var dst = Path.Combine(installRoot, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
                 File.Copy(src, dst, overwrite: true);
             }
