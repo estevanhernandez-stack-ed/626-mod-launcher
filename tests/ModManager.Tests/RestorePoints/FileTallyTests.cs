@@ -31,4 +31,8 @@ public class FileTallyTests : IDisposable
     [Fact]
     public void ByteSize_of_missing_dir_is_zero()
         => Assert.Equal(0, FileTally.ByteSize(Path.Combine(_tmp, "nope")));
+
+    [Fact]
+    public void FileCount_of_missing_dir_is_zero()
+        => Assert.Equal(0, FileTally.FileCount(Path.Combine(_tmp, "nope")));
 }
