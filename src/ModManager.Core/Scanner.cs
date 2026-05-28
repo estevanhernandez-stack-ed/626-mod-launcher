@@ -297,19 +297,7 @@ public static class Scanner
 
     // ---------- move helpers ----------
 
-    private static void MoveAny(string src, string dest)
-    {
-        try
-        {
-            if (Directory.Exists(src)) Directory.Move(src, dest);
-            else File.Move(src, dest);
-        }
-        catch
-        {
-            if (Directory.Exists(src)) { CopyDir(src, dest); DeleteDir(src); }
-            else { File.Copy(src, dest); File.Delete(src); }
-        }
-    }
+    private static void MoveAny(string src, string dest) => SafeMove.Move(src, dest);
 
     private static void CopyDir(string src, string dest)
     {
