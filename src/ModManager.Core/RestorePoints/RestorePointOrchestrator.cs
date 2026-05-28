@@ -94,7 +94,11 @@ public sealed class RestorePointOrchestrator
             foreach (var g in games)
             {
                 var ctx = _provider.ContextFor(g);
-                // Even with skip-archive this MOVES (never deletes) — vanilla-moved files land under rpDir.
+                // NOTE: with skip-archive (CreateRestorePoint=false) + vanilla, ApplyEndState still MOVES
+                // direct-inject files into rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest
+                // is sealed and no marker is written, so this folder is NOT a managed restore point. The
+                // files are preserved on disk (recoverable manually); ListRestorePoints (Task 4) shows only
+                // sealed points. This is the "skip archive" contract: no safety net, but nothing deleted.
                 RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id));
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, "626-launcher-how-to-launch.txt"));
@@ -105,7 +109,7 @@ public sealed class RestorePointOrchestrator
             if (!opts.KeepNexus) _nexus.DeleteStoredKey();
             _provider.Reload();
             if (opts.CreateRestorePoint) RestoreMarkers.WriteLastClear(_dataRoot, timestamp, timestamp);
-            File.Delete(lockPath);
+            try { File.Delete(lockPath); } catch { /* best-effort: startup recovery (Task 5) handles a stale lock */ }
 
             return new SafeClearResult(true, null, opts.CreateRestorePoint ? timestamp : null, sheetPaths, warnings);
         }
@@ -150,5 +154,5 @@ public sealed class RestorePointOrchestrator
         foreach (var d in TopLevelDirs) { try { var p = Path.Combine(_dataRoot, d); if (Directory.Exists(p)) Directory.Delete(p, recursive: true); } catch { } }
     }
 
-    private static long Gb(long bytes) => Math.Max(1, bytes / (1024 * 1024 * 1024));
+    private static string Gb(long bytes) => (bytes / 1_073_741_824.0).ToString("0.0");
 }
