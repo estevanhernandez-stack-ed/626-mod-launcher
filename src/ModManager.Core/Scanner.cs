@@ -1062,6 +1062,8 @@ public static class Scanner
             Downloads = curated.Downloads ?? cf.Downloads,
             CurseforgeId = curated.CurseforgeId ?? cf.CurseforgeId,
             Category = curated.Category ?? cf.Category,
+            InstalledUtc = curated.InstalledUtc ?? cf.InstalledUtc,
+            SourceConfidence = curated.SourceConfidence ?? cf.SourceConfidence,
         };
     }
 
