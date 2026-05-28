@@ -20,6 +20,23 @@ public class ScannerEnableRollbackTests
         return (modsDir, c);
     }
 
+    /// <summary>by_folder fixture: mod is a directory inside the mod location.</summary>
+    private static (string modLiveDir, GameContext c) FolderModFixture()
+    {
+        var root = TestSupport.TempDir("enable-folder-");
+        var gameRoot = Path.Combine(root, "game");
+        var modLiveDir = Path.Combine(gameRoot, "mod");
+        Directory.CreateDirectory(modLiveDir);
+        var c = Scanner.GameContext(new GameEntry
+        {
+            Id = "t", GameName = "T", GameRoot = gameRoot,
+            DataDir = Path.Combine(root, "_626mods", "t"),
+            ModLocations = new[] { new ModLocation("mods", "mods", "mod") },
+            GroupingRule = "by_folder",
+        });
+        return (modLiveDir, c);
+    }
+
     [Fact]
     public async Task Enable_rolls_back_and_keeps_holding_when_a_live_copy_fails()
     {
@@ -63,5 +80,41 @@ public class ScannerEnableRollbackTests
         Assert.True(outcome.Skipped);
         Assert.False(outcome.Enabled);
         Assert.NotNull(outcome.Reason);
+    }
+
+    [Fact]
+    public async Task Enable_folder_mod_conflict_throws_and_does_not_delete_preexisting_live_folder()
+    {
+        // 1. Build a folder mod (by_folder grouping: a directory IS the mod) and disable it,
+        //    moving it into the holding folder.
+        var (modLiveDir, c) = FolderModFixture();
+        var modFolder = Path.Combine(modLiveDir, "SeamlessCoop");
+        Directory.CreateDirectory(modFolder);
+        File.WriteAllText(Path.Combine(modFolder, "mod.dll"), "DLL");
+        await Scanner.DisableModAsync("SeamlessCoop", c);
+
+        // Holding folder should now contain the mod directory.
+        var holding = Path.Combine(c.DisabledRoot, "SeamlessCoop");
+        Assert.True(Directory.Exists(holding), "holding folder should exist after disable");
+        Assert.True(File.Exists(Path.Combine(holding, "SeamlessCoop", "mod.dll")),
+            "mod.dll should be inside the holding copy");
+
+        // 2. Re-create a DIFFERENT folder at the same live path with user content — this is
+        //    the pre-existing data that must survive the attempted re-enable.
+        Directory.CreateDirectory(modFolder);
+        File.WriteAllText(Path.Combine(modFolder, "user.txt"), "KEEP");
+
+        // 3. EnableModAsync must throw because the live destination already exists.
+        await Assert.ThrowsAnyAsync<Exception>(() => Scanner.EnableModAsync("SeamlessCoop", c));
+
+        // 4. The pre-existing user.txt must still be there — rollback must NOT have deleted it.
+        Assert.True(File.Exists(Path.Combine(modFolder, "user.txt")),
+            "pre-existing user.txt must survive — rollback must not delete pre-existing data");
+        Assert.Equal("KEEP", File.ReadAllText(Path.Combine(modFolder, "user.txt")));
+
+        // 5. The holding folder is still intact — the mod is not stranded.
+        Assert.True(Directory.Exists(holding), "holding folder must still exist after failed enable");
+        Assert.True(File.Exists(Path.Combine(holding, "SeamlessCoop", "mod.dll")),
+            "mod.dll must remain in holding after failed enable");
     }
 }

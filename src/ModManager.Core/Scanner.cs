@@ -491,9 +491,10 @@ public static class Scanner
         Directory.CreateDirectory(loc.Abs);
         foreach (var mp in loc.Mirrors) Directory.CreateDirectory(mp);
 
-        // Copy every entry into the live + mirror locations FIRST, tracking what we create, so a
-        // mid-loop failure rolls back to the pre-enable state (holding folder untouched) instead of
-        // stranding the mod half-enabled. Only after every copy succeeds do we clear the holding folder.
+        // Copy every entry to live + the right mirrors. Pre-check each destination and throw a conflict
+        // BEFORE writing (a collision is a real conflict, and it means we must never delete that path on
+        // rollback). Track each destination in `created` BEFORE the write so a mid-copy failure (disk full,
+        // nested error) rolls back the partial copy too — the pre-check guarantees we only ever created it.
         var created = new List<string>();
         try
         {
@@ -501,24 +502,30 @@ public static class Scanner
             {
                 var entryName = Path.GetFileName(entry);
                 if (entryName == "meta.json") continue;
-                if (Directory.Exists(entry))
+                var isDir = Directory.Exists(entry);
+
+                // Live destination always; mirrors per the original hadOnServer rule:
+                //   directory entry -> mirror only if hadOnServer[entry] == true
+                //   file entry      -> mirror UNLESS hadOnServer[entry] == false
+                var dests = new List<string> { Path.Combine(loc.Abs, entryName) };
+                bool toMirrors = isDir
+                    ? (hadOnServer.TryGetValue(entryName, out var vd) && vd)
+                    : !(hadOnServer.TryGetValue(entryName, out var vf) && vf == false);
+                if (toMirrors)
+                    foreach (var mp in loc.Mirrors) dests.Add(Path.Combine(mp, entryName));
+
+                foreach (var dst in dests)
                 {
-                    var liveDest = Path.Combine(loc.Abs, entryName);
-                    CopyDir(entry, liveDest); created.Add(liveDest);
-                    if (hadOnServer.TryGetValue(entryName, out var v) && v)
-                        foreach (var mp in loc.Mirrors) { var md = Path.Combine(mp, entryName); CopyDir(entry, md); created.Add(md); }
-                }
-                else
-                {
-                    var liveDest = Path.Combine(loc.Abs, entryName);
-                    File.Copy(entry, liveDest); created.Add(liveDest);   // overwrite:false — a collision is a real conflict
-                    if (!(hadOnServer.TryGetValue(entryName, out var v) && v == false))
-                        foreach (var mp in loc.Mirrors) { var md = Path.Combine(mp, entryName); File.Copy(entry, md); created.Add(md); }
+                    if (Directory.Exists(dst) || File.Exists(dst))
+                        throw new IOException($"\"{entryName}\" already exists at \"{dst}\" — conflict.");
+                    created.Add(dst);                                 // track BEFORE the write
+                    if (isDir) CopyDir(entry, dst); else File.Copy(entry, dst);
                 }
             }
         }
         catch (Exception e)
         {
+            // Roll back only paths we created this run; the holding folder is left untouched.
             foreach (var p in created)
             {
                 try { if (Directory.Exists(p)) Directory.Delete(p, recursive: true); else if (File.Exists(p)) File.Delete(p); }
