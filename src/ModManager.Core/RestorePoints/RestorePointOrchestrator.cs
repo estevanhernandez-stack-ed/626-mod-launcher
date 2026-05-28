@@ -23,6 +23,7 @@ public sealed class RestorePointOrchestrator
     private static readonly string[] TopLevelDirs = { "themes", "profile" };
     private static readonly string[] TopLevelFiles = { "games.json", "app-settings.json" };
     private const string LockName = "safe-clear.lock";
+    private const string SheetFileName = "626-launcher-how-to-launch.txt";
 
     public RestorePointOrchestrator(string dataRoot, string restorePointsRoot, string launcherVersion,
         IGameProvider provider, INexusGate nexus, IGameRunningProbe probe)
@@ -87,13 +88,18 @@ public sealed class RestorePointOrchestrator
                     var ctx = _provider.ContextFor(g);
                     var endState = EndStateFor(g.Id, opts);
                     var ga = RestorePointEngine.CaptureGame(new GameCaptureInput(g, ctx, endState), Path.Combine(rpDir, "games", g.Id));
+                    var sheetPath = Path.Combine(ctx.GameRoot, SheetFileName);
                     // Law A: record the PLANNED vanilla moves NOW (files still in place) so the SEALED
                     // manifest carries them. The actual move happens in MUTATE-ALL, AFTER the seal.
                     if (string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
                     {
                         var planned = RestorePointEngine.PlanVanillaMoves(ctx);
                         plannedByGame[g.Id] = planned;
-                        ga = ga with { MovedFiles = planned };
+                        ga = ga with { MovedFiles = planned, OffboardingSheetGameFolderPath = sheetPath };
+                    }
+                    else
+                    {
+                        ga = ga with { OffboardingSheetGameFolderPath = sheetPath };
                     }
                     archives.Add(ga);
                 }
@@ -122,7 +128,7 @@ public sealed class RestorePointOrchestrator
                 RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id),
                     plannedByGame.TryGetValue(g.Id, out var pm) ? pm : null);
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
-                sheetPaths.Add(Path.Combine(ctx.GameRoot, "626-launcher-how-to-launch.txt"));
+                sheetPaths.Add(Path.Combine(ctx.GameRoot, SheetFileName));
             }
 
             // RESET — delete top-level launcher state (archived); nexus only if not keeping it.

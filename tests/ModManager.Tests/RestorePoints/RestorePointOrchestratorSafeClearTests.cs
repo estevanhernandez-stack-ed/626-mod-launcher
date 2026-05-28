@@ -104,6 +104,21 @@ public class RestorePointOrchestratorSafeClearTests : IDisposable
     }
 
     [Fact]
+    public async Task SafeClear_seals_the_offboarding_sheet_path_for_cleanup_on_restore()
+    {
+        var (game, c, dataRoot, modsDir) = Setup();
+        File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "DATA");
+        await Scanner.DisableModAsync("cool", c);
+        var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
+
+        await orch.SafeClearAsync(new SafeClearOptions { CreateRestorePoint = true }, "20260528-141233", default);
+
+        var m = RestorePointManifestStore.Read(Path.Combine(dataRoot, "restore-points", "20260528-141233"))!;
+        var ga = Assert.Single(m.Games);
+        Assert.Equal(Path.Combine(c.GameRoot, "626-launcher-how-to-launch.txt"), ga.OffboardingSheetGameFolderPath);
+    }
+
+    [Fact]
     public async Task SafeClear_keepNexus_false_deletes_the_key()
     {
         var (game, c, dataRoot, modsDir) = Setup();
