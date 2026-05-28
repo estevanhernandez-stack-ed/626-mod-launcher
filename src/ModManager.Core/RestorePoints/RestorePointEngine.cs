@@ -119,15 +119,26 @@ public static partial class RestorePointEngine
     /// files back to InstallPath, loader enable-state re-applied. No File.Delete loop in the game
     /// folder — verified per-file overwrite only. Note: PathGate validates path strings, not resolved
     /// symlink targets; a symlink inside the archive could redirect a write. Low threat on Windows
-    /// since symlink creation requires elevation, but noted for completeness.</summary>
+    /// since symlink creation requires elevation, but noted for completeness.
+    /// <para>For the modsActive end-state: <see cref="ApplyEndState"/> already re-enabled all mods
+    /// (emptied the holding folder). The archived <c>data/disabled/</c> sub-tree is therefore stale
+    /// and is intentionally NOT restored — resurrecting it would place the mod in both the live mods
+    /// folder and the holding folder, breaking a subsequent user-initiated disable.</para></summary>
     public static void ReplayGame(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
     {
         var gameRootFull = Path.GetFullPath(liveCtx.GameRoot);
 
         // 1. Copy data dir back over the live data dir (launcher-owned; overwrite is safe).
+        //    modsActive: ApplyEndState re-enabled all mods and emptied the holding folder.
+        //    The archived disabled/ sub-tree is stale — skip it to prevent double-state
+        //    (mod live in mods/ AND resurrected in holding), which would break a later disable.
         var archivedData = Path.Combine(gameArchiveDir, "data");
         if (Directory.Exists(archivedData))
-            CopyTreeVerifiedOverwrite(archivedData, liveCtx.DataDir);
+        {
+            var skip = string.Equals(ga.EndState, "modsActive", StringComparison.OrdinalIgnoreCase)
+                ? new[] { "disabled" } : null;
+            CopyTreeVerifiedOverwrite(archivedData, liveCtx.DataDir, skip);
+        }
 
         // 2. Move vanilla-moved files back into the game folder.
         foreach (var mf in ga.MovedFiles)
@@ -208,7 +219,9 @@ public static partial class RestorePointEngine
     // Verified copy that OVERWRITES existing files (restore replays over a known layout — NOT a
     // delete-then-extract). Per-file: copy to temp sibling, verify size, atomic replace. No game-folder
     // File.Delete loop. (SafeMove.CopyDirVerified refuses pre-existing dests, so it can't be used here.)
-    private static void CopyTreeVerifiedOverwrite(string src, string dest)
+    // skipTopLevel: top-level sub-directory names to skip (case-insensitive). Only honoured at the first
+    // level of recursion; nested calls never propagate the skip set.
+    private static void CopyTreeVerifiedOverwrite(string src, string dest, IReadOnlyCollection<string>? skipTopLevel = null)
     {
         Directory.CreateDirectory(dest);
         foreach (var f in Directory.GetFiles(src))
@@ -222,7 +235,11 @@ public static partial class RestorePointEngine
             File.Move(tmp, target);
         }
         foreach (var d in Directory.GetDirectories(src))
-            CopyTreeVerifiedOverwrite(d, Path.Combine(dest, Path.GetFileName(d)));
+        {
+            var name = Path.GetFileName(d);
+            if (skipTopLevel is not null && skipTopLevel.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+            CopyTreeVerifiedOverwrite(d, Path.Combine(dest, name));   // nested calls do NOT propagate the skip
+        }
     }
 
     /// <summary>Copy the game's data dir + framework install state into the archive, and build its
