@@ -234,6 +234,14 @@ public static partial class SaveModInstaller
 
     // The entry's path relative to the <guid>/ folder (everything after the first <guid>/ segment),
     // or the whole path if no <guid>/ segment is present. Returns null for any unsafe rel path.
+    //
+    // Distinct from PathGate.SafeRelative — kept separate intentionally.
+    // PathGate.SafeRelative strips an optional wrapper prefix from the START of the path. This
+    // method locates the <guid> segment anywhere in the entry path (zip layouts vary: "guid/file",
+    // "worlds/guid/file", etc.) and strips everything up to and including it. That mid-path search
+    // is not expressible via PathGate.SafeRelative's stripPrefix parameter, so forcing the delegation
+    // would change behavior. The segment/traversal/drive-root rules it applies are identical to
+    // PathGate.SafeRelative's — this is just a different extraction contract.
     private static string? RelUnderGuid(string entryName, string worldGuid)
     {
         var n = entryName.Replace('\\', '/').TrimStart('/');
@@ -251,10 +259,9 @@ public static partial class SaveModInstaller
         return rel.Replace('/', System.IO.Path.DirectorySeparatorChar);
     }
 
-    // True if <path> resolves to a location strictly inside <root>. Mirrors DirectInject.IsUnder.
+    // True if <path> resolves to a location strictly inside <root>.
+    // Delegates to PathGate.IsContainedAbsolute — the canonical absolute-path containment gate.
+    // (DirectInject.IsUnder was the previous reference; it now delegates to PathGate too.)
     private static bool IsUnder(string root, string path)
-    {
-        var r = System.IO.Path.GetFullPath(root).TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
-        return System.IO.Path.GetFullPath(path).StartsWith(r, StringComparison.OrdinalIgnoreCase);
-    }
+        => PathGate.IsContainedAbsolute(path, root);
 }

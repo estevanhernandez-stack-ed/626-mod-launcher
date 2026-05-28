@@ -46,4 +46,39 @@ public class ManualMatchMergeTests
         Assert.Equal("incoming.png", merged.Image);     // existing didn't have one — incoming fills
         Assert.False(merged.IsManual);
     }
+
+    [Fact]
+    public void Merge_carries_installedUtc_from_cf_when_curated_lacks_it()
+    {
+        // cf brings InstalledUtc; curated has none — merge must surface it.
+        var stamp = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        var cfMeta = new ModMeta { Title = "CF Title", InstalledUtc = stamp, SourceConfidence = "fingerprint" };
+        var curated = new ModMeta { Title = "Curated Title" };
+        var merged = CallMergeMeta(cf: cfMeta, curated: curated);
+        Assert.Equal(stamp, merged.InstalledUtc);
+        Assert.Equal("fingerprint", merged.SourceConfidence);
+    }
+
+    [Fact]
+    public void Merge_curated_installedUtc_wins_over_cf()
+    {
+        // curated wins per-field — same as Title/Author/etc.
+        var curatedStamp = new DateTime(2025, 3, 15, 0, 0, 0, DateTimeKind.Utc);
+        var cfStamp = new DateTime(2025, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        var cfMeta = new ModMeta { Title = "CF Title", InstalledUtc = cfStamp, SourceConfidence = "nameSearch" };
+        var curated = new ModMeta { Title = "Curated Title", InstalledUtc = curatedStamp, SourceConfidence = "md5" };
+        var merged = CallMergeMeta(cf: cfMeta, curated: curated);
+        Assert.Equal(curatedStamp, merged.InstalledUtc);
+        Assert.Equal("md5", merged.SourceConfidence);
+    }
+
+    [Fact]
+    public void Merge_carries_sourceConfidence_from_cf_when_curated_lacks_it()
+    {
+        var cfMeta = new ModMeta { SourceConfidence = "nameSearch" };
+        var curated = new ModMeta { Title = "Some Title" };
+        var merged = CallMergeMeta(cf: cfMeta, curated: curated);
+        Assert.Equal("nameSearch", merged.SourceConfidence);
+        Assert.Null(merged.InstalledUtc);
+    }
 }

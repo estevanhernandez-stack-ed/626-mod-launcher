@@ -438,8 +438,8 @@ public static class Scanner
         var metaPath = Path.Combine(dest, "meta.json");
         var disabledAt = DateTime.UtcNow.ToString("o");
         var hadOnServer = files.ToDictionary(f => f, _ => true);
-        void WriteMeta() => File.WriteAllText(metaPath, JsonSerializer.Serialize(
-            new DisabledMeta { Location = m.Location, HadOnServer = hadOnServer, DisabledAt = disabledAt, IsFolder = m.IsFolder }, Json));
+        void WriteMeta() => AtomicJson.WriteJsonAtomic(metaPath,
+            new DisabledMeta { Location = m.Location, HadOnServer = hadOnServer, DisabledAt = disabledAt, IsFolder = m.IsFolder });
 
         WriteMeta();   // provisional record exists before any mirror is touched
 
@@ -1062,6 +1062,8 @@ public static class Scanner
             Downloads = curated.Downloads ?? cf.Downloads,
             CurseforgeId = curated.CurseforgeId ?? cf.CurseforgeId,
             Category = curated.Category ?? cf.Category,
+            InstalledUtc = curated.InstalledUtc ?? cf.InstalledUtc,
+            SourceConfidence = curated.SourceConfidence ?? cf.SourceConfidence,
         };
     }
 
