@@ -68,6 +68,11 @@ public sealed partial class MainWindow : Window
         if (_loaded) return;
         _loaded = true;
         await ViewModel.LoadAsync();
+
+        // After load: wire registry-changed so Safe Clear / Restore cause the mod list to repaint.
+        var launcherService = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
+        launcherService.RegistryChanged += () =>
+            DispatcherQueue.TryEnqueue(async () => await ViewModel.RefreshAsync());
     }
 
     // OneWay IsOn + this handler: ignore the programmatic set during reload (when the switch

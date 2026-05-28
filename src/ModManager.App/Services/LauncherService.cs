@@ -18,8 +18,13 @@ public sealed class LauncherService
 
     public LauncherService(ICurseForgeClient curseForge) => CurseForge = curseForge;
 
-    private static string DataRoot =>
+    public static string DataRoot =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder");
+
+    /// <summary>Raised after the registry changes on disk (Safe Clear / Restore). The App subscribes
+    /// to re-read games.json and repaint (marshal to the UI thread).</summary>
+    public event Action? RegistryChanged;
+    public void NotifyRegistryChanged() => RegistryChanged?.Invoke();
 
     private static string RegistryPath => Path.Combine(DataRoot, "games.json");
 
