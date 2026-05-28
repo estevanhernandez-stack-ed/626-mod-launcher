@@ -50,17 +50,12 @@ public sealed class RestorePointService
         var rpDir = Path.Combine(LauncherService.DataRoot, "restore-points", timestamp);
         var manifest = RestorePointManifestStore.Read(rpDir);
         if (manifest is null) return;
-        var games = _launcher.LoadRegistry().Games;
         foreach (var ga in manifest.Games)
         {
             if (ga.OffboardingSheetGameFolderPath is null) continue;
             try
             {
-                var g = games.FirstOrDefault(x => x.Id == ga.Id);
-                var det = LaunchScan.Detect(ga.GameRoot, g?.Engine, g?.SteamAppId);
-                var launchLines = det.Targets.Select(t => t.Label).ToList();
-                if (g?.RequiredLauncher is { Length: > 0 } rl) launchLines.Add($"Required launcher: {rl}");
-                var report = OffBoardingHydrator.Hydrate(ga, rpDir, launchLines);
+                var report = OffBoardingHydrator.Hydrate(ga, rpDir);   // self-contained — no games.json / LaunchScan
                 var text = OffBoardingSheet.Render(report);
                 var sheetPath = ga.OffboardingSheetGameFolderPath;
                 if (File.Exists(sheetPath))
