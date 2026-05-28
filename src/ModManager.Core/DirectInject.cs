@@ -336,20 +336,7 @@ public static class DirectInject
     /// <summary>A safe relative destination for a zip entry (wrapper stripped), or null for a
     /// directory entry or any path that tries to escape via traversal / absolute / drive root.</summary>
     public static string? SafeRelative(string entryName, string? stripPrefix)
-    {
-        var n = entryName.Replace('\\', '/').TrimStart('/');
-        if (n.Length == 0 || n.EndsWith("/")) return null; // directory entry
-        if (stripPrefix is not null)
-        {
-            var p = stripPrefix.TrimEnd('/') + "/";
-            if (n.StartsWith(p, StringComparison.OrdinalIgnoreCase)) n = n[p.Length..];
-        }
-        if (n.Length == 0) return null;
-        var segs = n.Split('/');
-        if (segs.Any(s => s is "" or "." or "..")) return null;     // traversal / empty segment
-        if (n.Length > 1 && n[1] == ':') return null;               // drive-rooted
-        return n.Replace('/', Path.DirectorySeparatorChar);
-    }
+        => PathGate.SafeRelative(entryName, stripPrefix);
 
     private static void InstallZip(string zipPath, string playFolder, IntakeResult result)
     {
