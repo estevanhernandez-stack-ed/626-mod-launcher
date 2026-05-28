@@ -44,4 +44,27 @@ public class RestorePointEngineCaptureTests : IDisposable
         Assert.Contains(entry.Mods, m => m.Name == "cool" && m.SourceUrl == "https://nexusmods.com/x" && m.SourceConfidence == "fingerprint");
         Assert.True(File.Exists(Path.Combine(c.DisabledRoot, "cool", "cool.pak")));   // live data dir untouched
     }
+
+    [Fact]
+    public async Task CaptureGame_resolves_metadata_for_a_variant_mod_by_base()
+    {
+        var (game, c, modsDir) = MakeGame();
+        // "MoreStamina_5x" → Variant.ParseVariant → Base="MoreStamina", Tag="5x"
+        // Confirmed via VariantTests.ParseVariant_single_multiplier.
+        var variantName = "MoreStamina_5x";
+        var baseName = "MoreStamina";
+        File.WriteAllText(Path.Combine(modsDir, variantName + ".pak"), "DATA");
+        await Scanner.DisableModAsync(variantName, c);
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            [baseName] = new ModMeta { Url = "https://nexusmods.com/v", SourceConfidence = "fingerprint" }
+        });
+
+        var entry = RestorePointEngine.CaptureGame(new GameCaptureInput(game, c, "vanilla"),
+            Path.Combine(_tmp, "archive", "games", "t"));
+
+        var mod = Assert.Single(entry.Mods, m => m.Name == variantName);
+        Assert.Equal("https://nexusmods.com/v", mod.SourceUrl);   // resolved via BASE key, not full name
+        Assert.Equal("fingerprint", mod.SourceConfidence);
+    }
 }

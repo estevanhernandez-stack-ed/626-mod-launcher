@@ -45,8 +45,11 @@ public static partial class RestorePointEngine
         foreach (var m in modList)
         {
             // Mod.Base is only populated by ListWithClass (variant parsing); BuildModListAsync leaves
-            // it empty. Use m.Name — that's the key SaveMetadata callers use.
-            meta.TryGetValue(m.Name, out var md);
+            // it empty. Derive the variant-stripped base ourselves — MergeMetadata keys by base, so
+            // a mod named "MoreStamina_5x" must look up metadata under "MoreStamina", not the full name.
+            var metaKey = Variant.ParseVariant(m.Name).Base;
+            if (string.IsNullOrEmpty(metaKey)) metaKey = m.Name;
+            meta.TryGetValue(metaKey, out var md);
             mods.Add(new ArchivedMod(m.Name, m.Enabled, md?.Url, md?.SourceConfidence, md?.InstalledUtc?.ToString("o")));
             if (m.Loader is "ue4ss" or "bepinex")
                 loaderMods.Add(new LoaderModState(m.Name, m.Loader, m.Enabled));
