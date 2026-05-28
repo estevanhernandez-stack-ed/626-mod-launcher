@@ -26,4 +26,21 @@ public class SpaceCheckTests
         var req = SpaceCheck.RequiredWithHeadroom(payload);        // 10% = 2 GiB margin > 1 GiB floor
         Assert.Equal(payload + (long)(payload * 0.10), req);
     }
+
+    [Fact]
+    public void Require_does_not_throw_on_a_unc_path_and_reports_unknown()
+    {
+        var r = SpaceCheck.Require(@"\\some-unc-server\share\sub", payloadBytes: 100);
+        Assert.False(r.Ok);
+        Assert.Equal(-1, r.AvailableBytes);
+    }
+
+    [Fact]
+    public void Require_reads_real_free_space_for_a_local_path()
+    {
+        // The temp dir is on a real local volume — Require should read it and not report unknown.
+        var r = SpaceCheck.Require(Path.GetTempPath(), payloadBytes: 1);
+        Assert.NotEqual(-1, r.AvailableBytes);
+        Assert.True(r.AvailableBytes >= 0);
+    }
 }
