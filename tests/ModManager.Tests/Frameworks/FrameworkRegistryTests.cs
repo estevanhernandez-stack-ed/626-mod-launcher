@@ -109,6 +109,26 @@ public class FrameworkRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Uninstall_falls_back_to_gameRoot_when_InstallPath_empty()
+    {
+        var gameRoot = Path.Combine(_tmp, "GameRoot");
+        var gameData = Path.Combine(_tmp, "GameData");
+        Directory.CreateDirectory(gameRoot);
+        File.WriteAllBytes(Path.Combine(gameRoot, "dinput8.dll"), new byte[] { 1 });
+
+        var fwDir = Path.Combine(gameData, "frameworks", "elden-mod-loader");
+        WriteManifest(fwDir, new FrameworkInstallManifest(
+            "elden-mod-loader", "Elden Mod Loader", "TechieW",
+            "",                                               // legacy manifest — InstallPath absent/empty
+            new[] { "dinput8.dll" }, DateTime.UtcNow, null));
+
+        FrameworkRegistry.Uninstall(gameData, "elden-mod-loader", gameRoot);
+
+        Assert.False(File.Exists(Path.Combine(gameRoot, "dinput8.dll")));
+        Assert.False(Directory.Exists(fwDir));
+    }
+
+    [Fact]
     public void Uninstall_throws_when_manifest_missing()
     {
         var gameData = Path.Combine(_tmp, "GameData");
