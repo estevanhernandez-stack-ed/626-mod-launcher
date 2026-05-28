@@ -14,10 +14,17 @@ public sealed record GameCaptureInput(GameEntry Game, GameContext Context, strin
 public static partial class RestorePointEngine
 {
     /// <summary>Copy the game's data dir + framework install state into the archive, and build its
-    /// manifest entry. Non-destructive: the live data dir and game folder are untouched.</summary>
+    /// manifest entry. Non-destructive: the live data dir and game folder are untouched.
+    /// <paramref name="gameArchiveDir"/> must be a fresh directory — if its <c>data</c>
+    /// sub-directory already exists this method throws <see cref="InvalidOperationException"/>.</summary>
     public static GameArchive CaptureGame(GameCaptureInput input, string gameArchiveDir)
     {
         var c = input.Context;
+
+        if (Directory.Exists(Path.Combine(gameArchiveDir, "data")))
+            throw new InvalidOperationException(
+                $"Restore-point archive dir already populated: \"{gameArchiveDir}\". Capture requires a fresh directory.");
+
         Directory.CreateDirectory(gameArchiveDir);
 
         if (Directory.Exists(c.DataDir))
