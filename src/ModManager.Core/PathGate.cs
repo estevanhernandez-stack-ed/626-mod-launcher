@@ -45,12 +45,27 @@ public static class PathGate
     }
 
     /// <summary>True iff <paramref name="relNorm"/> hits a forbidden basename OR full relative
-    /// path (case-insensitive).</summary>
+    /// path (case-insensitive). Both the input and each forbidden entry are normalized to forward
+    /// slashes before comparison, so backslash-style forbidden entries (e.g. "Binaries\\protected.dll")
+    /// match normalized forward-slash input and vice-versa.</summary>
     public static bool IsForbidden(string relNorm, IReadOnlyList<string> forbidden)
     {
         var n = relNorm.Replace('\\', '/');
         return forbidden.Any(f =>
-            string.Equals(Path.GetFileName(n), f, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(n, f, StringComparison.OrdinalIgnoreCase));
+        {
+            var fn = f.Replace('\\', '/');
+            return string.Equals(Path.GetFileName(n), Path.GetFileName(fn), StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(n, fn, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    /// <summary>True iff an already-resolved absolute path is strictly inside <paramref name="installRoot"/>
+    /// (which need not be pre-resolved). The absolute-path counterpart to <see cref="IsContained"/>,
+    /// which takes a relative archive-entry string. Same separator-boundary guard so a sibling like
+    /// "<root>Malware" can't masquerade as inside "<root>".</summary>
+    public static bool IsContainedAbsolute(string absPath, string installRoot)
+    {
+        var r = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(absPath).StartsWith(r, StringComparison.OrdinalIgnoreCase);
     }
 }

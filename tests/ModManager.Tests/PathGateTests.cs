@@ -33,4 +33,25 @@ public class PathGateTests
         Assert.Null(PathGate.SafeRelative("dir/", null));   // directory entry
         Assert.Null(PathGate.SafeRelative("C:/evil.dll", null));   // drive-rooted entry
     }
+
+    [Fact]
+    public void IsContained_normalizes_backslash_form_input()
+        => Assert.True(PathGate.IsContained("Game\\dinput8.dll", Root));
+
+    [Fact]
+    public void IsForbidden_matches_backslash_style_forbidden_entry()
+    {
+        var forbidden = new[] { "Binaries\\protected.dll" };
+        Assert.True(PathGate.IsForbidden("Binaries/protected.dll", forbidden));   // normalized full-relative match
+        Assert.True(PathGate.IsForbidden("Binaries\\protected.dll", forbidden));  // both backslash
+    }
+
+    [Fact]
+    public void IsContainedAbsolute_rejects_sibling_prefix_bypass()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Games", "Elden");
+        Assert.True(PathGate.IsContainedAbsolute(Path.Combine(root, "Game", "x.dll"), root));
+        Assert.False(PathGate.IsContainedAbsolute(
+            Path.Combine(Path.GetTempPath(), "Games", "EldenRingMalware", "x.dll"), root));   // sibling, not inside
+    }
 }

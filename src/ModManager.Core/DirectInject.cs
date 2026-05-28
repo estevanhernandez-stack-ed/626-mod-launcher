@@ -383,11 +383,7 @@ public static class DirectInject
         }
     }
 
-    private static bool IsUnder(string root, string path)
-    {
-        var r = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return Path.GetFullPath(path).StartsWith(r, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsUnder(string root, string path) => PathGate.IsContainedAbsolute(path, root);
 
     /// <summary>The currently-disabled direct-inject mods, read from holding-folder metadata.</summary>
     public static IReadOnlyList<DirectInjectMod> ListDisabled(string holdingRoot)
