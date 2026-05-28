@@ -32,10 +32,13 @@ public interface INexusGate { bool IsConnected { get; } void DeleteStoredKey(); 
 /// <summary>App-side seam: is any of a game's launch-target processes running?</summary>
 public interface IGameRunningProbe { bool AnyRunning(GameEntry game); }
 
-/// <summary>App-side seam: the registered games + their live contexts (LauncherService in the App).</summary>
+/// <summary>App-side seam: the registered games + their live contexts (LauncherService in the App).
+/// The orchestrator owns the games.json FILE (it copies it verbatim into/out of the archive via its
+/// dataRoot — full GameEntry fidelity, unlike the lossy per-game manifest entry). The provider only
+/// reads the live registry and re-reads after the orchestrator changes games.json on disk.</summary>
 public interface IGameProvider
 {
-    IReadOnlyList<GameEntry> Games { get; }
+    IReadOnlyList<GameEntry> Games { get; }                 // current registry (re-read fresh)
     GameContext ContextFor(GameEntry game);
-    void ReplaceRegistry(IReadOnlyList<GameEntry> games);   // restore upserts; reset clears
+    void Reload();                                          // re-read games.json + refresh UI after on-disk change
 }
