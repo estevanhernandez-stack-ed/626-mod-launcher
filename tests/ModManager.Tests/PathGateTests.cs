@@ -31,5 +31,6 @@ public class PathGateTests
         Assert.Equal(Path.Combine("inner", "f.dll"), PathGate.SafeRelative("wrap/inner/f.dll", "wrap"));
         Assert.Null(PathGate.SafeRelative("wrap/../escape.dll", "wrap"));
         Assert.Null(PathGate.SafeRelative("dir/", null));   // directory entry
+        Assert.Null(PathGate.SafeRelative("C:/evil.dll", null));   // drive-rooted entry
     }
 }

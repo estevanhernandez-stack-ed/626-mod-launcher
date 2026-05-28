@@ -28,7 +28,10 @@ public static class PathGate
 
     /// <summary>True iff <paramref name="relNorm"/> resolves to a path strictly inside
     /// <paramref name="installRootFull"/> (which MUST be fully-qualified — caller passes
-    /// Path.GetFullPath(installRoot)). Rejects empty, ".", "..", drive-rooted, and traversal.</summary>
+    /// Path.GetFullPath(installRoot)). Rejects empty, drive-rooted, and ANY "." or ".." segment.
+    /// Intentionally stricter than a bare GetFullPath check: this gate also guards the untrusted
+    /// restore-replay write path, so "." segments (e.g. "Game/./x.dll") are refused outright rather
+    /// than silently resolved — matching SafeRelative's segment rules.</summary>
     public static bool IsContained(string relNorm, string installRootFull)
     {
         if (string.IsNullOrEmpty(relNorm)) return false;
