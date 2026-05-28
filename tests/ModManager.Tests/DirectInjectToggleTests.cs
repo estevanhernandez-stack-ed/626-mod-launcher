@@ -60,4 +60,24 @@ public class DirectInjectToggleTests : IDisposable
         Assert.Empty(DirectInject.ListDisabled(Holding)); // holding cleared
         Assert.Contains(DirectInject.Detect(Files(Play), Dirs(Play)), m => m.Name == "ReShade");
     }
+
+    [Fact]
+    public void Disable_surfaces_IOException_when_game_holds_the_file_open()
+    {
+        // MoveAny now routes through SafeMove, which verifies the move before deleting the source.
+        // A file held open by the game (FileShare.None) must surface as IOException rather than
+        // silently succeeding and leaving the source in an inconsistent state.
+        var reshade = DirectInject.Detect(Files(Play), Dirs(Play)).Single(m => m.Name == "ReShade");
+
+        var lockedPath = Path.Combine(Play, "ReShadePreset.ini");
+        using var hold = new FileStream(lockedPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        // Disable wraps the IOException in an InvalidOperationException with user-facing context
+        // ("is the game running?"). The inner exception is the raw IOException from SafeMove.
+        var ex = Assert.Throws<InvalidOperationException>(() => DirectInject.Disable(Play, Holding, reshade));
+        Assert.IsType<IOException>(ex.InnerException);
+
+        // Game folder is unchanged — no partial disable.
+        Assert.True(File.Exists(lockedPath));
+    }
 }

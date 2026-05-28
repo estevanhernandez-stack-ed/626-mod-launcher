@@ -409,24 +409,10 @@ public static class DirectInject
 
     private static void MoveAny(string src, string dest)
     {
+        // Verified, cross-volume-safe, surfaces sharing violations (game holding the DLL) — shared with
+        // Scanner.MoveAny via SafeMove. Create the dest parent first so the same-volume rename has somewhere to land.
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-        try
-        {
-            if (Directory.Exists(src)) Directory.Move(src, dest);
-            else File.Move(src, dest);
-        }
-        catch (IOException) // cross-volume (game on a different drive than the data dir): copy then delete
-        {
-            if (Directory.Exists(src)) { CopyDir(src, dest); Directory.Delete(src, recursive: true); }
-            else { File.Copy(src, dest, overwrite: false); File.Delete(src); }
-        }
-    }
-
-    private static void CopyDir(string src, string dest)
-    {
-        Directory.CreateDirectory(dest);
-        foreach (var f in Directory.GetFiles(src)) File.Copy(f, Path.Combine(dest, Path.GetFileName(f)));
-        foreach (var d in Directory.GetDirectories(src)) CopyDir(d, Path.Combine(dest, Path.GetFileName(d)));
+        SafeMove.Move(src, dest);
     }
 
     private static string Norm(string s) => (s ?? "").Trim();
