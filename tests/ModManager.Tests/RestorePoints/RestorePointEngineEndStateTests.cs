@@ -61,4 +61,12 @@ public class RestorePointEngineEndStateTests : IDisposable
         // The game root file is gone — moved into the archive.
         Assert.False(File.Exists(Path.Combine(c.GameRoot, "regulation.bin")));
     }
+
+    [Fact]
+    public void ApplyEndState_throws_on_unknown_end_state()
+    {
+        var (_, c, _) = MakeGame();
+        Assert.Throws<ArgumentException>(() =>
+            RestorePointEngine.ApplyEndState(c, "banana", Path.Combine(_tmp, "archive", "games", "t")));
+    }
 }

@@ -27,6 +27,8 @@ public static partial class RestorePointEngine
     {
         if (string.Equals(endState, "modsActive", StringComparison.OrdinalIgnoreCase))
             return new EndStateResult(Array.Empty<MovedFile>(), ReEnableAll(c));
+        if (!string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException($"Unknown end-state \"{endState}\" (expected \"vanilla\" or \"modsActive\").", nameof(endState));
 
         var moved = MoveDirectInjectToArchive(c, gameArchiveDir);
         UninstallFrameworks(c);
@@ -55,6 +57,11 @@ public static partial class RestorePointEngine
             : new List<string>();
 
         var moved = new List<MovedFile>();
+        Directory.CreateDirectory(Path.Combine(gameArchiveDir, "vanilla-moved"));
+        // Catalog direct-inject only (Detect). The DLL-mod-loader's individual mods/*.dll sub-mods
+        // (DirectInject.DetectLoaderMods) are NOT swept here — once the loader's proxy DLL is moved
+        // out, the loader won't load and the game is vanilla-playable. Per the spec's return-to-vanilla
+        // honesty caveat, those loose files may remain (the off-boarding sheet says so).
         foreach (var di in DirectInject.Detect(fileNames, dirNames))
         {
             // di.Entries are basenames relative to the play folder (same list that was passed in).
