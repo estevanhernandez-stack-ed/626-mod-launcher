@@ -73,11 +73,19 @@ public static class GameProfileImport
     }
 
     // Relative + safe: no drive root (C:\), no rooted slash, no '..' or empty segment.
+    //
+    // Distinct from PathGate.SafeRelative — kept separate intentionally.
+    // PathGate.SafeRelative is designed for archive entry names: it strips a leading '/' because
+    // some zip tools emit entries with a leading slash, making "/foo" safe (it becomes "foo").
+    // Here we validate user-typed profile path strings — a leading '/' means the user wrote an
+    // absolute path, which should be rejected, not silently accepted. Delegating to
+    // PathGate.SafeRelative would flip the behavior for that edge case. The segment rules
+    // (no '..', no empty, no drive-root) are identical to PathGate.SafeRelative's.
     private static bool IsSafeRelative(string p)
     {
         var n = p.Replace('\\', '/').Trim();
         if (n.Length == 0) return false;
-        if (n.StartsWith('/')) return false;                 // rooted
+        if (n.StartsWith('/')) return false;                 // rooted — intentionally rejected here (see above)
         if (n.Length > 1 && n[1] == ':') return false;       // drive-rooted (C:...)
         return !n.Split('/').Any(s => s is "" or "." or "..");
     }
