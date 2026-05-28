@@ -18,6 +18,7 @@ public class ScannerCoreTests
         var c = Scanner.GameContext(new GameEntry
         {
             Id = "t", GameName = "T", GameRoot = root,
+            DataDir = Path.Combine(root, "_626mods", "t"), // pin to unique root — avoids %TEMP%\_626mods\t collision under parallel test runs
             ModLocations = new[] { new ModLocation("mods", "~mods", "Paks/~mods") { Mirrors = new[] { "Server/~mods" } } },
             FileExtensions = new[] { "pak", "ucas", "utoc" }, GroupingRule = "strip_underscore_p_suffix",
         });
