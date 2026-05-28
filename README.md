@@ -15,6 +15,14 @@ Double-click the Setup.exe. Windows will warn you the first time (SmartScreen �
 
 Want to look first? The launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
 
+## What's new in v0.3.0
+
+- **Framework intake.** First-class installer for Elden Mod Loader and Mod Engine 2 — drop the zip, the launcher puts it where the loader actually expects (FromSoft games: under `Game/`, not the root). Reversible uninstall lives at Settings → Installed frameworks.
+- **Config editor for direct-inject mods.** Pencil icon on rows like Seamless Co-op. Edit the INI in-app; snapshot-first, atomic write, "Restore previous" button rolls back. Settings → Direct-inject mod configs handles unusual install layouts via file picker.
+- **Elden Ring save editor.** Characters tab now reads the current ER save shape (32-byte BND4 entries + `USER_DATA010` header). Adjacent FromSoft titles ride along.
+
+Full notes: **[v0.3.0 release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/tag/v0.3.0)**.
+
 ## What it does
 
 The short version: you point it at a game, it lists your mods, you flip switches.
@@ -25,6 +33,8 @@ The slightly longer version:
 - **Atomic state.** Every state change writes through `fs-atomic` — temp file, rename, no partial-write corruption. Lose power mid-toggle and your library survives.
 - **Drag-and-drop intake.** Drop a `.zip` / `.7z` / `.rar` / loose mod folder on the window. It identifies the mod (CurseForge fingerprint → Nexus md5 → name-search), fills in the real name, author, description, downloads count, and source link. Honor the builders.
 - **Engine-aware.** Knows about Bethesda plugins, Unreal pak folders + UE4SS Lua mods, FromSoft Mod Engine 2 configs, BepInEx plugins, Stardew SMAPI mods, and more. Each engine gets its own enable/disable mechanism — the one the mod loader actually expects, not a one-size hack.
+- **Framework intake.** Loaders like Elden Mod Loader and Mod Engine 2 install via the same drop-zip flow. The launcher validates the archive first, places it where the loader actually expects (under `Game/` for FromSoft, not the root), and records the install so uninstall is one click from Settings → Installed frameworks.
+- **Config editor for direct-inject mods.** Mods that ship as DLL + INI (Seamless Co-op, etc.) get a pencil icon on the row. Edit the INI in-app; snapshot-first, atomic write, "Restore previous" rolls it back. Settings → Direct-inject mod configs handles non-standard install paths via file picker.
 - **MP / SP loadouts.** Toggle between multiplayer-safe and single-player-only sets for the same game. Named profiles let you save and switch between configurations ("my Elden Ring NG+ build", "my chill survival setup").
 - **Save manager.** Snapshot saves, 3-way clone across save types (Vanilla / Seamless Co-op / Reforged for Elden Ring, etc.), per-type restore, auto-backup-on-launch, prune the autos. The named backups never get pruned.
 - **Save mods.** Some mods install into the save tree (Windrose worlds, etc.), not the game folder. Drop a world zip and it installs to the right place — safely guarded against writing to game-managed save folders.
@@ -45,7 +55,7 @@ The slightly longer version:
 git clone https://github.com/estevanhernandez-stack-ed/626-mod-launcher
 cd 626-mod-launcher
 
-# Run the Core test suite (635+ tests, full architectural contract)
+# Run the Core test suite (792 tests, full architectural contract)
 dotnet test tests/ModManager.Tests/ModManager.Tests.csproj
 
 # Build + run the app
@@ -85,6 +95,7 @@ Tag-triggered GitHub Releases ship the Setup.exe + auto-update payload. See [doc
 - **Microsoft Store.** MSIX channel parallel to GitHub Releases. Signed by Microsoft, bypasses SmartScreen, auto-updates through Store. Mod manager apps are a 10.2.2 gray area — the GitHub channel is the load-bearing one regardless.
 - **Nexus SSO.** OAuth-style sign-in next to the existing personal-API-key flow. Pending Nexus application approval, which wants a public binary to evaluate against — hence the GitHub Release path coming first.
 - **Save-mod browser.** Today you drop a world zip and it installs; next is browsing + installing from Nexus's save-mod listings directly.
+- **Unified catalog phases 2 + 3.** Phase 1 shipped in v0.3.0 — kind-tagged catalog schema (`directInjectMod` today). Next: third-party tools (Phase 2) and frameworks (Phase 3) fold into the same shape so detection, attribution, and intake stay consistent across types.
 
 ## Why it exists
 
