@@ -86,6 +86,29 @@ public class FrameworkRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Uninstall_resolves_files_against_InstallPath_not_gameRoot()
+    {
+        // FromSoft case: framework installed under <gameRoot>\Game\ (PlayFolder). The manifest's
+        // InstallPath points at Game\; the bug resolved against gameRoot and missed the files.
+        var gameRoot = Path.Combine(_tmp, "GameRoot");
+        var playFolder = Path.Combine(gameRoot, "Game");
+        var gameData = Path.Combine(_tmp, "GameData");
+        Directory.CreateDirectory(playFolder);
+        File.WriteAllBytes(Path.Combine(playFolder, "dinput8.dll"), new byte[] { 1 });
+
+        var fwDir = Path.Combine(gameData, "frameworks", "elden-mod-loader");
+        WriteManifest(fwDir, new FrameworkInstallManifest(
+            "elden-mod-loader", "Elden Mod Loader", "TechieW",
+            playFolder,                                   // InstallPath = PlayFolder
+            new[] { "dinput8.dll" }, DateTime.UtcNow, null));
+
+        FrameworkRegistry.Uninstall(gameData, "elden-mod-loader", gameRoot);
+
+        Assert.False(File.Exists(Path.Combine(playFolder, "dinput8.dll")));  // would have been left behind
+        Assert.False(Directory.Exists(fwDir));
+    }
+
+    [Fact]
     public void Uninstall_throws_when_manifest_missing()
     {
         var gameData = Path.Combine(_tmp, "GameData");
