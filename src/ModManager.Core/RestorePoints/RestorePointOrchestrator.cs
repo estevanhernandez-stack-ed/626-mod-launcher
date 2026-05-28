@@ -70,11 +70,13 @@ public sealed class RestorePointOrchestrator
             var sheetPaths = new List<string>();
             var warnings = new List<string>();
 
-            // CAPTURE-ALL + SEAL (Law A) — only when archiving.
+            // CAPTURE-ALL (Law A) — only when archiving. Seal happens AFTER MUTATE-ALL so that
+            // MovedFiles (which ApplyEndState produces) can be written into the final manifest.
+            List<GameArchive>? archives = null;
             if (opts.CreateRestorePoint)
             {
                 Directory.CreateDirectory(rpDir);
-                var archives = new List<GameArchive>();
+                archives = new List<GameArchive>();
                 foreach (var g in games)
                 {
                     var ctx = _provider.ContextFor(g);
@@ -83,25 +85,32 @@ public sealed class RestorePointOrchestrator
                         Path.Combine(rpDir, "games", g.Id)));
                 }
                 CopyTopLevelInto(rpDir);   // games.json + themes/ + profile/ + app-settings.json — NOT nexus.json
+            }
+
+            // MUTATE-ALL — ApplyEndState returns MovedFiles so the manifest can record them.
+            // NOTE: with skip-archive (CreateRestorePoint=false) + vanilla, ApplyEndState still MOVES
+            // direct-inject files into rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest
+            // is sealed and no marker is written, so this folder is NOT a managed restore point. The
+            // files are preserved on disk (recoverable manually); ListRestorePoints shows only sealed points.
+            for (var i = 0; i < games.Count; i++)
+            {
+                var g = games[i];
+                var ctx = _provider.ContextFor(g);
+                var endState = RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id));
+                // Patch the captured archive entry with the MovedFiles that ApplyEndState just produced.
+                if (archives is not null) archives[i] = archives[i] with { MovedFiles = endState.MovedFiles };
+                if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
+                sheetPaths.Add(Path.Combine(ctx.GameRoot, "626-launcher-how-to-launch.txt"));
+            }
+
+            // SEAL (Law A) — written last, after the payload is captured + moved files are known.
+            if (archives is not null)
+            {
                 var manifest = new RestorePointManifest(
                     RestorePoint.SchemaVersion, _launcherVersion, timestamp,
                     Complete: true, opts.KeepNexus,
                     FileTally.ByteSize(rpDir), FileTally.FileCount(rpDir), archives);
-                RestorePointManifestStore.WriteSealed(rpDir, manifest);   // THE SEAL — written last
-            }
-
-            // MUTATE-ALL (after the seal).
-            foreach (var g in games)
-            {
-                var ctx = _provider.ContextFor(g);
-                // NOTE: with skip-archive (CreateRestorePoint=false) + vanilla, ApplyEndState still MOVES
-                // direct-inject files into rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest
-                // is sealed and no marker is written, so this folder is NOT a managed restore point. The
-                // files are preserved on disk (recoverable manually); ListRestorePoints (Task 4) shows only
-                // sealed points. This is the "skip archive" contract: no safety net, but nothing deleted.
-                RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id));
-                if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
-                sheetPaths.Add(Path.Combine(ctx.GameRoot, "626-launcher-how-to-launch.txt"));
+                RestorePointManifestStore.WriteSealed(rpDir, manifest);   // THE SEAL — last write
             }
 
             // RESET — delete top-level launcher state (archived); nexus only if not keeping it.
@@ -155,4 +164,109 @@ public sealed class RestorePointOrchestrator
     }
 
     private static string Gb(long bytes) => (bytes / 1_073_741_824.0).ToString("0.0");
+
+    // ── Tasks 4 + 5 ─────────────────────────────────────────────────────────────────────────────
+
+    public async Task<RestoreResult> RestoreAsync(string timestamp, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var rpDir = Path.Combine(_restorePointsRoot, timestamp);
+            var m = RestorePointManifestStore.Read(rpDir);
+            var v = RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion);
+            if (!v.Ok) return new RestoreResult(false, v.Reason, Array.Empty<RestoreConflict>(), Array.Empty<string>());
+
+            var conflicts = RestoreReconcile.Check(m!, _provider.Games);
+            if (conflicts.Count > 0)
+                return new RestoreResult(false,
+                    "Some games have moved since this restore point — resolve the conflicts first.",
+                    conflicts, Array.Empty<string>());
+
+            // Top-level launcher state back, verbatim (games.json + themes/ + profile/ + app-settings.json).
+            RestoreTopLevelFrom(rpDir);
+            _provider.Reload();   // re-read the restored games.json (no-op in tests; real impl re-reads disk)
+
+            var warnings = new List<string>();
+            foreach (var ga in m!.Games)
+            {
+                var game = _provider.Games.FirstOrDefault(g => g.Id == ga.Id);
+                if (game is null) { warnings.Add($"{ga.GameName}: not in the restored registry — skipped."); continue; }
+                RestorePointEngine.ReplayGame(ga, Path.Combine(rpDir, "games", ga.Id), _provider.ContextFor(game));
+            }
+
+            RestoreMarkers.ClearLastClear(_dataRoot);
+            return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public IReadOnlyList<RestorePointInfo> ListRestorePoints()
+    {
+        if (!Directory.Exists(_restorePointsRoot)) return Array.Empty<RestorePointInfo>();
+        var list = new List<RestorePointInfo>();
+        foreach (var dir in Directory.GetDirectories(_restorePointsRoot))
+        {
+            var m = RestorePointManifestStore.Read(dir);
+            if (m is null || !m.Complete) continue;   // skip unsealed / partial
+            list.Add(new RestorePointInfo(
+                Path.GetFileName(dir),
+                m.Games.Select(g => g.GameName).ToList(),
+                m.TotalBytes,
+                m.Complete));
+        }
+        return list;
+    }
+
+    public void DeleteRestorePoint(string timestamp)
+    {
+        var dir = Path.Combine(_restorePointsRoot, timestamp);
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+    }
+
+    /// <summary>If a safe-clear.lock exists, a Safe Clear was interrupted.
+    /// <c>Sealed=true</c> means the capture finished (the archive is valid — offer resume/restore).
+    /// <c>Sealed=false</c> means it died before the seal (the original is intact — offer to discard
+    /// the partial archive and recover by discarding it).</summary>
+    public InterruptedClear? DetectInterruptedClear()
+    {
+        var lockPath = Path.Combine(_dataRoot, LockName);
+        if (!File.Exists(lockPath)) return null;
+        var ts = File.ReadAllText(lockPath).Trim();
+        var sealed_ = RestorePointManifestStore.Validate(
+            RestorePointManifestStore.Read(Path.Combine(_restorePointsRoot, ts)),
+            RestorePoint.SchemaVersion).Ok;
+        return new InterruptedClear(ts, sealed_);
+    }
+
+    public void DiscardPartial(string timestamp)
+    {
+        DeleteRestorePoint(timestamp);
+        try { var p = Path.Combine(_dataRoot, LockName); if (File.Exists(p)) File.Delete(p); } catch { /* best effort */ }
+    }
+
+    // Copy top-level launcher state from the archive back over the live data root. These are small
+    // JSON + theme/avatar files — a plain overwrite copy, not the gated game-folder path.
+    private void RestoreTopLevelFrom(string rpDir)
+    {
+        foreach (var f in TopLevelFiles)
+        {
+            var src = Path.Combine(rpDir, f);
+            if (File.Exists(src)) { Directory.CreateDirectory(_dataRoot); File.Copy(src, Path.Combine(_dataRoot, f), overwrite: true); }
+        }
+        foreach (var d in TopLevelDirs)
+        {
+            var src = Path.Combine(rpDir, d);
+            if (Directory.Exists(src)) CopyDirOverwrite(src, Path.Combine(_dataRoot, d));
+        }
+    }
+
+    private static void CopyDirOverwrite(string src, string dest)
+    {
+        Directory.CreateDirectory(dest);
+        foreach (var f in Directory.GetFiles(src))
+            File.Copy(f, Path.Combine(dest, Path.GetFileName(f)), overwrite: true);
+        foreach (var sub in Directory.GetDirectories(src))
+            CopyDirOverwrite(sub, Path.Combine(dest, Path.GetFileName(sub)));
+    }
 }
