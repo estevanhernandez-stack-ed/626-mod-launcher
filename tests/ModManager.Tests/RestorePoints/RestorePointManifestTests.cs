@@ -60,6 +60,15 @@ public class RestorePointManifestTests : IDisposable
     }
 
     [Fact]
+    public void Validate_refuses_a_null_manifest()
+    {
+        // Restore calls Validate(Read(dir), ...) and Read returns null for a missing/partial point.
+        var v = RestorePointManifestStore.Validate(null, RestorePoint.SchemaVersion);
+        Assert.False(v.Ok);
+        Assert.NotNull(v.Reason);
+    }
+
+    [Fact]
     public void Validate_refuses_unsealed_manifest()
     {
         var v = RestorePointManifestStore.Validate(Sample(complete: false), RestorePoint.SchemaVersion);
