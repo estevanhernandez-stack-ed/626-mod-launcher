@@ -70,6 +70,11 @@ public sealed class RestorePointOrchestrator
             var sheetPaths = new List<string>();
             var warnings = new List<string>();
 
+            // Sealed vanilla-move plans keyed by game ID: populated in CAPTURE-ALL, consumed in
+            // MUTATE-ALL. MUTATE passes the sealed plan to ApplyEndState so it executes EXACTLY that
+            // set — no re-detect drift if the game folder changes between the two phases.
+            var plannedByGame = new Dictionary<string, IReadOnlyList<MovedFile>>();
+
             // CAPTURE-ALL (Law A) — non-destructive. For vanilla games, plan the moves NOW while
             // files are still in place and seal those planned MovedFiles into the manifest BEFORE
             // any move executes. Law A: seal before destroy.
@@ -85,7 +90,11 @@ public sealed class RestorePointOrchestrator
                     // Law A: record the PLANNED vanilla moves NOW (files still in place) so the SEALED
                     // manifest carries them. The actual move happens in MUTATE-ALL, AFTER the seal.
                     if (string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
-                        ga = ga with { MovedFiles = RestorePointEngine.PlanVanillaMoves(ctx) };
+                    {
+                        var planned = RestorePointEngine.PlanVanillaMoves(ctx);
+                        plannedByGame[g.Id] = planned;
+                        ga = ga with { MovedFiles = planned };
+                    }
                     archives.Add(ga);
                 }
                 CopyTopLevelInto(rpDir);   // games.json + themes/ + profile/ + app-settings.json — NOT nexus.json
@@ -100,14 +109,18 @@ public sealed class RestorePointOrchestrator
             }
 
             // MUTATE-ALL — executes the planned moves (and other end-state work) AFTER the seal.
-            // NOTE: with skip-archive (CreateRestorePoint=false) + vanilla, ApplyEndState still MOVES
-            // direct-inject files into rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest
-            // is sealed and no marker is written, so this folder is NOT a managed restore point. The
-            // files are preserved on disk (recoverable manually); ListRestorePoints shows only sealed points.
+            // For vanilla games with a sealed plan, passes the plan so ApplyEndState moves EXACTLY
+            // that set. For skip-archive (CreateRestorePoint=false), plannedByGame is empty → null →
+            // ApplyEndState plans itself.
+            // NOTE: with skip-archive + vanilla, ApplyEndState still MOVES direct-inject files into
+            // rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest is sealed and no marker
+            // is written, so this folder is NOT a managed restore point. Files are preserved on disk
+            // (recoverable manually); ListRestorePoints shows only sealed points.
             foreach (var g in games)
             {
                 var ctx = _provider.ContextFor(g);
-                RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id));
+                RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id),
+                    plannedByGame.TryGetValue(g.Id, out var pm) ? pm : null);
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, "626-launcher-how-to-launch.txt"));
             }
@@ -214,7 +227,7 @@ public sealed class RestorePointOrchestrator
                 m.TotalBytes,
                 m.Complete));
         }
-        return list;
+        return list.OrderByDescending(r => r.Timestamp, StringComparer.Ordinal).ToList();
     }
 
     public void DeleteRestorePoint(string timestamp)
@@ -231,11 +244,15 @@ public sealed class RestorePointOrchestrator
     {
         var lockPath = Path.Combine(_dataRoot, LockName);
         if (!File.Exists(lockPath)) return null;
-        var ts = File.ReadAllText(lockPath).Trim();
-        var sealed_ = RestorePointManifestStore.Validate(
-            RestorePointManifestStore.Read(Path.Combine(_restorePointsRoot, ts)),
-            RestorePoint.SchemaVersion).Ok;
-        return new InterruptedClear(ts, sealed_);
+        try
+        {
+            var ts = File.ReadAllText(lockPath).Trim();
+            var sealed_ = RestorePointManifestStore.Validate(
+                RestorePointManifestStore.Read(Path.Combine(_restorePointsRoot, ts)),
+                RestorePoint.SchemaVersion).Ok;
+            return new InterruptedClear(ts, sealed_);
+        }
+        catch { return null; }
     }
 
     public void DiscardPartial(string timestamp)

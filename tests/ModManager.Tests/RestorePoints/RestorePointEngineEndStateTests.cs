@@ -69,4 +69,21 @@ public class RestorePointEngineEndStateTests : IDisposable
         Assert.Throws<ArgumentException>(() =>
             RestorePointEngine.ApplyEndState(c, "banana", Path.Combine(_tmp, "archive", "games", "t")));
     }
+
+    [Fact]
+    public void ApplyEndState_vanilla_moves_exactly_the_supplied_plan()
+    {
+        var (game, c, _) = MakeGame();
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1, 2 });
+        var gameArchiveDir = Path.Combine(_tmp, "archive", "games", "t");
+        RestorePointEngine.CaptureGame(new GameCaptureInput(game, c, "vanilla"), gameArchiveDir);
+        var plan = RestorePointEngine.PlanVanillaMoves(c);
+        Assert.NotEmpty(plan);
+
+        var result = RestorePointEngine.ApplyEndState(c, "vanilla", gameArchiveDir, plan);
+
+        Assert.Equal(plan.Count, result.MovedFiles.Count);
+        foreach (var mf in plan)
+            Assert.True(File.Exists(Path.Combine(gameArchiveDir, "vanilla-moved", mf.Rel)));
+    }
 }

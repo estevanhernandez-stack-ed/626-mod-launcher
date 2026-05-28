@@ -22,15 +22,22 @@ public static partial class RestorePointEngine
     /// <summary>Apply the chosen end-state to a game AFTER its capture is sealed.
     /// vanilla: move detected direct-inject game-folder files into the archive (recorded), uninstall
     /// frameworks (their files were captured), flip loader manifests off; owned mods untouched.
-    /// modsActive: re-enable everything from holding, returning per-mod outcomes (skips surfaced).</summary>
-    public static EndStateResult ApplyEndState(GameContext c, string endState, string gameArchiveDir)
+    /// modsActive: re-enable everything from holding, returning per-mod outcomes (skips surfaced).
+    /// <para>When <paramref name="plannedVanillaMoves"/> is supplied, MUTATE executes EXACTLY that set
+    /// (sealed by the orchestrator in CAPTURE-ALL — single source of truth, no re-detect drift).
+    /// When null (skip-archive path, no sealed manifest), the moves are planned on the spot.</para></summary>
+    public static EndStateResult ApplyEndState(GameContext c, string endState, string gameArchiveDir,
+        IReadOnlyList<MovedFile>? plannedVanillaMoves = null)
     {
         if (string.Equals(endState, "modsActive", StringComparison.OrdinalIgnoreCase))
             return new EndStateResult(Array.Empty<MovedFile>(), ReEnableAll(c));
         if (!string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException($"Unknown end-state \"{endState}\" (expected \"vanilla\" or \"modsActive\").", nameof(endState));
 
-        var moved = MoveDirectInjectToArchive(c, gameArchiveDir);
+        // Execute EXACTLY the sealed plan when given (single source of truth — no re-detect drift).
+        // Skip-archive has no sealed manifest, so plan now.
+        var planned = plannedVanillaMoves ?? PlanVanillaMoves(c);
+        var moved = ExecuteVanillaMoves(c, gameArchiveDir, planned);
         UninstallFrameworks(c);
         FlipLoadersOff(c);
         return new EndStateResult(moved, Array.Empty<Scanner.EnableOutcome>());
@@ -65,13 +72,9 @@ public static partial class RestorePointEngine
         return planned;
     }
 
-    private static IReadOnlyList<MovedFile> MoveDirectInjectToArchive(GameContext c, string gameArchiveDir)
+    private static IReadOnlyList<MovedFile> ExecuteVanillaMoves(GameContext c, string gameArchiveDir, IReadOnlyList<MovedFile> planned)
     {
-        // Catalog direct-inject only (Detect). The DLL-mod-loader's individual mods/*.dll sub-mods
-        // (DirectInject.DetectLoaderMods) are NOT swept here — once the loader's proxy DLL is moved
-        // out, the loader won't load and the game is vanilla-playable. Per the spec's return-to-vanilla
-        // honesty caveat, those loose files may remain (the off-boarding sheet says so).
-        var planned = PlanVanillaMoves(c);
+        // Catalog direct-inject only (loader sub-mods stay; see PlanVanillaMoves / the return-to-vanilla caveat).
         if (planned.Count == 0) return planned;
         var vanillaMoved = Path.Combine(gameArchiveDir, "vanilla-moved");
         Directory.CreateDirectory(vanillaMoved);
