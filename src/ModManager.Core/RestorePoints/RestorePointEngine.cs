@@ -117,7 +117,9 @@ public static partial class RestorePointEngine
     /// <summary>Restore one game from its archive: data dir copy-back, vanilla-moved files back into
     /// the game folder (PathGate-gated per destination — Law B; sha-verified — Law C), framework
     /// files back to InstallPath, loader enable-state re-applied. No File.Delete loop in the game
-    /// folder — verified per-file overwrite only.</summary>
+    /// folder — verified per-file overwrite only. Note: PathGate validates path strings, not resolved
+    /// symlink targets; a symlink inside the archive could redirect a write. Low threat on Windows
+    /// since symlink creation requires elevation, but noted for completeness.</summary>
     public static void ReplayGame(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
     {
         var gameRootFull = Path.GetFullPath(liveCtx.GameRoot);
@@ -185,7 +187,7 @@ public static partial class RestorePointEngine
         // 4. Re-apply loader enable state (best effort — loader manifest may be absent).
         foreach (var lm in ga.LoaderMods)
         {
-            var abs = liveCtx.Locations.FirstOrDefault()?.Abs;
+            var abs = liveCtx.Locations.FirstOrDefault(l => l.Name == lm.Location)?.Abs;
             if (abs is null) continue;
             try
             {
@@ -196,7 +198,10 @@ public static partial class RestorePointEngine
         }
 
         // 5. Remove the launcher-authored off-boarding sheet if present.
-        if (ga.OffboardingSheetGameFolderPath is not null && File.Exists(ga.OffboardingSheetGameFolderPath))
+        // Law B: gate the manifest-supplied path against the game root before deleting.
+        if (ga.OffboardingSheetGameFolderPath is not null
+            && PathGate.IsContainedAbsolute(ga.OffboardingSheetGameFolderPath, liveCtx.GameRoot)
+            && File.Exists(ga.OffboardingSheetGameFolderPath))
             try { File.Delete(ga.OffboardingSheetGameFolderPath); } catch { /* best effort */ }
     }
 
@@ -266,7 +271,7 @@ public static partial class RestorePointEngine
             meta.TryGetValue(metaKey, out var md);
             mods.Add(new ArchivedMod(m.Name, m.Enabled, md?.Url, md?.SourceConfidence, md?.InstalledUtc?.ToString("o")));
             if (m.Loader is "ue4ss" or "bepinex")
-                loaderMods.Add(new LoaderModState(m.Name, m.Loader, m.Enabled));
+                loaderMods.Add(new LoaderModState(m.Name, m.Loader, m.Enabled, m.Location));
         }
 
         var ownedMods = new List<OwnedModNote>();

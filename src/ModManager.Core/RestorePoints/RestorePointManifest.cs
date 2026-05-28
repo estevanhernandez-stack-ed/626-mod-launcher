@@ -46,7 +46,7 @@ public sealed record FrameworkArchive(
     string? CapturedStateRel);
 
 /// <summary>A loader-driven mod (UE4SS/BepInEx) whose enable state lives in a manifest, not files.</summary>
-public sealed record LoaderModState(string Name, string Loader, bool Enabled);
+public sealed record LoaderModState(string Name, string Loader, bool Enabled, string Location);
 
 /// <summary>A mod managed by an external tool (Vortex/MO2) — noted, never moved by Safe Clear.</summary>
 public sealed record OwnedModNote(string Name, string ManagedBy);

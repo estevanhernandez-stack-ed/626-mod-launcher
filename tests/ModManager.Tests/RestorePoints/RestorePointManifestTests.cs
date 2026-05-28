@@ -88,4 +88,14 @@ public class RestorePointManifestTests : IDisposable
     [Fact]
     public void Validate_accepts_a_sealed_current_manifest()
         => Assert.True(RestorePointManifestStore.Validate(Sample(complete: true), RestorePoint.SchemaVersion).Ok);
+
+    [Fact]
+    public void LoaderModState_round_trips_location_as_camelCase()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            new LoaderModState("Conductor", "ue4ss", true, "mods"),
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+        Assert.Contains("\"location\"", json);
+        Assert.DoesNotContain("\"Location\"", json);
+    }
 }
