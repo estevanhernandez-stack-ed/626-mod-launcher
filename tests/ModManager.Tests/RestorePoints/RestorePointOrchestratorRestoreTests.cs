@@ -82,6 +82,12 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
         Assert.True(clear.Ok);
         Assert.False(File.Exists(reg));                          // moved out by vanilla end-state
 
+        // Law A: the SEALED manifest already carries the planned MovedFiles (recorded during capture,
+        // before any move). Restore reads them from the seal — they aren't a post-mutate patch.
+        var sealedM = RestorePointManifestStore.Read(Path.Combine(dataRoot, "restore-points", "20260528-141233"))!;
+        Assert.True(RestorePointManifestStore.Validate(sealedM, RestorePoint.SchemaVersion).Ok);
+        Assert.Contains(sealedM.Games.SelectMany(g => g.MovedFiles), mf => mf.Rel.Contains("regulation.bin"));
+
         var restore = await orch.RestoreAsync("20260528-141233", default);
         Assert.True(restore.Ok);
         Assert.Equal(new byte[] { 9, 9, 9 }, File.ReadAllBytes(reg));   // moved file restored byte-for-byte

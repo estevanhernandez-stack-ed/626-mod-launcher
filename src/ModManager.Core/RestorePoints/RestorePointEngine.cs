@@ -44,47 +44,44 @@ public static partial class RestorePointEngine
         return outcomes;
     }
 
-    private static IReadOnlyList<MovedFile> MoveDirectInjectToArchive(GameContext c, string gameArchiveDir)
+    /// <summary>Plan (do NOT execute) the vanilla direct-inject moves for a game: detect the catalog
+    /// direct-inject files in the play folder and record each as a MovedFile (rel + size + sha) while the
+    /// files are STILL IN PLACE. The orchestrator seals this into the manifest BEFORE ApplyEndState moves
+    /// anything (Law A: seal before destroy). ApplyEndState then executes exactly this set.</summary>
+    public static IReadOnlyList<MovedFile> PlanVanillaMoves(GameContext c)
     {
         var playFolder = c.GameRoot;
-        // DirectInject.Detect expects basenames (just file/dir names), not full paths.
-        // Directory.GetFiles/GetDirectories return full paths; extract the filename component first.
-        var fileNames = Directory.Exists(playFolder)
-            ? Directory.GetFiles(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList()
-            : new List<string>();
-        var dirNames = Directory.Exists(playFolder)
-            ? Directory.GetDirectories(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList()
-            : new List<string>();
+        if (!Directory.Exists(playFolder)) return Array.Empty<MovedFile>();
+        var fileNames = Directory.GetFiles(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList();
+        var dirNames = Directory.GetDirectories(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList();
+        var planned = new List<MovedFile>();
+        foreach (var di in DirectInject.Detect(fileNames, dirNames))
+            foreach (var rel in di.Entries)
+            {
+                var srcAbs = Path.Combine(playFolder, rel);
+                if (File.Exists(srcAbs)) planned.Add(new MovedFile(rel, new FileInfo(srcAbs).Length, FileTally.Sha256(srcAbs)));
+                else if (Directory.Exists(srcAbs)) planned.Add(new MovedFile(rel, FileTally.ByteSize(srcAbs), null));
+            }
+        return planned;
+    }
 
-        var moved = new List<MovedFile>();
-        Directory.CreateDirectory(Path.Combine(gameArchiveDir, "vanilla-moved"));
+    private static IReadOnlyList<MovedFile> MoveDirectInjectToArchive(GameContext c, string gameArchiveDir)
+    {
         // Catalog direct-inject only (Detect). The DLL-mod-loader's individual mods/*.dll sub-mods
         // (DirectInject.DetectLoaderMods) are NOT swept here — once the loader's proxy DLL is moved
         // out, the loader won't load and the game is vanilla-playable. Per the spec's return-to-vanilla
         // honesty caveat, those loose files may remain (the off-boarding sheet says so).
-        foreach (var di in DirectInject.Detect(fileNames, dirNames))
+        var planned = PlanVanillaMoves(c);
+        if (planned.Count == 0) return planned;
+        var vanillaMoved = Path.Combine(gameArchiveDir, "vanilla-moved");
+        Directory.CreateDirectory(vanillaMoved);
+        foreach (var mf in planned)
         {
-            // di.Entries are basenames relative to the play folder (same list that was passed in).
-            foreach (var rel in di.Entries)
-            {
-                var srcAbs = Path.Combine(playFolder, rel);
-                var destAbs = Path.Combine(gameArchiveDir, "vanilla-moved", rel);
-                if (File.Exists(srcAbs))
-                {
-                    var size = new FileInfo(srcAbs).Length;
-                    var sha = FileTally.Sha256(srcAbs);
-                    SafeMove.Move(srcAbs, destAbs);
-                    moved.Add(new MovedFile(rel, size, sha));
-                }
-                else if (Directory.Exists(srcAbs))
-                {
-                    var size = FileTally.ByteSize(srcAbs);
-                    SafeMove.Move(srcAbs, destAbs);
-                    moved.Add(new MovedFile(rel, size, null));
-                }
-            }
+            var srcAbs = Path.Combine(c.GameRoot, mf.Rel);
+            if (File.Exists(srcAbs) || Directory.Exists(srcAbs))
+                SafeMove.Move(srcAbs, Path.Combine(vanillaMoved, mf.Rel));
         }
-        return moved;
+        return planned;
     }
 
     private static void UninstallFrameworks(GameContext c)

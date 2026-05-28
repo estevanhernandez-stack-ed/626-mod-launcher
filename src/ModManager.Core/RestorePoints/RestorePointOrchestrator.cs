@@ -70,47 +70,46 @@ public sealed class RestorePointOrchestrator
             var sheetPaths = new List<string>();
             var warnings = new List<string>();
 
-            // CAPTURE-ALL (Law A) — only when archiving. Seal happens AFTER MUTATE-ALL so that
-            // MovedFiles (which ApplyEndState produces) can be written into the final manifest.
-            List<GameArchive>? archives = null;
+            // CAPTURE-ALL (Law A) — non-destructive. For vanilla games, plan the moves NOW while
+            // files are still in place and seal those planned MovedFiles into the manifest BEFORE
+            // any move executes. Law A: seal before destroy.
             if (opts.CreateRestorePoint)
             {
                 Directory.CreateDirectory(rpDir);
-                archives = new List<GameArchive>();
+                var archives = new List<GameArchive>();
                 foreach (var g in games)
                 {
                     var ctx = _provider.ContextFor(g);
-                    archives.Add(RestorePointEngine.CaptureGame(
-                        new GameCaptureInput(g, ctx, EndStateFor(g.Id, opts)),
-                        Path.Combine(rpDir, "games", g.Id)));
+                    var endState = EndStateFor(g.Id, opts);
+                    var ga = RestorePointEngine.CaptureGame(new GameCaptureInput(g, ctx, endState), Path.Combine(rpDir, "games", g.Id));
+                    // Law A: record the PLANNED vanilla moves NOW (files still in place) so the SEALED
+                    // manifest carries them. The actual move happens in MUTATE-ALL, AFTER the seal.
+                    if (string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
+                        ga = ga with { MovedFiles = RestorePointEngine.PlanVanillaMoves(ctx) };
+                    archives.Add(ga);
                 }
                 CopyTopLevelInto(rpDir);   // games.json + themes/ + profile/ + app-settings.json — NOT nexus.json
+                // TotalBytes/FileCount include the planned vanilla-moved payload (moved after the seal).
+                long movedBytes = archives.Sum(a => a.MovedFiles.Sum(mf => mf.Bytes));
+                int movedCount = archives.Sum(a => a.MovedFiles.Count);
+                var manifest = new RestorePointManifest(
+                    RestorePoint.SchemaVersion, _launcherVersion, timestamp,
+                    Complete: true, opts.KeepNexus,
+                    FileTally.ByteSize(rpDir) + movedBytes, FileTally.FileCount(rpDir) + movedCount, archives);
+                RestorePointManifestStore.WriteSealed(rpDir, manifest);   // THE SEAL — before any move (Law A)
             }
 
-            // MUTATE-ALL — ApplyEndState returns MovedFiles so the manifest can record them.
+            // MUTATE-ALL — executes the planned moves (and other end-state work) AFTER the seal.
             // NOTE: with skip-archive (CreateRestorePoint=false) + vanilla, ApplyEndState still MOVES
             // direct-inject files into rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest
             // is sealed and no marker is written, so this folder is NOT a managed restore point. The
             // files are preserved on disk (recoverable manually); ListRestorePoints shows only sealed points.
-            for (var i = 0; i < games.Count; i++)
+            foreach (var g in games)
             {
-                var g = games[i];
                 var ctx = _provider.ContextFor(g);
-                var endState = RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id));
-                // Patch the captured archive entry with the MovedFiles that ApplyEndState just produced.
-                if (archives is not null) archives[i] = archives[i] with { MovedFiles = endState.MovedFiles };
+                RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id));
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, "626-launcher-how-to-launch.txt"));
-            }
-
-            // SEAL (Law A) — written last, after the payload is captured + moved files are known.
-            if (archives is not null)
-            {
-                var manifest = new RestorePointManifest(
-                    RestorePoint.SchemaVersion, _launcherVersion, timestamp,
-                    Complete: true, opts.KeepNexus,
-                    FileTally.ByteSize(rpDir), FileTally.FileCount(rpDir), archives);
-                RestorePointManifestStore.WriteSealed(rpDir, manifest);   // THE SEAL — last write
             }
 
             // RESET — delete top-level launcher state (archived); nexus only if not keeping it.
