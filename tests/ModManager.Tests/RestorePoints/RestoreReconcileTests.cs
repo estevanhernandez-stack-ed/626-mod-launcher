@@ -32,4 +32,20 @@ public class RestoreReconcileTests
         Assert.Equal(@"D:\ER", conflicts[0].ManifestGameRoot);
         Assert.Equal(@"E:\Other", conflicts[0].LiveGameRoot);
     }
+
+    [Fact]
+    public void No_conflict_when_roots_differ_only_by_trailing_slash()
+        => Assert.Empty(RestoreReconcile.Check(
+            M(Ga("elden-ring", @"D:\ER\")),
+            new[] { Live("elden-ring", @"D:\ER") }));
+
+    [Fact]
+    public void Duplicate_live_ids_do_not_throw_last_one_wins()
+    {
+        // A caller-supplied list with a dup id must not throw; the last entry's root is used.
+        var conflicts = RestoreReconcile.Check(
+            M(Ga("elden-ring", @"D:\ER")),
+            new[] { Live("elden-ring", @"X:\stale"), Live("elden-ring", @"D:\ER") });
+        Assert.Empty(conflicts); // last live root (D:\ER) matches the manifest — no conflict
+    }
 }

@@ -12,7 +12,12 @@ public static class RestoreReconcile
     public static IReadOnlyList<RestoreConflict> Check(
         RestorePointManifest m, IReadOnlyList<GameEntry> live)
     {
-        var byId = live.ToDictionary(g => g.Id, g => g.GameRoot, StringComparer.OrdinalIgnoreCase);
+        // Group-by (last-write-wins) rather than ToDictionary: this is a pure query over a caller-
+        // supplied list, and a duplicate id (a list not run through Registry.UpsertGame) must not
+        // throw. Last wins, matching UpsertGame's find-and-replace-by-id semantics.
+        var byId = live
+            .GroupBy(g => g.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(grp => grp.Key, grp => grp.Last().GameRoot, StringComparer.OrdinalIgnoreCase);
         var conflicts = new List<RestoreConflict>();
         foreach (var ga in m.Games)
         {
