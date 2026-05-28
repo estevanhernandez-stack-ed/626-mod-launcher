@@ -83,6 +83,33 @@ public class ScannerEnableRollbackTests
     }
 
     [Fact]
+    public async Task Disable_then_enable_round_trips_a_mirrored_mod()
+    {
+        var root = TestSupport.TempDir("mirror-");
+        var gameRoot = Path.Combine(root, "game");
+        var modsDir = Path.Combine(gameRoot, "mods");
+        var mirrorDir = Path.Combine(gameRoot, "mirror");
+        Directory.CreateDirectory(modsDir);
+        Directory.CreateDirectory(mirrorDir);
+        var c = Scanner.GameContext(new GameEntry
+        {
+            Id = "t", GameName = "T", GameRoot = gameRoot, DataDir = Path.Combine(root, "_626mods", "t"),
+            ModLocations = new[] { new ModLocation("mods", "mods", "mods") { Mirrors = new[] { "mirror" } } },
+            FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
+        });
+        File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "DATA");
+        File.WriteAllText(Path.Combine(mirrorDir, "cool.pak"), "DATA");   // mirror present
+
+        await Scanner.DisableModAsync("cool", c);
+        Assert.True(File.Exists(Path.Combine(c.DisabledRoot, "cool", "meta.json")));  // record written
+        Assert.False(File.Exists(Path.Combine(mirrorDir, "cool.pak")));               // mirror cleared
+
+        await Scanner.EnableModAsync("cool", c);
+        Assert.Equal("DATA", TestSupport.Read(Path.Combine(modsDir, "cool.pak")));
+        Assert.Equal("DATA", TestSupport.Read(Path.Combine(mirrorDir, "cool.pak")));  // mirror restored via hadOnServer
+    }
+
+    [Fact]
     public async Task Enable_folder_mod_conflict_throws_and_does_not_delete_preexisting_live_folder()
     {
         // 1. Build a folder mod (by_folder grouping: a directory IS the mod) and disable it,

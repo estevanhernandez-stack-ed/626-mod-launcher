@@ -431,9 +431,18 @@ public static class Scanner
             throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e);
         }
 
-        // Phase 2: primary files are safely held — only now clear mirror copies, recording
-        // which existed so enable can restore them.
-        var hadOnServer = new Dictionary<string, bool>();
+        // Phase 2: primary files are safely held. Snapshot-first — write meta.json BEFORE clearing any
+        // mirror, with hadOnServer provisionally true for every file. A crash mid-clear then errs toward
+        // "had a mirror" (which enable safely recreates) rather than losing the record entirely. Rewrite
+        // with confirmed values once the clear completes. Mirrors IniEditService.SaveWithBackup ordering.
+        var metaPath = Path.Combine(dest, "meta.json");
+        var disabledAt = DateTime.UtcNow.ToString("o");
+        var hadOnServer = files.ToDictionary(f => f, _ => true);
+        void WriteMeta() => File.WriteAllText(metaPath, JsonSerializer.Serialize(
+            new DisabledMeta { Location = m.Location, HadOnServer = hadOnServer, DisabledAt = disabledAt, IsFolder = m.IsFolder }, Json));
+
+        WriteMeta();   // provisional record exists before any mirror is touched
+
         foreach (var f in files)
         {
             var hadAny = false;
@@ -445,8 +454,8 @@ public static class Scanner
             }
             hadOnServer[f] = hadAny;
         }
-        var meta = new DisabledMeta { Location = m.Location, HadOnServer = hadOnServer, DisabledAt = DateTime.UtcNow.ToString("o"), IsFolder = m.IsFolder };
-        File.WriteAllText(Path.Combine(dest, "meta.json"), JsonSerializer.Serialize(meta, Json));
+
+        WriteMeta();   // confirmed record
     }
 
     /// <summary>Result of an enable attempt — lets bulk / Safe-Clear callers see WHY a mod didn't
