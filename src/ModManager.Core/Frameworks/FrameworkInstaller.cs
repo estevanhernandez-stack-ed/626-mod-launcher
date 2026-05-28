@@ -96,28 +96,14 @@ public static class FrameworkInstaller
             if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;  // directory marker
 
             var relNorm = entry.FullName.Replace('\\', '/');
-            var absTarget = Path.GetFullPath(Path.Combine(installRoot, relNorm));
-
-            // Containment check — refuse anything that resolves outside install root.
-            bool inside = absTarget.StartsWith(installRootFull + Path.DirectorySeparatorChar,
-                              StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(absTarget, installRootFull, StringComparison.OrdinalIgnoreCase);
-            if (!inside)
-            {
+            if (!PathGate.IsContained(relNorm, installRootFull))
                 throw new InvalidOperationException(
                     $"Archive entry '{entry.FullName}' resolves outside the install root — refusing install.");
-            }
-
-            // Forbidden-paths gate — basename OR relative-path equality.
-            if (framework.ForbiddenPaths.Any(forbidden =>
-                string.Equals(Path.GetFileName(relNorm), forbidden, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(relNorm, forbidden, StringComparison.OrdinalIgnoreCase)))
-            {
+            if (PathGate.IsForbidden(relNorm, framework.ForbiddenPaths))
                 throw new InvalidOperationException(
                     $"Archive contains a forbidden path '{entry.FullName}' — refusing install. " +
                     $"Frameworks must never overwrite the game's protected files.");
-            }
-
+            var absTarget = Path.GetFullPath(Path.Combine(installRoot, relNorm.Replace('/', Path.DirectorySeparatorChar)));
             plannedEntries.Add((entry, relNorm, absTarget));
         }
 

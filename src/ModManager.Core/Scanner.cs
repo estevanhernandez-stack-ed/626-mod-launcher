@@ -297,19 +297,7 @@ public static class Scanner
 
     // ---------- move helpers ----------
 
-    private static void MoveAny(string src, string dest)
-    {
-        try
-        {
-            if (Directory.Exists(src)) Directory.Move(src, dest);
-            else File.Move(src, dest);
-        }
-        catch
-        {
-            if (Directory.Exists(src)) { CopyDir(src, dest); DeleteDir(src); }
-            else { File.Copy(src, dest); File.Delete(src); }
-        }
-    }
+    private static void MoveAny(string src, string dest) => SafeMove.Move(src, dest);
 
     private static void CopyDir(string src, string dest)
     {
@@ -327,6 +315,8 @@ public static class Scanner
 
     public static Task DisableModAsync(string name, GameContext c) { DisableMod(name, c); return Task.CompletedTask; }
     public static Task EnableModAsync(string name, GameContext c) { EnableMod(name, c); return Task.CompletedTask; }
+    public static Task<EnableOutcome> EnableModWithOutcomeAsync(string name, GameContext c)
+        => Task.FromResult(EnableMod(name, c));
 
     /// <summary>
     /// Explicit per-row toggle entry point. For UE4SS loader mods this flips the manifest
@@ -441,9 +431,18 @@ public static class Scanner
             throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e);
         }
 
-        // Phase 2: primary files are safely held — only now clear mirror copies, recording
-        // which existed so enable can restore them.
-        var hadOnServer = new Dictionary<string, bool>();
+        // Phase 2: primary files are safely held. Snapshot-first — write meta.json BEFORE clearing any
+        // mirror, with hadOnServer provisionally true for every file. A crash mid-clear then errs toward
+        // "had a mirror" (which enable safely recreates) rather than losing the record entirely. Rewrite
+        // with confirmed values once the clear completes. Mirrors IniEditService.SaveWithBackup ordering.
+        var metaPath = Path.Combine(dest, "meta.json");
+        var disabledAt = DateTime.UtcNow.ToString("o");
+        var hadOnServer = files.ToDictionary(f => f, _ => true);
+        void WriteMeta() => File.WriteAllText(metaPath, JsonSerializer.Serialize(
+            new DisabledMeta { Location = m.Location, HadOnServer = hadOnServer, DisabledAt = disabledAt, IsFolder = m.IsFolder }, Json));
+
+        WriteMeta();   // provisional record exists before any mirror is touched
+
         foreach (var f in files)
         {
             var hadAny = false;
@@ -455,11 +454,15 @@ public static class Scanner
             }
             hadOnServer[f] = hadAny;
         }
-        var meta = new DisabledMeta { Location = m.Location, HadOnServer = hadOnServer, DisabledAt = DateTime.UtcNow.ToString("o"), IsFolder = m.IsFolder };
-        File.WriteAllText(Path.Combine(dest, "meta.json"), JsonSerializer.Serialize(meta, Json));
+
+        WriteMeta();   // confirmed record
     }
 
-    private static void EnableMod(string name, GameContext c)
+    /// <summary>Result of an enable attempt — lets bulk / Safe-Clear callers see WHY a mod didn't
+    /// re-enable instead of getting a silent no-op.</summary>
+    public sealed record EnableOutcome(string Name, bool Enabled, bool Skipped, string? Reason);
+
+    private static EnableOutcome EnableMod(string name, GameContext c)
     {
         // Loader-driven mods (e.g. UE4SS Conductor) are never moved to the disabled holding folder;
         // their enable state lives in the manifest. Key on m.Loader for symmetry with DisableEntry.
@@ -467,55 +470,88 @@ public static class Scanner
         // Owned mods are content read-only; their manifest is flipped only via the explicit per-row
         // path (SetLoaderModEnabledAsync), never through a bulk/profile-reachable EnableMod call.
         // Mirrors DisableEntry, which guards ReadOnly first.
-        if (live is { ReadOnly: true }) return;
+        if (live is { ReadOnly: true })
+            return new EnableOutcome(name, false, true, "managed by another tool");
         if (live?.Loader == "ue4ss")
         {
             try { Ue4ssManifest.SetEnabled(LocByName(live.Location, c).Abs, name, enabled: true); }
             catch (Exception e) { throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e); }
-            return;
+            return new EnableOutcome(name, true, false, null);
         }
         if (live?.Loader == "bepinex")
         {
             try { BepInExPlugins.SetEnabled(LocByName(live.Location, c).Abs, name, enable: true); }
             catch (Exception e) { throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e); }
-            return;
+            return new EnableOutcome(name, true, false, null);
         }
 
         var src = Path.Combine(c.DisabledRoot, name);
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }
-        catch { return; }
-        if (meta is null) return;
+        catch { return new EnableOutcome(name, false, true, "no readable disabled metadata"); }
+        if (meta is null) return new EnableOutcome(name, false, true, "empty disabled metadata");
         var loc = LocByName(meta.Location, c);
         // If the target location is currently owned by another tool, leave it alone — the
         // meta.json records where this mod came from; restoring into an owned folder would
         // corrupt the external tool's deployment manifest.
-        if (ToolOwnership.Detect(loc.Abs) is not null) return;
+        if (ToolOwnership.Detect(loc.Abs) is not null)
+            return new EnableOutcome(name, false, true, "target folder now owned by another tool");
         var hadOnServer = meta.HadOnServer ?? new Dictionary<string, bool>();
         Directory.CreateDirectory(loc.Abs);
         foreach (var mp in loc.Mirrors) Directory.CreateDirectory(mp);
 
+        // Copy every entry to live + the right mirrors. Pre-check each destination and throw a conflict
+        // BEFORE writing (a collision is a real conflict, and it means we must never delete that path on
+        // rollback). Track each destination in `created` BEFORE the write so a mid-copy failure (disk full,
+        // nested error) rolls back the partial copy too — the pre-check guarantees we only ever created it.
+        var created = new List<string>();
+        try
+        {
+            foreach (var entry in Directory.GetFileSystemEntries(src))
+            {
+                var entryName = Path.GetFileName(entry);
+                if (entryName == "meta.json") continue;
+                var isDir = Directory.Exists(entry);
+
+                // Live destination always; mirrors per the original hadOnServer rule:
+                //   directory entry -> mirror only if hadOnServer[entry] == true
+                //   file entry      -> mirror UNLESS hadOnServer[entry] == false
+                var dests = new List<string> { Path.Combine(loc.Abs, entryName) };
+                bool toMirrors = isDir
+                    ? (hadOnServer.TryGetValue(entryName, out var vd) && vd)
+                    : !(hadOnServer.TryGetValue(entryName, out var vf) && vf == false);
+                if (toMirrors)
+                    foreach (var mp in loc.Mirrors) dests.Add(Path.Combine(mp, entryName));
+
+                foreach (var dst in dests)
+                {
+                    if (Directory.Exists(dst) || File.Exists(dst))
+                        throw new IOException($"\"{entryName}\" already exists at \"{dst}\" — conflict.");
+                    created.Add(dst);                                 // track BEFORE the write
+                    if (isDir) CopyDir(entry, dst); else File.Copy(entry, dst);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            // Roll back only paths we created this run; the holding folder is left untouched.
+            foreach (var p in created)
+            {
+                try { if (Directory.Exists(p)) Directory.Delete(p, recursive: true); else if (File.Exists(p)) File.Delete(p); }
+                catch { /* best effort */ }
+            }
+            throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e);
+        }
+
+        // All live/mirror copies succeeded — now tear down the holding folder.
         foreach (var entry in Directory.GetFileSystemEntries(src))
         {
-            var entryName = Path.GetFileName(entry);
-            if (entryName == "meta.json") continue;
-            if (Directory.Exists(entry))
-            {
-                CopyDir(entry, Path.Combine(loc.Abs, entryName));
-                if (hadOnServer.TryGetValue(entryName, out var v) && v)
-                    foreach (var mp in loc.Mirrors) CopyDir(entry, Path.Combine(mp, entryName));
-                DeleteDir(entry);
-            }
-            else
-            {
-                File.Copy(entry, Path.Combine(loc.Abs, entryName));
-                if (!(hadOnServer.TryGetValue(entryName, out var v) && v == false))
-                    foreach (var mp in loc.Mirrors) File.Copy(entry, Path.Combine(mp, entryName));
-                File.Delete(entry);
-            }
+            if (Path.GetFileName(entry) == "meta.json") continue;
+            try { if (Directory.Exists(entry)) DeleteDir(entry); else File.Delete(entry); } catch { /* best effort */ }
         }
         try { File.Delete(Path.Combine(src, "meta.json")); } catch { /* best effort */ }
         try { Directory.Delete(src); } catch { /* may be non-empty on partial */ }
+        return new EnableOutcome(name, true, false, null);
     }
 
     private static void SetAllMods(bool enabled, GameContext c)
