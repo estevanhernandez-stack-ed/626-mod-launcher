@@ -6,6 +6,12 @@ namespace ModManager.Core.RestorePoints;
 /// supplies the GameEntry + a built GameContext and picks the end-state.</summary>
 public sealed record GameCaptureInput(GameEntry Game, GameContext Context, string EndState);
 
+/// <summary>Result of <see cref="RestorePointEngine.ApplyEndState"/>. vanilla populates MovedFiles;
+/// modsActive populates EnableOutcomes. The other list is always empty.</summary>
+public sealed record EndStateResult(
+    IReadOnlyList<MovedFile> MovedFiles,
+    IReadOnlyList<Scanner.EnableOutcome> EnableOutcomes);
+
 /// <summary>
 /// The headless Safe Clear / Restore file engine. Takes explicit archive paths — no %APPDATA%
 /// knowledge, no UI. Composes Phase 0 primitives (SafeMove, PathGate) + existing Core. The App
@@ -13,6 +19,95 @@ public sealed record GameCaptureInput(GameEntry Game, GameContext Context, strin
 /// </summary>
 public static partial class RestorePointEngine
 {
+    /// <summary>Apply the chosen end-state to a game AFTER its capture is sealed.
+    /// vanilla: move detected direct-inject game-folder files into the archive (recorded), uninstall
+    /// frameworks (their files were captured), flip loader manifests off; owned mods untouched.
+    /// modsActive: re-enable everything from holding, returning per-mod outcomes (skips surfaced).</summary>
+    public static EndStateResult ApplyEndState(GameContext c, string endState, string gameArchiveDir)
+    {
+        if (string.Equals(endState, "modsActive", StringComparison.OrdinalIgnoreCase))
+            return new EndStateResult(Array.Empty<MovedFile>(), ReEnableAll(c));
+
+        var moved = MoveDirectInjectToArchive(c, gameArchiveDir);
+        UninstallFrameworks(c);
+        FlipLoadersOff(c);
+        return new EndStateResult(moved, Array.Empty<Scanner.EnableOutcome>());
+    }
+
+    private static IReadOnlyList<Scanner.EnableOutcome> ReEnableAll(GameContext c)
+    {
+        var outcomes = new List<Scanner.EnableOutcome>();
+        foreach (var name in DirectoryNames(c.DisabledRoot))
+            outcomes.Add(Scanner.EnableModWithOutcomeAsync(name, c).GetAwaiter().GetResult());
+        return outcomes;
+    }
+
+    private static IReadOnlyList<MovedFile> MoveDirectInjectToArchive(GameContext c, string gameArchiveDir)
+    {
+        var playFolder = c.GameRoot;
+        // DirectInject.Detect expects basenames (just file/dir names), not full paths.
+        // Directory.GetFiles/GetDirectories return full paths; extract the filename component first.
+        var fileNames = Directory.Exists(playFolder)
+            ? Directory.GetFiles(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList()
+            : new List<string>();
+        var dirNames = Directory.Exists(playFolder)
+            ? Directory.GetDirectories(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList()
+            : new List<string>();
+
+        var moved = new List<MovedFile>();
+        foreach (var di in DirectInject.Detect(fileNames, dirNames))
+        {
+            // di.Entries are basenames relative to the play folder (same list that was passed in).
+            foreach (var rel in di.Entries)
+            {
+                var srcAbs = Path.Combine(playFolder, rel);
+                var destAbs = Path.Combine(gameArchiveDir, "vanilla-moved", rel);
+                if (File.Exists(srcAbs))
+                {
+                    var size = new FileInfo(srcAbs).Length;
+                    var sha = FileTally.Sha256(srcAbs);
+                    SafeMove.Move(srcAbs, destAbs);
+                    moved.Add(new MovedFile(rel, size, sha));
+                }
+                else if (Directory.Exists(srcAbs))
+                {
+                    var size = FileTally.ByteSize(srcAbs);
+                    SafeMove.Move(srcAbs, destAbs);
+                    moved.Add(new MovedFile(rel, size, null));
+                }
+            }
+        }
+        return moved;
+    }
+
+    private static void UninstallFrameworks(GameContext c)
+    {
+        foreach (var fw in FrameworkRegistry.List(c.DataDir))
+            FrameworkRegistry.Uninstall(c.DataDir, fw.FrameworkId, c.GameRoot);
+    }
+
+    private static void FlipLoadersOff(GameContext c)
+    {
+        foreach (var m in Scanner.BuildModListAsync(c).GetAwaiter().GetResult())
+        {
+            if (!m.Enabled) continue;
+            var abs = c.Locations.FirstOrDefault(l => l.Name == m.Location)?.Abs;
+            if (abs is null) continue;
+            try
+            {
+                if (m.Loader == "ue4ss") Ue4ssManifest.SetEnabled(abs, m.Name, enabled: false);
+                else if (m.Loader == "bepinex") BepInExPlugins.SetEnabled(abs, m.Name, enable: false);
+            }
+            catch { /* best effort — loader manifest may be absent; vanilla is still safe */ }
+        }
+    }
+
+    private static IEnumerable<string> DirectoryNames(string root)
+        => Directory.Exists(root)
+            ? Directory.GetDirectories(root).Select(d => Path.GetFileName(d)!)
+            : Enumerable.Empty<string>();
+
+
     /// <summary>Copy the game's data dir + framework install state into the archive, and build its
     /// manifest entry. Non-destructive: the live data dir and game folder are untouched.
     /// <paramref name="gameArchiveDir"/> must be a fresh directory — if its <c>data</c>
