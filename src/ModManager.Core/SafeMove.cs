@@ -9,6 +9,7 @@ namespace ModManager.Core;
 /// </summary>
 public static class SafeMove
 {
+    // Windows HRESULT for ERROR_SHARING_VIOLATION (0x20). Intentional — this launcher targets Windows only.
     private const int HrSharingViolation = unchecked((int)0x80070020);
 
     public static void Move(string src, string dest)

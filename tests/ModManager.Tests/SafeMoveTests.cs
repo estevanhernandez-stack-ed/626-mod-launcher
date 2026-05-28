@@ -50,4 +50,22 @@ public class SafeMoveTests
         Assert.Equal("T", File.ReadAllText(Path.Combine(dest, "top.txt")));
         Assert.Equal("D", File.ReadAllText(Path.Combine(dest, "inner", "deep.txt")));
     }
+
+    [Fact]
+    public void Move_surfaces_sharing_violation_instead_of_copying()
+    {
+        var root = TestSupport.TempDir("safemove-");
+        var src = Path.Combine(root, "locked.bin");
+        var dest = Path.Combine(root, "moved.bin");
+        File.WriteAllBytes(src, new byte[] { 1, 2, 3 });
+
+        // Hold an exclusive handle (no sharing) so a move of src raises a sharing violation —
+        // the "game is running and has the file open" case.
+        using var hold = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        // The sharing violation must SURFACE, not fall through to a (doomed) copy.
+        Assert.ThrowsAny<IOException>(() => SafeMove.Move(src, dest));
+        Assert.False(File.Exists(dest));   // no copy was attempted
+        Assert.True(File.Exists(src));     // source preserved
+    }
 }
