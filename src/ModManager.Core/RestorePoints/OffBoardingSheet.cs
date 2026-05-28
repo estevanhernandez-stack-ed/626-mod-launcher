@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 
 namespace ModManager.Core.RestorePoints;
@@ -42,7 +43,11 @@ public static class OffBoardingSheet
             sb.AppendLine(line);
         }
         if (r.OwnedMods.Count > 0)
-            sb.AppendLine($"  Managed by Vortex ({r.OwnedMods.Count}): {string.Join(", ", r.OwnedMods)} — clean these up in Vortex.");
+            foreach (var grp in r.OwnedMods.GroupBy(o => o.ManagedBy, StringComparer.OrdinalIgnoreCase))
+            {
+                var names = string.Join(", ", grp.Select(o => o.Name));
+                sb.AppendLine($"  Managed by {grp.Key} ({grp.Count()}): {names} — clean these up in {grp.Key}.");
+            }
         sb.AppendLine();
 
         sb.AppendLine("TO RESTORE THIS SETUP");

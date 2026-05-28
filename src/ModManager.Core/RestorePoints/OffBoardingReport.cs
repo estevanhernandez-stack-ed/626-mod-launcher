@@ -9,7 +9,9 @@ public sealed record OffBoardingReport(
     IReadOnlyList<string> LaunchLines,
     IReadOnlyList<string> Frameworks,
     IReadOnlyList<OffBoardingModLine> Mods,
-    IReadOnlyList<string> OwnedMods);
+    IReadOnlyList<OffBoardingOwnedMod> OwnedMods);
+
+public sealed record OffBoardingOwnedMod(string Name, string ManagedBy);
 
 public sealed record OffBoardingModLine(
     string Name,

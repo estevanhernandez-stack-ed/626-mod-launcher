@@ -15,7 +15,7 @@ public class OffBoardingSheetTests
             new OffBoardingModLine("GuessMod", "https://nexusmods.com/y", "nameSearch", null),
             new OffBoardingModLine("SideloadMod", null, null, null),
         },
-        OwnedMods: new[] { "VortexA", "VortexB" });
+        OwnedMods: new[] { new OffBoardingOwnedMod("VortexA", "Vortex"), new OffBoardingOwnedMod("VortexB", "Vortex") });
 
     [Fact]
     public void Render_leads_with_preservation_and_lists_launch_and_sources()
@@ -49,5 +49,24 @@ public class OffBoardingSheetTests
         var s = OffBoardingSheet.Render(Report());
         Assert.False(string.IsNullOrWhiteSpace(s));
         Assert.Equal(before, Directory.GetCurrentDirectory());
+    }
+
+    [Fact]
+    public void Render_names_the_correct_manager_for_each_owned_mod()
+    {
+        var r = Report() with { OwnedMods = new[] { new OffBoardingOwnedMod("VortA", "Vortex"), new OffBoardingOwnedMod("Mo2A", "Mo2") } };
+        var s = OffBoardingSheet.Render(r);
+        Assert.Contains("Managed by Vortex (1): VortA", s);
+        Assert.Contains("Managed by Mo2 (1): Mo2A", s);
+        Assert.DoesNotContain("Managed by Vortex (1): Mo2A", s);   // no cross-labeling
+    }
+
+    [Fact]
+    public void Render_uses_plain_source_when_url_known_but_confidence_null()
+    {
+        var r = Report() with { Mods = new[] { new OffBoardingModLine("KnownNoConf", "https://nexusmods.com/z", null, null) } };
+        var s = OffBoardingSheet.Render(r);
+        Assert.Contains("source: https://nexusmods.com/z", s);
+        Assert.DoesNotContain("likely source: https://nexusmods.com/z", s);
     }
 }
