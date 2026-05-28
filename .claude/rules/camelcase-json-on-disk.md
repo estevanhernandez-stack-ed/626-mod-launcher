@@ -61,5 +61,6 @@ The string-contains assertion is what protects you — without it, the round-tri
 - Registry / settings (`src/ModManager.Core/Registry.cs`)
 - Tool registry (`src/ModManager.Core/Tools/ToolRegistry.cs`)
 - `ModMeta` `installedUtc` + `sourceConfidence` (`src/ModManager.Core/Mod.cs`)
+- Restore-point manifest (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs`)
 
 If you're adding a new on-disk shape and it isn't in this list, add it.
