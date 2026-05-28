@@ -18,7 +18,10 @@ public class ScannerUninstallTests
         File.WriteAllText(Path.Combine(mirror, "cool.pak"), "X");
         var c = Scanner.GameContext(new GameEntry
         {
-            Id = "t", GameName = "T", GameRoot = root,
+            // Pin DataDir under the unique temp root. Without this, DataDirForGame resolves to the
+            // SHARED %TEMP%\_626mods\t (parent-of-gameRoot + Id), and parallel Scanner tests using
+            // Id="t" race on disabled/cool — an intermittent flake. Mirrors the ScannerCoreTests fix.
+            Id = "t", GameName = "T", GameRoot = root, DataDir = Path.Combine(root, "_626mods", "t"),
             ModLocations = new[] { new ModLocation("mods", "mods", "mods") { Mirrors = new[] { "server" } } },
             FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
         });
