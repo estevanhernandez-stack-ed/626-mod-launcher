@@ -64,4 +64,13 @@ public sealed class ModMeta
     /// (Nexus md5, CF fingerprint, name search) never clobbers a manual entry — the row is locked
     /// to whatever the user pasted, even when a later rescan would match the same key.</summary>
     public bool IsManual { get; set; }
+
+    /// <summary>When this mod first landed (set by the App at intake). Drives the off-boarding sheet's
+    /// "installed on" line. Nullable: mods that predate this field have no recorded date.</summary>
+    public DateTime? InstalledUtc { get; set; }
+
+    /// <summary>How the source Url was derived: "manual" | "fingerprint" | "md5" | "nameSearch" | null.
+    /// Lets the off-boarding sheet hedge a low-confidence name-search match ("likely source:")
+    /// versus a high-confidence one ("source:").</summary>
+    public string? SourceConfidence { get; set; }
 }
