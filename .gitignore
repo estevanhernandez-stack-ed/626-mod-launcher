@@ -21,3 +21,12 @@ coverage*.xml
 .env
 appsettings.*.local.json
 dist/
+
+# MCP wiring carries a live dashboard bearer token — never commit. Each machine supplies its own.
+.mcp.json
+
+# Local Claude Code overrides (machine-specific) — the shared config is committed, this isn't.
+.claude/settings.local.json
+
+# Transient superpowers session state (brainstorm scratch, server markers) — not project config.
+.superpowers/
