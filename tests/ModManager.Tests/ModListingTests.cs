@@ -99,4 +99,21 @@ public class ModListingTests
         Assert.Equal("both", mods.First(m => m.Name == "Cool").Class); // classified
         Assert.False(File.Exists(c.ClassificationPath));               // read-only: no write
     }
+
+    [Fact]
+    public void Resolve_routes_config_backed_game_to_mod_engine_2()
+    {
+        var dir = TestSupport.TempDir("me2-resolve-");
+        var configPath = Path.Combine(dir, "config_eldenring.toml");
+        File.WriteAllText(configPath,
+            "[extension.mod_loader]\n" +
+            "mods = [ { enabled = true, name = \"Alpha\", path = \"alpha\" } ]\n");
+        var game = new GameEntry
+        {
+            Id = "er", GameName = "ER", Engine = "fromsoft",
+            GameRoot = dir, DataDir = Path.Combine(dir, "data"), ModEngineConfig = configPath,
+        };
+        // IsConfigBacked wins the dispatch -> Location proves we took the ME2 branch, not direct-inject/scanner.
+        Assert.Contains(ModListing.Resolve(game), m => m.Name == "Alpha" && m.Location == "mod engine 2");
+    }
 }
