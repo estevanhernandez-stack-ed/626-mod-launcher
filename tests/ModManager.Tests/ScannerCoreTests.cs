@@ -106,4 +106,21 @@ public class ScannerCoreTests
         await Scanner.LoadProfileAsync("all-on", c);
         Assert.True(File.Exists(Path.Combine(primary, "Audio_P.pak"))); // re-enabled by profile
     }
+
+    [Fact]
+    public void ListClassified_sets_class_without_writing_classification()
+    {
+        var (_, _, _, c) = Setup();
+        var mods = Scanner.ListClassified(c);
+        Assert.Equal("both", mods.First(m => m.Name == "Cool").Class);
+        Assert.False(File.Exists(c.ClassificationPath)); // read-only: no write
+    }
+
+    [Fact]
+    public void PersistClassification_writes_the_seeded_map()
+    {
+        var (_, _, _, c) = Setup();
+        Scanner.PersistClassification(c, Scanner.ListClassified(c));
+        Assert.True(File.Exists(c.ClassificationPath));
+    }
 }
