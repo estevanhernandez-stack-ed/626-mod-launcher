@@ -5,6 +5,30 @@ namespace ModManager.Tests;
 public class ModListingTests
 {
     [Fact]
+    public void DirectInjectListing_lists_seamless_and_loader_mods_and_drops_bare_loader()
+    {
+        var game = FromSoftFixture.Build();
+        var mods = DirectInjectListing.List(game);
+        var names = mods.Select(m => m.Name).ToList();
+
+        Assert.Contains("Seamless Co-op", names);
+        Assert.Contains("Adjust The Fov", names);            // loader-run DLL, prettified
+        Assert.DoesNotContain("DLL mod loader", names);      // dropped: its mods\ has contents
+        Assert.Equal("direct-inject", mods.First(m => m.Name == "Seamless Co-op").Location);
+        Assert.Equal("co-op", mods.First(m => m.Name == "Seamless Co-op").Class);
+    }
+
+    [Fact]
+    public void DirectInjectListing_keeps_bare_loader_when_mods_folder_empty()
+    {
+        var game = FromSoftFixture.Build();
+        Directory.Delete(Path.Combine(game.GameRoot!, "Game", "mods"), recursive: true);
+        var names = DirectInjectListing.List(game).Select(m => m.Name).ToList();
+        Assert.Contains("DLL mod loader", names);            // no contents -> bare loader row stays
+    }
+
+
+    [Fact]
     public void ModEngine2Listing_lists_config_mods_in_order_with_enabled_state()
     {
         var dir = TestSupport.TempDir("me2-");
