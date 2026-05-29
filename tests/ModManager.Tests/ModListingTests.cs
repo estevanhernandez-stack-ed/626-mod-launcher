@@ -76,4 +76,27 @@ public class ModListingTests
         var game = new GameEntry { Engine = "bepinex", ModEngineConfig = path };
         Assert.False(ModEngine2Listing.IsConfigBacked(game)); // config present but wrong engine
     }
+
+    [Fact]
+    public void Resolve_fromsoft_returns_enriched_direct_inject_mods()
+    {
+        var game = FromSoftFixture.Build();
+        var mods = ModListing.Resolve(game);
+        var seamless = mods.First(m => m.Name == "Seamless Co-op");
+
+        Assert.Equal("Seamless Co-op (Elden Ring)", seamless.DisplayName); // enriched from metadata.json
+        Assert.Equal("Yui", seamless.Author);
+        Assert.Equal("https://www.nexusmods.com/eldenring/mods/510", seamless.ModUrl);
+        Assert.Contains(mods, m => m.Name == "Adjust The Fov");
+        Assert.DoesNotContain(mods, m => m.Name == "DLL mod loader");
+    }
+
+    [Fact]
+    public void Resolve_scanner_world_classifies_and_does_not_write()
+    {
+        var (_, _, _, c) = ScannerCoreTests.SetupPublic();
+        var mods = ModListing.Resolve(c.Game);
+        Assert.Equal("both", mods.First(m => m.Name == "Cool").Class); // classified
+        Assert.False(File.Exists(c.ClassificationPath));               // read-only: no write
+    }
 }

@@ -5,6 +5,8 @@ namespace ModManager.Tests;
 // Ports scanner.test.js — UE5-style game: a mirrored mod (Cool) + a client-only mod (Audio).
 public class ScannerCoreTests
 {
+    internal static (string root, string primary, string mirror, GameContext c) SetupPublic() => Setup();
+
     private static (string root, string primary, string mirror, GameContext c) Setup()
     {
         var root = TestSupport.TempDir("mmb-");
