@@ -283,18 +283,17 @@ public sealed partial class MainViewModel : ObservableObject
             // Three worlds: Mod Engine 2 games read their mods from the config; FromSoft games
             // without ME2 are direct-inject (loose files next to the exe) — toggled by name, never
             // deleted; everything else is a filesystem scan via the proven Scanner pipeline.
-            IReadOnlyList<Mod> list;
             var directInject = DirectInjectBacked;
-            if (ConfigBacked) list = _me2.ListMods(_ctx.Game);
-            else if (directInject) list = _direct.List(_ctx.Game);
-            else list = await ReloadFromScannerAsync();
-
-            // Always merge metadata.json onto the row list. The scanner branch did this internally too —
-            // MergeMetadata is idempotent (same map → same fields), so the scanner branch's re-merge is a
-            // no-op and the direct-inject + ME2 branches now pick up Nexus / CF identifies the same way
-            // Windrose does. Without this, metadata.json entries written by Md5IdentifyArchivesAsync /
-            // RefreshMetadataByNameAsync for fromsoft games never reach the displayed rows.
-            list = Metadata.MergeMetadata(list, Scanner.LoadMetadata(_ctx));
+            // Scanner-world only: migrate the data dir, then list, then persist the auto-seeded
+            // classification — exactly the two writes the old scanner branch did. The shared
+            // read-only resolver (used by the agent-access MCP too) performs neither.
+            if (!ConfigBacked && !directInject)
+                await Scanner.MigrateDataDirAsync(_ctx);
+            // One read-only listing path shared with the MCP: dispatch by engine (ME2 / direct-inject /
+            // scanner) + merge metadata.json. See ModManager.Core.ModListing.Resolve.
+            IReadOnlyList<Mod> list = ModListing.Resolve(_ctx.Game);
+            if (!ConfigBacked && !directInject)
+                Scanner.PersistClassification(_ctx, list);
 
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
             // Order rows so variant-family members (same mod page / _Nx base) sit together, and mark
@@ -446,12 +445,6 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
-    }
-
-    private async Task<IReadOnlyList<Mod>> ReloadFromScannerAsync()
-    {
-        await Scanner.MigrateDataDirAsync(_ctx!);
-        return await Scanner.ListWithClassAsync(_ctx!);
     }
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
