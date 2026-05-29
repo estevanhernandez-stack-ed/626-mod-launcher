@@ -2,9 +2,13 @@
 
 Running log of post-merge smoke needs the orchestrator can't verify automatically. Each entry: what shipped, what to test, why it matters. Strike entries through (or move to a "Cleared" section) once smoked.
 
+> **2026-05-28 live-session note:** A real Elden Ring + Safe Clear smoke pass surfaced several bugs (all logged in the 626 decision log; consolidated remediation plan landing in `docs/superpowers/plans/`). Affected sections below carry **STATUS** banners. Net: the Seamless / INI-editor / framework surfaces were exercised hard and turned up real defects rather than clean passes, and Safe Clear itself is only 1-of-8 smoked.
+
 ---
 
 ## PR #49 — BND4 file-table walk (merged 2026-05-26)
+
+> **STATUS — SMOKED 2026-05-27 (per Este).** ER save editing exercised on real saves and working; steps 1-3 considered cleared. Confirm step 4 (edit -> in-game round-trip) if not already run.
 
 **Shipped:** ER save editor's reader + writer now locate save sections by BND4 entry NAME (`USER_DATA011` for the save header, `USER_DATA000`..`USER_DATA009` for the 10 character slots) instead of hardcoded byte offsets like `0x019003B0`. Future ER patches that reshape the file layout still work; patches that rename the save-header entry fail loud with `InvalidDataException` listing the names that WERE found — never silently corrupt a save.
 
@@ -20,6 +24,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ## PR #51 — Mod-dependency detection (merged 2026-05-26)
 
+> **STATUS — STANDING; re-smoke AFTER the loader-"required" remediation.** The "NEEDS Elden Mod Loader" chip framing is changing to conditional (2026-05-28 finding): a loader is not required when a DLL proxy / Seamless / ReShade is already present. Smoking now would re-assert the wrong thing.
+
 **Shipped:** Every mod row in a framework-gated game (UE4SS, BepInEx, SMAPI, ME2, DLL proxy, Forge/Fabric) gets a red `NEEDS X` chip with a clickable get-link when the framework isn't installed. Post-drop status line names the missing framework and host (`". Heads up: this mod needs UE4SS — get it at github.com."`). Pure-core probe covered by 13 unit tests; App wiring verified by build only.
 
 **Smoke steps:**
@@ -32,6 +38,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 ---
 
 ## PR #?? — Mod dashboard (Windrose-first tools + INI editor) (merged 2026-05-27)
+
+> **STATUS — INI-editor steps BLOCKED on remediation (2026-05-28).** The INI editor was exercised on Seamless and corrupts line endings — it writes bare-CR (\r only, no \n), which the consuming game cannot parse. Re-smoke the INI-editor steps after the IniEdit CRLF fix (priority-1 remediation). Tools-panel steps still standing.
 
 **Shipped:** Per-game **mod dashboard** surface above the mod list. Two day-one features:
 
@@ -57,6 +65,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 ---
 
 ## PR #?? — Framework intake (Elden Mod Loader) (merged YYYY-MM-DD)
+
+> **STATUS — BLOCKED on remediation (2026-05-28).** Live ER session showed the "required Elden Mod Loader" framing drove an unnecessary install (red tag, degraded setup) — ELM is not required when a proxy is already present. Re-smoke after the loader-"required" -> conditional remediation.
 
 **Shipped:** Per [`docs/superpowers/specs/2026-05-27-framework-intake-design.md`](../superpowers/specs/2026-05-27-framework-intake-design.md):
 
@@ -84,6 +94,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ## PR #?? — Unified-catalog Phase 1: direct-inject mod config discovery (F3) (merged YYYY-MM-DD)
 
+> **STATUS — BLOCKED on remediation (2026-05-28).** Exercised on Seamless and found: (a) the catalog config path is wrong for Seamless 1.9.9 — it reads SeamlessCoop\ersc_settings.ini, NOT seamlesscoopsettings.ini; (b) the pencil edit corrupts line endings (bare-CR). Re-smoke after the catalog-path correction + the IniEdit CRLF fix.
+
 **Shipped:** Per [`docs/superpowers/specs/2026-05-27-unified-catalog-direct-inject-config-design.md`](../superpowers/specs/2026-05-27-unified-catalog-direct-inject-config-design.md):
 
 - New `KnownDirectInjectMod` schema in `ModManager.Core.Catalog` (kind-tagged; future phases fold Tools + Frameworks into the same shape).
@@ -104,6 +116,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 ---
 
 ## Safe Clear + Restore (Phase 1B) (merged YYYY-MM-DD)
+
+> **STATUS — STARTED 2026-05-28 (1 of 8).** Step-1 orientation PASSED (dialog matches verified source). Scenario 4 (game-running refusal) FAILED by inspection — the refusal does not fire for bootstrapper-launched games (Seamless's ersc_launcher.exe exits; the live eldenring.exe is never checked -> fail-open); bug logged. Remaining 7 scenarios STANDING; 6 are destructive on a live rig, gated on the backup + the refusal-gap fix.
 
 **Shipped:** Per [`docs/superpowers/specs/`](../superpowers/specs/) — Settings → Reset launcher surface. User picks a clear mode ("Return to vanilla" or "Leave mods active"), optionally creates a restore point (timestamped archive of game folder + mod data + Nexus auth), optionally keeps Nexus connected, then executes. A `626-launcher-how-to-launch.txt` sheet is written at the game root describing the resulting state. Restore points are listed in Settings → Restore points; restoring one reverses the clear and removes the sheet. A `safe-clear.lock` file guards crash recovery: sealed point → offer restore; unsealed/missing → offer discard.
 
