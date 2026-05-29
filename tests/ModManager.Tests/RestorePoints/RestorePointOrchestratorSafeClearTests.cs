@@ -19,6 +19,10 @@ public class RestorePointOrchestratorSafeClearTests : IDisposable
         public bool Running { get; init; }
         public bool AnyRunning(GameEntry g) => Running;
     }
+    private sealed class ThrowingProbe : IGameRunningProbe
+    {
+        public bool AnyRunning(GameEntry g) => throw new InvalidOperationException("probe unavailable");
+    }
     private sealed class FakeProvider : IGameProvider
     {
         private readonly List<GameEntry> _games;
@@ -85,6 +89,19 @@ public class RestorePointOrchestratorSafeClearTests : IDisposable
         var r = await orch.SafeClearAsync(new SafeClearOptions(), "20260528-141233", default);
         Assert.False(r.Ok);
         Assert.Contains("T", r.RefusedReason!);
+        Assert.False(Directory.Exists(Path.Combine(dataRoot, "restore-points", "20260528-141233")));  // nothing archived
+    }
+
+    [Fact]
+    public async Task SafeClear_refuses_when_running_probe_is_unavailable()
+    {
+        // Law E fails CLOSED on a destructive op: if the probe can't verify whether the game is
+        // running, refuse rather than risk resetting over live files.
+        var (game, _, dataRoot, _) = Setup();
+        var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new ThrowingProbe());
+        var r = await orch.SafeClearAsync(new SafeClearOptions(), "20260528-141233", default);
+        Assert.False(r.Ok);
+        Assert.Contains("verify", r.RefusedReason!);
         Assert.False(Directory.Exists(Path.Combine(dataRoot, "restore-points", "20260528-141233")));  // nothing archived
     }
 

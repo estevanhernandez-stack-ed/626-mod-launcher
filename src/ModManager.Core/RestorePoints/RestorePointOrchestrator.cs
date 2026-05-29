@@ -41,9 +41,21 @@ public sealed class RestorePointOrchestrator
 
             // PRE-FLIGHT (Law E) — change nothing.
             foreach (var g in games)
-                if (_probe.AnyRunning(g))
+            {
+                bool running;
+                try { running = _probe.AnyRunning(g); }
+                catch
+                {
+                    // Law E fails CLOSED on a destructive op: if the probe can't verify whether the
+                    // game is running, refuse rather than risk resetting over possibly-live files.
+                    return new SafeClearResult(false,
+                        $"Couldn't verify whether {g.GameName} is running — close it and try again.", null,
+                        Array.Empty<string>(), Array.Empty<string>());
+                }
+                if (running)
                     return new SafeClearResult(false, $"Close {g.GameName} before resetting the launcher.", null,
                         Array.Empty<string>(), Array.Empty<string>());
+            }
             foreach (var g in games)
             {
                 var ctx = _provider.ContextFor(g);
