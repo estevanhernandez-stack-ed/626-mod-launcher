@@ -29,6 +29,8 @@ public static class ModEngine2Listing
                 Enabled = m.Enabled,
                 IsFolder = true,
                 Location = "mod engine 2",
+                // ME2 path token (relative, from the config) — not a filesystem path. Enable/disable
+                // for these rows goes through ModEngineService's config rewrite, not Scanner file moves.
                 Files = new List<string> { m.Path },
             })
             .ToList();

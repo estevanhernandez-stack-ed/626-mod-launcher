@@ -25,4 +25,21 @@ public class ModListingTests
         Assert.Equal("mod engine 2", mods[0].Location);
         Assert.Equal("both", mods[0].Class);
     }
+
+    [Fact]
+    public void ModEngine2Listing_not_config_backed_when_file_missing()
+    {
+        var game = new GameEntry { Engine = "fromsoft", ModEngineConfig = Path.Combine(TestSupport.TempDir("me2-x-"), "nope.toml") };
+        Assert.False(ModEngine2Listing.IsConfigBacked(game));
+    }
+
+    [Fact]
+    public void ModEngine2Listing_not_config_backed_when_not_fromsoft()
+    {
+        var dir = TestSupport.TempDir("me2-ng-");
+        var path = Path.Combine(dir, "config.toml");
+        File.WriteAllText(path, "");
+        var game = new GameEntry { Engine = "bepinex", ModEngineConfig = path };
+        Assert.False(ModEngine2Listing.IsConfigBacked(game)); // config present but wrong engine
+    }
 }
