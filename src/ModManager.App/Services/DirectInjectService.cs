@@ -5,9 +5,9 @@ namespace ModManager.App.Services;
 
 /// <summary>
 /// App-layer bridge for direct-inject FromSoft mods (loose files in the game's exe folder, no Mod
-/// Engine 2). Lists enabled mods (recognized in the "Game" folder) alongside disabled ones (held
-/// in the game's data dir), and toggles them via the reversible Core ops. The recognition + the
-/// move logic are pure/tested in <see cref="DirectInject"/>; this resolves the folders.
+/// Engine 2). Handles the write + detection ops: toggle enable/disable, install/plan/execute drops,
+/// Seamless Co-op detection, and proxy-DLL checks. Listing moved to <see cref="DirectInjectListing"/>
+/// (shared with the agent-access MCP); the reversible move logic is pure/tested in <see cref="DirectInject"/>.
 /// </summary>
 public sealed class DirectInjectService
 {

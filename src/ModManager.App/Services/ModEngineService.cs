@@ -5,10 +5,11 @@ namespace ModManager.App.Services;
 
 /// <summary>
 /// Treats a FromSoft game's Mod Engine 2 config as the source of truth for its mods. ME2's
-/// <c>mods[]</c> array decides what loads and in what priority (earlier wins conflicts), so for
-/// these games we read the list from the config and write enable/disable + load order straight
-/// back — no file moves. A one-time <c>.626bak</c> backup is taken before the first edit, and
-/// every write goes through the atomic writer so a crash can't corrupt the user's config.
+/// <c>mods[]</c> array decides what loads and in what priority (earlier wins conflicts). Reading the
+/// list moved to <see cref="ModManager.Core.ModEngine2Listing"/> (shared with the agent-access MCP);
+/// this class handles the writes — enable/disable + load order straight back, no file moves. A one-time
+/// <c>.626bak</c> backup is taken before the first edit, and every write goes through the atomic writer
+/// so a crash can't corrupt the user's config.
 /// </summary>
 public sealed class ModEngineService
 {
