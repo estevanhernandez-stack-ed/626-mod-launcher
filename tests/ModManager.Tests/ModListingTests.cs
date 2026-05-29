@@ -27,6 +27,16 @@ public class ModListingTests
         Assert.Contains("DLL mod loader", names);            // no contents -> bare loader row stays
     }
 
+    [Fact]
+    public void DirectInjectListing_returns_empty_for_missing_game_folder()
+    {
+        var game = new GameEntry
+        {
+            Id = "er", GameName = "ER", Engine = "fromsoft",
+            GameRoot = Path.Combine(TestSupport.TempDir("fs-none-"), "DoesNotExist"),
+        };
+        Assert.Empty(DirectInjectListing.List(game)); // missing folder -> empty list, no throw
+    }
 
     [Fact]
     public void ModEngine2Listing_lists_config_mods_in_order_with_enabled_state()
