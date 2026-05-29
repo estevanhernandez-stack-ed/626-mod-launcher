@@ -67,12 +67,50 @@ public sealed partial class MainWindow : Window
     {
         if (_loaded) return;
         _loaded = true;
+
+        var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
+        var interrupted = rp.DetectInterruptedClear();
+        if (interrupted is not null)
+            await HandleInterruptedClearAsync(rp, interrupted);
+
         await ViewModel.LoadAsync();
 
         // After load: wire registry-changed so Safe Clear / Restore cause the mod list to repaint.
         var launcherService = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
         launcherService.RegistryChanged += () =>
             DispatcherQueue.TryEnqueue(async () => await ViewModel.RefreshAsync());
+    }
+
+    private async Task HandleInterruptedClearAsync(Services.RestorePointService rp, ModManager.Core.RestorePoints.InterruptedClear ic)
+    {
+        if (ic.Sealed)
+        {
+            var d = new ContentDialog
+            {
+                Title = "A reset didn't finish",
+                Content = "A previous reset was interrupted, but your setup was safely archived. Restore your saved setup now?",
+                PrimaryButtonText = "Restore",
+                CloseButtonText = "Not now",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await d.ShowAsync() == ContentDialogResult.Primary)
+                await rp.RestoreAsync(ic.Timestamp);
+        }
+        else
+        {
+            var d = new ContentDialog
+            {
+                Title = "A reset didn't finish",
+                Content = "A previous reset was interrupted before it could be saved. Your setup is intact. Discard the incomplete archive?",
+                PrimaryButtonText = "Discard",
+                CloseButtonText = "Keep",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await d.ShowAsync() == ContentDialogResult.Primary)
+                rp.DiscardPartial(ic.Timestamp);
+        }
     }
 
     // OneWay IsOn + this handler: ignore the programmatic set during reload (when the switch

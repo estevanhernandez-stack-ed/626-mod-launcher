@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -37,6 +38,10 @@ public sealed record DirectInjectConfigRow(
     string Title,
     string Subtitle);
 
+/// <summary>One row in the Settings → Restore points list. Detail pre-formats the game names
+/// and total size so the XAML template binds a plain string, no converter needed.</summary>
+public sealed record RestorePointRow(string Timestamp, string Detail, string Id);
+
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
 /// account in one place. The Apply button commits the avatar + derived theme changes (gated by
@@ -50,6 +55,7 @@ public sealed partial class SettingsDialog : ContentDialog
     private readonly ThemeService _themes;
     private readonly AppSettingsService _appSettings;
     private readonly MainViewModel _vm;
+    private readonly RestorePointService _rp;
     private bool _suppressBackdropChange = true; // ignore the initial SelectionChanged from seeding
 
     private string? _pickedSourcePath;
@@ -73,6 +79,7 @@ public sealed partial class SettingsDialog : ContentDialog
         _themes = themes;
         _appSettings = appSettings;
         _vm = vm;
+        _rp = App.AppHost.Services.GetRequiredService<RestorePointService>();
 
         DeriveThemeCheck.Checked   += (_, _) => ThemeNameBox.Visibility = Visibility.Visible;
         DeriveThemeCheck.Unchecked += (_, _) => ThemeNameBox.Visibility = Visibility.Collapsed;
@@ -103,6 +110,7 @@ public sealed partial class SettingsDialog : ContentDialog
         RefreshInstalledTools();
         RefreshInstalledFrameworks();
         RefreshDirectInjectConfigs();
+        RefreshRestorePoints();
     }
 
     /// <summary>
@@ -483,6 +491,92 @@ public sealed partial class SettingsDialog : ContentDialog
             ? ""
             : $",\"accent_bloom\":{{\"blur\":{raw.AccentBloom.Blur},\"alpha\":{raw.AccentBloom.Alpha}}}";
         return "{" + string.Join(",", pairs) + bloom + "}";
+    }
+
+    /// <summary>Populate the Settings → Restore points list from the service.</summary>
+    private void RefreshRestorePoints()
+    {
+        var pts = _rp.ListRestorePoints();
+        RestorePointsList.ItemsSource = pts
+            .Select(p => new RestorePointRow(
+                Timestamp: p.Timestamp,
+                Detail: $"{string.Join(", ", p.GameNames)} · {FormatSize(p.TotalBytes)}",
+                Id: p.Timestamp))
+            .ToList();
+        NoRestorePointsText.Visibility = pts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        const long GiB = 1L << 30;
+        const long MiB = 1L << 20;
+        return bytes >= GiB
+            ? $"{bytes / (double)GiB:F1} GB"
+            : $"{bytes / (double)MiB:F0} MB";
+    }
+
+    /// <summary>Restore button — confirm then restore, closing the dialog on success.</summary>
+    private async void OnRestorePoint(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string ts) return;
+
+        var confirm = new ContentDialog
+        {
+            Title = "Restore this setup?",
+            Content = "Your current launcher state will be replaced with the archived setup.",
+            PrimaryButtonText = "Restore",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var r = await _rp.RestoreAsync(ts);
+        if (!r.Ok)
+        {
+            string msg;
+            if (r.Conflicts.Count > 0)
+            {
+                var ids = string.Join(", ", r.Conflicts.Select(c => c.Id));
+                msg = $"Some game folders have moved since this restore point was created ({ids}). " +
+                      "Update those game registrations and try again.";
+            }
+            else
+            {
+                msg = r.RefusedReason ?? "Restore failed.";
+            }
+            var err = new ContentDialog
+            {
+                Title = "Restore failed",
+                Content = msg,
+                CloseButtonText = "OK",
+                XamlRoot = XamlRoot,
+            };
+            await err.ShowAsync();
+            return;
+        }
+
+        Hide();
+    }
+
+    /// <summary>Delete button — confirm then remove the restore point and refresh the list.</summary>
+    private async void OnDeleteRestorePoint(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string ts) return;
+
+        var confirm = new ContentDialog
+        {
+            Title = "Delete this restore point?",
+            Content = "The archived setup will be permanently removed.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+
+        _rp.DeleteRestorePoint(ts);
+        RefreshRestorePoints();
     }
 
     /// <summary>Reset launcher button. Sets the hand-off flag and closes this dialog — MainWindow
