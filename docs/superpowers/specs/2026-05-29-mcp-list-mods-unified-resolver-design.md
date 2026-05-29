@@ -126,7 +126,7 @@ Per-mod object — current 5 fields + 3 enrichment fields:
 
 **Resolution — resolver strictly read-only; the two writes stay explicit App-side:**
 
-- Factor a read-only primitive `Scanner.ClassifyInMemory(ctx, mods)` — seeds classification + sets `Class`/`Base`/`Variant` in memory, **no `SaveClassification`**. `ListWithClass` keeps its current behavior by becoming `ClassifyInMemory` + `SaveClassification`, so existing callers are unaffected (find them all in the plan step).
+- Factor a read-only primitive `Scanner.ClassifyInMemory(ctx, mods)` — seeds classification + sets `Class`/`Base`/`Variant` in memory, **no `SaveClassification`**. `ListWithClass` keeps its current behavior by becoming `ClassifyInMemory` + `SaveClassification`. Keeping `ListWithClass` intact is **required**, not just convenient: it has callers beyond `ReloadFromScannerAsync` that want the write — two internal `Scanner` callers (`Scanner.cs:569`, `Scanner.cs:1081`) and a test (`ScannerCoreTests.cs:44`). The refactor must leave `ListWithClass`'s contract byte-identical; only `Resolve` (the new read path) skips the persist.
 - `Resolve` uses `BuildModList` + `ClassifyInMemory` for the scanner branch — no writes.
 
 **`MainViewModel.ReloadModsAsync` — the two writes become explicit boundary steps, gated to scanner-world exactly as today:**
