@@ -145,12 +145,14 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ---
 
-## MCP list_mods unification — App parity (2026-05-29)
+## ReloadModsAsync unification — App behavior unchanged (2026-05-29)
 
-After unifying mod listing on `ModListing.Resolve`:
-1. Open the App, switch to elden-ring (direct-inject: Seamless + EML installed).
+After unifying mod listing on `ModListing.Resolve` (App + MCP share one read path), verify each engine world still renders identically:
+1. **Direct-inject world** — switch to elden-ring (Seamless + EML installed).
    - Expected: the mod list is identical to before — Seamless Co-op + the EML-loaded DLL mods, same enabled states, same chips. No bare "DLL mod loader" row.
-2. Switch to a bepinex game (e.g. R.E.P.O.) and a Mod Engine 2 game if available.
-   - Expected: mod lists unchanged from before the refactor.
-3. Toggle a direct-inject mod off/on.
+2. **Scanner world** — switch to a BepInEx game (e.g. R.E.P.O.).
+   - Expected: mod list unchanged; `classification.json` still refreshes on disk (the migrate + persist writes stayed App-side), no stale entries.
+3. **Mod Engine 2 world** — switch to an ME2 config-backed game if available.
+   - Expected: mod list unchanged from before the refactor.
+4. Toggle a direct-inject mod off/on.
    - Expected: still reversible (moves to holding, returns), no behavior change.

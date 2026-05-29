@@ -290,7 +290,9 @@ public sealed partial class MainViewModel : ObservableObject
             if (!ConfigBacked && !directInject)
                 await Scanner.MigrateDataDirAsync(_ctx);
             // One read-only listing path shared with the MCP: dispatch by engine (ME2 / direct-inject /
-            // scanner) + merge metadata.json. See ModManager.Core.ModListing.Resolve.
+            // scanner) + merge metadata.json. See ModManager.Core.ModListing.Resolve. The metadata
+            // merge is load-bearing: without it, Nexus / CurseForge entries written by
+            // Md5IdentifyArchivesAsync / RefreshMetadataByNameAsync never reach the displayed fromsoft rows.
             IReadOnlyList<Mod> list = ModListing.Resolve(_ctx.Game);
             if (!ConfigBacked && !directInject)
                 Scanner.PersistClassification(_ctx, list);
