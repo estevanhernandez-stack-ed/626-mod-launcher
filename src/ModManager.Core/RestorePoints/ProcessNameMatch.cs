@@ -16,6 +16,14 @@ public static class ProcessNameMatch
             var name = Path.GetFileNameWithoutExtension(t.Target);
             if (!string.IsNullOrEmpty(name) && running.Contains(name)) return true;
         }
+
+        // Also match the engine's real runtime exe(s). A bootstrapper launch target (Seamless's
+        // ersc_launcher.exe, the ModEngine2 launcher) exits after spawning the game, so the only
+        // thing actually running is the runtime exe — which is never a LaunchTarget. Without this
+        // the game-running pre-flight false-negatives and a destructive Safe Clear proceeds mid-game.
+        foreach (var name in EngineRuntimeProcesses.For(game.Engine))
+            if (running.Contains(name)) return true;
+
         return false;
     }
 }
