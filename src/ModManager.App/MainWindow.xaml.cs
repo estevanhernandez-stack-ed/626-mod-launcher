@@ -269,6 +269,25 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // A vanilla/steam launch with enabled direct-inject DLLs (dinput8 / Seamless / ReShade) crashes
+        // at startup — those DLLs load into any process started from the game folder. Warn first, keep
+        // the escape hatch. (RequiredLauncher games are handled by NeedsVanillaConfirm above.)
+        if (ViewModel.NeedsDirectInjectStepAside(target))
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "This will crash — DLL mods are loaded",
+                Content = "Your enabled DLL mods (dinput8 / Seamless Co-op / ReShade) load into any program started from the game folder, including a plain Steam launch — and they crash a vanilla start. Disable them to run vanilla.",
+                PrimaryButtonText = "Launch anyway",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                ViewModel.LaunchTargetExplicit(target);
+            return;
+        }
+
         ViewModel.LaunchTargetExplicit(target);
     }
 

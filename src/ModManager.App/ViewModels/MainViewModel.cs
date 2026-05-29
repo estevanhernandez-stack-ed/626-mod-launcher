@@ -790,6 +790,11 @@ public sealed partial class MainViewModel : ObservableObject
     public bool NeedsVanillaConfirm(LaunchTarget target)
         => _ctx is not null && LaunchGuard.NeedsVanillaConfirm(_ctx.Game, AnyModsEnabled, target);
 
+    /// <summary>True when picking <paramref name="target"/> (a vanilla/steam launch) should step aside
+    /// first because enabled direct-inject DLLs would load into it and crash the vanilla start.</summary>
+    public bool NeedsDirectInjectStepAside(LaunchTarget target)
+        => _ctx is not null && LaunchGuard.NeedsDirectInjectStepAside(target, _direct.AnyActiveProxyDll(_ctx.Game));
+
     /// <summary>Surface the needs-launcher hint when the required launcher is set but not found.</summary>
     public void NotifyLauncherMissing()
     {
