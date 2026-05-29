@@ -18,4 +18,13 @@ public static class LaunchGuard
     /// enforcement is active and the target is a vanilla/steam launch (not an exe launcher).</summary>
     public static bool NeedsVanillaConfirm(GameEntry game, bool anyModsEnabled, LaunchTarget target)
         => RequiresLauncher(game, anyModsEnabled) && target.Kind != "exe";
+
+    /// <summary>True when launching <paramref name="target"/> should step aside first because enabled
+    /// direct-inject DLLs (dinput8 / ersc / ReShade / a frame-gen loader) load into ANY process started
+    /// from the game's exe folder — including a plain vanilla/steam launch — and crash a vanilla start
+    /// ("The application was unable to start correctly"). An exe launcher target is the loader's own
+    /// entry point, so it is left alone. Independent of <see cref="RequiresLauncher"/>: that hazard is
+    /// "mods silently won't load"; this one is "the game won't start at all".</summary>
+    public static bool NeedsDirectInjectStepAside(LaunchTarget target, bool anyDirectInjectDllsActive)
+        => anyDirectInjectDllsActive && target.Kind != "exe";
 }
