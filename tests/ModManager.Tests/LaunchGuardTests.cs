@@ -41,4 +41,20 @@ public class LaunchGuardTests
         Assert.False(LaunchGuard.NeedsVanillaConfirm(Game(null), anyModsEnabled: true, Steam()));
         Assert.False(LaunchGuard.NeedsVanillaConfirm(Game("ersc_launcher.exe"), anyModsEnabled: false, Steam()));
     }
+
+    // Direct-inject DLLs (dinput8/ersc/ReShade) load into ANY process started from the game folder,
+    // so a vanilla/steam launch with them active crashes the game start ("unable to start correctly").
+    // Distinct from RequiredLauncher: that's "mods won't load"; this is "the game won't start at all".
+
+    [Fact]
+    public void NeedsDirectInjectStepAside_true_for_a_steam_target_when_dlls_active()
+        => Assert.True(LaunchGuard.NeedsDirectInjectStepAside(Steam(), anyDirectInjectDllsActive: true));
+
+    [Fact]
+    public void NeedsDirectInjectStepAside_false_for_an_exe_launcher_target()
+        => Assert.False(LaunchGuard.NeedsDirectInjectStepAside(Exe(), anyDirectInjectDllsActive: true));
+
+    [Fact]
+    public void NeedsDirectInjectStepAside_false_when_no_dlls_active()
+        => Assert.False(LaunchGuard.NeedsDirectInjectStepAside(Steam(), anyDirectInjectDllsActive: false));
 }
