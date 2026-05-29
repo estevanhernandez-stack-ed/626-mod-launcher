@@ -71,6 +71,15 @@ public sealed partial class SettingsDialog : ContentDialog
     /// ContentDialogs simultaneously, which is fragile in WinUI 3.</summary>
     public bool OpenSafeClearRequested { get; private set; }
 
+    /// <summary>Set when the user clicks "Restore" on a restore-point row. MainWindow.OnSettings
+    /// reads this after ShowAsync() returns and shows the confirm + performs the restore — same
+    /// flag-then-hide pattern used by OpenSafeClearRequested, no nested ContentDialog.</summary>
+    public string? RestoreRequestedTimestamp { get; private set; }
+
+    /// <summary>Set when the user clicks "Delete" on a restore-point row. MainWindow.OnSettings
+    /// reads this after ShowAsync() returns and shows the confirm + deletes — same pattern.</summary>
+    public string? DeleteRequestedTimestamp { get; private set; }
+
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
@@ -515,68 +524,24 @@ public sealed partial class SettingsDialog : ContentDialog
             : $"{bytes / (double)MiB:F0} MB";
     }
 
-    /// <summary>Restore button — confirm then restore, closing the dialog on success.</summary>
-    private async void OnRestorePoint(object sender, RoutedEventArgs e)
+    /// <summary>Restore button. WinUI 3 forbids opening a second ContentDialog while one is already
+    /// showing — the confirm would throw InvalidOperationException. Pattern mirrors OnResetLauncher:
+    /// set the hand-off timestamp, Hide() this dialog, and let MainWindow.OnSettings show the confirm
+    /// after ShowAsync() returns (SettingsDialog is fully closed by then, no nesting).</summary>
+    private void OnRestorePoint(object sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.Tag is not string ts) return;
-
-        var confirm = new ContentDialog
-        {
-            Title = "Restore this setup?",
-            Content = "Your current launcher state will be replaced with the archived setup.",
-            PrimaryButtonText = "Restore",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-        };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
-
-        var r = await _rp.RestoreAsync(ts);
-        if (!r.Ok)
-        {
-            string msg;
-            if (r.Conflicts.Count > 0)
-            {
-                var ids = string.Join(", ", r.Conflicts.Select(c => c.Id));
-                msg = $"Some game folders have moved since this restore point was created ({ids}). " +
-                      "Update those game registrations and try again.";
-            }
-            else
-            {
-                msg = r.RefusedReason ?? "Restore failed.";
-            }
-            var err = new ContentDialog
-            {
-                Title = "Restore failed",
-                Content = msg,
-                CloseButtonText = "OK",
-                XamlRoot = XamlRoot,
-            };
-            await err.ShowAsync();
-            return;
-        }
-
+        RestoreRequestedTimestamp = ts;
         Hide();
     }
 
-    /// <summary>Delete button — confirm then remove the restore point and refresh the list.</summary>
-    private async void OnDeleteRestorePoint(object sender, RoutedEventArgs e)
+    /// <summary>Delete button. Same nested-ContentDialog constraint as OnRestorePoint — route the
+    /// action out to MainWindow via the flag-then-hide hand-off.</summary>
+    private void OnDeleteRestorePoint(object sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.Tag is not string ts) return;
-
-        var confirm = new ContentDialog
-        {
-            Title = "Delete this restore point?",
-            Content = "The archived setup will be permanently removed.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
-
-        _rp.DeleteRestorePoint(ts);
-        RefreshRestorePoints();
+        DeleteRequestedTimestamp = ts;
+        Hide();
     }
 
     /// <summary>Reset launcher button. Sets the hand-off flag and closes this dialog — MainWindow

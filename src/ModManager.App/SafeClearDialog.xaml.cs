@@ -68,6 +68,13 @@ public sealed partial class SafeClearDialog : ContentDialog
             Result = result;
             Cleared = true;                 // success — let the dialog close normally
         }
+        catch (Exception ex)
+        {
+            ResultBar.Message = $"Reset failed: {ex.Message}";
+            ResultBar.IsOpen = true;
+            args.Cancel = true;
+            IsPrimaryButtonEnabled = true;
+        }
         finally
         {
             deferral.Complete();
