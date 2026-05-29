@@ -12,29 +12,7 @@ namespace ModManager.App.Services;
 /// </summary>
 public sealed class ModEngineService
 {
-    public bool IsConfigBacked(GameEntry game)
-        => game.Engine == "fromsoft"
-           && !string.IsNullOrEmpty(game.ModEngineConfig)
-           && File.Exists(game.ModEngineConfig);
-
-    /// <summary>The config's mods as the normal mod list (priority order preserved).</summary>
-    public IReadOnlyList<Mod> ListMods(GameEntry game)
-    {
-        var toml = ReadConfig(game);
-        if (toml is null) return Array.Empty<Mod>();
-        return ModEngine2Config.ParseMods(toml)
-            .Select(m => new Mod
-            {
-                Name = m.Name,
-                Base = m.Name,
-                Class = "both",
-                Enabled = m.Enabled,
-                IsFolder = true,
-                Location = "mod engine 2",
-                Files = new List<string> { m.Path },
-            })
-            .ToList();
-    }
+    public bool IsConfigBacked(GameEntry game) => ModEngine2Listing.IsConfigBacked(game);
 
     public void SetEnabled(GameEntry game, string name, bool enabled)
         => Edit(game, mods => mods.Select(m => m.Name == name ? m with { Enabled = enabled } : m).ToList());
@@ -81,11 +59,7 @@ public sealed class ModEngineService
         AtomicJson.WriteTextAtomic(path, updated);
     }
 
-    private static string? ReadConfig(GameEntry game)
-    {
-        try { return game.ModEngineConfig is null ? null : File.ReadAllText(game.ModEngineConfig); }
-        catch { return null; }
-    }
+    private static string? ReadConfig(GameEntry game) => ModEngine2Listing.ReadConfig(game);
 
     // One-time backup so the user can always recover Mod Engine 2's original config.
     private static void Backup(string path)

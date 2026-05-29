@@ -12,32 +12,7 @@ namespace ModManager.App.Services;
 public sealed class DirectInjectService
 {
     /// <summary>True for FromSoft games (the engine whose mods can be direct-inject).</summary>
-    public bool Applies(GameEntry game) => game.Engine == "fromsoft";
-
-    public IReadOnlyList<Mod> List(GameEntry game)
-    {
-        var folder = PlayFolder(game.GameRoot);
-        return Enabled(folder).Select(d => Row(d, enabled: true))
-            .Concat(DirectInject.ListDisabled(Holding(game)).Select(d => Row(d, enabled: false)))
-            .ToList();
-    }
-
-    // All currently-enabled direct-inject mods: top-level signatures PLUS the individual mods a DLL
-    // loader runs from its mods\ folder. When those are present the bare "DLL mod loader" row is
-    // dropped — it's represented by its contents.
-    private static IReadOnlyList<DirectInjectMod> Enabled(string? folder)
-    {
-        if (folder is null) return Array.Empty<DirectInjectMod>();
-        var top = DirectInject.Detect(Names(folder, Directory.GetFiles), Names(folder, Directory.GetDirectories));
-
-        var modsDir = Path.Combine(folder, "mods");
-        var loaderMods = Directory.Exists(modsDir)
-            ? DirectInject.DetectLoaderMods(Names(modsDir, Directory.GetFiles), Names(modsDir, Directory.GetDirectories))
-            : Array.Empty<DirectInjectMod>();
-
-        if (loaderMods.Count > 0) top = top.Where(m => m.Name != DirectInject.LoaderName).ToList();
-        return top.Concat(loaderMods).ToList();
-    }
+    public bool Applies(GameEntry game) => DirectInjectListing.Applies(game);
 
     /// <summary>
     /// True when Seamless Co-op's mod files are present but its launcher is missing — co-op only
@@ -118,30 +93,10 @@ public sealed class DirectInjectService
         if (mod is not null) DirectInject.Disable(folder, holding, mod);
     }
 
-    private static Mod Row(DirectInjectMod d, bool enabled) => new()
-    {
-        Name = d.Name,
-        Base = d.Name,
-        Class = d.Kind,                 // chip: GRAPHICS / CO-OP / UPSCALER / DISPLAY / GAMEPLAY / DLL
-        Location = "direct-inject",       // chip: loose-file mod, not Mod Engine 2
-        Enabled = enabled,
-        Description = "Detected: " + d.Evidence,
-        Files = d.Entries.ToList(),
-    };
-
     /// <summary>FromSoft games keep the exe + mods under a "Game" subfolder; fall back to the root.</summary>
-    public static string? PlayFolder(string? gameRoot)
-    {
-        if (string.IsNullOrEmpty(gameRoot) || !Directory.Exists(gameRoot)) return null;
-        var game = Path.Combine(gameRoot, "Game");
-        return Directory.Exists(game) ? game : gameRoot;
-    }
+    public static string? PlayFolder(string? gameRoot) => DirectInjectListing.PlayFolder(gameRoot);
 
-    private static string Holding(GameEntry game) => Path.Combine(Scanner.DataDirForGame(game), "direct-disabled");
+    private static string Holding(GameEntry game) => DirectInjectListing.Holding(game);
 
-    private static IReadOnlyList<string> Names(string folder, Func<string, string[]> list)
-    {
-        try { return list(folder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList(); }
-        catch { return Array.Empty<string>(); }
-    }
+    private static IReadOnlyList<DirectInjectMod> Enabled(string? folder) => DirectInjectListing.Enabled(folder);
 }
