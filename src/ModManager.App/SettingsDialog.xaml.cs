@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -37,6 +38,10 @@ public sealed record DirectInjectConfigRow(
     string Title,
     string Subtitle);
 
+/// <summary>One row in the Settings → Restore points list. Detail pre-formats the game names
+/// and total size so the XAML template binds a plain string, no converter needed.</summary>
+public sealed record RestorePointRow(string Timestamp, string Detail, string Id);
+
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
 /// account in one place. The Apply button commits the avatar + derived theme changes (gated by
@@ -50,6 +55,7 @@ public sealed partial class SettingsDialog : ContentDialog
     private readonly ThemeService _themes;
     private readonly AppSettingsService _appSettings;
     private readonly MainViewModel _vm;
+    private readonly RestorePointService _rp;
     private bool _suppressBackdropChange = true; // ignore the initial SelectionChanged from seeding
 
     private string? _pickedSourcePath;
@@ -60,6 +66,20 @@ public sealed partial class SettingsDialog : ContentDialog
     /// through their own notification paths and don't need this flag.</summary>
     public bool Changed { get; private set; }
 
+    /// <summary>True when the user clicked "Reset launcher…". MainWindow.OnSettings checks this
+    /// after ShowAsync() returns and opens SafeClearDialog if set — avoids nesting two
+    /// ContentDialogs simultaneously, which is fragile in WinUI 3.</summary>
+    public bool OpenSafeClearRequested { get; private set; }
+
+    /// <summary>Set when the user clicks "Restore" on a restore-point row. MainWindow.OnSettings
+    /// reads this after ShowAsync() returns and shows the confirm + performs the restore — same
+    /// flag-then-hide pattern used by OpenSafeClearRequested, no nested ContentDialog.</summary>
+    public string? RestoreRequestedTimestamp { get; private set; }
+
+    /// <summary>Set when the user clicks "Delete" on a restore-point row. MainWindow.OnSettings
+    /// reads this after ShowAsync() returns and shows the confirm + deletes — same pattern.</summary>
+    public string? DeleteRequestedTimestamp { get; private set; }
+
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
@@ -68,6 +88,7 @@ public sealed partial class SettingsDialog : ContentDialog
         _themes = themes;
         _appSettings = appSettings;
         _vm = vm;
+        _rp = App.AppHost.Services.GetRequiredService<RestorePointService>();
 
         DeriveThemeCheck.Checked   += (_, _) => ThemeNameBox.Visibility = Visibility.Visible;
         DeriveThemeCheck.Unchecked += (_, _) => ThemeNameBox.Visibility = Visibility.Collapsed;
@@ -98,6 +119,7 @@ public sealed partial class SettingsDialog : ContentDialog
         RefreshInstalledTools();
         RefreshInstalledFrameworks();
         RefreshDirectInjectConfigs();
+        RefreshRestorePoints();
     }
 
     /// <summary>
@@ -478,5 +500,55 @@ public sealed partial class SettingsDialog : ContentDialog
             ? ""
             : $",\"accent_bloom\":{{\"blur\":{raw.AccentBloom.Blur},\"alpha\":{raw.AccentBloom.Alpha}}}";
         return "{" + string.Join(",", pairs) + bloom + "}";
+    }
+
+    /// <summary>Populate the Settings → Restore points list from the service.</summary>
+    private void RefreshRestorePoints()
+    {
+        var pts = _rp.ListRestorePoints();
+        RestorePointsList.ItemsSource = pts
+            .Select(p => new RestorePointRow(
+                Timestamp: p.Timestamp,
+                Detail: $"{string.Join(", ", p.GameNames)} · {FormatSize(p.TotalBytes)}",
+                Id: p.Timestamp))
+            .ToList();
+        NoRestorePointsText.Visibility = pts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        const long GiB = 1L << 30;
+        const long MiB = 1L << 20;
+        return bytes >= GiB
+            ? $"{bytes / (double)GiB:F1} GB"
+            : $"{bytes / (double)MiB:F0} MB";
+    }
+
+    /// <summary>Restore button. WinUI 3 forbids opening a second ContentDialog while one is already
+    /// showing — the confirm would throw InvalidOperationException. Pattern mirrors OnResetLauncher:
+    /// set the hand-off timestamp, Hide() this dialog, and let MainWindow.OnSettings show the confirm
+    /// after ShowAsync() returns (SettingsDialog is fully closed by then, no nesting).</summary>
+    private void OnRestorePoint(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string ts) return;
+        RestoreRequestedTimestamp = ts;
+        Hide();
+    }
+
+    /// <summary>Delete button. Same nested-ContentDialog constraint as OnRestorePoint — route the
+    /// action out to MainWindow via the flag-then-hide hand-off.</summary>
+    private void OnDeleteRestorePoint(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string ts) return;
+        DeleteRequestedTimestamp = ts;
+        Hide();
+    }
+
+    /// <summary>Reset launcher button. Sets the hand-off flag and closes this dialog — MainWindow
+    /// opens SafeClearDialog after ShowAsync() returns so both ContentDialogs never overlap.</summary>
+    private void OnResetLauncher(object sender, RoutedEventArgs e)
+    {
+        OpenSafeClearRequested = true;
+        Hide();
     }
 }

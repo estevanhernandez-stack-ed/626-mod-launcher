@@ -154,6 +154,7 @@
                        Text="The launcher never bundles frameworks. Drop a recognized framework zip to install; this section tracks what's been installed and reverses it." />
 
             <TextBlock Text="Direct-inject mod configs" FontWeight="SemiBold" Margin="0,16,0,4" />
+
             <TextBlock Opacity="0.55" FontSize="12" TextWrapping="Wrap"
                        Text="Per-mod config-file path overrides for direct-inject mods (Seamless Co-op, ReShade, etc.). Leave alone to use the catalog default; Override when your install is in an unusual location." />
             <ItemsRepeater x:Name="DirectInjectConfigsList">
@@ -182,6 +183,53 @@
             <TextBlock x:Name="DirectInjectConfigsEmpty"
                        Text="No catalog-known direct-inject mods for the active engine."
                        Opacity="0.55" FontSize="12" Visibility="Collapsed" />
+
+            <!-- Divider -->
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
+            <!-- ============ RESET ============ -->
+            <TextBlock Text="Reset" FontWeight="SemiBold" FontSize="14" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                       Text="Archive your current setup to a restore point, then reset the launcher to first-run. Your mods stay on disk." />
+            <Button x:Name="ResetLauncherButton"
+                    Content="Reset launcher…"
+                    Click="OnResetLauncher" />
+
+            <!-- Divider -->
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
+            <!-- ============ RESTORE POINTS ============ -->
+            <TextBlock Text="Restore points" FontWeight="SemiBold" FontSize="14" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                       Text="Snapshots of your launcher state created before a reset. Restore to bring back a previous setup, or delete what you no longer need." />
+            <TextBlock x:Name="NoRestorePointsText" Text="No restore points yet."
+                       Opacity="0.55" FontSize="12" Visibility="Collapsed" />
+            <ItemsRepeater x:Name="RestorePointsList">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="8" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="local:RestorePointRow">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Timestamp}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind Detail}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           FontSize="12" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Restore" Tag="{x:Bind Id}"
+                                    Click="OnRestorePoint" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Content="Delete" Tag="{x:Bind Id}"
+                                    Click="OnDeleteRestorePoint" VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>

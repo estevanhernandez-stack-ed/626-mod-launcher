@@ -67,7 +67,50 @@ public sealed partial class MainWindow : Window
     {
         if (_loaded) return;
         _loaded = true;
+
+        var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
+        var interrupted = rp.DetectInterruptedClear();
+        if (interrupted is not null)
+            await HandleInterruptedClearAsync(rp, interrupted);
+
         await ViewModel.LoadAsync();
+
+        // After load: wire registry-changed so Safe Clear / Restore cause the mod list to repaint.
+        var launcherService = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
+        launcherService.RegistryChanged += () =>
+            DispatcherQueue.TryEnqueue(async () => await ViewModel.RefreshAsync());
+    }
+
+    private async Task HandleInterruptedClearAsync(Services.RestorePointService rp, ModManager.Core.RestorePoints.InterruptedClear ic)
+    {
+        if (ic.Sealed)
+        {
+            var d = new ContentDialog
+            {
+                Title = "A reset didn't finish",
+                Content = "A previous reset was interrupted, but your setup was safely archived. Restore your saved setup now?",
+                PrimaryButtonText = "Restore",
+                CloseButtonText = "Not now",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await d.ShowAsync() == ContentDialogResult.Primary)
+                await rp.RestoreAsync(ic.Timestamp);
+        }
+        else
+        {
+            var d = new ContentDialog
+            {
+                Title = "A reset didn't finish",
+                Content = "A previous reset was interrupted before it could be saved. Your setup is intact. Discard the incomplete archive?",
+                PrimaryButtonText = "Discard",
+                CloseButtonText = "Keep",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await d.ShowAsync() == ContentDialogResult.Primary)
+                rp.DiscardPartial(ic.Timestamp);
+        }
     }
 
     // OneWay IsOn + this handler: ignore the programmatic set during reload (when the switch
@@ -420,6 +463,77 @@ public sealed partial class MainWindow : Window
                 ? avatars.AvatarIcoPath
                 : System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
             if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
+        }
+
+        // ── Post-close hand-offs ─────────────────────────────────────────────────────────────────
+        // WinUI 3 forbids nesting a second ContentDialog while the first is still open. For any
+        // action that needs its own dialog (Reset, Restore, Delete), SettingsDialog sets a flag
+        // and calls Hide() — ShowAsync() returns here with SettingsDialog fully closed, so we can
+        // open the follow-up without conflict. At most one flag fires per Settings session.
+
+        var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
+
+        if (dialog.OpenSafeClearRequested)
+        {
+            var sc = new SafeClearDialog(hwnd, rp, rp.NexusConnected) { XamlRoot = Content.XamlRoot };
+            await sc.ShowAsync();
+            // sc.Cleared is true on success. The UI refreshes via LauncherService.RegistryChanged → RefreshAsync.
+        }
+        else if (dialog.RestoreRequestedTimestamp is { } rts)
+        {
+            var confirm = new ContentDialog
+            {
+                Title = "Restore this setup?",
+                Content = "Your current launcher state will be replaced with the archived setup.",
+                PrimaryButtonText = "Restore",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await confirm.ShowAsync() == ContentDialogResult.Primary)
+            {
+                var r = await rp.RestoreAsync(rts);
+                if (!r.Ok)
+                {
+                    string msg;
+                    if (r.Conflicts.Count > 0)
+                    {
+                        var ids = string.Join(", ", r.Conflicts.Select(c => c.Id));
+                        msg = $"Some game folders have moved since this restore point was created ({ids}). " +
+                              "Update those game registrations and try again.";
+                    }
+                    else
+                    {
+                        msg = r.RefusedReason ?? "Restore failed.";
+                    }
+                    var err = new ContentDialog
+                    {
+                        Title = "Restore failed",
+                        Content = msg,
+                        CloseButtonText = "OK",
+                        XamlRoot = Content.XamlRoot,
+                    };
+                    await err.ShowAsync();
+                }
+                // On success the UI refreshes via LauncherService.RegistryChanged → RefreshAsync.
+            }
+        }
+        else if (dialog.DeleteRequestedTimestamp is { } dts)
+        {
+            var confirm = new ContentDialog
+            {
+                Title = "Delete this restore point?",
+                Content = "The archived setup will be permanently removed.",
+                PrimaryButtonText = "Delete",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            if (await confirm.ShowAsync() == ContentDialogResult.Primary)
+            {
+                rp.DeleteRestorePoint(dts);
+                // List refreshes next time Settings opens — RefreshRestorePoints() runs in the SettingsDialog constructor.
+            }
         }
     }
 
