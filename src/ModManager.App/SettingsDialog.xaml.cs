@@ -60,6 +60,11 @@ public sealed partial class SettingsDialog : ContentDialog
     /// through their own notification paths and don't need this flag.</summary>
     public bool Changed { get; private set; }
 
+    /// <summary>True when the user clicked "Reset launcher…". MainWindow.OnSettings checks this
+    /// after ShowAsync() returns and opens SafeClearDialog if set — avoids nesting two
+    /// ContentDialogs simultaneously, which is fragile in WinUI 3.</summary>
+    public bool OpenSafeClearRequested { get; private set; }
+
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
@@ -478,5 +483,13 @@ public sealed partial class SettingsDialog : ContentDialog
             ? ""
             : $",\"accent_bloom\":{{\"blur\":{raw.AccentBloom.Blur},\"alpha\":{raw.AccentBloom.Alpha}}}";
         return "{" + string.Join(",", pairs) + bloom + "}";
+    }
+
+    /// <summary>Reset launcher button. Sets the hand-off flag and closes this dialog — MainWindow
+    /// opens SafeClearDialog after ShowAsync() returns so both ContentDialogs never overlap.</summary>
+    private void OnResetLauncher(object sender, RoutedEventArgs e)
+    {
+        OpenSafeClearRequested = true;
+        Hide();
     }
 }

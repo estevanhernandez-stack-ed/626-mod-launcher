@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.SafeClearDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Reset launcher"
+    PrimaryButtonText="Clear"
+    CloseButtonText="Cancel"
+    DefaultButton="Close"
+    PrimaryButtonClick="OnPrimary">
+
+    <ScrollViewer MaxHeight="540" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="12" Width="440">
+            <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                       Text="Your mods are kept. This archives your current setup to a restore point you can return to, then resets the launcher to first-run." />
+
+            <TextBlock Text="After clearing:" FontWeight="SemiBold" FontSize="12" />
+            <ComboBox x:Name="EndStateBox" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="Return to vanilla (restorable)" />
+                <ComboBoxItem Content="Leave mods active" />
+            </ComboBox>
+
+            <CheckBox x:Name="CreateRestorePointBox"
+                      Content="Create a restore point (recommended)"
+                      IsChecked="True" />
+
+            <ToggleSwitch x:Name="KeepNexusSwitch"
+                          Header="Keep Nexus connection"
+                          IsOn="True" />
+
+            <InfoBar x:Name="ResultBar"
+                     IsOpen="False"
+                     Severity="Error"
+                     IsClosable="False" />
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

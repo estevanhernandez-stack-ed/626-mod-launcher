@@ -426,6 +426,18 @@ public sealed partial class MainWindow : Window
                 : System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
             if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         }
+
+        // Settings → Reset launcher: open SafeClearDialog after SettingsDialog has fully closed.
+        // Never nest two ContentDialogs simultaneously — the flag-then-hide hand-off keeps them
+        // strictly sequential (SettingsDialog.ShowAsync() completes before we open SafeClearDialog).
+        if (dialog.OpenSafeClearRequested)
+        {
+            var restorePoint = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
+            var sc = new SafeClearDialog(hwnd, restorePoint, restorePoint.NexusConnected)
+                     { XamlRoot = Content.XamlRoot };
+            await sc.ShowAsync();
+            // sc.Cleared and sc.Result available here for future follow-up (toast, reload, etc.)
+        }
     }
 
     private void OnFindMods(object sender, RoutedEventArgs e)
