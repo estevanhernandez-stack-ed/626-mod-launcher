@@ -94,4 +94,62 @@ public class IniEditServiceTests
         var previous = IniEditService.RestorePrevious(iniPath, gameDir, "MyMod");
         Assert.Null(previous);
     }
+
+    // --- Newline normalization (the WinUI TextBox hands back bare-CR; never write that to disk) ---
+
+    [Fact]
+    public void SaveWithBackup_normalizes_bare_CR_to_CRLF()
+    {
+        var gameDir = TestSupport.TempDir("ini-");
+        var iniPath = Path.Combine(gameDir, "config.ini");
+        File.WriteAllText(iniPath, "[a]\r\nx=1\r\n"); // existing file is CRLF
+
+        // The WinUI TextBox collapses every \r\n to a bare \r on round-trip — simulate that.
+        IniEditService.SaveWithBackup(iniPath, "[a]\rx=2\r", gameDir, "MyMod");
+
+        var text = File.ReadAllText(iniPath);
+        Assert.Contains("\r\n", text);
+        Assert.DoesNotMatch("\r(?!\n)", text); // zero bare-CR: every \r is followed by \n
+    }
+
+    [Fact]
+    public void SaveWithBackup_defaults_new_file_to_CRLF()
+    {
+        var gameDir = TestSupport.TempDir("ini-");
+        var iniPath = Path.Combine(gameDir, "config.ini"); // no pre-existing file
+
+        IniEditService.SaveWithBackup(iniPath, "[a]\nx=1\n", gameDir, "MyMod"); // LF input
+
+        var text = File.ReadAllText(iniPath);
+        Assert.Contains("\r\n", text);
+        Assert.DoesNotMatch("\r(?!\n)", text);
+    }
+
+    [Fact]
+    public void SaveWithBackup_preserves_LF_only_style()
+    {
+        var gameDir = TestSupport.TempDir("ini-");
+        var iniPath = Path.Combine(gameDir, "config.ini");
+        File.WriteAllText(iniPath, "x=1\n"); // existing file is deliberately LF-only
+
+        IniEditService.SaveWithBackup(iniPath, "x=2\r\ny=3\n", gameDir, "MyMod"); // mixed input
+
+        var text = File.ReadAllText(iniPath);
+        Assert.DoesNotContain("\r", text); // stays LF-only — not force-converted to CRLF
+    }
+
+    [Fact]
+    public void SaveWithBackup_backup_is_byte_exact_not_normalized()
+    {
+        var gameDir = TestSupport.TempDir("ini-");
+        var iniPath = Path.Combine(gameDir, "config.ini");
+        var originalBytes = System.Text.Encoding.UTF8.GetBytes("[a]\rx=1\r"); // bare-CR on disk
+        File.WriteAllBytes(iniPath, originalBytes);
+
+        IniEditService.SaveWithBackup(iniPath, "x=2", gameDir, "MyMod");
+
+        var histDir = Path.Combine(gameDir, ".ini-history", "MyMod");
+        var bak = Directory.GetFiles(histDir, "*.bak").Single();
+        Assert.Equal(originalBytes, File.ReadAllBytes(bak)); // snapshot is the true previous bytes, unnormalized
+    }
 }
