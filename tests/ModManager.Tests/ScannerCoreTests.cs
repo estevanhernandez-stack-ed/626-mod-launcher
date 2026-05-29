@@ -112,7 +112,8 @@ public class ScannerCoreTests
     {
         var (_, _, _, c) = Setup();
         var mods = Scanner.ListClassified(c);
-        Assert.Equal("both", mods.First(m => m.Name == "Cool").Class);
+        Assert.Equal("both", mods.First(m => m.Name == "Cool").Class); // mirrored -> both
+        Assert.Equal("sp", mods.First(m => m.Name == "Audio").Class);  // client-only -> sp
         Assert.False(File.Exists(c.ClassificationPath)); // read-only: no write
     }
 
@@ -122,5 +123,8 @@ public class ScannerCoreTests
         var (_, _, _, c) = Setup();
         Scanner.PersistClassification(c, Scanner.ListClassified(c));
         Assert.True(File.Exists(c.ClassificationPath));
+        var written = Scanner.LoadClassification(c); // content is the seeded map, not just "a file"
+        Assert.Equal("both", written["Cool"]);
+        Assert.Equal("sp", written["Audio"]);
     }
 }
