@@ -54,4 +54,26 @@ public class ReadToolsTests
         var json = JsonSerializer.Serialize(await ModTools.ListMods("nope"));
         Assert.Contains("\"code\":\"unknown_game\"", json);
     }
+
+    [Fact]
+    public async Task ListMods_fromsoft_returns_direct_inject_mods()
+    {
+        var game = FromSoftFixture.Build();
+        FromSoftFixture.SeedRegistry(game);
+        var json = JsonSerializer.Serialize(await ModTools.ListMods("er"));
+        Assert.Contains("Seamless Co-op", json);
+        Assert.Contains("Adjust The Fov", json);
+        Assert.DoesNotContain("\"mods\":[]", json);
+    }
+
+    [Fact]
+    public async Task ListMods_marshals_enrichment_fields()
+    {
+        var game = FromSoftFixture.Build();
+        FromSoftFixture.SeedRegistry(game);
+        var json = JsonSerializer.Serialize(await ModTools.ListMods("er"));
+        Assert.Contains("\"displayTitle\":\"Seamless Co-op (Elden Ring)\"", json);
+        Assert.Contains("\"author\":\"Yui\"", json);
+        Assert.Contains("\"sourceUrl\":\"https://www.nexusmods.com/eldenring/mods/510\"", json);
+    }
 }

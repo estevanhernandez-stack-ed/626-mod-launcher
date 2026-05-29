@@ -29,20 +29,27 @@ public static class ModTools
     }
 
     [McpServerTool(Name = "list_mods")]
-    [Description("Lists every detected mod for a game with its enabled state, class/chip, location, and loader.")]
-    public static async Task<object> ListMods([Description("The game id, from list_games.")] string gameId)
+    [Description("Lists every detected mod for a game with its enabled state, class/chip, location, loader, and metadata (display title / author / source URL).")]
+    public static Task<object> ListMods([Description("The game id, from list_games.")] string gameId)
     {
         var game = Find(gameId);
-        if (game is null) return UnknownGame(gameId);
-        var mods = await Scanner.BuildModListAsync(Scanner.GameContext(game));
-        return new
+        if (game is null) return Task.FromResult(UnknownGame(gameId));
+        var mods = ModListing.Resolve(game);
+        return Task.FromResult<object>(new
         {
             gameId = game.Id,
             mods = mods.Select(m => new
             {
-                name = m.Name, enabled = m.Enabled, @class = m.Class, location = m.Location, loader = m.Loader,
+                name = m.Name,
+                displayTitle = m.DisplayName,
+                enabled = m.Enabled,
+                @class = m.Class,
+                location = m.Location,
+                loader = m.Loader,
+                author = m.Author,
+                sourceUrl = m.ModUrl,
             }).ToArray(),
-        };
+        });
     }
 
     private static GameEntry? Find(string gameId)
