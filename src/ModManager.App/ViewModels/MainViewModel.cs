@@ -377,6 +377,12 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     primaryMissing = MissingFrameworks.FirstOrDefault();
                 }
+                // A direct-inject mod that brings its own proxy (Seamless ships ersc.dll, ReShade
+                // ships its own) doesn't truly need Elden Mod Loader — soften the hint from red
+                // "NEEDS" to amber "MAY NEED" so we don't drive an unnecessary loader install.
+                var selfProvidesProxy = primaryMissing?.Name == "Elden Mod Loader"
+                    && ModManager.Core.Catalog.KnownDirectInjectMod.Catalog.Any(
+                        k => k.SelfProvidesProxy && (k.DisplayName == rep.Name || k.DisplayName == rep.Base));
                 rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
@@ -388,6 +394,7 @@ public sealed partial class MainViewModel : ObservableObject
                     MissingFrameworkName = primaryMissing?.Name ?? "",
                     MissingFrameworkUrl = primaryMissing?.GetUrl,
                     MissingFrameworkNote = primaryMissing?.Note ?? "",
+                    LoaderHintIsSoft = selfProvidesProxy,
                 });
             }
             OrderAndStampSections(rows);

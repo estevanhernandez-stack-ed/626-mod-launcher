@@ -232,10 +232,19 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool HasMissingFramework => !string.IsNullOrEmpty(MissingFrameworkName);
     public Visibility MissingFrameworkVisibility => HasMissingFramework ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>Chip label: "NEEDS UE4SS". Uppercased to match the existing chip convention.</summary>
+    /// <summary>True when the loader hint is conditional rather than required — the row's mod brings
+    /// its own proxy (Seamless, ReShade), so the loader is optional. Drives the softer amber
+    /// "MAY NEED" framing instead of the assertive red "NEEDS". Set by the parent VM.</summary>
+    public bool LoaderHintIsSoft { get; init; }
+
+    /// <summary>Chip label: "NEEDS UE4SS" (required) or "MAY NEED ELDEN MOD LOADER" (conditional).
+    /// Uppercased to match the existing chip convention.</summary>
     public string MissingFrameworkChip => HasMissingFramework
-        ? "NEEDS " + MissingFrameworkName.ToUpperInvariant()
+        ? (LoaderHintIsSoft ? "MAY NEED " : "NEEDS ") + MissingFrameworkName.ToUpperInvariant()
         : "";
+
+    /// <summary>Chip color: amber (warning) for a conditional hint, red (danger) for a required one.</summary>
+    public Brush MissingFrameworkBrush => Res(LoaderHintIsSoft ? "ThemeWarning" : "ThemeDanger");
 
     public Uri? MissingFrameworkUri => SafeUrl.IsHttpUrl(MissingFrameworkUrl) ? new Uri(MissingFrameworkUrl!) : null;
 
