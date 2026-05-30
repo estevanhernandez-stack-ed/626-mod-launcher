@@ -19,6 +19,8 @@
             <SolidColorBrush x:Key="ThemeBorder" Color="#2A3A5C" />
             <SolidColorBrush x:Key="ThemeAccent" Color="#3BB4D9" />
             <SolidColorBrush x:Key="ThemeDanger" Color="#E13A5A" />
+            <!-- Amber: conditional/optional hint (e.g. "MAY NEED") — de-escalated vs ThemeDanger's required red. -->
+            <SolidColorBrush x:Key="ThemeWarning" Color="#E0A33A" />
             <SolidColorBrush x:Key="ThemeInk" Color="#E8F2FF" />
             <SolidColorBrush x:Key="ThemeInkSoft" Color="#A8C2D9" />
 
