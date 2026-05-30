@@ -10,8 +10,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 > | Task 2 — Safe Clear refusal fails open (bootstrapper games) | ✅ merged | `db1b6b2` + `bce00ae` (PR #82) — engine-runtime-exe match + fail-closed probe |
 > | Task 3 — Play-vanilla with direct-inject DLLs crashes | ✅ merged | `946f4dc` + `66907a1` (PR #83) — vanilla step-aside verdict |
 > | F3 — Seamless catalog config path wrong | ✅ merged | `bacc3d6` — covers all 3 Seamless layouts |
-> | Task 4 — loader "required" → conditional framing | ⛔ OPEN | no `SelfProvidesProxy`; `FrameworkDeps.cs:92` still asserts "Most ER mods need this" |
-> | Task 5 — exe launch doesn't ensure Steam running | 🔧 PR #89 (awaiting live smoke) | `NeedsSteamRunning` verdict + `SteamService.IsRunning`/`EnsureRunning`; auto-start Steam + wait — hit live 2026-05-30 |
+> | Task 4 — loader "required" → conditional framing | ✅ PR #88, live-smoked | `SelfProvidesProxy` + amber "MAY NEED"; amber confirmed on screen 2026-05-30 |
+> | Task 5 — exe launch doesn't ensure Steam running | ✅ PR #89, live-smoked | `NeedsSteamRunning` + `SteamService.IsRunning`/`EnsureRunning`; Steam-closed → auto-start → Seamless launched, confirmed 2026-05-30 |
 > | Task 6 — loader row hidden while its mods active | 📋 spec queued (`feat/inline-loader-cascade`) | inline distinguished row + cascade-disable; supersedes the lock-toggle approach |
 > | Task 7 — Safe Clear success gives no confirmation | ⛔ OPEN | no `SafeClearSummary` / `SuccessBar` |
 >
@@ -180,11 +180,11 @@ These four shipped after the live session and are code-verified only. Each needs
 - [ ] **Play-vanilla step-aside (Task 3, PR #83):** on ER with a direct-inject proxy DLL active (e.g. Seamless `ersc.dll` / a `dinput8.dll`), pick a vanilla/Steam launch target → a guard dialog appears ("Disable mods and launch vanilla" / "Launch anyway" / Cancel) instead of a `0xc0000142` crash. Primary reversibly disables (move-to-holding) then launches; the disabled mod returns on next reload.
 - [ ] **Seamless catalog path (F3, `bacc3d6`):** on ER with Seamless at `<gameRoot>/Game/SeamlessCoop/seamlesscoopsettings.ini` → the Seamless row shows the pencil icon and clicking it opens the real settings file (not a wrong/empty path).
 
-## Still-open remediation backlog (not yet built — do NOT smoke)
+## Still-open remediation backlog
 
 Tracked in `docs/superpowers/plans/2026-05-28-smoke-remediations.md`:
 
-- **Task 4** (high) — loader "required" → conditional ("NEEDS" → "MAY NEED"; `SelfProvidesProxy` for Seamless/ReShade). Blocks the PR #51 + framework-intake chip-text smokes.
-- **Task 5** (medium) — exe launch ensures Steam is running (auto-start + poll, or clear refusal).
-- **Task 6** (low) — always-show the DLL-loader row, lock its toggle while it hosts active mods (today it's hidden when `mods\` has contents).
-- **Task 7** (low) — Safe Clear success confirmation (name the restore point, point to Settings → Restore points).
+- **Task 4** ✅ shipped (PR #88) + live-smoked — amber "MAY NEED" confirmed.
+- **Task 5** ✅ shipped (PR #89) + live-smoked — Steam-closed → auto-start → Seamless launched.
+- **Task 6** (low) — loader row hidden while its mods active. **Spec queued** (`feat/inline-loader-cascade`): inline distinguished row + reversible cascade-disable, supersedes the original lock-toggle approach. Build next session.
+- **Task 7** (low) — Safe Clear success confirmation (name the restore point, point to Settings → Restore points). Not yet built.
