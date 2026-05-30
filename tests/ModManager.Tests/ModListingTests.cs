@@ -5,15 +5,19 @@ namespace ModManager.Tests;
 public class ModListingTests
 {
     [Fact]
-    public void DirectInjectListing_lists_seamless_and_loader_mods_and_drops_bare_loader()
+    public void DirectInjectListing_lists_seamless_hosted_mods_and_keeps_the_loader_row()
     {
+        // Revised contract (loader-cascade): the bare "DLL mod loader" row is KEPT even when its mods\
+        // folder has contents (it's load-bearing infra the user must see + cascade-toggle), tagged
+        // IsLoader, ALONGSIDE its hosted-mod rows. Was previously dropped — that was the bug.
         var game = FromSoftFixture.Build();
         var mods = DirectInjectListing.List(game);
         var names = mods.Select(m => m.Name).ToList();
 
         Assert.Contains("Seamless Co-op", names);
         Assert.Contains("Adjust The Fov", names);            // loader-run DLL, prettified
-        Assert.DoesNotContain("DLL mod loader", names);      // dropped: its mods\ has contents
+        Assert.Contains("DLL mod loader", names);            // KEPT now (was dropped)
+        Assert.True(mods.Single(m => m.Name == "DLL mod loader").IsLoader);
         Assert.Equal("direct-inject", mods.First(m => m.Name == "Seamless Co-op").Location);
         Assert.Equal("co-op", mods.First(m => m.Name == "Seamless Co-op").Class);
     }
@@ -88,7 +92,8 @@ public class ModListingTests
         Assert.Equal("Yui", seamless.Author);
         Assert.Equal("https://www.nexusmods.com/eldenring/mods/510", seamless.ModUrl);
         Assert.Contains(mods, m => m.Name == "Adjust The Fov");
-        Assert.DoesNotContain(mods, m => m.Name == "DLL mod loader");
+        // Revised contract (loader-cascade): the loader row is kept + tagged, surviving the Resolve merge.
+        Assert.Contains(mods, m => m.Name == "DLL mod loader" && m.IsLoader);
     }
 
     [Fact]

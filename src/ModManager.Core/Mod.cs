@@ -30,6 +30,10 @@ public sealed class Mod
     public string? Loader { get; set; }
     // True for a UE4SS framework folder that ships with the loader (described from the bundled catalog).
     public bool Builtin { get; set; }
+    // True for the DLL mod loader row (dinput8.dll) — the App renders it distinguished (LOADER chip)
+    // and routes its toggle through the reversible cascade. Transient: Mod is never serialized
+    // (only ModMeta + the DisabledMeta sidecar reach disk); add [JsonIgnore] if a write path is ever added.
+    public bool IsLoader { get; set; }
 
     // enrichment (from Metadata.MergeMetadata)
     public string DisplayName { get; set; } = "";
