@@ -57,4 +57,23 @@ public class LaunchGuardTests
     [Fact]
     public void NeedsDirectInjectStepAside_false_when_no_dlls_active()
         => Assert.False(LaunchGuard.NeedsDirectInjectStepAside(Steam(), anyDirectInjectDllsActive: false));
+
+    // An exe launcher (e.g. Seamless's ersc_launcher.exe) on a Steam-DRM game needs Steam running
+    // first, or the DRM bootstrap never completes and the launch silently no-ops. steam:// targets
+    // self-start Steam, and a non-Steam game doesn't depend on it.
+
+    private static GameEntry SteamGame(string? appId)
+        => new() { Id = "er", GameName = "ELDEN RING", SteamAppId = appId };
+
+    [Fact]
+    public void NeedsSteamRunning_true_for_exe_target_on_a_steam_game()
+        => Assert.True(LaunchGuard.NeedsSteamRunning(SteamGame("1245620"), Exe()));
+
+    [Fact]
+    public void NeedsSteamRunning_false_for_steam_url_target()
+        => Assert.False(LaunchGuard.NeedsSteamRunning(SteamGame("1245620"), Steam()));
+
+    [Fact]
+    public void NeedsSteamRunning_false_when_no_steam_app_id()
+        => Assert.False(LaunchGuard.NeedsSteamRunning(SteamGame(null), Exe()));
 }

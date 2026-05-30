@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using ModManager.Core;
 using Win32Registry = Microsoft.Win32.Registry;
 
@@ -33,6 +35,36 @@ public sealed class SteamService
         }
         catch { /* no Steam / not signed in / registry unreadable */ }
         return null;
+    }
+
+    /// <summary>True when the Steam client is currently running. A Steam-DRM exe launcher (e.g.
+    /// Seamless Co-op's ersc_launcher.exe) needs this — its bootstrap silently no-ops if Steam is
+    /// closed.</summary>
+    public bool IsRunning()
+    {
+        try { return Process.GetProcessesByName("steam").Length > 0; }
+        catch { return false; }
+    }
+
+    /// <summary>Ensure the Steam client is up, then return true once it is (or false on timeout).
+    /// Starts Steam via <c>steam://open/main</c> — which opens the client WITHOUT launching any
+    /// game, so the caller can then run its own exe launcher (Seamless) rather than vanilla. Polls
+    /// for the steam process; synchronous, so call OFF the UI thread. Detects the process being
+    /// present, which is a close-enough proxy for "ready to bootstrap DRM" — full login-readiness
+    /// isn't observable, and the user can retry if Steam is still settling.</summary>
+    public bool EnsureRunning(TimeSpan timeout)
+    {
+        if (IsRunning()) return true;
+        try { Process.Start(new ProcessStartInfo("steam://open/main") { UseShellExecute = true }); }
+        catch { return false; }
+
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (IsRunning()) return true;
+            Thread.Sleep(500);
+        }
+        return IsRunning();
     }
 
     public IReadOnlyList<SteamGame> InstalledGames()

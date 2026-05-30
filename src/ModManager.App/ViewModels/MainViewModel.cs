@@ -805,7 +805,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Launch()
+    private async Task Launch()
     {
         if (_ctx is null) return;
         // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
@@ -813,26 +813,35 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var launcher = RequiredLauncherTarget();
             if (launcher is null) { NotifyLauncherMissing(); return; } // never launch a non-existent exe
-            LaunchTargetExplicit(launcher);
+            await LaunchTargetExplicit(launcher);
             return;
         }
-        AutoBackupBeforeLaunch();
         // Use the state-aware effective target (e.g. Seamless when fully installed) so the primary
         // Launch matches what the button label promised. Fall back to the legacy LauncherService.Launch
         // path for games with no registered targets at all (steam:// / LaunchExe).
         var target = EffectiveLaunchTarget;
-        try
-        {
-            if (target is not null) _svc.Launch(target, _ctx.Game.GameRoot);
-            else if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game.";
-        }
+        if (target is not null) { await LaunchTargetExplicit(target); return; }
+        AutoBackupBeforeLaunch();
+        try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
         catch (Exception e) { StatusText = e.Message; }
     }
 
-    /// <summary>Run a specific launch target chosen from the dropdown.</summary>
-    public void LaunchTargetExplicit(LaunchTarget target)
+    /// <summary>Run a specific launch target (primary Launch button + dropdown both route here).
+    /// Auto-backs up the save, then — for a Steam-DRM exe launcher with Steam closed — starts Steam
+    /// and waits before launching, so the launch doesn't silently no-op (the DRM bootstrap needs the
+    /// Steam client up). A steam:// target self-starts Steam, so it's not gated.</summary>
+    public async Task LaunchTargetExplicit(LaunchTarget target)
     {
         if (_ctx is null) return;
+        // Steam awareness: an exe launcher (Seamless's ersc_launcher.exe) on a Steam-DRM game
+        // silently no-ops if Steam is closed. Auto-start Steam and wait (off the UI thread), or
+        // surface a clear message instead of a dead click.
+        if (LaunchGuard.NeedsSteamRunning(_ctx.Game, target) && !_steam.IsRunning())
+        {
+            StatusText = "Starting Steam…";
+            var up = await Task.Run(() => _steam.EnsureRunning(TimeSpan.FromSeconds(20)));
+            if (!up) { StatusText = "Couldn't start Steam — open Steam, then launch again."; return; }
+        }
         AutoBackupBeforeLaunch();
         try { _svc.Launch(target, _ctx.Game.GameRoot); }
         catch (Exception e) { StatusText = e.Message; }
@@ -883,7 +892,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Run an internal launch option (the app starts the real exe directly).</summary>
-    public void RunInternalOption(LaunchOption opt)
+    public async Task RunInternalOption(LaunchOption opt)
     {
         if (_ctx is null || opt.Exe is null) return;
         var root = _ctx.Game.GameRoot;
@@ -892,7 +901,7 @@ public sealed partial class MainViewModel : ObservableObject
             Args = opt.Args,
             WorkingDir = opt.WorkingSubdir is null ? root : System.IO.Path.Combine(root, opt.WorkingSubdir),
         };
-        LaunchTargetExplicit(target);
+        await LaunchTargetExplicit(target);
     }
 
     [RelayCommand]
