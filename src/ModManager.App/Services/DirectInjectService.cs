@@ -93,15 +93,6 @@ public sealed class DirectInjectService
         if (mod is not null) DirectInject.Disable(folder, holding, mod);
     }
 
-    /// <summary>Cascade the whole DLL-mod-loader stack (loader + every hosted mods\ DLL) off/on in one
-    /// reversible, atomic action. Resolves the folders and delegates to the pure Core orchestrator.</summary>
-    public void SetLoaderEnabled(GameEntry game, bool enabled)
-    {
-        var folder = PlayFolder(game.GameRoot);
-        if (folder is null) return;
-        DirectInject.SetLoaderEnabled(folder, Holding(game), enabled);
-    }
-
     /// <summary>FromSoft games keep the exe + mods under a "Game" subfolder; fall back to the root.</summary>
     public static string? PlayFolder(string? gameRoot) => DirectInjectListing.PlayFolder(gameRoot);
 

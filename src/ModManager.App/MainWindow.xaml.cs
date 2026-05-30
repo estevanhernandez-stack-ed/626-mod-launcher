@@ -119,15 +119,11 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not ToggleSwitch sw || sw.DataContext is not ModRowViewModel row) return;
 
-        // Loader row: the switch cascades the WHOLE stack (loader + its hosted mods\ DLLs) off/on,
-        // not a single file. Placed BEFORE the variant + per-mod paths so a loader never falls through.
-        // The re-entry guard suppresses the Toggled fired on every programmatic ReloadModsAsync rebuild.
-        if (row.IsLoader)
-        {
-            if (sw.IsOn == row.Mod.Enabled) return;
-            await ViewModel.ToggleLoaderCascadeAsync(row, sw.IsOn);
-            return;
-        }
+        // NOTE: the loader row (IsLoader) is DECOUPLED — it toggles only its own dinput8.dll via the
+        // normal per-mod path below, NOT a cascade. Live testing confirmed the hosted mods\ mods sit
+        // inert-but-harmless when the loader is off (they don't load, but cause no crash), so dragging
+        // them to holding alongside the loader was solving a non-problem. The loader stays a visible,
+        // independently-toggleable row; the hosted mods keep their own rows, untouched by this toggle.
 
         // Variant-family row: the switch toggles the FAMILY on/off. ON restores the last-active
         // variant (remembered by MainViewModel across rescans); OFF disables every variant after

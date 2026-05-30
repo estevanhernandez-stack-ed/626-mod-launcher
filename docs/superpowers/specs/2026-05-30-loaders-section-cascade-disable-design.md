@@ -1,4 +1,15 @@
-# Distinguished inline loader row + cascade-disable for the DLL mod loader — Design
+# Distinguished inline loader row for the DLL mod loader — Design
+
+> **SUPERSEDED 2026-05-30 — the cascade was dropped; the loader toggle is now DECOUPLED.**
+> Live testing (Este) proved the hosted `mods\` mods sit **inert-but-harmless** when the loader is
+> off — they don't load, but cause no crash and the game launches fine. So cascading them to holding
+> alongside the loader solved a non-problem. SHIPPED behavior (PR #93): the loader is a visible,
+> distinguished, **independently** toggleable row (LOADER chip) — toggling it off moves only its own
+> `dinput8.dll`; the hosted `mods\` mods stay in place. Everything below about `SetLoaderEnabled` /
+> cascade / cross-unit rollback / the slug + stale-holding guards was **built, validated, then removed**
+> in favor of the simpler decoupled toggle (which routes through the existing per-mod Disable/Enable).
+> KEPT from the cascade work: the `IsLoader` flag, the un-drop of the loader row, the LOADER chip.
+> See handoff `docs/superpowers/handoffs/2026-05-30-decouple-loader-toggle.md`.
 
 **Status:** Design for review. Revises remediation **Task 6** (`docs/superpowers/plans/2026-05-28-smoke-remediations.md`) per live-smoke feedback on 2026-05-30 — the original Task 6 chose "inline locked row"; this supersedes it with "inline distinguished row + cascade-disable."
 
