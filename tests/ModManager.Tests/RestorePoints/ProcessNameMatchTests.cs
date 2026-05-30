@@ -72,4 +72,44 @@ public class ProcessNameMatchTests
         var g = Game(("exe", @"D:\x\game.exe"));
         Assert.False(ProcessNameMatch.AnyRunning(g, new[] { "eldenring", "start_protected_game" }));
     }
+
+    // --- Install-dir executables: a steam-launched game (steam:// target only, non-fromsoft) still
+    // runs a real .exe from its install folder. Matching the install-dir exe names covers the ~11/12
+    // games that have no exe launch target and aren't in the engine runtime map. The App probe supplies
+    // these names; a destructive guard biases fail-SAFE, so matching broadly (occasional spurious refusal)
+    // beats a false "not running" that resets over a live game. ---
+
+    [Fact]
+    public void Matches_an_install_dir_exe_that_is_running()
+    {
+        // Cyberpunk: steam:// launch only, engine "custom" — no exe target, not in the runtime map.
+        // Its install dir has Cyberpunk2077.exe, which is the live process during play.
+        var g = Game(("steam", "steam://rungameid/1091500"));
+        Assert.True(ProcessNameMatch.AnyRunning(g, new[] { "explorer", "Cyberpunk2077" },
+            installExeNames: new[] { "Cyberpunk2077", "REDprelauncher" }));
+    }
+
+    [Fact]
+    public void No_install_exe_match_when_none_running()
+    {
+        var g = Game(("steam", "steam://x"));
+        Assert.False(ProcessNameMatch.AnyRunning(g, new[] { "explorer", "discord" },
+            installExeNames: new[] { "Cyberpunk2077", "REDprelauncher" }));
+    }
+
+    [Fact]
+    public void Install_exe_match_is_case_insensitive()
+    {
+        var g = Game(("steam", "steam://x"));
+        Assert.True(ProcessNameMatch.AnyRunning(g, new[] { "REPO" },
+            installExeNames: new[] { "repo" }));
+    }
+
+    [Fact]
+    public void Null_install_exe_names_behaves_as_before()
+    {
+        // Backward-compat: the 2-arg shape (no install names) still only checks targets + runtime map.
+        var g = Game(("steam", "steam://x"));
+        Assert.False(ProcessNameMatch.AnyRunning(g, new[] { "Cyberpunk2077" }));
+    }
 }

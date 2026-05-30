@@ -264,11 +264,11 @@ public sealed partial class MainWindow : Window
             switch (await dialog.ShowAsync())
             {
                 case ContentDialogResult.Primary:
-                    if (launcher is not null) ViewModel.LaunchTargetExplicit(launcher);
+                    if (launcher is not null) await ViewModel.LaunchTargetExplicit(launcher);
                     else ViewModel.NotifyLauncherMissing();
                     break;
                 case ContentDialogResult.Secondary:
-                    ViewModel.LaunchTargetExplicit(target);
+                    await ViewModel.LaunchTargetExplicit(target);
                     break;
                 // None (Cancel): do nothing.
             }
@@ -290,11 +290,11 @@ public sealed partial class MainWindow : Window
                 XamlRoot = Content.XamlRoot,
             };
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                ViewModel.LaunchTargetExplicit(target);
+                await ViewModel.LaunchTargetExplicit(target);
             return;
         }
 
-        ViewModel.LaunchTargetExplicit(target);
+        await ViewModel.LaunchTargetExplicit(target);
     }
 
     // Set or clear a mod's MP-compat override from the badge flyout. Tag carries the choice.
@@ -648,7 +648,7 @@ public sealed partial class MainWindow : Window
 
                     case ModManager.Core.LaunchOptionKind.Internal:
                         var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
-                        run.Click += (_, _) => { dialog.Hide(); ViewModel.RunInternalOption(opt); };
+                        run.Click += async (_, _) => { dialog.Hide(); await ViewModel.RunInternalOption(opt); };
                         card.Children.Add(run);
                         break;
 

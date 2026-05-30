@@ -377,10 +377,10 @@
                                              Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
                                              ToolTipService.ToolTip="{x:Bind MissingFrameworkNote, Mode=OneWay}">
                                 <Border CornerRadius="3" Padding="6,2"
-                                        BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}">
+                                        BorderThickness="1" BorderBrush="{x:Bind MissingFrameworkBrush, Mode=OneWay}">
                                     <TextBlock Text="{x:Bind MissingFrameworkChip, Mode=OneWay}"
                                                FontFamily="Consolas" FontSize="11"
-                                               Foreground="{StaticResource ThemeDanger}" />
+                                               Foreground="{x:Bind MissingFrameworkBrush, Mode=OneWay}" />
                                 </Border>
                             </HyperlinkButton>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemePanel}"

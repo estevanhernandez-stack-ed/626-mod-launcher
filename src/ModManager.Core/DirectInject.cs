@@ -75,6 +75,22 @@ public static class DirectInject
     public const string LoaderName = "DLL mod loader";
     private const string ModsDir = "mods";
 
+    /// <summary>DLL proxies the OS auto-loads into ANY process started from the game's exe folder (the
+    /// loader-hijack surface — dinput8 et al. are the names Windows probes adjacent to the exe). One of
+    /// these sitting at the play-folder TOP crashes a plain vanilla/Steam launch ("unable to start
+    /// correctly", 0xc000007b / 0xc0000142).</summary>
+    public static readonly IReadOnlyList<string> ProcessLoadProxies =
+        new[] { "dinput8.dll", "dxgi.dll", "d3d11.dll", "d3d9.dll", "version.dll", "winmm.dll", "winhttp.dll", "ersc.dll" };
+
+    /// <summary>True when any TOP-LEVEL file is a process-load proxy DLL. Takes the play folder's
+    /// top-level file names directly — deliberately NOT the mod-row list, which drops the loader row
+    /// when its mods\ folder has contents and would hide dinput8.dll from this physical check. The OS
+    /// hijack is a fact of the filesystem, not of how the launcher chooses to display rows. Pure.</summary>
+    public static bool AnyProcessLoadProxy(IEnumerable<string> topLevelFiles)
+        => (topLevelFiles ?? Enumerable.Empty<string>())
+            .Select(f => Path.GetFileName(f))
+            .Any(n => ProcessLoadProxies.Contains(n, StringComparer.OrdinalIgnoreCase));
+
     private const string MetaFile = "__626mod.json";
 
     // AtomicJson writes camelCase (Electron-shared convention); read tolerant of casing.
