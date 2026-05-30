@@ -64,6 +64,15 @@ public class OffBoardingHydratorTests
     }
 
     [Fact]
+    public void Hydrate_passes_save_location_and_backup_count_through()
+    {
+        var ga = VanillaArchive() with { SaveLocation = @"C:\Users\you\AppData\Roaming\EldenRing\765", SaveBackupCount = 4 };
+        var report = OffBoardingHydrator.Hydrate(ga, @"C:\rp\x");
+        Assert.Equal(@"C:\Users\you\AppData\Roaming\EldenRing\765", report.SaveLocation);
+        Assert.Equal(4, report.SaveBackupCount);
+    }
+
+    [Fact]
     public void Hydrate_null_installedUtc_yields_null_date()
     {
         var ga = new GameArchive("t", "T", @"D:\T", "vanilla",

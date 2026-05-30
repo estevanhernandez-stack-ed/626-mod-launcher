@@ -18,6 +18,16 @@ public static class OffBoardingSheet
         sb.AppendLine("  " + r.RestorePointPath);
         sb.AppendLine();
 
+        // Saves first — they're irreplaceable, and a reset is exactly when a user fears for them.
+        // Safe Clear NEVER touches the game's live save folder; say so plainly and name where it is.
+        sb.AppendLine("YOUR SAVES");
+        sb.AppendLine("  Your game saves were not touched by this reset — they stay exactly where the game keeps them.");
+        if (!string.IsNullOrEmpty(r.SaveLocation))
+            sb.AppendLine("  Location:  " + r.SaveLocation);
+        if (r.SaveBackupCount > 0)
+            sb.AppendLine($"  Plus {r.SaveBackupCount} save backup{(r.SaveBackupCount == 1 ? "" : "s")} the launcher made are preserved in your restore point.");
+        sb.AppendLine();
+
         sb.AppendLine("HOW TO START THE GAME");
         if (r.LaunchLines.Count == 0)
             sb.AppendLine("  Launch the game the way you normally do.");

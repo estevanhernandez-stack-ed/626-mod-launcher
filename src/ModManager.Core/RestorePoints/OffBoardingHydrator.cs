@@ -13,7 +13,9 @@ public static class OffBoardingHydrator
             Frameworks: ga.Frameworks.Select(f => $"{f.DisplayName} (by {f.Author})").ToList(),
             Mods: ga.Mods.Select(m => new OffBoardingModLine(
                 m.Name, m.SourceUrl, m.SourceConfidence, FormatDate(m.InstalledUtc))).ToList(),
-            OwnedMods: ga.OwnedMods.Select(o => new OffBoardingOwnedMod(o.Name, o.ManagedBy)).ToList());
+            OwnedMods: ga.OwnedMods.Select(o => new OffBoardingOwnedMod(o.Name, o.ManagedBy)).ToList(),
+            SaveLocation: ga.SaveLocation,
+            SaveBackupCount: ga.SaveBackupCount);
 
     // Launch guidance reflects the POST-CLEAR state. Vanilla: mod launchers were moved out -> launch
     // normally. modsActive: launchers are still installed -> point at the (default) launch target.
