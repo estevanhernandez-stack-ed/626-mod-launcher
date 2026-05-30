@@ -383,7 +383,7 @@ public sealed partial class MainViewModel : ObservableObject
                 var selfProvidesProxy = primaryMissing?.Name == "Elden Mod Loader"
                     && ModManager.Core.Catalog.KnownDirectInjectMod.Catalog.Any(
                         k => k.SelfProvidesProxy && (k.DisplayName == rep.Name || k.DisplayName == rep.Base));
-                rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
+                rows.Add(new ModRowViewModel(rep, canToggle: rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,

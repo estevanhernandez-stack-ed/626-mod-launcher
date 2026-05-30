@@ -396,6 +396,11 @@
                                 <TextBlock Text="UE4SS BUILT-IN" FontFamily="Consolas" FontSize="11" Opacity="0.7" />
                             </Border>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                    ToolTipService.ToolTip="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on"
+                                    Visibility="{x:Bind LoaderChipVisibility, Mode=OneWay}">
+                                <TextBlock Text="LOADER" FontFamily="Consolas" FontSize="11" Foreground="Black" />
+                            </Border>
+                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"
                                     Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">
                                 <TextBlock Text="VARIANT" FontFamily="Consolas" FontSize="11" Foreground="Black" />
