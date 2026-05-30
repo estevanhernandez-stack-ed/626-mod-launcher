@@ -265,7 +265,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Mods.Clear();
             GameRootText = "";
-            StatusText = "No game registered. Add one in the wizard or the Electron app.";
+            StatusText = "No game registered. Add one with + Game.";
             MissingFrameworks.Clear();
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
