@@ -89,7 +89,7 @@ public static class FrameworkDeps
                 "winhttp.dll",
             },
             GetUrl: "https://www.nexusmods.com/eldenring/mods/117",
-            Note: "Elden Mod Loader — DLL proxy that direct-inject ER mods chain through (dinput8.dll). Most ER mods need this."),
+            Note: "Elden Mod Loader — DLL proxy that direct-inject ER mods chain through (dinput8.dll). Only needed if you run a direct-inject mod that doesn't bring its own proxy; Seamless Co-op and ReShade do."),
 
         new FrameworkDep(
             Engine: "minecraft",
