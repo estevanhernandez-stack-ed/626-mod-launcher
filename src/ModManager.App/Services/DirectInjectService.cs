@@ -39,21 +39,20 @@ public sealed class DirectInjectService
             || File.Exists(Path.Combine(folder, "SeamlessCoop", "ersc.dll"));
     }
 
-    // DLL proxies the OS auto-loads into ANY process started from the game folder (the loader-hijack
-    // surface). An enabled direct-inject mod owning one of these crashes a plain vanilla/steam launch
-    // ("The application was unable to start correctly").
-    private static readonly string[] ProcessLoadProxies =
-        { "dinput8.dll", "dxgi.dll", "d3d11.dll", "d3d9.dll", "version.dll", "winmm.dll", "winhttp.dll", "ersc.dll" };
-
-    /// <summary>True when an enabled direct-inject mod owns a process-load proxy DLL — those load into a
-    /// vanilla launch and crash it, so the launcher steps aside (warns) before a vanilla/steam launch.</summary>
+    /// <summary>True when a process-load proxy DLL physically sits at the TOP of the play folder — the
+    /// OS auto-loads it into a plain vanilla/steam launch and crashes it, so the launcher steps aside
+    /// (warns) first. Checks the filesystem directly, NOT the mod-row list: <see cref="Enabled"/> drops
+    /// the loader row when its mods\ folder has contents, which would hide dinput8.dll from this check
+    /// (the bug that let a vanilla launch crash silently). The hijack is a fact of disk, not of rows.</summary>
     public bool AnyActiveProxyDll(GameEntry game)
     {
         if (game.Engine != "fromsoft") return false;
         var folder = PlayFolder(game.GameRoot);
         if (folder is null) return false;
-        return Enabled(folder).Any(m => m.Entries.Any(e =>
-            ProcessLoadProxies.Contains(Path.GetFileName(e), StringComparer.OrdinalIgnoreCase)));
+        string[] topLevel;
+        try { topLevel = Directory.GetFiles(folder); }
+        catch { return false; }
+        return DirectInject.AnyProcessLoadProxy(topLevel);
     }
 
     /// <summary>Install dropped sources (zip/files/folders) into the game's exe folder.</summary>
