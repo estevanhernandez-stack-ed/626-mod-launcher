@@ -301,6 +301,12 @@ public static partial class RestorePointEngine
                     ownedMods.Add(new OwnedModNote(m.Name, owner.ToString()!));
         }
 
+        // Saves: record the live save folder (Safe Clear NEVER touches it) + how many launcher-made
+        // save backups got copied into this restore point's data/saves. Both are reported on the
+        // off-boarding sheet so a reset is never silent about the user's irreplaceable data.
+        var saveLocation = string.IsNullOrEmpty(c.SaveDir) ? null : c.SaveDir;
+        var saveBackupCount = CountSaveBackups(c.SavesDir);
+
         return new GameArchive(
             Id: input.Game.Id,
             GameName: input.Game.GameName,
@@ -313,6 +319,16 @@ public static partial class RestorePointEngine
             OwnedMods: ownedMods,
             MovedFiles: Array.Empty<MovedFile>(),
             Mods: mods,
-            OffboardingSheetGameFolderPath: null);
+            OffboardingSheetGameFolderPath: null,
+            SaveLocation: saveLocation,
+            SaveBackupCount: saveBackupCount);
+    }
+
+    // How many launcher-made save backups live under the per-game saves dir (each backup is a
+    // timestamped subfolder). Best-effort, read-only — a missing/unreadable dir is simply zero.
+    private static int CountSaveBackups(string savesDir)
+    {
+        try { return Directory.Exists(savesDir) ? Directory.GetDirectories(savesDir).Length : 0; }
+        catch { return 0; }
     }
 }

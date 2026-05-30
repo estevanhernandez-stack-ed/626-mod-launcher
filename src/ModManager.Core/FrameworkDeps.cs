@@ -80,16 +80,21 @@ public static class FrameworkDeps
             Name: "Elden Mod Loader",
             // The catalog name calls out Elden Mod Loader specifically — it's the loader most ER
             // mods chain through and the one the user is searching for. The DLL probes stay broad
-            // (dinput8 / version / winhttp) since the user might have a different proxy installed
-            // that also satisfies direct-inject mods' chain-load requirement.
+            // since the user might have a DIFFERENT proxy installed that also satisfies direct-inject
+            // mods' chain-load requirement: dinput8 / version / winhttp (generic proxies), AND
+            // Seamless Co-op's ersc.dll (proven live — with EML absent, launching via Seamless loads
+            // the same direct-inject mods). Match the actual proxy DLL, not the SeamlessCoop folder,
+            // so a settings-only folder doesn't false-clear the "needs a loader" chip.
             DetectRelativePaths: new[]
             {
                 "dinput8.dll",
                 "version.dll",
                 "winhttp.dll",
+                "SeamlessCoop/ersc.dll",  // Seamless subfolder layout (current)
+                "ersc.dll",               // Seamless loose-at-root layout (older)
             },
             GetUrl: "https://www.nexusmods.com/eldenring/mods/117",
-            Note: "Elden Mod Loader — DLL proxy that direct-inject ER mods chain through (dinput8.dll). Most ER mods need this."),
+            Note: "Elden Mod Loader — DLL proxy that direct-inject ER mods chain through (dinput8.dll). Only needed if you run a direct-inject mod that doesn't bring its own proxy; Seamless Co-op and ReShade do."),
 
         new FrameworkDep(
             Engine: "minecraft",

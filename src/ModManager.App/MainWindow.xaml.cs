@@ -119,6 +119,12 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not ToggleSwitch sw || sw.DataContext is not ModRowViewModel row) return;
 
+        // NOTE: the loader row (IsLoader) is DECOUPLED — it toggles only its own dinput8.dll via the
+        // normal per-mod path below, NOT a cascade. Live testing confirmed the hosted mods\ mods sit
+        // inert-but-harmless when the loader is off (they don't load, but cause no crash), so dragging
+        // them to holding alongside the loader was solving a non-problem. The loader stays a visible,
+        // independently-toggleable row; the hosted mods keep their own rows, untouched by this toggle.
+
         // Variant-family row: the switch toggles the FAMILY on/off. ON restores the last-active
         // variant (remembered by MainViewModel across rescans); OFF disables every variant after
         // recording which was on. Single-select variant CHIPS still pick which variant is active.
@@ -258,11 +264,11 @@ public sealed partial class MainWindow : Window
             switch (await dialog.ShowAsync())
             {
                 case ContentDialogResult.Primary:
-                    if (launcher is not null) ViewModel.LaunchTargetExplicit(launcher);
+                    if (launcher is not null) await ViewModel.LaunchTargetExplicit(launcher);
                     else ViewModel.NotifyLauncherMissing();
                     break;
                 case ContentDialogResult.Secondary:
-                    ViewModel.LaunchTargetExplicit(target);
+                    await ViewModel.LaunchTargetExplicit(target);
                     break;
                 // None (Cancel): do nothing.
             }
@@ -284,11 +290,11 @@ public sealed partial class MainWindow : Window
                 XamlRoot = Content.XamlRoot,
             };
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                ViewModel.LaunchTargetExplicit(target);
+                await ViewModel.LaunchTargetExplicit(target);
             return;
         }
 
-        ViewModel.LaunchTargetExplicit(target);
+        await ViewModel.LaunchTargetExplicit(target);
     }
 
     // Set or clear a mod's MP-compat override from the badge flyout. Tag carries the choice.
@@ -642,7 +648,7 @@ public sealed partial class MainWindow : Window
 
                     case ModManager.Core.LaunchOptionKind.Internal:
                         var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
-                        run.Click += (_, _) => { dialog.Hide(); ViewModel.RunInternalOption(opt); };
+                        run.Click += async (_, _) => { dialog.Hide(); await ViewModel.RunInternalOption(opt); };
                         card.Children.Add(run);
                         break;
 

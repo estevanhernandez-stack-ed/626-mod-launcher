@@ -136,6 +136,53 @@ public class RestorePointOrchestratorSafeClearTests : IDisposable
     }
 
     [Fact]
+    public async Task SafeClear_never_touches_live_saves_and_preserves_save_backups()
+    {
+        // Saves are the user's irreplaceable data. This pins the invariant: a full Safe Clear leaves
+        // the game's LIVE save folder byte-for-byte untouched, AND the launcher's save backups survive
+        // into the restore point + are counted on the manifest (which feeds the off-boarding sheet).
+        // The live save folder sits OUTSIDE both dataRoot and gameRoot — exactly like a real game
+        // (ER saves live under %APPDATA%\EldenRing) — so this proves the clear's deletes never reach it.
+        var (game, c, dataRoot, modsDir) = Setup();
+        File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "DATA");
+        await Scanner.DisableModAsync("cool", c);
+
+        // Live save folder, outside everything Safe Clear operates on.
+        var liveSaveDir = Path.Combine(_root, "live-saves");
+        Directory.CreateDirectory(liveSaveDir);
+        var liveSaveFile = Path.Combine(liveSaveDir, "ER0000.sl2");
+        File.WriteAllText(liveSaveFile, "PRECIOUS-SAVE-BYTES");
+        var liveSaveBytesBefore = File.ReadAllBytes(liveSaveFile);
+        game.SaveDir = liveSaveDir;
+
+        // Two launcher-made save backups under the per-game saves dir (each a timestamped subfolder).
+        Directory.CreateDirectory(Path.Combine(c.SavesDir, "auto-20260501-100000"));
+        File.WriteAllText(Path.Combine(c.SavesDir, "auto-20260501-100000", "ER0000.sl2"), "BACKUP-1");
+        Directory.CreateDirectory(Path.Combine(c.SavesDir, "before-launch-20260502-110000"));
+        File.WriteAllText(Path.Combine(c.SavesDir, "before-launch-20260502-110000", "ER0000.sl2"), "BACKUP-2");
+
+        var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
+        var r = await orch.SafeClearAsync(new SafeClearOptions { CreateRestorePoint = true, KeepNexus = true },
+            "20260528-141233", default);
+        Assert.True(r.Ok);
+
+        // 1. The LIVE save folder + file are completely untouched (exists, byte-for-byte identical).
+        Assert.True(Directory.Exists(liveSaveDir));
+        Assert.True(File.Exists(liveSaveFile));
+        Assert.Equal(liveSaveBytesBefore, File.ReadAllBytes(liveSaveFile));
+
+        // 2. The launcher save backups were copied into the restore point (preserved, not lost).
+        var archivedSaves = Path.Combine(dataRoot, "restore-points", "20260528-141233", "games", "t", "data", "saves");
+        Assert.True(File.Exists(Path.Combine(archivedSaves, "auto-20260501-100000", "ER0000.sl2")));
+        Assert.True(File.Exists(Path.Combine(archivedSaves, "before-launch-20260502-110000", "ER0000.sl2")));
+
+        // 3. The manifest records the save location + backup count (feeds the off-boarding sheet).
+        var ga = Assert.Single(RestorePointManifestStore.Read(Path.Combine(dataRoot, "restore-points", "20260528-141233"))!.Games);
+        Assert.Equal(liveSaveDir, ga.SaveLocation);
+        Assert.Equal(2, ga.SaveBackupCount);
+    }
+
+    [Fact]
     public async Task SafeClear_keepNexus_false_deletes_the_key()
     {
         var (game, c, dataRoot, modsDir) = Setup();

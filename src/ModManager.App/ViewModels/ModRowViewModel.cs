@@ -180,6 +180,11 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool IsBuiltin => Mod.Builtin;
     public Visibility BuiltinVisibility => Mod.Builtin ? Visibility.Visible : Visibility.Collapsed;
 
+    // The DLL mod loader (dinput8.dll) — shown distinguished with a LOADER chip; its toggle cascades
+    // the whole stack (loader + every hosted mods\ DLL) off/on reversibly, not a single-file toggle.
+    public bool IsLoader => Mod.IsLoader;
+    public Visibility LoaderChipVisibility => Mod.IsLoader ? Visibility.Visible : Visibility.Collapsed;
+
     // Another tool (e.g. Vortex) manages this mod's folder — we surface it read-only with a badge
     // so the picture is complete, but the toggle is disabled and there's no uninstall (honor the law).
     public bool IsManaged => !string.IsNullOrEmpty(Mod.Managed);
@@ -232,10 +237,19 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool HasMissingFramework => !string.IsNullOrEmpty(MissingFrameworkName);
     public Visibility MissingFrameworkVisibility => HasMissingFramework ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>Chip label: "NEEDS UE4SS". Uppercased to match the existing chip convention.</summary>
+    /// <summary>True when the loader hint is conditional rather than required — the row's mod brings
+    /// its own proxy (Seamless, ReShade), so the loader is optional. Drives the softer amber
+    /// "MAY NEED" framing instead of the assertive red "NEEDS". Set by the parent VM.</summary>
+    public bool LoaderHintIsSoft { get; init; }
+
+    /// <summary>Chip label: "NEEDS UE4SS" (required) or "MAY NEED ELDEN MOD LOADER" (conditional).
+    /// Uppercased to match the existing chip convention.</summary>
     public string MissingFrameworkChip => HasMissingFramework
-        ? "NEEDS " + MissingFrameworkName.ToUpperInvariant()
+        ? (LoaderHintIsSoft ? "MAY NEED " : "NEEDS ") + MissingFrameworkName.ToUpperInvariant()
         : "";
+
+    /// <summary>Chip color: amber (warning) for a conditional hint, red (danger) for a required one.</summary>
+    public Brush MissingFrameworkBrush => Res(LoaderHintIsSoft ? "ThemeWarning" : "ThemeDanger");
 
     public Uri? MissingFrameworkUri => SafeUrl.IsHttpUrl(MissingFrameworkUrl) ? new Uri(MissingFrameworkUrl!) : null;
 

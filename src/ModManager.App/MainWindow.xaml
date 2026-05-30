@@ -377,10 +377,10 @@
                                              Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
                                              ToolTipService.ToolTip="{x:Bind MissingFrameworkNote, Mode=OneWay}">
                                 <Border CornerRadius="3" Padding="6,2"
-                                        BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}">
+                                        BorderThickness="1" BorderBrush="{x:Bind MissingFrameworkBrush, Mode=OneWay}">
                                     <TextBlock Text="{x:Bind MissingFrameworkChip, Mode=OneWay}"
                                                FontFamily="Consolas" FontSize="11"
-                                               Foreground="{StaticResource ThemeDanger}" />
+                                               Foreground="{x:Bind MissingFrameworkBrush, Mode=OneWay}" />
                                 </Border>
                             </HyperlinkButton>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemePanel}"
@@ -394,6 +394,11 @@
                                     ToolTipService.ToolTip="Ships with UE4SS — framework mod, not a downloaded mod"
                                     Visibility="{x:Bind BuiltinVisibility, Mode=OneWay}">
                                 <TextBlock Text="UE4SS BUILT-IN" FontFamily="Consolas" FontSize="11" Opacity="0.7" />
+                            </Border>
+                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                    ToolTipService.ToolTip="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on"
+                                    Visibility="{x:Bind LoaderChipVisibility, Mode=OneWay}">
+                                <TextBlock Text="LOADER" FontFamily="Consolas" FontSize="11" Foreground="Black" />
                             </Border>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"

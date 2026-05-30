@@ -9,7 +9,13 @@ public sealed record OffBoardingReport(
     IReadOnlyList<string> LaunchLines,
     IReadOnlyList<string> Frameworks,
     IReadOnlyList<OffBoardingModLine> Mods,
-    IReadOnlyList<OffBoardingOwnedMod> OwnedMods);
+    IReadOnlyList<OffBoardingOwnedMod> OwnedMods,
+    // Saves are the user's irreplaceable data. Safe Clear NEVER touches the game's live save folder;
+    // the sheet says so explicitly and names where it is, so a reset never leaves the user wondering.
+    // SaveLocation is the live save path (null if the launcher had none recorded); SaveBackupCount is
+    // how many launcher-made save backups were preserved into this restore point.
+    string? SaveLocation = null,
+    int SaveBackupCount = 0);
 
 public sealed record OffBoardingOwnedMod(string Name, string ManagedBy);
 

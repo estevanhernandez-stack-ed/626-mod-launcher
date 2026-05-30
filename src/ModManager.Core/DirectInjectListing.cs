@@ -23,8 +23,9 @@ public static class DirectInjectListing
     }
 
     // All currently-enabled direct-inject mods: top-level signatures PLUS the individual mods a DLL
-    // loader runs from its mods\ folder. When those are present the bare "DLL mod loader" row is
-    // dropped — it's represented by its contents.
+    // loader runs from its mods\ folder. The bare "DLL mod loader" row is KEPT (tagged IsLoader in
+    // Row) even when its mods\ folder has contents — it's load-bearing infrastructure the user must
+    // be able to see and toggle, and its toggle cascades the whole stack (DirectInject.SetLoaderEnabled).
     public static IReadOnlyList<DirectInjectMod> Enabled(string? folder)
     {
         if (folder is null) return Array.Empty<DirectInjectMod>();
@@ -35,7 +36,6 @@ public static class DirectInjectListing
             ? DirectInject.DetectLoaderMods(Names(modsDir, Directory.GetFiles), Names(modsDir, Directory.GetDirectories))
             : Array.Empty<DirectInjectMod>();
 
-        if (loaderMods.Count > 0) top = top.Where(m => m.Name != DirectInject.LoaderName).ToList();
         return top.Concat(loaderMods).ToList();
     }
 
@@ -58,6 +58,9 @@ public static class DirectInjectListing
         Enabled = enabled,
         Description = "Detected: " + d.Evidence,
         Files = d.Entries.ToList(),
+        // The bare DLL mod loader row: rendered distinguished (LOADER chip) and its toggle cascades.
+        // DetectLoaderMods never emits LoaderName, so hosted-mod rows are never mis-tagged.
+        IsLoader = d.Name == DirectInject.LoaderName,
     };
 
     private static IReadOnlyList<string> Names(string folder, Func<string, string[]> list)

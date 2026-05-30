@@ -27,4 +27,12 @@ public static class LaunchGuard
     /// "mods silently won't load"; this one is "the game won't start at all".</summary>
     public static bool NeedsDirectInjectStepAside(LaunchTarget target, bool anyDirectInjectDllsActive)
         => anyDirectInjectDllsActive && target.Kind != "exe";
+
+    /// <summary>True when launching <paramref name="target"/> needs Steam already running first — an
+    /// exe launcher (e.g. Seamless Co-op's ersc_launcher.exe) on a Steam-DRM game whose bootstrap
+    /// never completes if Steam is closed, so the launch silently no-ops. A <c>steam://</c> target
+    /// self-starts Steam, and a non-Steam game (no <see cref="GameEntry.SteamAppId"/>) doesn't depend
+    /// on it — both are excluded. Verdict only; the App ensures Steam is up before <c>Process.Start</c>.</summary>
+    public static bool NeedsSteamRunning(GameEntry game, LaunchTarget target)
+        => target.Kind == "exe" && !string.IsNullOrEmpty(game.SteamAppId);
 }
