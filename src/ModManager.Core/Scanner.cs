@@ -606,8 +606,15 @@ public static class Scanner
     private static IReadOnlyList<Mod> ListWithClass(GameContext c)
     {
         var mods = BuildModList(c);
-        var map = Classification.Seed(LoadClassification(c), mods.Select(m => (m.Name, m.OnServer)));
+        var map = ClassifyInMemory(c, mods);
         try { SaveClassification(c, map); } catch { /* best effort */ }
+        return Metadata.MergeMetadata(mods, LoadMetadata(c));
+    }
+
+    // Read-only: seed classification + set Class/Base/Variant in memory. No disk writes. Returns the seeded map.
+    private static Dictionary<string, string> ClassifyInMemory(GameContext c, IReadOnlyList<Mod> mods)
+    {
+        var map = Classification.Seed(LoadClassification(c), mods.Select(m => (m.Name, m.OnServer)));
         foreach (var m in mods)
         {
             m.Class = map.TryGetValue(m.Name, out var cl) ? cl : "both";
@@ -615,7 +622,24 @@ public static class Scanner
             m.Base = v.Base;
             m.Variant = v.Tag;
         }
-        return Metadata.MergeMetadata(mods, LoadMetadata(c));
+        return map;
+    }
+
+    /// <summary>Read-only sibling of <see cref="ListWithClass"/>: scan + in-memory classify (Class/Base/Variant),
+    /// no SaveClassification, no metadata merge. The shared mod-listing resolver uses this for the scanner world.</summary>
+    public static IReadOnlyList<Mod> ListClassified(GameContext c)
+    {
+        var mods = BuildModList(c);
+        ClassifyInMemory(c, mods);
+        return mods;
+    }
+
+    /// <summary>Persist the auto-seeded classification exactly as <see cref="ListWithClass"/> does. Used by the
+    /// App after the read-only resolver in scanner-world so per-reload persistence is byte-identical.</summary>
+    public static void PersistClassification(GameContext c, IReadOnlyList<Mod> mods)
+    {
+        try { SaveClassification(c, Classification.Seed(LoadClassification(c), mods.Select(m => (m.Name, m.OnServer)))); }
+        catch { /* best effort */ }
     }
 
     // ---------- load order ----------

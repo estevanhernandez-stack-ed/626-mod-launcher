@@ -142,3 +142,17 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 - [ ] **Off-boarding sheet honesty (sideloaded mods):** On a game with at least one sideloaded mod (no recorded source URL), run a clear. Confirm: the `626-launcher-how-to-launch.txt` sheet lists those mods as "source not recorded — sideloaded" and leads with "your mods are preserved in the restore point" — a missing URL never implies a missing mod.
 
 **Why these matter:** the archive + lock + restore state machine is unit-tested, but the WinUI dialog flow, process-running detection against a live game EXE, actual cross-drive file moves + archive creation at scale, and the recovery-dialog routing on next cold launch only exercise on a real Windows machine with a real game install.
+
+---
+
+## ReloadModsAsync unification — App behavior unchanged (2026-05-29)
+
+After unifying mod listing on `ModListing.Resolve` (App + MCP share one read path), verify each engine world still renders identically:
+1. **Direct-inject world** — switch to elden-ring (Seamless + EML installed).
+   - Expected: the mod list is identical to before — Seamless Co-op + the EML-loaded DLL mods, same enabled states, same chips. No bare "DLL mod loader" row.
+2. **Scanner world** — switch to a BepInEx game (e.g. R.E.P.O.).
+   - Expected: mod list unchanged; `classification.json` still refreshes on disk (the migrate + persist writes stayed App-side), no stale entries.
+3. **Mod Engine 2 world** — switch to an ME2 config-backed game if available.
+   - Expected: mod list unchanged from before the refactor.
+4. Toggle a direct-inject mod off/on.
+   - Expected: still reversible (moves to holding, returns), no behavior change.

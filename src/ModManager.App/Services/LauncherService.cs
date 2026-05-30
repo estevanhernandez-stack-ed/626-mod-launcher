@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.IO;
-using System.Text.Json;
 using ModManager.Core;
+using ModManager.Core.Persistence;
 
 namespace ModManager.App.Services;
 
@@ -12,8 +12,6 @@ namespace ModManager.App.Services;
 /// </summary>
 public sealed class LauncherService
 {
-    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
-
     public ICurseForgeClient CurseForge { get; }
 
     public LauncherService(ICurseForgeClient curseForge) => CurseForge = curseForge;
@@ -26,19 +24,9 @@ public sealed class LauncherService
     public event Action? RegistryChanged;
     public void NotifyRegistryChanged() => RegistryChanged?.Invoke();
 
-    private static string RegistryPath => Path.Combine(DataRoot, "games.json");
+    public GameRegistry LoadRegistry() => RegistryStore.Load(DataRoot);
 
-    public GameRegistry LoadRegistry()
-    {
-        try { return JsonSerializer.Deserialize<GameRegistry>(File.ReadAllText(RegistryPath), Json) ?? Registry.EmptyRegistry(); }
-        catch { return Registry.EmptyRegistry(); }
-    }
-
-    public void SaveRegistry(GameRegistry reg)
-    {
-        Directory.CreateDirectory(DataRoot);
-        AtomicJson.WriteJsonAtomic(RegistryPath, reg);
-    }
+    public void SaveRegistry(GameRegistry reg) => RegistryStore.Save(DataRoot, reg);
 
     public GameContext? ActiveContext()
     {
