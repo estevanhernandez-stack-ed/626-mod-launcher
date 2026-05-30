@@ -262,7 +262,7 @@ public sealed partial class MainWindow : Window
                     else ViewModel.NotifyLauncherMissing();
                     break;
                 case ContentDialogResult.Secondary:
-                    ViewModel.LaunchTargetExplicit(target);
+                    await ViewModel.LaunchTargetExplicit(target);
                     break;
                 // None (Cancel): do nothing.
             }
@@ -284,11 +284,11 @@ public sealed partial class MainWindow : Window
                 XamlRoot = Content.XamlRoot,
             };
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                ViewModel.LaunchTargetExplicit(target);
+                await ViewModel.LaunchTargetExplicit(target);
             return;
         }
 
-        ViewModel.LaunchTargetExplicit(target);
+        await ViewModel.LaunchTargetExplicit(target);
     }
 
     // Set or clear a mod's MP-compat override from the badge flyout. Tag carries the choice.
