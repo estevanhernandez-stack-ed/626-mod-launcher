@@ -238,16 +238,36 @@ public sealed partial class MainViewModel : ObservableObject
         SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == SelectedTheme?.Id) ?? _themes.Default;
     }
 
+    // LoadAsync rebuilds the games dropdown (Games.Clear + repopulate) and is NON-atomic — it awaits
+    // mid-rebuild (ReloadModsAsync). Restore fires it TWICE: once from the RegistryChanged event the
+    // orchestrator raises via its mid-operation Reload, and once explicitly after restore completes.
+    // Two overlapping calls interleave their Clear/repopulate on the UI-bound Games collection and can
+    // leave the dropdown with a partial set (live-smoke 2026-05-30: a restore showed only the active
+    // game). Serialize: if a load is already in flight, flag one more pass and return; the running loop
+    // re-runs after its await, reading the latest registry. The final pass always wins, clean.
+    private bool _loading;
+    private bool _loadPending;
+
     public async Task LoadAsync()
     {
-        var reg = _svc.LoadRegistry();
-        _suppressActiveSwitch = true;
-        Games.Clear();
-        foreach (var g in reg.Games) Games.Add(new GameOption(g.Id, g.GameName));
-        var active = Registry.GetActiveGame(reg);
-        ActiveGame = active is null ? null : Games.FirstOrDefault(x => x.Id == active.Id);
-        _suppressActiveSwitch = false;
-        await ReloadModsAsync();
+        if (_loading) { _loadPending = true; return; }
+        _loading = true;
+        try
+        {
+            do
+            {
+                _loadPending = false;
+                var reg = _svc.LoadRegistry();
+                _suppressActiveSwitch = true;
+                Games.Clear();
+                foreach (var g in reg.Games) Games.Add(new GameOption(g.Id, g.GameName));
+                var active = Registry.GetActiveGame(reg);
+                ActiveGame = active is null ? null : Games.FirstOrDefault(x => x.Id == active.Id);
+                _suppressActiveSwitch = false;
+                await ReloadModsAsync();
+            } while (_loadPending);
+        }
+        finally { _loading = false; }
     }
 
     partial void OnActiveGameChanged(GameOption? value)
