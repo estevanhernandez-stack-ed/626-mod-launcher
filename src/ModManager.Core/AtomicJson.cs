@@ -30,6 +30,13 @@ public static class AtomicJson
     /// <summary>Atomically write text (e.g. the Mod Engine 2 config toml): temp file, then rename.</summary>
     public static void WriteTextAtomic(string file, string text)
     {
+        // Create the destination directory first. An atomic write into a not-yet-existent directory
+        // throws DirectoryNotFoundException on the temp file — and this is THE canonical wrapper for
+        // every JSON/text state file, so a missing-parent footgun here crashes any caller (live-smoke
+        // 2026-05-30: a Safe Clear died writing a marker into a game data dir that didn't exist yet).
+        var dir = Path.GetDirectoryName(file);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
         var tmp = file + ".tmp-" + Environment.ProcessId;
         try
         {

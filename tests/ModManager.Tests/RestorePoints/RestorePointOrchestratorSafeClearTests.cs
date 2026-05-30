@@ -82,6 +82,28 @@ public class RestorePointOrchestratorSafeClearTests : IDisposable
     }
 
     [Fact]
+    public async Task SafeClear_succeeds_when_a_game_has_no_mod_data_dir()
+    {
+        // Regression (live-smoke 2026-05-30): a registered game whose mod data dir doesn't exist on
+        // disk (captain-of-industry — registered, never had mods) crashed the WHOLE clear. MUTATE's
+        // WriteRestoreAvailable wrote RESTORE-AVAILABLE.json into the missing dir and threw
+        // DirectoryNotFoundException. The clear must tolerate a game with no data dir. Note: Setup()
+        // does NOT create c.DataDir — the happy-path test only has it because DisableModAsync creates
+        // it as a side effect. Here we disable nothing, so c.DataDir is absent: the exact repro.
+        var (game, c, dataRoot, _) = Setup();
+        File.WriteAllText(Path.Combine(dataRoot, "games.json"), "{\"version\":1,\"games\":[]}");
+        Assert.False(Directory.Exists(c.DataDir));   // precondition: no data dir on disk
+        var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
+
+        var r = await orch.SafeClearAsync(new SafeClearOptions { CreateRestorePoint = true, KeepNexus = true },
+            "20260530-000000", default);
+
+        Assert.True(r.Ok);
+        Assert.Equal("20260530-000000", r.RestorePointTimestamp);
+        Assert.Equal("20260530-000000", RestoreMarkers.ReadRestoreAvailable(c.DataDir));  // marker in freshly-created dir
+    }
+
+    [Fact]
     public async Task SafeClear_refuses_when_game_running()
     {
         var (game, _, dataRoot, _) = Setup();
