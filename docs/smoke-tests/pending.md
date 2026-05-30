@@ -11,8 +11,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 > | Task 3 — Play-vanilla with direct-inject DLLs crashes | ✅ merged | `946f4dc` + `66907a1` (PR #83) — vanilla step-aside verdict |
 > | F3 — Seamless catalog config path wrong | ✅ merged | `bacc3d6` — covers all 3 Seamless layouts |
 > | Task 4 — loader "required" → conditional framing | ⛔ OPEN | no `SelfProvidesProxy`; `FrameworkDeps.cs:92` still asserts "Most ER mods need this" |
-> | Task 5 — exe launch doesn't ensure Steam running | ⛔ OPEN | no `NeedsSteamRunning` / `ISteamPresence` |
-> | Task 6 — loader row hidden while its mods active | ⛔ OPEN | no `ComposeEnabledRows` / `ToggleLockReason` (intentional-drop still in `DirectInjectListing.Enabled`) |
+> | Task 5 — exe launch doesn't ensure Steam running | 🔧 PR #89 (awaiting live smoke) | `NeedsSteamRunning` verdict + `SteamService.IsRunning`/`EnsureRunning`; auto-start Steam + wait — hit live 2026-05-30 |
+> | Task 6 — loader row hidden while its mods active | 📋 spec queued (`feat/inline-loader-cascade`) | inline distinguished row + cascade-disable; supersedes the lock-toggle approach |
 > | Task 7 — Safe Clear success gives no confirmation | ⛔ OPEN | no `SafeClearSummary` / `SuccessBar` |
 >
 > Net: the merged fixes need a **live re-smoke** (code-verified, not yet exercised on the rig). The four ⛔ items are real backlog. Safe Clear is still only 1-of-8 live-smoked. Merged-fix re-smokes are consolidated in the new section at the bottom.
