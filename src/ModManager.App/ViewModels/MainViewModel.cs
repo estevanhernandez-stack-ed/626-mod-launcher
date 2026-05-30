@@ -885,7 +885,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Run an internal launch option (the app starts the real exe directly).</summary>
-    public void RunInternalOption(LaunchOption opt)
+    public async Task RunInternalOption(LaunchOption opt)
     {
         if (_ctx is null || opt.Exe is null) return;
         var root = _ctx.Game.GameRoot;
@@ -894,7 +894,7 @@ public sealed partial class MainViewModel : ObservableObject
             Args = opt.Args,
             WorkingDir = opt.WorkingSubdir is null ? root : System.IO.Path.Combine(root, opt.WorkingSubdir),
         };
-        LaunchTargetExplicit(target);
+        await LaunchTargetExplicit(target);
     }
 
     [RelayCommand]

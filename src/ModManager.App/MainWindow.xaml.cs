@@ -258,7 +258,7 @@ public sealed partial class MainWindow : Window
             switch (await dialog.ShowAsync())
             {
                 case ContentDialogResult.Primary:
-                    if (launcher is not null) ViewModel.LaunchTargetExplicit(launcher);
+                    if (launcher is not null) await ViewModel.LaunchTargetExplicit(launcher);
                     else ViewModel.NotifyLauncherMissing();
                     break;
                 case ContentDialogResult.Secondary:
@@ -642,7 +642,7 @@ public sealed partial class MainWindow : Window
 
                     case ModManager.Core.LaunchOptionKind.Internal:
                         var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
-                        run.Click += (_, _) => { dialog.Hide(); ViewModel.RunInternalOption(opt); };
+                        run.Click += async (_, _) => { dialog.Hide(); await ViewModel.RunInternalOption(opt); };
                         card.Children.Add(run);
                         break;
 
