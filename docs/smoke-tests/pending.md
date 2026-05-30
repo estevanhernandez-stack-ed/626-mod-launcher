@@ -199,4 +199,19 @@ Tracked in `docs/superpowers/plans/2026-05-28-smoke-remediations.md`:
 - **Task 4** ✅ shipped (PR #88) + live-smoked — amber "MAY NEED" confirmed.
 - **Task 5** ✅ shipped (PR #89) + live-smoked — Steam-closed → auto-start → Seamless launched.
 - **Task 6** ✅ shipped (PR #93) + live-smoked — inline distinguished LOADER row; toggling the loader moves only its own `dinput8.dll` (DECOUPLED; the cascade was built then dropped after live testing showed the hosted `mods\` mods are inert-but-harmless with the loader off).
-- **Task 7** (low) — Safe Clear success confirmation (name the restore point, point to Settings → Restore points). Not yet built.
+- **Task 7** ✅ shipped (`fix/safe-clear-success-confirm`) — Safe Clear now confirms on success: the Reset-launcher dialog shows a Success InfoBar naming the restore point + pointing to Settings → Restore points, and stays open (button relabels to "Done") so the message is seen before close. Needs live re-smoke (below). **This was the last open remediation — Tasks 1–7 are all shipped.**
+
+---
+
+## Safe Clear success confirmation (Task 7 — 2026-05-30)
+
+Before this, a successful Safe Clear closed the dialog instantly — no confirmation, no pointer to the restore point. Now `SafeClearSummary.SuccessMessage` (pure Core, 4 tests) formats the confirmation and `SafeClearDialog` shows it in the existing `ResultBar` InfoBar switched to `Severity=Success`, keeping the dialog open until the user clicks **Done**.
+
+1. **Vanilla clear + restore point ON** — Settings → Reset launcher → "Return to vanilla (restorable)", "Create a restore point" ON → Clear. Expected: dialog **stays open**; a green InfoBar reads "Reset complete. Saved a restore point from `<friendly date+time>`. Find it in Settings → Restore points."; primary button now says **Done**; clicking Done closes the dialog and the launcher refreshes. Confirm the named restore point actually appears in Settings → Restore points.
+2. **Leave-mods-active clear** — Reset → "Leave mods active" → Clear. Expected: same green confirmation + restore-point line + Done button. (Message is mode-neutral — "Reset complete." — by design: the result doesn't carry the end-state, so it never claims "vanilla" on a leave clear.)
+3. **Restore point OFF** — Reset with "Create a restore point" UNCHECKED → Clear. Expected: green InfoBar says "Reset complete. No restore point was created." and does NOT point to Settings → Restore points (nothing was saved). Done closes.
+4. **With a warning** — if a non-fatal warning occurs (e.g. a Keep-Nexus path that can't copy), the green InfoBar still confirms success + restore point, then appends "Note: `<warning text>`".
+5. **Friendly timestamp** — confirm the InfoBar shows a human stamp like `2026-05-30 14:32`, never the raw `20260530-143200`.
+6. **Failure path unchanged** — a refused/failed clear still shows the red (Error) InfoBar and keeps the dialog open to retry; the button stays "Clear".
+
+**Why this matters:** the formatter is unit-tested, but the InfoBar render, the keep-open-then-Done flow, the Error→Success severity switch, and the button relabel only exercise on a real WinUI dialog.
