@@ -33,7 +33,12 @@ public sealed record GameArchive(
     IReadOnlyList<OwnedModNote> OwnedMods,
     IReadOnlyList<MovedFile> MovedFiles,
     IReadOnlyList<ArchivedMod> Mods,
-    string? OffboardingSheetGameFolderPath);
+    string? OffboardingSheetGameFolderPath,
+    // The game's live save folder (untouched by Safe Clear) + how many launcher-made save backups were
+    // captured into this restore point. Surfaced on the off-boarding sheet so a reset never leaves the
+    // user wondering about their saves. Defaulted/nullable — additive, no SchemaVersion bump.
+    string? SaveLocation = null,
+    int SaveBackupCount = 0);
 
 /// <summary>A framework whose install state was captured before any uninstall. CapturedStateRel is
 /// the archive-relative folder holding the captured installed files (with live config edits).</summary>

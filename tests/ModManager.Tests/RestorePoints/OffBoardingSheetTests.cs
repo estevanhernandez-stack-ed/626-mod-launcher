@@ -69,4 +69,24 @@ public class OffBoardingSheetTests
         Assert.Contains("source: https://nexusmods.com/z", s);
         Assert.DoesNotContain("likely source: https://nexusmods.com/z", s);
     }
+
+    [Fact]
+    public void Render_reassures_saves_are_untouched_and_names_the_location()
+    {
+        var r = Report() with { SaveLocation = @"C:\Users\you\AppData\Roaming\EldenRing\76561198", SaveBackupCount = 3 };
+        var s = OffBoardingSheet.Render(r);
+        Assert.Contains("YOUR SAVES", s);
+        Assert.Contains("not touched", s);                                          // the load-bearing reassurance
+        Assert.Contains(@"C:\Users\you\AppData\Roaming\EldenRing\76561198", s);      // names where they are
+        Assert.Contains("3", s);                                                    // backup count surfaced
+    }
+
+    [Fact]
+    public void Render_handles_unknown_save_location_without_a_path_or_zero_backups()
+    {
+        var r = Report() with { SaveLocation = null, SaveBackupCount = 0 };
+        var s = OffBoardingSheet.Render(r);
+        Assert.Contains("YOUR SAVES", s);
+        Assert.Contains("not touched", s);   // still reassures even when the launcher tracked no save folder
+    }
 }
