@@ -49,6 +49,11 @@ public sealed partial class SafeClearDialog : ContentDialog
 
     private async void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        // Second click on the relabelled "Done" button — the clear already ran and the confirmation
+        // was shown. Let the dialog close (Cleared/Result already set; the caller refreshes).
+        if (Cleared)
+            return;
+
         var deferral = args.GetDeferral();
         try
         {
@@ -58,6 +63,7 @@ public sealed partial class SafeClearDialog : ContentDialog
             var result = await _svc.SafeClearAsync(BuildOptions());
             if (!result.Ok)
             {
+                ResultBar.Severity = InfoBarSeverity.Error;
                 ResultBar.Message = result.RefusedReason ?? "Couldn't reset.";
                 ResultBar.IsOpen = true;
                 args.Cancel = true;         // keep the dialog open so the user can fix + retry
@@ -66,10 +72,20 @@ public sealed partial class SafeClearDialog : ContentDialog
             }
 
             Result = result;
-            Cleared = true;                 // success — let the dialog close normally
+            Cleared = true;
+            // Confirm before close (Task 7 — a silent close gave no confirmation): show the success
+            // message in the InfoBar, relabel the button to "Done", and keep the dialog open so the
+            // user actually sees that a restore point was made and where to find it.
+            ResultBar.Severity = InfoBarSeverity.Success;
+            ResultBar.Message = SafeClearSummary.SuccessMessage(result);
+            ResultBar.IsOpen = true;
+            sender.PrimaryButtonText = "Done";
+            args.Cancel = true;
+            IsPrimaryButtonEnabled = true;
         }
         catch (Exception ex)
         {
+            ResultBar.Severity = InfoBarSeverity.Error;
             ResultBar.Message = $"Reset failed: {ex.Message}";
             ResultBar.IsOpen = true;
             args.Cancel = true;
