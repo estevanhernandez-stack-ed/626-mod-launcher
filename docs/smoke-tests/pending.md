@@ -175,10 +175,10 @@ After unifying mod listing on `ModListing.Resolve` (App + MCP share one read pat
 
 These four shipped after the live session and are code-verified only. Each needs one live confirmation on the rig.
 
-- [ ] **IniEdit CRLF (Task 1, `cf8aa3d`):** edit a Seamless `seamlesscoopsettings.ini` via the pencil → Save → reopen the file in a hex/CRLF-aware view → every line ends `\r\n` (zero bare-CR), the game parses it, and the `.bak` under `.ini-history/seamless-coop/` is byte-exact to the pre-edit file. Re-edit an intentionally LF-only `.ini` → stays LF-only.
+- [x] **IniEdit CRLF (Task 1, `cf8aa3d`) — PASSED 2026-05-30.** Edited Seamless `ersc_settings.ini` via the pencil → Save → on-disk bytes still CRLF (CR=59, LF=59, **bare-CR=0**); a byte-exact `.bak` landed in `_626mods/elden-ring/.ini-history/`. Forensic confirmation the bug was real: pre-fix `.bak` snapshots from 05/28 show **bare-CR=53/59**, every post-fix save shows bare-CR=0.
 - [ ] **Safe Clear game-running refusal (Task 2, PR #82):** launch ER via Seamless (`ersc_launcher.exe` exits, `eldenring.exe` runs) → Settings → Reset → Clear → must **Refuse** ("Close ELDEN RING before resetting"); nothing archived or moved. Also: if the game-running probe can't enumerate, the clear refuses rather than proceeding.
 - [ ] **Play-vanilla step-aside (Task 3, PR #83):** on ER with a direct-inject proxy DLL active (e.g. Seamless `ersc.dll` / a `dinput8.dll`), pick a vanilla/Steam launch target → a guard dialog appears ("Disable mods and launch vanilla" / "Launch anyway" / Cancel) instead of a `0xc0000142` crash. Primary reversibly disables (move-to-holding) then launches; the disabled mod returns on next reload.
-- [ ] **Seamless catalog path (F3, `bacc3d6`):** on ER with Seamless at `<gameRoot>/Game/SeamlessCoop/seamlesscoopsettings.ini` → the Seamless row shows the pencil icon and clicking it opens the real settings file (not a wrong/empty path).
+- [x] **Seamless catalog path (F3, `bacc3d6`) — PASSED 2026-05-30** (implicitly, via the IniEdit smoke). The Seamless row's pencil opened the real `SeamlessCoop/ersc_settings.ini` (the LukeYui-middle layout — catalog covers all three) and the edit round-tripped. Pencil found the right file, not a wrong/empty path.
 
 ## Still-open remediation backlog
 
