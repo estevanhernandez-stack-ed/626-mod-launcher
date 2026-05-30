@@ -180,6 +180,11 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool IsBuiltin => Mod.Builtin;
     public Visibility BuiltinVisibility => Mod.Builtin ? Visibility.Visible : Visibility.Collapsed;
 
+    // The DLL mod loader (dinput8.dll) — shown distinguished with a LOADER chip; its toggle cascades
+    // the whole stack (loader + every hosted mods\ DLL) off/on reversibly, not a single-file toggle.
+    public bool IsLoader => Mod.IsLoader;
+    public Visibility LoaderChipVisibility => Mod.IsLoader ? Visibility.Visible : Visibility.Collapsed;
+
     // Another tool (e.g. Vortex) manages this mod's folder — we surface it read-only with a badge
     // so the picture is complete, but the toggle is disabled and there's no uninstall (honor the law).
     public bool IsManaged => !string.IsNullOrEmpty(Mod.Managed);

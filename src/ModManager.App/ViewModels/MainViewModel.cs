@@ -377,7 +377,7 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     primaryMissing = MissingFrameworks.FirstOrDefault();
                 }
-                rows.Add(new ModRowViewModel(rep, canToggle: !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
+                rows.Add(new ModRowViewModel(rep, canToggle: rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
@@ -565,6 +565,23 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>Toggle the WHOLE DLL-mod-loader stack on or off in one reversible cascade — the loader
+    /// (dinput8.dll) plus every mod it runs from its mods\ folder, moved to/from holding atomically.
+    /// Modeled on <see cref="ToggleFamilyAsync"/>: does NOT optimistically mutate row.Enabled, so a
+    /// failed cascade leaves no visually-flipped switch — ReloadModsAsync rebuilds ToggleIsOn from disk.</summary>
+    public async Task ToggleLoaderCascadeAsync(ModRowViewModel row, bool on)
+    {
+        if (_ctx is null) return;
+        row.IsBusy = true;
+        try
+        {
+            _direct.SetLoaderEnabled(_ctx.Game, on);
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; await ReloadModsAsync(); }
+        finally { row.IsBusy = false; }
     }
 
     /// <summary>Toggle a variant family on or off. ON re-enables the LAST-active variant (remembered

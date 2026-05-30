@@ -119,6 +119,16 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not ToggleSwitch sw || sw.DataContext is not ModRowViewModel row) return;
 
+        // Loader row: the switch cascades the WHOLE stack (loader + its hosted mods\ DLLs) off/on,
+        // not a single file. Placed BEFORE the variant + per-mod paths so a loader never falls through.
+        // The re-entry guard suppresses the Toggled fired on every programmatic ReloadModsAsync rebuild.
+        if (row.IsLoader)
+        {
+            if (sw.IsOn == row.Mod.Enabled) return;
+            await ViewModel.ToggleLoaderCascadeAsync(row, sw.IsOn);
+            return;
+        }
+
         // Variant-family row: the switch toggles the FAMILY on/off. ON restores the last-active
         // variant (remembered by MainViewModel across rescans); OFF disables every variant after
         // recording which was on. Single-select variant CHIPS still pick which variant is active.
