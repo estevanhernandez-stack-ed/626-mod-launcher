@@ -28,7 +28,8 @@ public sealed record KnownDirectInjectMod(
     IReadOnlyList<string> InstallSignatureContains,
     string InstallRoot,
     IReadOnlyList<string> ConfigPaths,
-    IReadOnlyList<string> ForbiddenOverridePaths)
+    IReadOnlyList<string> ForbiddenOverridePaths,
+    bool SelfProvidesProxy = false)
 {
     /// <summary>
     /// Day-one catalog. Migrated from <c>DirectInject.Signature</c> array; same detection
@@ -40,12 +41,14 @@ public sealed record KnownDirectInjectMod(
         Mk(modId: "reshade", display: "ReShade", chip: "graphics", author: "crosire",
            files: new[] { "reshadepreset.ini", "reshade.ini" },
            dirs: new[] { "reshade-shaders" },
-           configs: new[] { "reshade.ini", "reshadepreset.ini" }),
+           configs: new[] { "reshade.ini", "reshadepreset.ini" },
+           selfProvidesProxy: true), // ships its own dxgi/d3d proxy — no separate loader needed
 
         Mk(modId: "seamless-coop", display: "Seamless Co-op", chip: "co-op", author: "Yui",
            getUrl: "https://www.nexusmods.com/eldenring/mods/510",
            files: new[] { "ersc.dll", "ersc_settings.ini", "launch_elden_ring_seamlesscoop.exe" },
            dirs: new[] { "seamlesscoop" },
+           selfProvidesProxy: true, // ships ersc.dll — chain-loads itself, no separate loader needed
            // Seamless ships under three install layouts across the project's history:
            //   - Current rewrite:  <playFolder>/SeamlessCoop/seamlesscoopsettings.ini
            //   - LukeYui middle:   <playFolder>/SeamlessCoop/ersc_settings.ini  (subfolder, OLD name)
@@ -79,7 +82,7 @@ public sealed record KnownDirectInjectMod(
         string modId, string display, string chip, string author,
         string? getUrl = null,
         string[]? files = null, string[]? dirs = null, string[]? contains = null,
-        string[]? configs = null)
+        string[]? configs = null, bool selfProvidesProxy = false)
         => new(
             Kind: "directInjectMod",
             ModId: modId,
@@ -94,5 +97,6 @@ public sealed record KnownDirectInjectMod(
             InstallSignatureContains: contains ?? Array.Empty<string>(),
             InstallRoot: "PlayFolder",
             ConfigPaths: configs ?? Array.Empty<string>(),
-            ForbiddenOverridePaths: Array.Empty<string>());
+            ForbiddenOverridePaths: Array.Empty<string>(),
+            SelfProvidesProxy: selfProvidesProxy);
 }
