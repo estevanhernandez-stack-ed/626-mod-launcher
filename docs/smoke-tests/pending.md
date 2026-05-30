@@ -159,12 +159,12 @@ After unifying mod listing on `ModListing.Resolve` (App + MCP share one read pat
 
 ---
 
-## Loader cascade-disable + inline distinguished row (2026-05-30)
+## Loader visible + independently toggleable (DECOUPLED — 2026-05-30)
 
-The DLL mod loader (Elden Mod Loader = `dinput8.dll`) now stays a visible row when hosting mods, marked with a **LOADER** chip, and its toggle cascades the whole stack. Core is unit-tested (14 cases: surface/tag, cascade off/on/round-trip, slug + stale-holding guards, loader-locked cheap rollback, hosted-locked rollback, transient flag); these confirm the App wiring + UX on a real install.
+The DLL mod loader (Elden Mod Loader = `dinput8.dll`) now stays a visible row when hosting mods, marked with a **LOADER** chip, and toggling it moves **only its own `dinput8.dll`** — the hosted `mods\` mods are left in place. (The cascade this entry originally described was dropped: live testing proved the hosted `mods\` mods sit inert-but-harmless when the loader is off — they don't load, but cause no crash and the game launches fine, so dragging them to holding solved a non-problem. See PR #93 / handoff `docs/superpowers/handoffs/2026-05-30-decouple-loader-toggle.md`.) Core is unit-tested (`DirectInjectLoaderRowTests`, 6 cases: row present/tagged, disabled-loader tagged, disable-moves-only-dinput8, re-enable-restores-only-dinput8, transient flag); these confirm the App wiring + UX on a real install.
 
 1. **Loader visible + chipped** — ER with Seamless + EML installed (`Game/dinput8.dll` + `Game/mods/*.dll`): the mod list shows a **DLL mod loader** row with a cyan **LOADER** chip, alongside its hosted mods (AdjustTheFov, etc.). Previously the loader row vanished — this is the fix.
-2. **Cascade off** — toggle the loader row OFF → the loader + every hosted `mods\*.dll` move to holding together (the whole stack goes dark in one action); rows reflect it. The game's own files (eldenring.exe) are untouched.
-3. **Cascade on** — toggle it back ON → loader + all hosted mods return to the play folder; byte-for-byte.
-4. **Individual hosted-mod toggle unchanged** — toggling a single hosted mod (e.g. AdjustTheFov) off/on still works independently and does NOT cascade the loader.
-5. **Toggle while the game is running** (the rollback path) — launch ER, then toggle the loader OFF → it should fail with "Couldn't disable the DLL mod loader … is the game running?" and leave the play folder fully-ON (nothing stranded in holding). This is the loader-first cheap-rollback case.
+2. **Toggle the loader OFF → only `dinput8.dll` moves** — toggle the loader row off → its own `dinput8.dll` goes to holding; the hosted `mods\*.dll` stay exactly where they are (still listed, just inert without the loader). The game's own files (eldenring.exe) are untouched. Game still launches.
+3. **Toggle the loader ON → `dinput8.dll` restored byte-for-byte** — the hosted mods never moved, so nothing else changes.
+4. **Individual hosted-mod toggle unchanged** — toggling a single hosted mod (e.g. AdjustTheFov) off/on still works independently.
+5. **Toggle while the game is running** (the rollback path) — launch ER, then toggle the loader OFF → it should fail (the running-game guard) and leave `dinput8.dll` in the play folder (nothing stranded in holding). Same per-mod guard every other direct-inject row uses.
