@@ -60,9 +60,20 @@
         <ComboBox x:Name="PopularGamesBox" Header="Popular game (optional)" HorizontalAlignment="Stretch"
                   DisplayMemberPath="Name" PlaceholderText="Pick a known moddable game"
                   SelectionChanged="OnPopularSelected" />
-        <ComboBox x:Name="SteamGamesBox" Header="Detect from Steam (optional)" HorizontalAlignment="Stretch"
-                  DisplayMemberPath="Name" PlaceholderText="Pick an installed Steam game"
-                  SelectionChanged="OnSteamSelected" />
+        <StackPanel Spacing="6">
+            <TextBlock Text="Quick add from Steam" FontWeight="SemiBold" FontSize="13" />
+            <TextBlock Text="Check the games to add — engine, folder, and saves are detected for you. Then click Add."
+                       TextWrapping="Wrap" Opacity="0.75" FontSize="12" />
+            <ListView x:Name="SteamGamesList" SelectionMode="Multiple" MaxHeight="180"
+                      DisplayMemberPath="Display"
+                      BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
+                      SelectionChanged="OnSteamSelectionChanged" />
+            <TextBlock x:Name="SteamEmptyNote" Visibility="Collapsed"
+                       Text="No installed Steam games detected." Opacity="0.7" FontSize="12" />
+            <TextBlock x:Name="SteamManualNote" Visibility="Collapsed"
+                       TextWrapping="Wrap" Opacity="0.7" FontSize="12" />
+            <TextBlock x:Name="SteamSelectionStatus" Visibility="Collapsed" FontSize="12" />
+        </StackPanel>
         <TextBox x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
         <StackPanel Spacing="2">
             <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"

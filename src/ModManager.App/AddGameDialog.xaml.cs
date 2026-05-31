@@ -26,6 +26,9 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private sealed record BatchRowVM(string Headline, string Detail);
 
+    // One checkable Steam quick-add row: the ready-to-register input + the engine-tagged display label.
+    private sealed record SteamAddRow(GameInput Input, string Display);
+
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
 
@@ -47,8 +50,32 @@ public sealed partial class AddGameDialog : ContentDialog
         // parse gotcha on this WinUI build).
         SaveRootBox.ItemsSource = GameProfileImport.SaveRoots;
 
-        SteamGamesBox.ItemsSource = steamGames;
-        if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
+        // Quick-add: plan each installed Steam game for one-click auto-add. Detectable-engine games
+        // become checkable rows; undetectable ones are listed for manual setup (we never guess an engine).
+        var addable = new List<SteamAddRow>();
+        var manual = new List<string>();
+        foreach (var g in steamGames)
+        {
+            var plan = SteamGameImport.Plan(
+                new SteamImportCandidate(g.AppId, g.Name, g.InstallDir),
+                EngineScan.Detect(g.InstallDir));
+            if (plan.Addable && plan.Input is not null)
+            {
+                var label = EnginePresets.Presets.TryGetValue(plan.Engine!, out var p) ? p.Label : plan.Engine!;
+                addable.Add(new SteamAddRow(plan.Input, $"{g.Name}  ·  {label}"));
+            }
+            else
+            {
+                manual.Add(g.Name);
+            }
+        }
+        SteamGamesList.ItemsSource = addable;
+        if (addable.Count == 0) SteamEmptyNote.Visibility = Visibility.Visible;
+        if (manual.Count > 0)
+        {
+            SteamManualNote.Text = $"Add manually (engine not detected): {string.Join(", ", manual)}";
+            SteamManualNote.Visibility = Visibility.Visible;
+        }
 
         // Batch picker mirrors the single-game Steam list. Disable the expander when there's nothing
         // installed - the batched ask is meaningless without targets.
@@ -224,14 +251,12 @@ public sealed partial class AddGameDialog : ContentDialog
         SteamBox.Text = g.SteamAppId;
     }
 
-    // Pick a Steam game -> pre-fill name, folder, app id, and auto-detect the engine.
-    private void OnSteamSelected(object sender, SelectionChangedEventArgs e)
+    // Live count as the user checks Steam games. The dialog's Add button commits the selection.
+    private void OnSteamSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SteamGamesBox.SelectedItem is not SteamGame g) return;
-        NameBox.Text = g.Name;
-        FolderBox.Text = g.InstallDir;
-        SteamBox.Text = g.AppId;
-        ApplyDetectedEngine();
+        var n = SteamGamesList.SelectedItems.Count;
+        SteamSelectionStatus.Text = n == 0 ? "" : $"{n} game{(n == 1 ? "" : "s")} selected — click Add to register.";
+        SteamSelectionStatus.Visibility = n == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // Probe the chosen folder and preselect the engine if we can tell. Leaves it on the
@@ -275,7 +300,16 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        // Batch mode: at least one approved row passes; the single-form fields are irrelevant.
+        // Steam quick-add wins: any checked Steam games auto-register through the same BatchApproved
+        // loop MainWindow uses for the AI flow. saveDir null -> AddGameAsync resolves it (Ludusavi etc.).
+        var steamPicked = SteamGamesList.SelectedItems.Cast<SteamAddRow>().ToList();
+        if (steamPicked.Count > 0)
+        {
+            foreach (var row in steamPicked) _batchApproved.Add((row.Input, null));
+            return; // close; MainWindow registers every BatchApproved entry
+        }
+
+        // AI batch mode: approved rows from the profile flow take precedence over the single-form fields.
         if (_batchApproved.Count > 0) return;
 
         if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(FolderBox.Text)
