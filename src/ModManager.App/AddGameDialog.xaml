@@ -74,6 +74,8 @@
                        TextWrapping="Wrap" Opacity="0.7" FontSize="12" />
             <TextBlock x:Name="SteamSelectionStatus" Visibility="Collapsed" FontSize="12" />
         </StackPanel>
+        <StackPanel x:Name="ManualFormPanel" Spacing="12">
+        <TextBlock Text="Or add one manually" FontWeight="SemiBold" FontSize="13" />
         <TextBox x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
         <StackPanel Spacing="2">
             <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
@@ -99,5 +101,6 @@
         <TextBox x:Name="RequiredLauncherBox" Header="Required launcher (relative exe, optional)" />
         <TextBlock x:Name="ErrorText" Foreground="{StaticResource ThemeDanger}" Visibility="Collapsed"
                    Text="Name, game folder, and engine are required." TextWrapping="Wrap" />
+        </StackPanel>
     </StackPanel>
 </ContentDialog>

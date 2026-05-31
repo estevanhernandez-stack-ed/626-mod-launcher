@@ -251,12 +251,31 @@ public sealed partial class AddGameDialog : ContentDialog
         SteamBox.Text = g.SteamAppId;
     }
 
-    // Live count as the user checks Steam games. The dialog's Add button commits the selection.
+    // React as the user checks Steam games. The dialog's Add button commits the selection.
     private void OnSteamSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var n = SteamGamesList.SelectedItems.Count;
-        SteamSelectionStatus.Text = n == 0 ? "" : $"{n} game{(n == 1 ? "" : "s")} selected — click Add to register.";
-        SteamSelectionStatus.Visibility = n == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var picked = SteamGamesList.SelectedItems.Cast<SteamAddRow>().ToList();
+        var n = picked.Count;
+
+        // When Steam games are checked, the manual single-game form is irrelevant — each game
+        // registers under its OWN Steam name (OnPrimary never reads NameBox in this path). Collapse the
+        // manual form + the popular-game picker so the dialog doesn't read as "pick games AND fill in a
+        // name." Unchecking all brings the manual form back. This is the fix for the "why is there a
+        // name field / what about two games" confusion: the field disappears and we name every game.
+        ManualFormPanel.Visibility = n == 0 ? Visibility.Visible : Visibility.Collapsed;
+        PopularGamesBox.Visibility = n == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (n == 0)
+        {
+            SteamSelectionStatus.Visibility = Visibility.Collapsed;
+            PrimaryButtonText = "Add";
+        }
+        else
+        {
+            SteamSelectionStatus.Text = "Adding: " + string.Join(", ", picked.Select(p => p.Input.Name));
+            SteamSelectionStatus.Visibility = Visibility.Visible;
+            PrimaryButtonText = n == 1 ? "Add 1 game" : $"Add {n} games";
+        }
     }
 
     // Probe the chosen folder and preselect the engine if we can tell. Leaves it on the
