@@ -3,7 +3,7 @@
 > A native Windows mod manager that's honest about what it does, polite about your files, and decent to the modders.
 
 [![release](https://img.shields.io/github/v/release/estevanhernandez-stack-ed/626-mod-launcher?include_prereleases&label=latest)](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)
-[![license](https://img.shields.io/github/license/estevanhernandez-stack-ed/626-mod-launcher)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A reversible, atomic mod toggler for PC games — Bethesda, Unreal pak, FromSoft, BepInEx, UE4SS Lua, Mod Engine 2, Stardew SMAPI, and friends. Built because Vortex made me angry. Free, no ads, no telemetry, no account required to use it.
 
