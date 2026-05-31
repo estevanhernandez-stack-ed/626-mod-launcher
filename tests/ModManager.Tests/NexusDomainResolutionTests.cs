@@ -53,4 +53,28 @@ public class NexusDomainResolutionTests
         var entry = EnginePresets.BuildGameEntry(input, existingIds: null);
         Assert.Null(entry.NexusGameDomain);
     }
+
+    // ── Effective (read-time fallback for games registered before the on-add fix) ────────────────
+
+    [Fact]
+    public void Effective_uses_the_stored_domain_when_set()
+    {
+        var game = new GameEntry { Id = "g", GameName = "G", NexusGameDomain = "stored", SteamAppId = "3041230" };
+        Assert.Equal("stored", NexusDomains.Effective(game));
+    }
+
+    [Fact]
+    public void Effective_falls_back_to_app_id_when_stored_domain_is_empty()
+    {
+        // The friend's exact situation: Windrose registered via Steam auto-add, empty domain on disk.
+        var game = new GameEntry { Id = "windrose", GameName = "Windrose", NexusGameDomain = null, SteamAppId = "3041230" };
+        Assert.Equal("windrose", NexusDomains.Effective(game));
+    }
+
+    [Fact]
+    public void Effective_is_null_when_empty_domain_and_unmapped_app_id()
+    {
+        var game = new GameEntry { Id = "g", GameName = "G", NexusGameDomain = null, SteamAppId = "000000" };
+        Assert.Null(NexusDomains.Effective(game));
+    }
 }

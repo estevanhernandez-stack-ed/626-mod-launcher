@@ -30,4 +30,13 @@ public static class NexusDomains
     /// <summary>The Nexus domain slug for a Steam app id, or null when unmapped / id is null/empty.</summary>
     public static string? ByAppId(string? steamAppId)
         => !string.IsNullOrEmpty(steamAppId) && Map.TryGetValue(steamAppId, out var d) ? d : null;
+
+    /// <summary>
+    /// The effective Nexus domain for a game: its stored <see cref="GameEntry.NexusGameDomain"/> if
+    /// set, else resolved from the Steam app id. Read-time fallback so games registered BEFORE the
+    /// domain was set on add (e.g. anything added via Steam auto-add pre-fix) still resolve a domain
+    /// for md5 metadata identify, with no games.json migration.
+    /// </summary>
+    public static string? Effective(GameEntry game)
+        => !string.IsNullOrWhiteSpace(game.NexusGameDomain) ? game.NexusGameDomain : ByAppId(game.SteamAppId);
 }

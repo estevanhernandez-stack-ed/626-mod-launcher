@@ -981,7 +981,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
-        if (string.IsNullOrWhiteSpace(_ctx.Game.NexusGameDomain)) { StatusText = "This game has no Nexus domain set."; return; }
+        if (string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game))) { StatusText = "This game has no Nexus domain set."; return; }
         if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
         IsBusy = true;
         try

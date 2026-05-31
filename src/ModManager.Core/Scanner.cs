@@ -1172,7 +1172,7 @@ public static class Scanner
     /// </summary>
     public static async Task<IdentifyResult> Md5IdentifyAsync(GameContext c, INexusClient nexus, IEnumerable<string> fileNames)
     {
-        var domain = c.Game.NexusGameDomain;
+        var domain = NexusDomains.Effective(c.Game);
         if (string.IsNullOrWhiteSpace(domain)) return new IdentifyResult(0); // no Nexus key for this game
 
         var primary = c.Locations.FirstOrDefault();
@@ -1208,7 +1208,7 @@ public static class Scanner
     /// </summary>
     public static async Task<IdentifyResult> Md5IdentifyArchivesAsync(GameContext c, INexusClient nexus, IEnumerable<string> droppedPaths)
     {
-        var domain = c.Game.NexusGameDomain;
+        var domain = NexusDomains.Effective(c.Game);
         if (string.IsNullOrWhiteSpace(domain)) return new IdentifyResult(0);
 
         var meta = LoadMetadata(c);
@@ -1263,7 +1263,7 @@ public static class Scanner
     /// </summary>
     public static async Task<IdentifyResult> IdentifyVortexNexusAsync(GameContext c, INexusClient client)
     {
-        var domain = c.Game.NexusGameDomain;
+        var domain = NexusDomains.Effective(c.Game);
         if (string.IsNullOrEmpty(domain)) return new IdentifyResult(0);
 
         var meta = LoadMetadata(c);
