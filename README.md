@@ -15,13 +15,14 @@ Double-click the Setup.exe. Windows will warn you the first time (SmartScreen �
 
 Want to look first? The launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
 
-## What's new in v0.3.0
+## What's new in v0.4.0
 
-- **Framework intake.** First-class installer for Elden Mod Loader and Mod Engine 2 — drop the zip, the launcher puts it where the loader actually expects (FromSoft games: under `Game/`, not the root). Reversible uninstall lives at Settings → Installed frameworks.
-- **Config editor for direct-inject mods.** Pencil icon on rows like Seamless Co-op. Edit the INI in-app; snapshot-first, atomic write, "Restore previous" button rolls back. Settings → Direct-inject mod configs handles unusual install layouts via file picker.
-- **Elden Ring save editor.** Characters tab now reads the current ER save shape (32-byte BND4 entries + `USER_DATA010` header). Adjacent FromSoft titles ride along.
+- **Safe Clear + Restore.** Archive your current setup to a timestamped restore point, reset the launcher to a clean slate, and roll back to any restore point in one click. Snapshot-first and reversible; if a reset gets interrupted, the next launch offers to recover. Your saves are never touched. Settings → Reset launcher.
+- **One-click add from Steam.** The Add a game dialog lists your installed Steam games — check the ones you want, click Add, and the launcher resolves the engine, folder, save location, and app id for each. No per-game form to fill in.
+- **Agent access (read tools).** A local MCP server exposes your games + mod lists read-only, so Claude Code / Claude Desktop / any MCP-aware tool can see what's installed. Writes come next; reads ship first.
+- **Visible mod loader.** The DLL mod loader (Elden Mod Loader) stays a distinguished, independently toggleable row instead of vanishing when it's hosting mods — flip it on or off without dragging your other mods along.
 
-Full notes: **[v0.3.0 release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/tag/v0.3.0)**.
+Full notes: **[v0.4.0 release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**.
 
 ## What it does
 
@@ -55,7 +56,7 @@ The slightly longer version:
 git clone https://github.com/estevanhernandez-stack-ed/626-mod-launcher
 cd 626-mod-launcher
 
-# Run the Core test suite (792 tests, full architectural contract)
+# Run the Core test suite (940+ tests, full architectural contract)
 dotnet test tests/ModManager.Tests/ModManager.Tests.csproj
 
 # Build + run the app
@@ -91,7 +92,7 @@ Tag-triggered GitHub Releases ship the Setup.exe + auto-update payload. See [doc
 
 **Where it's headed:**
 
-- **Agent access.** A documented MCP surface (read first, write later) so Claude Code / Claude Desktop / any MCP-aware tool can drive the launcher safely. Local-only, per-session token, audit log of every write, consent on first connect. Sketch at [docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md](docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md).
+- **Agent access — write tools.** The read surface shipped in v0.4.0 (list games + mods over a local MCP server). Next: guarded writes — local-only, per-session token, audit log of every write, consent on first connect. Sketch at [docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md](docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md).
 - **Microsoft Store.** MSIX channel parallel to GitHub Releases. Signed by Microsoft, bypasses SmartScreen, auto-updates through Store. Mod manager apps are a 10.2.2 gray area — the GitHub channel is the load-bearing one regardless.
 - **Nexus SSO.** OAuth-style sign-in next to the existing personal-API-key flow. Pending Nexus application approval, which wants a public binary to evaluate against — hence the GitHub Release path coming first.
 - **Save-mod browser.** Today you drop a world zip and it installs; next is browsing + installing from Nexus's save-mod listings directly.
