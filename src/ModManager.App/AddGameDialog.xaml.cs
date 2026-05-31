@@ -26,6 +26,9 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private sealed record BatchRowVM(string Headline, string Detail);
 
+    // One checkable Steam quick-add row: the ready-to-register input + the engine-tagged display label.
+    private sealed record SteamAddRow(GameInput Input, string Display);
+
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
 
@@ -47,8 +50,32 @@ public sealed partial class AddGameDialog : ContentDialog
         // parse gotcha on this WinUI build).
         SaveRootBox.ItemsSource = GameProfileImport.SaveRoots;
 
-        SteamGamesBox.ItemsSource = steamGames;
-        if (steamGames.Count == 0) SteamGamesBox.PlaceholderText = "No installed Steam games detected";
+        // Quick-add: plan each installed Steam game for one-click auto-add. Detectable-engine games
+        // become checkable rows; undetectable ones are listed for manual setup (we never guess an engine).
+        var addable = new List<SteamAddRow>();
+        var manual = new List<string>();
+        foreach (var g in steamGames)
+        {
+            var plan = SteamGameImport.Plan(
+                new SteamImportCandidate(g.AppId, g.Name, g.InstallDir),
+                EngineScan.Detect(g.InstallDir));
+            if (plan.Addable && plan.Input is not null)
+            {
+                var label = EnginePresets.Presets.TryGetValue(plan.Engine!, out var p) ? p.Label : plan.Engine!;
+                addable.Add(new SteamAddRow(plan.Input, $"{g.Name}  ·  {label}"));
+            }
+            else
+            {
+                manual.Add(g.Name);
+            }
+        }
+        SteamGamesList.ItemsSource = addable;
+        if (addable.Count == 0) SteamEmptyNote.Visibility = Visibility.Visible;
+        if (manual.Count > 0)
+        {
+            SteamManualNote.Text = $"Add manually (engine not detected): {string.Join(", ", manual)}";
+            SteamManualNote.Visibility = Visibility.Visible;
+        }
 
         // Batch picker mirrors the single-game Steam list. Disable the expander when there's nothing
         // installed - the batched ask is meaningless without targets.
@@ -224,14 +251,31 @@ public sealed partial class AddGameDialog : ContentDialog
         SteamBox.Text = g.SteamAppId;
     }
 
-    // Pick a Steam game -> pre-fill name, folder, app id, and auto-detect the engine.
-    private void OnSteamSelected(object sender, SelectionChangedEventArgs e)
+    // React as the user checks Steam games. The dialog's Add button commits the selection.
+    private void OnSteamSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SteamGamesBox.SelectedItem is not SteamGame g) return;
-        NameBox.Text = g.Name;
-        FolderBox.Text = g.InstallDir;
-        SteamBox.Text = g.AppId;
-        ApplyDetectedEngine();
+        var picked = SteamGamesList.SelectedItems.Cast<SteamAddRow>().ToList();
+        var n = picked.Count;
+
+        // When Steam games are checked, the manual single-game form is irrelevant — each game
+        // registers under its OWN Steam name (OnPrimary never reads NameBox in this path). Collapse the
+        // manual form + the popular-game picker so the dialog doesn't read as "pick games AND fill in a
+        // name." Unchecking all brings the manual form back. This is the fix for the "why is there a
+        // name field / what about two games" confusion: the field disappears and we name every game.
+        ManualFormPanel.Visibility = n == 0 ? Visibility.Visible : Visibility.Collapsed;
+        PopularGamesBox.Visibility = n == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (n == 0)
+        {
+            SteamSelectionStatus.Visibility = Visibility.Collapsed;
+            PrimaryButtonText = "Add";
+        }
+        else
+        {
+            SteamSelectionStatus.Text = "Adding: " + string.Join(", ", picked.Select(p => p.Input.Name));
+            SteamSelectionStatus.Visibility = Visibility.Visible;
+            PrimaryButtonText = n == 1 ? "Add 1 game" : $"Add {n} games";
+        }
     }
 
     // Probe the chosen folder and preselect the engine if we can tell. Leaves it on the
@@ -275,7 +319,16 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        // Batch mode: at least one approved row passes; the single-form fields are irrelevant.
+        // Steam quick-add wins: any checked Steam games auto-register through the same BatchApproved
+        // loop MainWindow uses for the AI flow. saveDir null -> AddGameAsync resolves it (Ludusavi etc.).
+        var steamPicked = SteamGamesList.SelectedItems.Cast<SteamAddRow>().ToList();
+        if (steamPicked.Count > 0)
+        {
+            foreach (var row in steamPicked) _batchApproved.Add((row.Input, null));
+            return; // close; MainWindow registers every BatchApproved entry
+        }
+
+        // AI batch mode: approved rows from the profile flow take precedence over the single-form fields.
         if (_batchApproved.Count > 0) return;
 
         if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(FolderBox.Text)
