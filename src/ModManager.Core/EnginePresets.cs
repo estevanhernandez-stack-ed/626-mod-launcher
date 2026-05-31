@@ -79,7 +79,11 @@ public static partial class EnginePresets
         if (input.CurseforgeGameId is not null) entry.CurseforgeGameId = input.CurseforgeGameId;
         if (!string.IsNullOrEmpty(input.SaveModPath)) entry.SaveModPath = input.SaveModPath;
         if (input.SaveModForbidden is { Count: > 0 }) entry.SaveModForbidden = input.SaveModForbidden;
-        if (!string.IsNullOrEmpty(input.NexusGameDomain)) entry.NexusGameDomain = input.NexusGameDomain;
+        // Explicit domain (AI profile / manual) wins; otherwise resolve from the Steam app id so
+        // Steam-auto-added + quick-pick games still get a Nexus domain for md5 metadata identify.
+        entry.NexusGameDomain = !string.IsNullOrEmpty(input.NexusGameDomain)
+            ? input.NexusGameDomain
+            : NexusDomains.ByAppId(input.SteamAppId);
         return entry;
     }
 }
