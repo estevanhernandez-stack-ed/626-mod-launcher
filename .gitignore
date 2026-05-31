@@ -30,3 +30,8 @@ dist/
 
 # Transient superpowers session state (brainstorm scratch, server markers) — not project config.
 .superpowers/
+
+# Claude Code tooling — untracked from the public repo for the friends build (kept locally + in
+# git history). The agent persona + project rules are local dev config, not user-facing product.
+CLAUDE.md
+.claude/
