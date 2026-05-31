@@ -91,4 +91,49 @@ public sealed partial class ToolsPanel : UserControl
         UsageTip.Target = el;
         UsageTip.IsOpen = true;
     }
+
+    // Pencil next to a framework button → edit its settings INI in the existing editor (snapshot-first
+    // save + restore-previous). Reuses IniEditorDialog as-is — the modId slot becomes the framework id,
+    // used only to bucket INI-history backups. The pencil is collapsed when the framework installed no
+    // .ini (ConfigVisibility), but we re-check here defensively. Multiple INIs → a quick picker.
+    private async void OnEditFrameworkConfigClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el || el.Tag is not FrameworkInstallManifest m || ViewModel is null) return;
+
+        var inis = FrameworkUsage.ConfigFiles(m);
+        if (inis.Count == 0) return;
+
+        string? iniPath;
+        if (inis.Count == 1)
+        {
+            iniPath = inis[0];
+        }
+        else
+        {
+            var list = new ListView { ItemsSource = inis, SelectionMode = ListViewSelectionMode.Single };
+            var picker = new ContentDialog
+            {
+                Title = $"Edit which settings file in {m.DisplayName}?",
+                Content = list,
+                PrimaryButtonText = "Open",
+                CloseButtonText = "Cancel",
+                IsPrimaryButtonEnabled = false,
+                XamlRoot = this.XamlRoot,
+            };
+            list.SelectionChanged += (_, _) => picker.IsPrimaryButtonEnabled = list.SelectedItem is not null;
+            iniPath = await picker.ShowAsync() == ContentDialogResult.Primary ? list.SelectedItem as string : null;
+        }
+        if (iniPath is null) return;
+
+        var dataDir = ViewModel.GameDataDirPublic();
+        if (string.IsNullOrEmpty(dataDir))
+        {
+            ViewModel.StatusText = "No game data dir available — can't snapshot INI history.";
+            return;
+        }
+
+        var dialog = new IniEdit.IniEditorDialog(iniPath, dataDir, m.FrameworkId) { XamlRoot = this.XamlRoot };
+        await dialog.ShowAsync();
+        if (dialog.StatusMessage is not null) ViewModel.StatusText = dialog.StatusMessage;
+    }
 }

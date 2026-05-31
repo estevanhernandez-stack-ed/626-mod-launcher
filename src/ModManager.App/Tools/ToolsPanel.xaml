@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:core="using:ModManager.Core.Tools"
     xmlns:fw="using:ModManager.Core.Frameworks"
+    xmlns:vm="using:ModManager.App.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -90,18 +91,30 @@
                            CharacterSpacing="80"
                            VerticalAlignment="Center"
                            Margin="8,0,0,0" />
-                <ItemsRepeater ItemsSource="{x:Bind ViewModel.InstalledFrameworks, Mode=OneWay}" VerticalAlignment="Center">
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.FrameworkRows, Mode=OneWay}" VerticalAlignment="Center">
                     <ItemsRepeater.Layout>
                         <StackLayout Orientation="Horizontal" Spacing="6" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="fw:FrameworkInstallManifest">
-                            <Button Padding="10,4"
-                                    Click="OnFrameworkClick"
-                                    Tag="{x:Bind}"
-                                    ToolTipService.ToolTip="How to use this — click for the in-game keys + mods folder">
-                                <TextBlock Text="{x:Bind DisplayName}" />
-                            </Button>
+                        <DataTemplate x:DataType="vm:FrameworkRowViewModel">
+                            <!-- A split affordance: the name opens the how-to toast; the pencil opens the
+                                 framework's settings INI in the existing editor (snapshot-first). The pencil
+                                 is collapsed when the framework installed no editable .ini. -->
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <Button Padding="10,4"
+                                        Click="OnFrameworkClick"
+                                        Tag="{x:Bind Manifest}"
+                                        ToolTipService.ToolTip="How to use this — click for the in-game keys + mods folder">
+                                    <TextBlock Text="{x:Bind DisplayName}" />
+                                </Button>
+                                <Button Padding="6,4"
+                                        Click="OnEditFrameworkConfigClick"
+                                        Tag="{x:Bind Manifest}"
+                                        Visibility="{x:Bind ConfigVisibility}"
+                                        ToolTipService.ToolTip="Edit this framework's settings (e.g. enable the UE4SS console)">
+                                    <FontIcon Glyph="&#xE70F;" FontSize="12" />
+                                </Button>
+                            </StackPanel>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>

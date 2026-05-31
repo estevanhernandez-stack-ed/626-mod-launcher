@@ -93,11 +93,12 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<KnownTool> MissingTools { get; } = new();
 
     /// <summary>Frameworks installed for the active game (UE4SS, ELM, ...) read from the per-game
-    /// framework registry. Surfaced as buttons next to Tools; clicking one shows a live "how to use"
-    /// toast (read from the framework's installed settings). Refreshed every <see cref="ReloadModsAsync"/>.</summary>
-    public ObservableCollection<FrameworkInstallManifest> InstalledFrameworks { get; } = new();
+    /// framework registry, each wrapped with its editable-config state. Surfaced as buttons next to
+    /// Tools; the name shows a live "how to use" toast, the pencil edits the framework's settings INI.
+    /// Refreshed every <see cref="ReloadModsAsync"/>.</summary>
+    public ObservableCollection<FrameworkRowViewModel> FrameworkRows { get; } = new();
 
-    public bool HasInstalledFrameworks => InstalledFrameworks.Count > 0;
+    public bool HasInstalledFrameworks => FrameworkRows.Count > 0;
 
     /// <summary>Live "how to use" for an installed framework, read from its on-disk settings. The view
     /// calls this on a framework-button click and renders the lines in a toast.</summary>
@@ -303,7 +304,7 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(MissingFrameworksSummary));
             Tools.Clear();
             MissingTools.Clear();
-            InstalledFrameworks.Clear();
+            FrameworkRows.Clear();
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(ToolsRowVisible));
@@ -478,8 +479,8 @@ public sealed partial class MainViewModel : ObservableObject
 
             // Refresh installed frameworks from the per-game registry — surfaced as "how to use"
             // buttons next to Tools. Unreadable manifests are skipped by FrameworkRegistry.List.
-            InstalledFrameworks.Clear();
-            foreach (var fw in FrameworkRegistry.List(_ctx.DataDir)) InstalledFrameworks.Add(fw);
+            FrameworkRows.Clear();
+            foreach (var fw in FrameworkRegistry.List(_ctx.DataDir)) FrameworkRows.Add(new FrameworkRowViewModel(fw));
 
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));

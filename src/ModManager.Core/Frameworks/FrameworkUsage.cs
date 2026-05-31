@@ -28,6 +28,18 @@ public static class FrameworkUsage
             _ => Generic(frameworkId, installPath),
         };
 
+    /// <summary>
+    /// The editable .ini config files a framework installed, as absolute paths — found from the install
+    /// manifest's recorded files (truthful to what was installed; survives a layout change). Drives the
+    /// "edit settings" pencil next to an installed-framework button. The App opens these in the existing
+    /// IniEditorDialog (snapshot-first save + restore-previous).
+    /// </summary>
+    public static IReadOnlyList<string> ConfigFiles(FrameworkInstallManifest manifest)
+        => manifest.InstalledFiles
+            .Where(rel => rel.EndsWith(".ini", StringComparison.OrdinalIgnoreCase))
+            .Select(rel => Path.Combine(manifest.InstallPath, rel.Replace('\\', '/').Replace('/', Path.DirectorySeparatorChar)))
+            .ToList();
+
     private static FrameworkUsageInfo DescribeUe4ss(string installPath)
     {
         const string docs = "https://docs.ue4ss.com";
