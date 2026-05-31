@@ -92,6 +92,18 @@ public sealed partial class MainViewModel : ObservableObject
     /// "Get it here" chips on the tools row.</summary>
     public ObservableCollection<KnownTool> MissingTools { get; } = new();
 
+    /// <summary>Frameworks installed for the active game (UE4SS, ELM, ...) read from the per-game
+    /// framework registry. Surfaced as buttons next to Tools; clicking one shows a live "how to use"
+    /// toast (read from the framework's installed settings). Refreshed every <see cref="ReloadModsAsync"/>.</summary>
+    public ObservableCollection<FrameworkInstallManifest> InstalledFrameworks { get; } = new();
+
+    public bool HasInstalledFrameworks => InstalledFrameworks.Count > 0;
+
+    /// <summary>Live "how to use" for an installed framework, read from its on-disk settings. The view
+    /// calls this on a framework-button click and renders the lines in a toast.</summary>
+    public static FrameworkUsageInfo FrameworkUsageFor(FrameworkInstallManifest m)
+        => FrameworkUsage.Describe(m.FrameworkId, m.InstallPath);
+
     public bool HasTools => Tools.Count > 0;
     public bool HasMissingTools => MissingTools.Count > 0;
     public Visibility ToolsRowVisible => _ctx is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -291,10 +303,12 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(MissingFrameworksSummary));
             Tools.Clear();
             MissingTools.Clear();
+            InstalledFrameworks.Clear();
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(ToolsRowVisible));
             OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
+            OnPropertyChanged(nameof(HasInstalledFrameworks));
             return;
         }
         IsBusy = true;
@@ -462,10 +476,16 @@ public sealed partial class MainViewModel : ObservableObject
                 MissingTools.Add(known);
             }
 
+            // Refresh installed frameworks from the per-game registry — surfaced as "how to use"
+            // buttons next to Tools. Unreadable manifests are skipped by FrameworkRegistry.List.
+            InstalledFrameworks.Clear();
+            foreach (var fw in FrameworkRegistry.List(_ctx.DataDir)) InstalledFrameworks.Add(fw);
+
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(ToolsRowVisible));
             OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
+            OnPropertyChanged(nameof(HasInstalledFrameworks));
             // Toggling a mod (especially Seamless) may change which target the Launch button fires.
             // Re-publish the computed properties so the toolbar label tracks state without a manual
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.

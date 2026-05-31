@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.App.ViewModels;
+using ModManager.Core.Frameworks;
 using ModManager.Core.Tools;
 
 namespace ModManager.App.Tools;
@@ -74,5 +75,20 @@ public sealed partial class ToolsPanel : UserControl
         {
             await ViewModel.PromptAddToolAsync();
         }
+    }
+
+    // Click an installed-framework button → pop a "how to use" toast read LIVE from the framework's
+    // installed settings (real hot-reload key + console state + mods folder for UE4SS). The TeachingTip
+    // anchors to the clicked button; light-dismiss closes it.
+    private void OnFrameworkClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el || el.Tag is not FrameworkInstallManifest m) return;
+
+        var usage = MainViewModel.FrameworkUsageFor(m);
+        UsageTip.Title = $"How to use {usage.DisplayName}";
+        UsageTip.Subtitle = string.Join("\n", usage.Lines)
+            + (usage.DocsUrl is not null ? $"\n\nDocs: {usage.DocsUrl}" : "");
+        UsageTip.Target = el;
+        UsageTip.IsOpen = true;
     }
 }

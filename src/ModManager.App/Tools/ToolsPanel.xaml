@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:core="using:ModManager.Core.Tools"
+    xmlns:fw="using:ModManager.Core.Frameworks"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -77,6 +78,41 @@
                        VerticalAlignment="Center"
                        Foreground="{StaticResource ThemeInkSoft}"
                        Visibility="{x:Bind ViewModel.ToolsEmptyHintVisibility, Mode=OneWay}" />
+
+            <!-- FRAMEWORKS section, same row as TOOLS. One button per installed framework; clicking it
+                 pops a "how to use" toast read live from the framework's installed settings. The whole
+                 section is collapsed when no framework is installed for the active game. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                        Visibility="{x:Bind ViewModel.HasInstalledFrameworks, Mode=OneWay}">
+                <TextBlock Text="FRAMEWORKS"
+                           Foreground="{StaticResource ThemeInkSoft}"
+                           FontSize="10"
+                           CharacterSpacing="80"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.InstalledFrameworks, Mode=OneWay}" VerticalAlignment="Center">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Horizontal" Spacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="fw:FrameworkInstallManifest">
+                            <Button Padding="10,4"
+                                    Click="OnFrameworkClick"
+                                    Tag="{x:Bind}"
+                                    ToolTipService.ToolTip="How to use this — click for the in-game keys + mods folder">
+                                <TextBlock Text="{x:Bind DisplayName}" />
+                            </Button>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+
+            <!-- The "how to use" toast: a TeachingTip whose title + body are filled in code
+                 (OnFrameworkClick) from the live FrameworkUsage read. Lives in the panel (not laid
+                 out) so a Border's single-child rule is respected; it anchors to the clicked button. -->
+            <TeachingTip x:Name="UsageTip"
+                         IsLightDismissEnabled="True"
+                         PreferredPlacement="Bottom" />
         </StackPanel>
     </Border>
 </UserControl>
