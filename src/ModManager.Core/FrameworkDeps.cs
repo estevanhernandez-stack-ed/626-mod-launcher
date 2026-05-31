@@ -161,7 +161,8 @@ public static class FrameworkDeps
 
     // Pull the project subfolder from a UE mod-location path: "R5/Content/Paks/~mods" -> "R5".
     // A path that starts with "Content/" (root-level fallback) has no project subfolder.
-    private static string? ProjectSubfolder(string relPath)
+    // internal so the UE4SS framework installer reuses the one true rule (detection + install can't drift).
+    internal static string? ProjectSubfolder(string relPath)
     {
         if (string.IsNullOrWhiteSpace(relPath)) return null;
         var norm = relPath.Replace('\\', '/').TrimStart('/');

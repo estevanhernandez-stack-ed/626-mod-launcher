@@ -52,12 +52,17 @@ public static class FrameworkInstaller
     /// Mirrors <c>DirectInjectService.PlayFolder</c>'s shape but lives in Core so the
     /// installer has no App dependency.
     /// </summary>
-    public static string ResolveInstallRoot(string installRootSymbol, string gameRoot)
+    public static string? ResolveInstallRoot(
+        string installRootSymbol, string gameRoot,
+        IReadOnlyList<string>? modLocationRelPaths = null)
     {
         return installRootSymbol switch
         {
             "GameRoot" => gameRoot,
             "PlayFolder" => ResolvePlayFolder(gameRoot),
+            // Project-aware UE root: <gameRoot>/<projectSubfolder>/Binaries/Win64. Returns null (not
+            // throw) when no project subfolder resolves, so Install can convert it to a clear refusal.
+            "UeProjectBinariesWin64" => ResolveUeProjectBinariesWin64(gameRoot, modLocationRelPaths),
             _ => throw new InvalidOperationException(
                 $"Unknown framework install root '{installRootSymbol}'."),
         };
@@ -70,8 +75,23 @@ public static class FrameworkInstaller
         return Directory.Exists(game) ? game : gameRoot;
     }
 
+    // Reuses the one true "first segment, skip Content-rooted fallback" rule from FrameworkDeps so
+    // detection and install can never disagree on where the project subfolder (e.g. "R5") is.
+    // Returns an absolute path (CWD-independent so the persisted manifest InstallPath survives), or
+    // null when no mod-location yields a project subfolder.
+    private static string? ResolveUeProjectBinariesWin64(
+        string gameRoot, IReadOnlyList<string>? modLocationRelPaths)
+    {
+        var sub = (modLocationRelPaths ?? Array.Empty<string>())
+            .Select(FrameworkDeps.ProjectSubfolder)
+            .FirstOrDefault(s => s is not null);
+        if (sub is null) return null;
+        return Path.GetFullPath(Path.Combine(gameRoot, sub, "Binaries", "Win64"));
+    }
+
     public static FrameworkInstallResult Install(
-        string archivePath, KnownFramework framework, string gameRoot, string gameDataDir)
+        string archivePath, KnownFramework framework, string gameRoot, string gameDataDir,
+        IReadOnlyList<string>? modLocationRelPaths = null)
     {
         if (string.IsNullOrEmpty(archivePath)) throw new ArgumentException("archivePath empty", nameof(archivePath));
         if (framework is null) throw new ArgumentNullException(nameof(framework));
@@ -79,7 +99,27 @@ public static class FrameworkInstaller
         if (string.IsNullOrEmpty(gameDataDir)) throw new ArgumentException("gameDataDir empty", nameof(gameDataDir));
         if (!File.Exists(archivePath)) throw new FileNotFoundException("Archive missing.", archivePath);
 
-        string installRoot = ResolveInstallRoot(framework.InstallRoot, gameRoot);
+        // Project-aware roots can fail to resolve; surface a clear refusal rather than a null deref.
+        // Throws (not a Fail value) to match the existing forbidden-path / traversal refusals, which
+        // the App caller already wraps in try/catch and shows as ex.Message.
+        string? installRoot = ResolveInstallRoot(framework.InstallRoot, gameRoot, modLocationRelPaths);
+        if (installRoot is null)
+            throw new InvalidOperationException(
+                $"Couldn't resolve a project subfolder for {framework.DisplayName} from the game's " +
+                "mod locations — nothing was changed. (Re-scan the game's mod folders and try again.)");
+
+        // For a project-relative install (UE4SS), the loader proxy must land next to the game exe.
+        // If the resolved Binaries/Win64 has no *-Shipping.exe, the proxy would sit where nothing
+        // chain-loads it — refuse loudly before writing rather than "install" into a dead folder.
+        if (framework.InstallRoot == "UeProjectBinariesWin64")
+        {
+            var hasExe = Directory.Exists(installRoot)
+                && Directory.EnumerateFiles(installRoot, "*-Shipping.exe").Any();
+            if (!hasExe)
+                throw new InvalidOperationException(
+                    $"The resolved install folder has no game executable to load {framework.DisplayName} " +
+                    "— nothing was changed. (Expected a *-Shipping.exe under the project's Binaries/Win64.)");
+        }
 
         var frameworkDir = Path.Combine(gameDataDir, "frameworks", framework.FrameworkId);
         var backupRoot = Path.Combine(frameworkDir, "backup", DateTime.UtcNow.ToString("yyyyMMddHHmmss"));

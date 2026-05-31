@@ -40,7 +40,7 @@ Frameworks (catalog metadata only, never bundled)
 The launcher's framework-intake flow recognizes a small set of game frameworks
 (loaders / chain-load DLLs). When a user drops a recognized framework zip the
 launcher offers to install it at the right location with reversibility tracked.
-Detection-only frameworks (UE4SS, BepInEx, ME2, etc.) are surfaced via the
+Detection-only frameworks (BepInEx, ME2, etc.) are surfaced via the
 "NEEDS X" chip but are NOT install-capable through the launcher.
 
 NEVER BUNDLED. The launcher does not include any framework's source code,
@@ -57,3 +57,9 @@ entry.
   - Elden Mod Loader — by TechieW
     Source:  https://www.nexusmods.com/eldenring/mods/117
     Used by: launcher's framework intake catalog (Core.Frameworks.KnownFramework)
+
+  - UE4SS (RE-UE4SS) — by the RE-UE4SS team
+    Source:  https://github.com/UE4SS-RE/RE-UE4SS/releases
+    Used by: launcher's framework intake catalog (Core.Frameworks.KnownFramework).
+             Installs into <project>/Binaries/Win64 for ue-pak games; the user
+             supplies the zip — the binary is never bundled.

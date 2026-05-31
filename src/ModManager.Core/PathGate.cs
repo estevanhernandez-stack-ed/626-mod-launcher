@@ -54,6 +54,18 @@ public static class PathGate
         return forbidden.Any(f =>
         {
             var fn = f.Replace('\\', '/');
+
+            // Leading-"*" suffix glob (e.g. "*-Shipping.exe"): match a basename suffix, but ONLY for a
+            // TOP-LEVEL entry (no '/' in the relative path). This guards the per-game executable that
+            // sits in the install root next to a proxy DLL (its name varies by game), without banning a
+            // same-suffix file nested deeper in the payload (e.g. ue4ss/Mods/Cool-Shipping.exe).
+            if (fn.StartsWith("*", StringComparison.Ordinal))
+            {
+                if (n.Contains('/')) return false;                  // nested -> not the install-root exe
+                var suffix = fn[1..];                                // "*-Shipping.exe" -> "-Shipping.exe"
+                return n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+            }
+
             return string.Equals(Path.GetFileName(n), Path.GetFileName(fn), StringComparison.OrdinalIgnoreCase)
                    || string.Equals(n, fn, StringComparison.OrdinalIgnoreCase);
         });

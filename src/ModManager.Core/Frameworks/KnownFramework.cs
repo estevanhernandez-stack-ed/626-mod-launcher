@@ -46,6 +46,31 @@ public sealed record KnownFramework(
             InstallRoot: "PlayFolder",
             // ER's game executable must never be overwritten by a framework install.
             ForbiddenPaths: new[] { "eldenring.exe", "start_protected_game.exe" }),
+
+        new KnownFramework(
+            FrameworkId: "ue4ss",
+            DisplayName: "UE4SS",
+            Engine: "ue-pak",
+            // No SteamAppId: UE4SS is a generic Unreal loader that works across many ue-pak games
+            // (Windrose, Palworld, Hogwarts, ...) — unlike Elden Mod Loader, which is ER-only and pins
+            // its app id. Null app id makes Classify match on engine alone.
+            SteamAppId: null,
+            GetUrl: "https://github.com/UE4SS-RE/RE-UE4SS/releases",
+            Author: "RE-UE4SS team",
+            // Proxy DLL is an advisory HINT, not a signature: UE4SS ships the loader as dwmapi.dll OR
+            // xinput1_3.dll OR d3d11.dll depending on release/game, so requiring one would miss variants.
+            ZipFilenameHints: new[] { "ue4ss", "zdev", "dwmapi", "xinput1_3", "d3d11" },
+            // The UE4SS-unique pair — present in every release regardless of which proxy it ships.
+            ZipSignatureFiles: new[] { "UE4SS.dll", "UE4SS-settings.ini" },
+            // Installs into <gameRoot>/<projectSubfolder>/Binaries/Win64 (e.g. R5/Binaries/Win64) — the
+            // proxy DLL must sit next to the game exe there to chain-load. Resolved by the project-aware
+            // arm of FrameworkInstaller.ResolveInstallRoot (needs the game's mod-location paths).
+            InstallRoot: "UeProjectBinariesWin64",
+            // The game exe lives in that same Binaries/Win64 folder; its name is per-game
+            // (<Project>-Win64-Shipping.exe), so a leading-* suffix glob protects it across games.
+            // PathGate scopes the * match to top-level entries, so a same-suffix file nested in the
+            // payload (ue4ss/Mods/...) is not refused.
+            ForbiddenPaths: new[] { "*-Shipping.exe" }),
     };
 
     /// <summary>

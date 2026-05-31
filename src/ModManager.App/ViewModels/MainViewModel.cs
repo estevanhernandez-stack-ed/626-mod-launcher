@@ -1386,8 +1386,20 @@ public sealed partial class MainViewModel : ObservableObject
                 // suffix and confused F2's first smoke; (2) the overwrite-check has to look in
                 // the same place the installer will write, or it'll miss / falsely report
                 // existing files.
+                // ue-pak frameworks (UE4SS) resolve a project-relative root from the game's mod
+                // locations (e.g. R5/Binaries/Win64); ELM's GameRoot/PlayFolder ignore this arg.
+                var relPaths = _ctx.Game.ModLocations.Select(l => l.Path).ToList();
                 var resolvedInstallRoot = FrameworkInstaller.ResolveInstallRoot(
-                    classify.Match.InstallRoot, _ctx.GameRoot);
+                    classify.Match.InstallRoot, _ctx.GameRoot, relPaths);
+                if (resolvedInstallRoot is null)
+                {
+                    // No project subfolder resolved — render the same refusal Install would, instead
+                    // of dereferencing null in the overwrite-preview.
+                    statusParts.Add(
+                        $"Couldn't install {classify.Match.DisplayName}: no project subfolder found in " +
+                        "the game's mod locations. Re-scan the game's mod folders and try again.");
+                    continue;
+                }
                 var willOverwrite = fileNames
                     .Where(e => File.Exists(Path.Combine(resolvedInstallRoot, e)))
                     .ToList();
@@ -1403,8 +1415,10 @@ public sealed partial class MainViewModel : ObservableObject
 
                 try
                 {
-                    var r = FrameworkInstaller.Install(src, classify.Match, _ctx.GameRoot, _ctx.DataDir);
-                    statusParts.Add($"Installed {classify.Match.DisplayName} ({r.InstalledFiles.Count} file(s) at game root)");
+                    var r = FrameworkInstaller.Install(src, classify.Match, _ctx.GameRoot, _ctx.DataDir, relPaths);
+                    // Report the real install location, not a hardcoded "game root" — UE4SS lands under
+                    // <project>/Binaries/Win64, and saying "game root" there is a lie.
+                    statusParts.Add($"Installed {classify.Match.DisplayName} ({r.InstalledFiles.Count} file(s) to {r.InstallPath})");
                     anyInstalled = true;
                 }
                 catch (Exception ex)
