@@ -21,32 +21,53 @@ public static class Ue4ssLuaDetect
             .ToList();
         if (names.Count == 0) return new Ue4ssLuaVerdict(false, null);
 
-        // Veto: any pak/content file means this is a content mod, not a Lua mod.
+        // Veto: any pak/content file means this is a content mod, not a Lua mod. Wins regardless of
+        // nesting depth — a content mod that happens to ship a Scripts folder is still a content mod.
         foreach (var n in names)
             if (PakExtensions.Contains(System.IO.Path.GetExtension(n), StringComparer.OrdinalIgnoreCase))
                 return new Ue4ssLuaVerdict(false, null);
 
-        // Group entries by their TOP-LEVEL folder (the first path segment). The first group with
-        // a matching signature wins - mirrors how save-mod detection picks the first valid GUID.
-        var byTop = names
-            .Select(n => new { Segs = n.Split('/'), Full = n })
-            .Where(x => x.Segs.Length >= 2)
-            .GroupBy(x => x.Segs[0], StringComparer.OrdinalIgnoreCase);
-
-        foreach (var g in byTop)
+        // Consider EVERY folder prefix as a candidate mod root, not just the top segment. Nexus
+        // archives commonly wrap the mod folder in a version folder (<version>/<mod>/Scripts/main.lua),
+        // and the mod that should land under ue4ss\Mods is the inner one. We collect each folder that
+        // owns a UE4SS signature, then pick the DEEPEST (closest to the Scripts/dlls), so the version
+        // wrapper never wins over the real mod folder. Among equal depths, first by archive order.
+        var candidates = new List<string>();
+        foreach (var n in names)
         {
-            var inFolder = g.Select(x => x.Full).ToList();
-            var hasScriptsLua = inFolder.Any(p =>
-                p.StartsWith(g.Key + "/Scripts/", StringComparison.OrdinalIgnoreCase) &&
-                p.EndsWith(".lua", StringComparison.OrdinalIgnoreCase));
-            var hasEnabledTxt = inFolder.Any(p =>
-                string.Equals(p, g.Key + "/enabled.txt", StringComparison.OrdinalIgnoreCase));
-            var hasDllInDlls = inFolder.Any(p =>
-                p.StartsWith(g.Key + "/dlls/", StringComparison.OrdinalIgnoreCase) &&
-                p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
-            if (hasScriptsLua || (hasEnabledTxt && hasDllInDlls))
-                return new Ue4ssLuaVerdict(true, g.Key);
+            var luaUnder = TrimToParentOf(n, "/scripts/", ".lua");
+            if (luaUnder is not null && !candidates.Contains(luaUnder, StringComparer.OrdinalIgnoreCase))
+                candidates.Add(luaUnder);
         }
-        return new Ue4ssLuaVerdict(false, null);
+        // enabled.txt + a dll under dlls/ in the SAME folder is the native-mod signature.
+        foreach (var n in names)
+        {
+            if (!n.EndsWith("/enabled.txt", StringComparison.OrdinalIgnoreCase)) continue;
+            var folder = n[..^"/enabled.txt".Length];
+            var hasDll = names.Any(p =>
+                p.StartsWith(folder + "/dlls/", StringComparison.OrdinalIgnoreCase) &&
+                p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+            if (hasDll && !candidates.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                candidates.Add(folder);
+        }
+        if (candidates.Count == 0) return new Ue4ssLuaVerdict(false, null);
+
+        // Deepest folder wins (most path segments); ties keep archive order (stable on first-seen).
+        var best = candidates
+            .Select((folder, idx) => (folder, depth: folder.Count(c => c == '/'), idx))
+            .OrderByDescending(x => x.depth).ThenBy(x => x.idx)
+            .First().folder;
+        var modName = best.Contains('/') ? best[(best.LastIndexOf('/') + 1)..] : best;
+        return new Ue4ssLuaVerdict(true, modName);
+    }
+
+    /// <summary>If <paramref name="path"/> is "&lt;folder&gt;<paramref name="midSegment"/>&lt;file&gt;<paramref name="ext"/>"
+    /// (case-insensitive), returns "&lt;folder&gt;"; otherwise null. E.g. ("A/B/Scripts/main.lua",
+    /// "/scripts/", ".lua") -> "A/B".</summary>
+    private static string? TrimToParentOf(string path, string midSegment, string ext)
+    {
+        if (!path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) return null;
+        var idx = path.IndexOf(midSegment, StringComparison.OrdinalIgnoreCase);
+        return idx <= 0 ? null : path[..idx];
     }
 }
