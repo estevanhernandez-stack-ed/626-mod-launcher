@@ -1192,11 +1192,18 @@ public sealed partial class MainViewModel : ObservableObject
                 }
             }
 
-            // Pre-check 2: UE4SS Lua-mod drops. Detection only — ue4ss\Mods is typically owned by
-            // Vortex, so we surface a clear message instead of writing. Carves the matched archives
-            // out so the regular intake doesn't silently skip every Lua/.dll entry.
-            var luaDetected = new List<string>();
+            // Pre-check 2: UE4SS Lua-mod drops. When the launcher OWNS the UE4SS install (it's in the
+            // framework registry), install the mod into ue4ss\Mods — validate-then-extract, reversible,
+            // re-rooting a version-wrapped archive. When UE4SS isn't ours (e.g. Vortex owns it, or it
+            // isn't installed), fall back to clear guidance instead of writing into a folder we don't own.
+            // Either way the matched archives are carved out so regular intake doesn't skip every Lua entry.
+            var luaInstalled = new List<string>();    // installed into ue4ss\Mods (we own UE4SS)
+            var luaNeedsManual = new List<string>();   // detected but not ours to install
+            var luaFailures = new List<string>();
             var archiveReader = new SharpCompressArchiveReader();
+            var ownedUe4ss = FrameworkRegistry.List(_ctx.DataDir)
+                .FirstOrDefault(m => string.Equals(m.FrameworkId, "ue4ss", StringComparison.OrdinalIgnoreCase));
+            var ue4ssModsDir = ownedUe4ss is null ? null : Path.Combine(ownedUe4ss.InstallPath, "ue4ss", "Mods");
             remaining = remaining.Where(p =>
             {
                 if (string.IsNullOrEmpty(p) || !File.Exists(p)) return true;
@@ -1204,10 +1211,25 @@ public sealed partial class MainViewModel : ObservableObject
                 if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) return true;
                 try
                 {
-                    using var arch = archiveReader.Open(p);
-                    var v = Ue4ssLuaDetect.Detect(arch.EntryNames);
-                    if (v.IsLuaMod) { luaDetected.Add(v.ModFolderName ?? Path.GetFileNameWithoutExtension(p)); return false; }
-                    return true;
+                    using (var arch = archiveReader.Open(p))
+                        if (!Ue4ssLuaDetect.Detect(arch.EntryNames).IsLuaMod) return true;  // not a Lua mod — leave for intake
+
+                    if (ue4ssModsDir is not null)
+                    {
+                        try
+                        {
+                            var res = Ue4ssLuaInstaller.Install(p, ue4ssModsDir, archiveReader);
+                            luaInstalled.Add(res.ModName);
+                        }
+                        catch (Exception ex) { luaFailures.Add($"{Path.GetFileName(p)}: {ex.Message}"); }
+                    }
+                    else
+                    {
+                        using var arch = archiveReader.Open(p);
+                        var v = Ue4ssLuaDetect.Detect(arch.EntryNames);
+                        luaNeedsManual.Add(v.ModFolderName ?? Path.GetFileNameWithoutExtension(p));
+                    }
+                    return false; // carved out of regular intake
                 }
                 catch { return true; }
             }).ToList();
@@ -1267,8 +1289,11 @@ public sealed partial class MainViewModel : ObservableObject
             var statusParts = new List<string>();
             if (savedCount > 0) statusParts.Add($"Installed {savedCount} save-mod world{(savedCount == 1 ? "" : "s")}");
             foreach (var reason in saveSkipReasons) statusParts.Add(reason);
-            if (luaDetected.Count > 0)
-                statusParts.Add($"{string.Join(", ", luaDetected)} {(luaDetected.Count == 1 ? "looks like a" : "look like")} UE4SS Lua mod{(luaDetected.Count == 1 ? "" : "s")} — install via Vortex (ue4ss\\Mods is managed)");
+            if (luaInstalled.Count > 0)
+                statusParts.Add($"Installed {string.Join(", ", luaInstalled)} into UE4SS Mods");
+            foreach (var fail in luaFailures) statusParts.Add($"UE4SS Lua install failed: {fail}");
+            if (luaNeedsManual.Count > 0)
+                statusParts.Add($"{string.Join(", ", luaNeedsManual)} {(luaNeedsManual.Count == 1 ? "is a" : "are")} UE4SS Lua mod{(luaNeedsManual.Count == 1 ? "" : "s")} — install UE4SS first, or drop into ue4ss\\Mods yourself");
             foreach (var t in installedTools)
                 statusParts.Add($"Installed {t.DisplayName} as a tool for {_ctx.Game.GameName}");
             foreach (var fail in toolFailures) statusParts.Add($"Tool install failed: {fail}");
