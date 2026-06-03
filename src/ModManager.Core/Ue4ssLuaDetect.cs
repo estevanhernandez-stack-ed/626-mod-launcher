@@ -1,8 +1,10 @@
 namespace ModManager.Core;
 
-/// <summary>The verdict for a candidate UE4SS Lua mod: whether it is one, and the top-level
-/// folder name the archive uses for it (the directory that should land under ue4ss\Mods).</summary>
-public sealed record Ue4ssLuaVerdict(bool IsLuaMod, string? ModFolderName);
+/// <summary>The verdict for a candidate UE4SS Lua mod: whether it is one, the leaf folder NAME the
+/// mod lands under in ue4ss\Mods, and the full archive-relative folder PATH (the prefix to strip when
+/// re-rooting a nested archive). For a top-level mod the two are equal; for a version-wrapped Nexus
+/// archive (&lt;version&gt;/&lt;mod&gt;/Scripts/...) Name is "&lt;mod&gt;" and Path is "&lt;version&gt;/&lt;mod&gt;".</summary>
+public sealed record Ue4ssLuaVerdict(bool IsLuaMod, string? ModFolderName, string? ModFolderPath = null);
 
 /// <summary>
 /// Recognizes a UE4SS Lua-mod ARCHIVE structure: a top-level folder containing either
@@ -58,7 +60,7 @@ public static class Ue4ssLuaDetect
             .OrderByDescending(x => x.depth).ThenBy(x => x.idx)
             .First().folder;
         var modName = best.Contains('/') ? best[(best.LastIndexOf('/') + 1)..] : best;
-        return new Ue4ssLuaVerdict(true, modName);
+        return new Ue4ssLuaVerdict(true, modName, best);
     }
 
     /// <summary>If <paramref name="path"/> is "&lt;folder&gt;<paramref name="midSegment"/>&lt;file&gt;<paramref name="ext"/>"

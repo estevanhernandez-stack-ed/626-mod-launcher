@@ -71,6 +71,28 @@ public class Ue4ssLuaDetectTests
     }
 
     [Fact]
+    public void Reports_the_full_archive_relative_folder_path_so_the_installer_can_reroot()
+    {
+        // The installer needs the FULL prefix to strip (version wrapper + inner), not just the leaf,
+        // so files re-root to ue4ss\Mods\<leaf>\... instead of carrying the wrapper.
+        var entries = new[]
+        {
+            "Windrose Shanties Anywhere v1/Windrose Shanties Anywhere/Scripts/main.lua",
+        };
+        var v = Ue4ssLuaDetect.Detect(entries);
+        Assert.Equal("Windrose Shanties Anywhere", v.ModFolderName);
+        Assert.Equal("Windrose Shanties Anywhere v1/Windrose Shanties Anywhere", v.ModFolderPath);
+    }
+
+    [Fact]
+    public void Folder_path_equals_folder_name_for_a_top_level_mod()
+    {
+        var v = Ue4ssLuaDetect.Detect(new[] { "R5ModSettings/Scripts/main.lua" });
+        Assert.Equal("R5ModSettings", v.ModFolderName);
+        Assert.Equal("R5ModSettings", v.ModFolderPath);
+    }
+
+    [Fact]
     public void A_pak_anywhere_still_vetoes_even_when_a_nested_scripts_folder_exists()
     {
         // The veto must win regardless of nesting depth — a content mod that also ships a Scripts
