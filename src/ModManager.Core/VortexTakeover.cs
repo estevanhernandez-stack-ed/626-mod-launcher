@@ -163,6 +163,7 @@ public static partial class VortexTakeover
                 if (!man.Markers.Any(mk => string.Equals(Path.GetDirectoryName(mk.OriginalPath), folderAbs, StringComparison.OrdinalIgnoreCase)))
                     continue;
 
+                var allRestored = true;
                 foreach (var mk in man.Markers)
                 {
                     var archivedPath = Path.Combine(dir, mk.ArchivedName);
@@ -174,9 +175,13 @@ public static partial class VortexTakeover
                             File.Move(archivedPath, mk.OriginalPath, overwrite: true);
                         }
                     }
-                    catch { /* degrade: restore what we can */ }
+                    catch { allRestored = false; /* degrade: restore what we can, keep the archive */ }
                 }
-                try { Directory.Delete(dir, recursive: true); } catch { /* best-effort */ }
+                // Only tear down the archive when EVERY marker made it home — the archive is the rollback
+                // surface, so a partial restore (e.g. a marker file locked by a running game) must keep it
+                // for a later retry rather than destroy the last copy.
+                if (allRestored)
+                    try { Directory.Delete(dir, recursive: true); } catch { /* best-effort */ }
                 break;
             }
         }
