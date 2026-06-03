@@ -215,3 +215,22 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 6. **Failure path unchanged** — a refused/failed clear still shows the red (Error) InfoBar and keeps the dialog open to retry; the button stays "Clear".
 
 **Why this matters:** the formatter is unit-tested, but the InfoBar render, the keep-open-then-Done flow, the Error→Success severity switch, and the button relabel only exercise on a real WinUI dialog.
+
+---
+
+## Vortex takeover — break free from Vortex management (2026-06-02)
+
+> **STATUS — no unit-test coverage (WinUI takeover UI).** The ownership probe + archive math (`ToolOwnership`, `VortexManifest`, taken-over registry) are pure-Core and tested; the banner, the on-block dialog, the dismiss-for-session behavior, and the re-deploy banner only exercise on a real WinUI instance against a real Vortex-managed folder.
+
+**Shipped:** Per the Vortex Takeover plan (Task 10). The launcher detects folders a Vortex deploy still owns (marker files `vortex.deployment.*.json` / `__folder_managed_by_vortex`), surfaces a "break free" banner, locks owned mods read-only until taken over, and gates uninstall/toggle behind an on-block dialog. Take-over archives the marker out to `<gameDataDir>/vortex-takeover/<location>/` and records the folder in `taken-over.json` (camelCase) — the archive + registry are the reversible record (no UI undo yet). Re-deploy is detected separately and never re-locks an already-taken-over folder.
+
+**Smoke steps:**
+
+1. **Owned folder → banner + read-only rows.** With a game whose mod folder still holds a Vortex marker (`vortex.deployment.*.json` or `__folder_managed_by_vortex`), open the launcher on that game. EXPECT: a banner "Some folders here are managed by Vortex" with "Take them over" / "Dismiss" appears above the mod list, and mods in that folder show as read-only (no uninstall/toggle).
+2. **Take them over.** Click "Take them over". EXPECT: status line confirms the takeover; the banner disappears; the folder's mods become managed (uninstall/toggle now available). On disk, the Vortex marker is moved out to `<gameDataDir>/vortex-takeover/<location>/` (folder no longer reads as owned), and `taken-over.json` lists the folder.
+3. **On-block dialog (uninstall in a still-owned folder).** Try to uninstall a mod in a still-owned folder WITHOUT using the banner. EXPECT: the on-block dialog "Vortex manages this folder — take it over?" appears; confirming takes over the folder then proceeds; "Not now" cancels the uninstall.
+4. **Dismiss persists for the session.** Dismiss the banner, then trigger a rescan (switch games and back, or redetect). EXPECT: the dismissed banner stays hidden for the session.
+5. **Reversibility check.** After a takeover, confirm the archived marker exists under `vortex-takeover/`. (Undo is not yet surfaced in the UI — the archive + `taken-over.json` are the reversible record.)
+6. **Re-deploy case (if you have Vortex).** After taking a folder over, re-deploy in Vortex so a marker reappears. EXPECT: a "Vortex re-deployed into a folder you took over" banner with "Take over again"; the folder's mods STAY managed (not re-locked).
+
+**Why these matter:** the ownership resolver + marker-archive + registry round-trip are unit-tested, but the banner render, the read-only row state, the on-block dialog routing, the dismiss-for-session flag, and the re-deploy-without-re-lock behavior only exercise on a real WinUI instance with a real Vortex-managed install.

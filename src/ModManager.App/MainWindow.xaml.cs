@@ -755,7 +755,7 @@ public sealed partial class MainWindow : Window
     // user declined — caller should abort the operation.
     private async Task<bool> EnsureNotVortexOwnedAsync(ModRowViewModel row)
     {
-        var ctx = ViewModel?.ActiveContextPublic;
+        var ctx = ViewModel.ActiveContextPublic;
         if (ctx is null) return true;
         var modFolder = row.ModFolderAbs;
         if (string.IsNullOrEmpty(modFolder)) return true;
