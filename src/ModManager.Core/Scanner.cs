@@ -76,6 +76,7 @@ public static class Scanner
             Exts = exts,
             FileRe = fileRe,
             Locations = locations,
+            TakenOver = TakenOverStore.Load(dataDir),
             GroupingRule = string.IsNullOrEmpty(game.GroupingRule) ? "filename_no_ext" : game.GroupingRule,
             ScanSubfolders = string.IsNullOrEmpty(game.ScanSubfolders) ? "warn" : game.ScanSubfolders,
             HasGame = !string.IsNullOrEmpty(game.Id),
@@ -174,10 +175,14 @@ public static class Scanner
         {
             // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
             // A UE4SS folder with a manifest is a loader-driven location: it can Conduct when unowned.
-            var owner = ToolOwnership.Detect(loc.Abs);
+            var ownership = ToolOwnership.Resolve(Path.GetFullPath(loc.Abs), c.TakenOver);
+            var owner = ownership.State == OwnershipState.Owned ? ownership.Owner : null;
             var isUe4ss = loc.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(loc.Abs);
             var isBepInEx = loc.Form != "folders" && string.Equals(c.Game.Engine, "bepinex", StringComparison.OrdinalIgnoreCase);
-            var posture = Coordination.PostureFor(owner, loc.Managed, loaderCanConduct: isUe4ss || isBepInEx);
+            var posture = Coordination.PostureFor(
+                owner, loc.Managed,
+                loaderCanConduct: isUe4ss || isBepInEx,
+                reDeployed: ownership.State == OwnershipState.ReDeployed);
             var readOnly = posture == Posture.Coexist;
             var managedLabel = owner?.ToString().ToLowerInvariant()
                 ?? (readOnly ? loc.Managed : null);

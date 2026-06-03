@@ -38,14 +38,14 @@ public static class TakenOverStore
     public static void Add(string dataDir, string folderAbs)
     {
         var set = Load(dataDir);
-        if (!set.Add(folderAbs)) return;            // already present -> no rewrite
+        if (!set.Add(Path.GetFullPath(folderAbs))) return;   // normalize so set membership is separator/relative-stable
         Save(dataDir, set);
     }
 
     public static void Remove(string dataDir, string folderAbs)
     {
         var set = Load(dataDir);
-        if (!set.Remove(folderAbs)) return;
+        if (!set.Remove(Path.GetFullPath(folderAbs))) return;
         Save(dataDir, set);
     }
 

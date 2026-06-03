@@ -33,6 +33,10 @@ public sealed class GameContext
     public required string GroupingRule { get; init; }
     public required string ScanSubfolders { get; init; }
     public bool HasGame { get; init; }
+
+    /// <summary>Folders the user has taken over from another manager (loaded from taken-over.json).
+    /// Posture reads this so a taken-over folder is managed despite a lingering marker. Case-insensitive.</summary>
+    public IReadOnlySet<string> TakenOver { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>An item intake skipped, with why (already installed / not a mod file / error).</summary>
