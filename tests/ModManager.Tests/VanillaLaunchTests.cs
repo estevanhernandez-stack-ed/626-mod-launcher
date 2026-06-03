@@ -117,6 +117,38 @@ public class VanillaLaunchTests : IDisposable
     }
 
     [Fact]
+    public async Task StepAside_rolls_back_the_moves_when_the_stash_write_fails()
+    {
+        var data = DataDir();
+        // Sabotage the stash write: put a DIRECTORY where vanilla-stash.json must be written, so the
+        // atomic write's final rename fails AFTER the loaders have been stepped aside.
+        Directory.CreateDirectory(Path.Combine(data, "vanilla-stash.json"));
+
+        var enabledBack = new List<string>();
+        var ops = new VanillaLaunchOps
+        {
+            ActiveModRows = () => new[] { new StashedModRow { Name = "A", Location = "mods" } },
+            ActiveFrameworks = () => new[] { "ue4ss" },
+            ActiveDirectInjectProxies = () => new[] { "dwmapi.dll" },
+            DisableModRow = (_, _) => Task.CompletedTask,
+            EnableModRow = (name, _) => { enabledBack.Add("row:" + name); return Task.CompletedTask; },
+            DisableFramework = _ => { },
+            EnableFramework = id => enabledBack.Add("fw:" + id),
+            DisableDirectInjectProxy = _ => { },
+            EnableDirectInjectProxy = p => enabledBack.Add("proxy:" + p),
+        };
+
+        var result = await VanillaLaunch.StepAsideAsync(data, ops);
+
+        Assert.False(result.Success);                       // reported failure
+        Assert.Contains("row:A", enabledBack);              // every stepped-aside loader was put back
+        Assert.Contains("fw:ue4ss", enabledBack);
+        Assert.Contains("proxy:dwmapi.dll", enabledBack);
+        // No stash file (the path is a directory we created; Load tolerates it and returns null).
+        Assert.Equal(LaunchMode.Modded, VanillaLaunch.CurrentMode(data));
+    }
+
+    [Fact]
     public async Task Restore_re_enables_exactly_the_stashed_set_and_clears_the_stash()
     {
         var data = DataDir();

@@ -96,6 +96,18 @@ public static class VanillaLaunch
             foreach (var r in rows) { await ops.DisableModRow(r.Name, r.Location); movedRows.Add(r); }
             foreach (var id in fws) { ops.DisableFramework(id); movedFws.Add(id); }
             foreach (var p in proxies) { ops.DisableDirectInjectProxy(p); movedProxies.Add(p); }
+
+            // The stash write is INSIDE the rollback region: if it fails (disk full, etc.) we must put
+            // every loader back, or they're stranded — stepped aside on disk with no stash to restore
+            // from. A stash-write failure therefore rolls back the moves like any step-aside failure.
+            VanillaStashStore.Save(dataDir, new VanillaStash
+            {
+                Version = 1,
+                SteppedAsideUtc = DateTime.UtcNow,
+                ModRows = rows.ToList(),
+                Frameworks = fws.ToList(),
+                DirectInjectProxies = proxies.ToList(),
+            });
         }
         catch (Exception ex)
         {
@@ -105,14 +117,6 @@ public static class VanillaLaunch
             return new VanillaLaunchResult(false, ex.Message);
         }
 
-        VanillaStashStore.Save(dataDir, new VanillaStash
-        {
-            Version = 1,
-            SteppedAsideUtc = DateTime.UtcNow,
-            ModRows = rows.ToList(),
-            Frameworks = fws.ToList(),
-            DirectInjectProxies = proxies.ToList(),
-        });
         return new VanillaLaunchResult(true);
     }
 
