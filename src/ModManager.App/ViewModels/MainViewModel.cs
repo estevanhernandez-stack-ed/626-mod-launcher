@@ -110,6 +110,9 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasOwnedLocations => OwnedLocations.Count > 0;
     public bool HasReDeployedLocations => ReDeployedLocations.Count > 0;
 
+    public Visibility OwnedBannerVisibility => HasOwnedLocations ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ReDeployedBannerVisibility => HasReDeployedLocations ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Live "how to use" for an installed framework, read from its on-disk settings. The view
     /// calls this on a framework-button click and renders the lines in a toast.</summary>
     public static FrameworkUsageInfo FrameworkUsageFor(FrameworkInstallManifest m)
@@ -324,6 +327,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasInstalledFrameworks));
             OnPropertyChanged(nameof(HasOwnedLocations));
             OnPropertyChanged(nameof(HasReDeployedLocations));
+            OnPropertyChanged(nameof(OwnedBannerVisibility));
+            OnPropertyChanged(nameof(ReDeployedBannerVisibility));
             return;
         }
         IsBusy = true;
@@ -509,6 +514,8 @@ public sealed partial class MainViewModel : ObservableObject
             }
             OnPropertyChanged(nameof(HasOwnedLocations));
             OnPropertyChanged(nameof(HasReDeployedLocations));
+            OnPropertyChanged(nameof(OwnedBannerVisibility));
+            OnPropertyChanged(nameof(ReDeployedBannerVisibility));
 
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));

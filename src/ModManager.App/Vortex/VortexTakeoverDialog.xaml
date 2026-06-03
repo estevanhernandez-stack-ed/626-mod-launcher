@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.Vortex.VortexTakeoverDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Vortex manages this folder"
+    PrimaryButtonText="Take over folder"
+    CloseButtonText="Not now"
+    DefaultButton="Primary">
+    <StackPanel Spacing="8">
+        <TextBlock x:Name="BodyText" TextWrapping="Wrap" />
+        <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                   Text="After this, manage these mods in the launcher — re-deploying in Vortex may undo your changes." />
+    </StackPanel>
+</ContentDialog>
