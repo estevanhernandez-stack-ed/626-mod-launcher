@@ -55,6 +55,35 @@ public sealed class DirectInjectService
         return DirectInject.AnyProcessLoadProxy(topLevel);
     }
 
+    /// <summary>The process-load proxy DLL filenames currently sitting at the top of the play folder.</summary>
+    public IReadOnlyList<string> ActiveProxyDlls(GameEntry game)
+    {
+        if (game.Engine != "fromsoft") return Array.Empty<string>();
+        var folder = PlayFolder(game.GameRoot);
+        if (folder is null) return Array.Empty<string>();
+        string[] top;
+        try { top = Directory.GetFiles(folder); } catch { return Array.Empty<string>(); }
+        return DirectInject.ProcessLoadProxiesIn(top);
+    }
+
+    private static string VanillaProxyHolding(string playFolder) => Path.Combine(playFolder, "_626", "vanilla-proxy");
+
+    /// <summary>Step one active proxy DLL aside (reversible) for a vanilla launch.</summary>
+    public void DisableProxy(GameEntry game, string proxyDll)
+    {
+        var folder = PlayFolder(game.GameRoot);
+        if (folder is null) return;
+        DirectInject.DisableSingleFile(folder, VanillaProxyHolding(folder), proxyDll);
+    }
+
+    /// <summary>Restore one proxy DLL stepped aside by <see cref="DisableProxy"/>.</summary>
+    public void EnableProxy(GameEntry game, string proxyDll)
+    {
+        var folder = PlayFolder(game.GameRoot);
+        if (folder is null) return;
+        DirectInject.EnableSingleFile(folder, VanillaProxyHolding(folder), proxyDll);
+    }
+
     /// <summary>Install dropped sources (zip/files/folders) into the game's exe folder.</summary>
     public IntakeResult Install(GameEntry game, IEnumerable<string> paths)
     {

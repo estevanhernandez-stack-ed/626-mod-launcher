@@ -911,6 +911,30 @@ public sealed partial class MainViewModel : ObservableObject
     public bool NeedsDirectInjectStepAside(LaunchTarget target)
         => _ctx is not null && LaunchGuard.NeedsDirectInjectStepAside(target, _direct.AnyActiveProxyDll(_ctx.Game));
 
+    /// <summary>The launch mode read from on-disk state (a vanilla-stash means we stepped aside).</summary>
+    public LaunchMode CurrentLaunchMode => _ctx is null ? LaunchMode.Modded : VanillaLaunch.CurrentMode(_ctx.DataDir);
+
+    /// <summary>Build the real reversible-mechanism ops from the App services for the active game.</summary>
+    private VanillaLaunchOps BuildVanillaOps()
+    {
+        var ctx = _ctx!;
+        return new VanillaLaunchOps
+        {
+            ActiveModRows = () => Mods.Where(m => m.Enabled && !m.Mod.ReadOnly)
+                .Select(m => new StashedModRow { Name = m.Mod.Name, Location = m.Mod.Location }).ToList(),
+            ActiveFrameworks = () => FrameworkRegistry.List(ctx.DataDir)
+                .Where(f => !FrameworkRegistry.IsDisabled(ctx.DataDir, f.FrameworkId))
+                .Select(f => f.FrameworkId).ToList(),
+            ActiveDirectInjectProxies = () => _direct.ActiveProxyDlls(ctx.Game),
+            DisableModRow = (name, _) => Scanner.DisableModAsync(name, ctx),
+            EnableModRow = (name, _) => Scanner.EnableModAsync(name, ctx),
+            DisableFramework = id => FrameworkRegistry.Disable(ctx.DataDir, id),
+            EnableFramework = id => FrameworkRegistry.Enable(ctx.DataDir, id),
+            DisableDirectInjectProxy = p => _direct.DisableProxy(ctx.Game, p),
+            EnableDirectInjectProxy = p => _direct.EnableProxy(ctx.Game, p),
+        };
+    }
+
     /// <summary>Surface the needs-launcher hint when the required launcher is set but not found.</summary>
     public void NotifyLauncherMissing()
     {
