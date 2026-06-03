@@ -113,6 +113,55 @@ public static class Ue4ssLuaInstaller
         return new Ue4ssLuaInstallResult(modName, installed);
     }
 
+    /// <summary>
+    /// Identify a just-installed Lua mod against Nexus by md5-hashing the dropped ARCHIVE (still in hand
+    /// at install time — unlike the post-extract backfill path), then bind the returned metadata under the
+    /// mod-FOLDER key (the same key the auto-located row uses). This is the fix for "Lua mod installs with
+    /// no metadata": the generic md5-identify keys mods via ZipModKeys, which filters to pak/ucas/utoc and
+    /// returns nothing for a Scripts-only Lua archive. Nexus identity is authoritative; a manual entry is
+    /// never clobbered. Returns true iff a match was found and written. Best-effort — never throws.
+    /// </summary>
+    public static async Task<bool> IdentifyMetadataAsync(
+        GameContext ctx, INexusClient nexus, string archivePath, string modName)
+    {
+        if (ctx is null || nexus is null || string.IsNullOrEmpty(modName)) return false;
+        if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath)) return false;
+
+        var domain = NexusDomains.Effective(ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) return false;
+
+        try
+        {
+            var match = await nexus.GetByMd5Async(domain, Md5Hash.OfFile(archivePath));
+            if (match?.Meta is null) return false;
+
+            var existing = Scanner.LoadMetadata(ctx).GetValueOrDefault(modName);
+            if (existing?.IsManual == true) return false; // user's hand-pick is locked — don't override
+
+            var m = match.Meta;
+            // Nexus md5 is exact provenance → authoritative; fill gaps from any existing entry.
+            var merged = new ModMeta
+            {
+                Title = m.Title ?? existing?.Title,
+                Description = m.Description ?? existing?.Description,
+                Author = m.Author ?? existing?.Author,
+                AuthorUrl = m.AuthorUrl ?? existing?.AuthorUrl,
+                Url = m.Url ?? existing?.Url,
+                Source = m.Source ?? existing?.Source,
+                Donate = m.Donate ?? existing?.Donate,
+                Image = m.Image ?? existing?.Image,
+                Downloads = m.Downloads ?? existing?.Downloads,
+                CurseforgeId = m.CurseforgeId ?? existing?.CurseforgeId,
+                Category = m.Category ?? existing?.Category,
+                InstalledUtc = existing?.InstalledUtc,
+                SourceConfidence = "md5",
+            };
+            Scanner.WriteOneMeta(ctx, modName, merged);
+            return true;
+        }
+        catch { return false; } // a miss / outage / unreadable archive never fails the install
+    }
+
     /// <summary>Remove a Lua mod the launcher installed: delete exactly its own folder under ue4ss\Mods.
     /// Never touches a sibling. No-op-safe if the folder is already gone.</summary>
     public static void Uninstall(string ue4ssModsDir, string modName)

@@ -1198,6 +1198,7 @@ public sealed partial class MainViewModel : ObservableObject
             // isn't installed), fall back to clear guidance instead of writing into a folder we don't own.
             // Either way the matched archives are carved out so regular intake doesn't skip every Lua entry.
             var luaInstalled = new List<string>();    // installed into ue4ss\Mods (we own UE4SS)
+            var luaInstalledSources = new List<(string ArchivePath, string ModName)>(); // for post-install metadata identify
             var luaNeedsManual = new List<string>();   // detected but not ours to install
             var luaFailures = new List<string>();
             var archiveReader = new SharpCompressArchiveReader();
@@ -1220,6 +1221,9 @@ public sealed partial class MainViewModel : ObservableObject
                         {
                             var res = Ue4ssLuaInstaller.Install(p, ue4ssModsDir, archiveReader);
                             luaInstalled.Add(res.ModName);
+                            // Remember the source archive so we can md5-identify metadata for it after the
+                            // loop (the sync Where-lambda can't await). The archive is still on disk here.
+                            luaInstalledSources.Add((p, res.ModName));
                         }
                         catch (Exception ex) { luaFailures.Add($"{Path.GetFileName(p)}: {ex.Message}"); }
                     }
@@ -1233,6 +1237,17 @@ public sealed partial class MainViewModel : ObservableObject
                 }
                 catch { return true; }
             }).ToList();
+
+            // Identify metadata for each just-installed Lua mod by md5-matching its source archive against
+            // Nexus, bound under the mod-folder key the row uses. Lua mods are carved out before the regular
+            // intake's identify pass (which is pak-keyed), so this is where they get their title/author/links
+            // — no manual backfill needed. Best-effort: a miss or no-Nexus connection just leaves the row bare.
+            if (luaInstalledSources.Count > 0 && _nexus.IsConnected)
+                foreach (var (src, modName) in luaInstalledSources)
+                {
+                    try { await Ue4ssLuaInstaller.IdentifyMetadataAsync(_ctx, _nexus.Client!, src, modName); }
+                    catch { /* best-effort; install already succeeded */ }
+                }
 
             // Pre-check 3: tool drops. ToolDetector.Classify routes recognized utility archives
             // (e.g. WSE save editor) through ToolIntake — extracted under <DataDir>/tools/<id>/ and
