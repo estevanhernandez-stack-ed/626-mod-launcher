@@ -59,4 +59,22 @@ public class VortexTakeoverScanTests : IDisposable
         // folder is in the taken-over set -> ReDeployed -> Conductor (loader) -> still manageable.
         Assert.False(after.ReadOnly);
     }
+
+    [Fact]
+    public void PlanIntake_allows_drops_into_a_redeployed_but_taken_over_folder()
+    {
+        var (game, modsFolder) = Setup();
+        var ctx = Scanner.GameContext(game);
+        // Take over the location, then simulate Vortex re-deploying a fresh marker back.
+        VortexTakeover.TakeOver(game.DataDir!, ctx.GameRoot, ctx.Locations[0].Abs);
+        File.WriteAllText(Path.Combine(modsFolder, "vortex.deployment.x.json"), "{}");
+
+        // A dropped .pak should NOT be marked unsafe-because-owned now that we own the folder.
+        var drop = Path.Combine(_tmp, "NewMod_P.pak");
+        File.WriteAllText(drop, "pak bytes");
+        var ctx2 = Scanner.GameContext(game); // reloads taken-over set
+        var plan = Scanner.PlanIntake(new[] { drop }, ctx2);
+
+        Assert.DoesNotContain(plan.Unsafe, u => u.Reason.Contains("managed by another tool"));
+    }
 }

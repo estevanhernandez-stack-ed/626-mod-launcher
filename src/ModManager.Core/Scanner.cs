@@ -506,7 +506,7 @@ public static class Scanner
         // If the target location is currently owned by another tool, leave it alone — the
         // meta.json records where this mod came from; restoring into an owned folder would
         // corrupt the external tool's deployment manifest.
-        if (ToolOwnership.Detect(loc.Abs) is not null)
+        if (ToolOwnership.Resolve(Path.GetFullPath(loc.Abs), c.TakenOver).State == OwnershipState.Owned)
             return new EnableOutcome(name, false, true, "target folder now owned by another tool");
         var hadOnServer = meta.HadOnServer ?? new Dictionary<string, bool>();
         Directory.CreateDirectory(loc.Abs);
@@ -907,7 +907,7 @@ public static class Scanner
         // it would corrupt that tool's deployment manifest. Skip every dropped item with a clear
         // reason — do NOT write a single file into the owned folder.
         var primaryLoc = c.Locations.FirstOrDefault();
-        if (primaryLoc is not null && ToolOwnership.Detect(primaryLoc.Abs) is not null)
+        if (primaryLoc is not null && ToolOwnership.Resolve(Path.GetFullPath(primaryLoc.Abs), c.TakenOver).State == OwnershipState.Owned)
         {
             foreach (var p in ExpandPaths(pathList, c))
                 result.Skipped.Add(new SkippedItem(Path.GetFileName(p), "location is managed by another tool"));
@@ -968,7 +968,7 @@ public static class Scanner
         // Guard: if the primary location is owned by another tool (Vortex/MO2), mark every
         // incoming item as unsafe so the plan carries nothing to copy and the UI shows skips.
         var primaryLoc = c.Locations.FirstOrDefault();
-        if (primaryLoc is not null && ToolOwnership.Detect(primaryLoc.Abs) is not null)
+        if (primaryLoc is not null && ToolOwnership.Resolve(Path.GetFullPath(primaryLoc.Abs), c.TakenOver).State == OwnershipState.Owned)
         {
             foreach (var p in ExpandPaths(paths, c))
                 unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "location is managed by another tool"));
@@ -1024,7 +1024,7 @@ public static class Scanner
         // Defensive guard: if the primary is owned, write nothing. PlanIntake already routes all
         // items into plan.Unsafe, so this only fires when ExecuteIntake is called directly with a
         // hand-constructed plan that bypasses PlanIntake.
-        if (ToolOwnership.Detect(primary.Abs) is not null)
+        if (ToolOwnership.Resolve(Path.GetFullPath(primary.Abs), c.TakenOver).State == OwnershipState.Owned)
         {
             foreach (var item in plan.ToAdd)
                 result.Skipped.Add(new SkippedItem(item.Name, "location is managed by another tool"));
