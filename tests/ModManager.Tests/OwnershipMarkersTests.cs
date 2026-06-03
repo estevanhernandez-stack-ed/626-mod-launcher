@@ -71,7 +71,7 @@ public class OwnershipMarkersTests : IDisposable
     }
 
     [Fact]
-    public void Detect_still_matches_the_same_set_after_refactor()
+    public void Detect_delegates_to_OwnershipMarkers()
     {
         var f = Folder();
         Assert.Null(ToolOwnership.Detect(f));
