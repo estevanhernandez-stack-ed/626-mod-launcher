@@ -15,8 +15,10 @@ public enum OwnershipState
 public sealed record OwnershipResolution(OwnershipState State, OwnerTool? Owner);
 
 /// <summary>
-/// Detects whether another mod manager owns a folder, from on-disk markers only. Reads the
-/// filesystem but holds no state and never writes. Returns null when no tool owns the folder.
+/// Reads whether another mod manager owns a folder, from on-disk markers only (via OwnershipMarkers).
+/// <see cref="Detect"/> is the raw marker read; <see cref="Resolve"/> layers in the launcher's
+/// taken-over set so a folder the user took over reads as ours (and a reappeared marker reads as
+/// re-deployed). Reads the filesystem but holds no state and never writes.
 /// </summary>
 public static class ToolOwnership
 {
@@ -25,10 +27,13 @@ public static class ToolOwnership
     /// <summary>Resolve a folder's ownership against the taken-over set. A taken-over folder reads as
     /// NotOwned even with a marker still present — UNLESS a fresh marker reappeared, which reads as
     /// ReDeployed so the App can surface a "re-deployed" notice.</summary>
+    /// <param name="takenOver">The persisted taken-over folders. Membership uses THIS set's own
+    /// comparer — pass a case-insensitive set (StringComparer.OrdinalIgnoreCase) for Windows paths,
+    /// as TakenOverStore.Load does.</param>
     public static OwnershipResolution Resolve(string folderAbs, IReadOnlySet<string> takenOver)
     {
         var owner = OwnershipMarkers.OwnerOf(folderAbs);
-        var isTakenOver = takenOver is not null && takenOver.Contains(folderAbs);
+        var isTakenOver = takenOver.Contains(folderAbs);
 
         if (owner is null) return new OwnershipResolution(OwnershipState.NotOwned, null);   // no marker
         if (isTakenOver) return new OwnershipResolution(OwnershipState.ReDeployed, owner);  // marker came back
