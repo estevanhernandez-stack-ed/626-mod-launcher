@@ -82,13 +82,17 @@ public static partial class VortexTakeover
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <summary>Stable, human-readable archive key for a folder: its path relative to the game root,
-    /// slugified. Collision-free because it encodes the full relative path.</summary>
+    /// <summary>Stable, collision-free archive key for a folder: a human-readable slug of its path
+    /// relative to the game root, plus a short hash of that relative path so two folders that slug to
+    /// the same string (e.g. "R5/Mods" vs a folder named "R5_Mods") never share an archive dir.</summary>
     public static string LocationKey(string gameRoot, string folderAbs)
     {
         var rel = Path.GetRelativePath(gameRoot, folderAbs);
         var slug = rel.Replace(Path.DirectorySeparatorChar, '_').Replace('/', '_').Replace(':', '_');
-        return string.IsNullOrWhiteSpace(slug) || slug == "." ? "_root" : slug;
+        if (string.IsNullOrWhiteSpace(slug) || slug == ".") slug = "_root";
+        var hash = Convert.ToHexString(
+            System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(rel)))[..8].ToLowerInvariant();
+        return slug + "-" + hash;
     }
 
     public static TakeoverResult TakeOver(string dataDir, string gameRoot, string folderAbs)
@@ -112,6 +116,12 @@ public static partial class VortexTakeover
                 moved.Add((m.Path, dest));
                 archived.Add(new ArchivedMarker(m.Path, name, m.Owner.ToString().ToLowerInvariant()));
             }
+
+            // The manifest write is inside the rollback region: if it fails (disk full, etc.) we must
+            // restore the markers too, or they're stranded — archived out of the folder with no manifest
+            // for Undo to find. A manifest-write failure therefore rolls back the moves like any move failure.
+            AtomicJson.WriteJsonAtomic(Path.Combine(archiveDir, "takeover.json"),
+                new TakeoverManifest { Version = 1, TakenOverUtc = DateTime.UtcNow, Markers = archived });
         }
         catch (Exception ex)
         {
@@ -121,8 +131,7 @@ public static partial class VortexTakeover
             return new TakeoverResult(false, folderAbs, Array.Empty<ArchivedMarker>(), ex.Message);
         }
 
-        AtomicJson.WriteJsonAtomic(Path.Combine(archiveDir, "takeover.json"),
-            new TakeoverManifest { Version = 1, TakenOverUtc = DateTime.UtcNow, Markers = archived });
+        // Commit-of-record: only reached when the whole try (moves + manifest) succeeded.
         TakenOverStore.Add(dataDir, folderAbs);
         return new TakeoverResult(true, folderAbs, archived);
     }

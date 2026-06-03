@@ -141,4 +141,32 @@ public class VortexTakeoverTests : IDisposable
         Assert.Single(TakenOverStore.Load(data), f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase));
         Assert.False(File.Exists(Path.Combine(folder, "vortex.deployment.windrose-scripts.json")));
     }
+
+    [Fact]
+    public void TakeOver_rolls_back_when_the_manifest_write_fails_leaving_the_folder_owned()
+    {
+        var data = DataDir();
+        var (gameRoot, folder) = FolderWithVortexMarker();
+        var markerPath = Path.Combine(folder, "vortex.deployment.windrose-scripts.json");
+
+        // Sabotage the manifest write: put a DIRECTORY where takeover.json must be written.
+        var archiveDir = Path.Combine(data, "vortex-takeover", VortexTakeover.LocationKey(gameRoot, folder));
+        Directory.CreateDirectory(Path.Combine(archiveDir, "takeover.json")); // a dir, not a file
+
+        var result = VortexTakeover.TakeOver(data, gameRoot, folder);
+
+        Assert.False(result.Success);                                  // reported failure
+        Assert.True(File.Exists(markerPath));                          // marker restored -> folder still owned
+        Assert.Equal(OwnerTool.Vortex, ToolOwnership.Detect(folder));  // reads owned again
+        Assert.DoesNotContain(folder, TakenOverStore.Load(data));      // NOT recorded (un-undoable state avoided)
+    }
+
+    [Fact]
+    public void LocationKey_is_distinct_for_folders_that_slug_to_the_same_string()
+    {
+        var gameRoot = @"C:\game";
+        var a = VortexTakeover.LocationKey(gameRoot, @"C:\game\R5\Mods");
+        var b = VortexTakeover.LocationKey(gameRoot, @"C:\game\R5_Mods");
+        Assert.NotEqual(a, b); // lossy slug alone would collide; the hash suffix separates them
+    }
 }
