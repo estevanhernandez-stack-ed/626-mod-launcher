@@ -52,3 +52,116 @@ public static class TakenOverStore
     private static void Save(string dataDir, HashSet<string> set)
         => AtomicJson.WriteJsonAtomic(PathFor(dataDir), new TakenOverState { Version = 1, Folders = set.ToList() });
 }
+
+/// <summary>One archived marker in a takeover manifest: where it came from + the file we stored.</summary>
+public sealed record ArchivedMarker(string OriginalPath, string ArchivedName, string Owner);
+
+/// <summary>The manifest written into a takeover archive dir, recording how to reverse the takeover.</summary>
+public sealed class TakeoverManifest
+{
+    public int Version { get; set; } = 1;
+    public DateTime TakenOverUtc { get; set; }
+    public List<ArchivedMarker> Markers { get; set; } = new();
+}
+
+/// <summary>The result of a TakeOver call.</summary>
+public sealed record TakeoverResult(bool Success, string FolderAbs, IReadOnlyList<ArchivedMarker> ArchivedMarkers, string? Error = null);
+
+/// <summary>
+/// Reversible takeover of a folder owned by another manager (Vortex / MO2). Archives every ownership
+/// marker out of the folder into <c>&lt;dataDir&gt;/vortex-takeover/&lt;locationKey&gt;/</c> (move, never
+/// delete), records the folder in the taken-over set, and writes a manifest so Undo can restore the
+/// markers byte-for-byte. Stage-then-commit: a mid-move failure rolls back, leaving the folder owned.
+/// Pure System.IO + System.Text.Json. Game-scoped by caller (operates on one folder).
+/// </summary>
+public static partial class VortexTakeover
+{
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+    };
+
+    /// <summary>Stable, human-readable archive key for a folder: its path relative to the game root,
+    /// slugified. Collision-free because it encodes the full relative path.</summary>
+    public static string LocationKey(string gameRoot, string folderAbs)
+    {
+        var rel = Path.GetRelativePath(gameRoot, folderAbs);
+        var slug = rel.Replace(Path.DirectorySeparatorChar, '_').Replace('/', '_').Replace(':', '_');
+        return string.IsNullOrWhiteSpace(slug) || slug == "." ? "_root" : slug;
+    }
+
+    public static TakeoverResult TakeOver(string dataDir, string gameRoot, string folderAbs)
+    {
+        var markers = OwnershipMarkers.MarkerFilesIn(folderAbs);
+        if (markers.Count == 0)
+            return new TakeoverResult(true, folderAbs, Array.Empty<ArchivedMarker>()); // already ours
+
+        var archiveDir = Path.Combine(dataDir, "vortex-takeover", LocationKey(gameRoot, folderAbs));
+        Directory.CreateDirectory(archiveDir);
+
+        var moved = new List<(string from, string to)>();
+        var archived = new List<ArchivedMarker>();
+        try
+        {
+            foreach (var m in markers)
+            {
+                var name = Path.GetFileName(m.Path);
+                var dest = Path.Combine(archiveDir, name);
+                File.Move(m.Path, dest, overwrite: true);  // move-to-holding (reversible)
+                moved.Add((m.Path, dest));
+                archived.Add(new ArchivedMarker(m.Path, name, m.Owner.ToString().ToLowerInvariant()));
+            }
+        }
+        catch (Exception ex)
+        {
+            // Roll back any markers already moved, leave the folder owned.
+            foreach (var (from, to) in moved)
+                try { File.Move(to, from, overwrite: true); } catch { /* best-effort */ }
+            return new TakeoverResult(false, folderAbs, Array.Empty<ArchivedMarker>(), ex.Message);
+        }
+
+        AtomicJson.WriteJsonAtomic(Path.Combine(archiveDir, "takeover.json"),
+            new TakeoverManifest { Version = 1, TakenOverUtc = DateTime.UtcNow, Markers = archived });
+        TakenOverStore.Add(dataDir, folderAbs);
+        return new TakeoverResult(true, folderAbs, archived);
+    }
+
+    public static void Undo(string dataDir, string folderAbs)
+    {
+        // Find the archive dir by scanning vortex-takeover/* for a manifest whose markers point back into
+        // folderAbs (robust to not having the gameRoot here). Restore each marker, then remove the record.
+        var root = Path.Combine(dataDir, "vortex-takeover");
+        if (Directory.Exists(root))
+        {
+            foreach (var dir in Directory.EnumerateDirectories(root))
+            {
+                var manifestPath = Path.Combine(dir, "takeover.json");
+                if (!File.Exists(manifestPath)) continue;
+                TakeoverManifest? man;
+                try { man = JsonSerializer.Deserialize<TakeoverManifest>(File.ReadAllText(manifestPath), Json); }
+                catch { continue; }
+                if (man is null) continue;
+                if (!man.Markers.Any(mk => string.Equals(Path.GetDirectoryName(mk.OriginalPath), folderAbs, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                foreach (var mk in man.Markers)
+                {
+                    var archivedPath = Path.Combine(dir, mk.ArchivedName);
+                    try
+                    {
+                        if (File.Exists(archivedPath))
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(mk.OriginalPath)!);
+                            File.Move(archivedPath, mk.OriginalPath, overwrite: true);
+                        }
+                    }
+                    catch { /* degrade: restore what we can */ }
+                }
+                try { Directory.Delete(dir, recursive: true); } catch { /* best-effort */ }
+                break;
+            }
+        }
+        TakenOverStore.Remove(dataDir, folderAbs);
+    }
+}

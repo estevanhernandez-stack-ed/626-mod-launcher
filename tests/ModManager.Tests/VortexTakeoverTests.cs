@@ -67,4 +67,78 @@ public class VortexTakeoverTests : IDisposable
         TakenOverStore.Remove(data, @"C:\g\never-added"); // must not throw, must not drop the real entry
         Assert.Contains(@"C:\g\keep", TakenOverStore.Load(data));
     }
+
+    // A folder under a fake game root, holding a Vortex manifest. Returns (gameRoot, folderAbs).
+    private (string gameRoot, string folderAbs) FolderWithVortexMarker()
+    {
+        var gameRoot = Path.Combine(_tmp, "GameRoot");
+        var folder = Path.Combine(gameRoot, "R5", "Binaries", "Win64", "ue4ss", "Mods");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "vortex.deployment.windrose-scripts.json"), "{\"files\":[]}");
+        File.WriteAllText(Path.Combine(folder, "SomeMod.lua"), "real mod content"); // must survive
+        return (gameRoot, folder);
+    }
+
+    [Fact]
+    public void TakeOver_archives_the_marker_out_and_records_the_folder()
+    {
+        var data = DataDir();
+        var (gameRoot, folder) = FolderWithVortexMarker();
+
+        var result = VortexTakeover.TakeOver(data, gameRoot, folder);
+
+        Assert.True(result.Success);
+        Assert.False(File.Exists(Path.Combine(folder, "vortex.deployment.windrose-scripts.json"))); // marker gone
+        Assert.Equal("real mod content", File.ReadAllText(Path.Combine(folder, "SomeMod.lua")));      // mod untouched
+        Assert.Null(ToolOwnership.Detect(folder));                                                    // now reads unowned
+        Assert.Contains(folder, TakenOverStore.Load(data));                                           // recorded
+        Assert.True(Directory.Exists(Path.Combine(data, "vortex-takeover")));                         // archive exists
+    }
+
+    [Fact]
+    public void Undo_restores_the_marker_byte_for_byte_and_clears_the_record()
+    {
+        var data = DataDir();
+        var (gameRoot, folder) = FolderWithVortexMarker();
+        var markerPath = Path.Combine(folder, "vortex.deployment.windrose-scripts.json");
+        var before = File.ReadAllBytes(markerPath);
+
+        VortexTakeover.TakeOver(data, gameRoot, folder);
+        Assert.False(File.Exists(markerPath));
+
+        VortexTakeover.Undo(data, folder);
+
+        Assert.True(File.Exists(markerPath));
+        Assert.Equal(before, File.ReadAllBytes(markerPath));         // byte-for-byte
+        Assert.Equal(OwnerTool.Vortex, ToolOwnership.Detect(folder)); // owned again
+        Assert.DoesNotContain(folder, TakenOverStore.Load(data));    // record cleared
+    }
+
+    [Fact]
+    public void TakeOver_on_a_folder_with_no_marker_is_a_noop_success()
+    {
+        var data = DataDir();
+        var gameRoot = Path.Combine(_tmp, "GameRoot");
+        var folder = Path.Combine(gameRoot, "clean");
+        Directory.CreateDirectory(folder);
+
+        var result = VortexTakeover.TakeOver(data, gameRoot, folder);
+        Assert.True(result.Success);
+        Assert.Empty(result.ArchivedMarkers);
+    }
+
+    [Fact]
+    public void TakeOver_is_idempotent_no_duplicate_set_entry()
+    {
+        var data = DataDir();
+        var (gameRoot, folder) = FolderWithVortexMarker();
+
+        VortexTakeover.TakeOver(data, gameRoot, folder);
+        // simulate a Vortex re-deploy dropping a fresh marker, then take over again
+        File.WriteAllText(Path.Combine(folder, "vortex.deployment.windrose-scripts.json"), "{\"files\":[]}");
+        VortexTakeover.TakeOver(data, gameRoot, folder);
+
+        Assert.Single(TakenOverStore.Load(data), f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase));
+        Assert.False(File.Exists(Path.Combine(folder, "vortex.deployment.windrose-scripts.json")));
+    }
 }
