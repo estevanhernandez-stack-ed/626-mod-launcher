@@ -57,4 +57,16 @@ public class OwnershipMarkersTests : IDisposable
         File.WriteAllText(Path.Combine(f, "vortex.deployment.x.json"), "{}");
         Assert.Equal(OwnerTool.Vortex, OwnershipMarkers.OwnerOf(f));
     }
+
+    [Fact]
+    public void When_both_vortex_and_mo2_markers_present_vortex_wins_and_both_are_listed()
+    {
+        var f = Folder();
+        File.WriteAllText(Path.Combine(f, "vortex.deployment.x.json"), "{}");
+        File.WriteAllText(Path.Combine(f, "meta.ini"), "[General]");
+
+        var markers = OwnershipMarkers.MarkerFilesIn(f);
+        Assert.Equal(2, markers.Count);                          // both reported
+        Assert.Equal(OwnerTool.Vortex, OwnershipMarkers.OwnerOf(f)); // Vortex precedence (first marker wins)
+    }
 }
