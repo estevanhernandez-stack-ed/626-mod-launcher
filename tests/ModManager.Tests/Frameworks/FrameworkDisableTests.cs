@@ -77,4 +77,23 @@ public class FrameworkDisableTests : IDisposable
         Directory.CreateDirectory(gameData);
         Assert.Throws<FileNotFoundException>(() => FrameworkRegistry.Disable(gameData, "ue4ss"));
     }
+
+    [Fact]
+    public void Disable_is_a_safe_noop_for_a_legacy_manifest_with_empty_InstallPath()
+    {
+        // A pre-InstallPath manifest (empty InstallPath) can't resolve the proxy path — Disable must be a
+        // safe no-op (not silently combine against "" and miss, not throw). IsDisabled stays false.
+        var gameData = Path.Combine(_tmp, "legacy-data");
+        var fwDir = Path.Combine(gameData, "frameworks", "ue4ss");
+        Directory.CreateDirectory(fwDir);
+        var manifest = new FrameworkInstallManifest(
+            "ue4ss", "UE4SS", "RE-UE4SS team", "",   // empty InstallPath
+            new[] { "dwmapi.dll" }, DateTime.UtcNow, null);
+        File.WriteAllText(Path.Combine(fwDir, "install.json"),
+            System.Text.Json.JsonSerializer.Serialize(manifest, new System.Text.Json.JsonSerializerOptions
+            { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase, WriteIndented = true }));
+
+        FrameworkRegistry.Disable(gameData, "ue4ss");          // must not throw, must not create stray dirs
+        Assert.False(FrameworkRegistry.IsDisabled(gameData, "ue4ss"));
+    }
 }

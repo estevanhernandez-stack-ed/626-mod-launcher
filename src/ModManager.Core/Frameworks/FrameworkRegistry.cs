@@ -101,6 +101,7 @@ public static class FrameworkRegistry
     public static void Disable(string gameDataDir, string frameworkId)
     {
         var m = LoadManifest(gameDataDir, frameworkId);
+        if (string.IsNullOrEmpty(m.InstallPath)) return; // legacy manifest, no resolvable install root
         var holding = Path.Combine(gameDataDir, "frameworks", frameworkId, DisabledProxyDir);
         Directory.CreateDirectory(holding);
         foreach (var rel in ProxyFiles(m))
@@ -119,6 +120,7 @@ public static class FrameworkRegistry
     public static void Enable(string gameDataDir, string frameworkId)
     {
         var m = LoadManifest(gameDataDir, frameworkId);
+        if (string.IsNullOrEmpty(m.InstallPath)) return; // legacy manifest, no resolvable install root
         var holding = Path.Combine(gameDataDir, "frameworks", frameworkId, DisabledProxyDir);
         if (!Directory.Exists(holding)) return;
         foreach (var rel in ProxyFiles(m))
@@ -138,6 +140,7 @@ public static class FrameworkRegistry
     {
         FrameworkInstallManifest m;
         try { m = LoadManifest(gameDataDir, frameworkId); } catch { return false; }
+        if (string.IsNullOrEmpty(m.InstallPath)) return false; // legacy manifest, no resolvable install root
         var holding = Path.Combine(gameDataDir, "frameworks", frameworkId, DisabledProxyDir);
         var proxies = ProxyFiles(m);
         if (proxies.Count == 0) return false;
