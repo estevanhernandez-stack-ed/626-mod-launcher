@@ -115,6 +115,12 @@ Written via `AtomicJson`. Ships a round-trip test asserting the camelCase keys o
 | `src/ModManager.App/MainWindow.xaml(.cs)` | Dropdown gains the opposite-mode item |
 | `.claude/rules/camelcase-json-on-disk.md` | Register `vanilla-stash.json` (local-only doc; `.claude/` is gitignored) |
 
-## Open implementation question (resolve in planning)
+## The three mechanisms (resolved during planning prep)
 
-The Core StepAside needs to drive the mod-row disable, framework disable, and direct-inject step-aside. The mod-row disable currently lives behind the App's VM / Scanner; the plan must confirm a Core-callable entry exists for each of the three mechanisms (or add a thin Core wrapper) so `VanillaLaunch` stays pure-Core and testable. This is wiring, not a design fork — flagged so the plan pins the exact call shape for each mechanism.
+StepAside drives three reversible primitives. Investigation of the current code settled the call shapes:
+
+1. **Mod rows** — `Scanner.DisableModAsync(name, ctx)` / `Scanner.EnableModAsync(name, ctx)` already exist in Core (move-to-holding under `DisabledRoot`, reversible). Use directly.
+2. **Direct-inject proxies** (FromSoft: dinput8 / ersc / ReShade) — `DirectInject.Disable(playFolder, holdingRoot, mod)` exists in Core (moves the proxy to `_626/replaced`, reversible). The "what's active" read is the per-proxy list from `DirectInject` (the App's `AnyActiveProxyDll` is the bool form; planning uses the per-DLL listing). Use directly.
+3. **Frameworks (UE4SS)** — **gap: `FrameworkRegistry` has only `List` + `Uninstall`, no disable.** Uninstall (full teardown + backup restore) is too heavy and semantically wrong to run around every launch. **Resolution (approved): add a light reversible `FrameworkRegistry.Disable` / `Enable`** that steps ONLY the loader proxy aside (e.g. UE4SS's `dwmapi.dll` → a holding name / our data dir) so the framework stops injecting, leaving `ue4ss/` + its `Mods` in place; Enable renames/moves it back. Fast, reversible, semantically honest (disabled ≠ uninstalled), and reusable beyond this feature. This keeps all three mechanisms symmetric ("step the loader aside, reversibly"), which is what lets `VanillaLaunch` treat them uniformly.
+
+The framework-disable primitive is its own early task in the plan (with its own tests) before `VanillaLaunch` composes the three.
