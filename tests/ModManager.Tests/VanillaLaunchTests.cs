@@ -162,6 +162,36 @@ public class VanillaLaunchTests : IDisposable
         Assert.Equal(LaunchMode.Vanilla, VanillaLaunch.CurrentMode(data));
     }
 
+    [Fact]
+    public async Task Restore_leaves_the_stash_when_a_step_fails_so_a_retry_can_finish()
+    {
+        var data = DataDir();
+        VanillaStashStore.Save(data, new VanillaStash
+        {
+            ModRows = new() { new StashedModRow { Name = "A", Location = "mods" } },
+            Frameworks = new() { "ue4ss" },
+            DirectInjectProxies = new() { "dwmapi.dll" },
+        });
+
+        var ops = new VanillaLaunchOps
+        {
+            ActiveModRows = () => Array.Empty<StashedModRow>(),
+            ActiveFrameworks = () => Array.Empty<string>(),
+            ActiveDirectInjectProxies = () => Array.Empty<string>(),
+            DisableModRow = (_, _) => Task.CompletedTask,
+            EnableModRow = (_, _) => Task.CompletedTask,
+            DisableFramework = _ => { },
+            EnableFramework = _ => throw new IOException("framework enable failed mid-restore"),
+            DisableDirectInjectProxy = _ => { },
+            EnableDirectInjectProxy = _ => { },
+        };
+
+        var result = await VanillaLaunch.RestoreAsync(data, ops);
+
+        Assert.False(result.Success);                          // reported failure
+        Assert.NotNull(VanillaStashStore.Load(data));          // stash SURVIVES -> a retry can finish
+    }
+
     // Helper: an ops with no-op defaults, overridable per call.
     private static VanillaLaunchOps MakeOps(
         Func<string, string, Task>? enableRow = null,
