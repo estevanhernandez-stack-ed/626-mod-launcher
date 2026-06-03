@@ -77,4 +77,22 @@ public class VortexTakeoverScanTests : IDisposable
 
         Assert.DoesNotContain(plan.Unsafe, u => u.Reason.Contains("managed by another tool"));
     }
+
+    [Fact]
+    public void ExecuteIntake_writes_into_a_redeployed_but_taken_over_folder()
+    {
+        var (game, modsFolder) = Setup();
+        var ctx = Scanner.GameContext(game);
+        VortexTakeover.TakeOver(game.DataDir!, ctx.GameRoot, ctx.Locations[0].Abs);
+        File.WriteAllText(Path.Combine(modsFolder, "vortex.deployment.x.json"), "{}"); // Vortex re-deploys
+
+        var drop = Path.Combine(_tmp, "NewMod_P.pak");
+        File.WriteAllText(drop, "pak bytes");
+        var ctx2 = Scanner.GameContext(game);                       // reloads taken-over set
+        var plan = Scanner.PlanIntake(new[] { drop }, ctx2);         // plan is clean (owned guard passes)
+        var result = Scanner.ExecuteIntake(plan, new HashSet<string>(), ctx2); // the guard under test
+
+        // The ExecuteIntake owned-guard must NOT skip the item as "managed by another tool".
+        Assert.DoesNotContain(result.Skipped, s => s.Reason.Contains("managed by another tool"));
+    }
 }

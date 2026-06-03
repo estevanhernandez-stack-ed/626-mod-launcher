@@ -12,7 +12,7 @@ public enum Posture
 /// Detect-and-defer arbitration. A detected runtime owner always wins (defer to it). Otherwise a
 /// loader that can drive its own manifest takes the folder. A declared (profile-hint) Managed value
 /// is the last, conservative fallback to Coexist — never let a stale hint block a real loader. Pure:
-/// takes an already-detected owner so all IO lives in <see cref="ToolOwnership.Detect"/>.
+/// takes an already-detected owner so all IO lives in <see cref="ToolOwnership.Resolve"/>.
 /// A re-deployed folder (taken over, marker returned) keeps the launcher managing it (Own/Conductor).
 /// </summary>
 public static class Coordination
