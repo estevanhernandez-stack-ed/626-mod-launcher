@@ -115,4 +115,30 @@ public static class VanillaLaunch
         });
         return new VanillaLaunchResult(true);
     }
+
+    public static async Task<VanillaLaunchResult> RestoreAsync(string dataDir, VanillaLaunchOps ops)
+    {
+        var stash = VanillaStashStore.Load(dataDir);
+        if (stash is null) return new VanillaLaunchResult(true); // nothing stepped aside — no-op
+
+        try
+        {
+            // Restore in reverse order of step-aside: proxies + frameworks first (so the loader is back
+            // before its mods), then the mod rows. Each Enable is itself no-clobber/idempotent.
+            foreach (var p in stash.DirectInjectProxies) ops.EnableDirectInjectProxy(p);
+            foreach (var id in stash.Frameworks) ops.EnableFramework(id);
+            foreach (var r in stash.ModRows) await ops.EnableModRow(r.Name, r.Location);
+        }
+        catch (Exception ex)
+        {
+            return new VanillaLaunchResult(false, ex.Message); // leave the stash so a retry can finish
+        }
+
+        VanillaStashStore.Clear(dataDir);
+        return new VanillaLaunchResult(true);
+    }
+
+    /// <summary>Vanilla when a stash exists (we stepped aside), Modded otherwise. Drives the button label.</summary>
+    public static LaunchMode CurrentMode(string dataDir)
+        => VanillaStashStore.Load(dataDir) is not null ? LaunchMode.Vanilla : LaunchMode.Modded;
 }

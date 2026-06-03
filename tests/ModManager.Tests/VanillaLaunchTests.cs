@@ -115,4 +115,67 @@ public class VanillaLaunchTests : IDisposable
         Assert.Contains("A", enabledBack);
         Assert.Null(VanillaStashStore.Load(data));
     }
+
+    [Fact]
+    public async Task Restore_re_enables_exactly_the_stashed_set_and_clears_the_stash()
+    {
+        var data = DataDir();
+        VanillaStashStore.Save(data, new VanillaStash
+        {
+            ModRows = new() { new StashedModRow { Name = "FasterShips10", Location = "mods" },
+                              new StashedModRow { Name = "RareDrops", Location = "mods" } },
+            Frameworks = new() { "ue4ss" },
+            DirectInjectProxies = new() { "dwmapi.dll" },
+        });
+
+        var enabledRows = new List<string>();
+        var enabledFw = new List<string>();
+        var enabledProxies = new List<string>();
+        var ops = MakeOps(
+            enableRow: (n, l) => { enabledRows.Add(n); return Task.CompletedTask; },
+            enableFw: id => enabledFw.Add(id),
+            enableProxy: p => enabledProxies.Add(p));
+
+        var result = await VanillaLaunch.RestoreAsync(data, ops);
+
+        Assert.True(result.Success);
+        Assert.Equal(new[] { "FasterShips10", "RareDrops" }, enabledRows);
+        Assert.Equal(new[] { "ue4ss" }, enabledFw);
+        Assert.Equal(new[] { "dwmapi.dll" }, enabledProxies);
+        Assert.Null(VanillaStashStore.Load(data));
+    }
+
+    [Fact]
+    public async Task Restore_with_no_stash_is_a_safe_noop()
+    {
+        var data = DataDir();
+        var result = await VanillaLaunch.RestoreAsync(data, MakeOps());
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public void CurrentMode_is_Vanilla_when_a_stash_exists_else_Modded()
+    {
+        var data = DataDir();
+        Assert.Equal(LaunchMode.Modded, VanillaLaunch.CurrentMode(data));
+        VanillaStashStore.Save(data, new VanillaStash());
+        Assert.Equal(LaunchMode.Vanilla, VanillaLaunch.CurrentMode(data));
+    }
+
+    // Helper: an ops with no-op defaults, overridable per call.
+    private static VanillaLaunchOps MakeOps(
+        Func<string, string, Task>? enableRow = null,
+        Action<string>? enableFw = null,
+        Action<string>? enableProxy = null) => new()
+    {
+        ActiveModRows = () => Array.Empty<StashedModRow>(),
+        ActiveFrameworks = () => Array.Empty<string>(),
+        ActiveDirectInjectProxies = () => Array.Empty<string>(),
+        DisableModRow = (_, _) => Task.CompletedTask,
+        EnableModRow = enableRow ?? ((_, _) => Task.CompletedTask),
+        DisableFramework = _ => { },
+        EnableFramework = enableFw ?? (_ => { }),
+        DisableDirectInjectProxy = _ => { },
+        EnableDirectInjectProxy = enableProxy ?? (_ => { }),
+    };
 }
