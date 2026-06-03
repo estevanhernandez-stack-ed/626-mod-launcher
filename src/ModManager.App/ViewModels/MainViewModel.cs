@@ -527,6 +527,7 @@ public sealed partial class MainViewModel : ObservableObject
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
             OnPropertyChanged(nameof(EffectiveLaunchTarget));
             OnPropertyChanged(nameof(LaunchButtonLabel));
+            OnPropertyChanged(nameof(CurrentLaunchMode));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -606,6 +607,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
+        // A manual toggle leaves "clean vanilla" — clear the stash so CurrentMode reverts to Modded and
+        // the launch button stops claiming "Play vanilla" while a mod is live again.
+        VanillaStashStore.Clear(_ctx.DataDir);
         row.IsBusy = true;
         try
         {
@@ -712,6 +716,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     private Task SetAllAsync(bool on) => BulkAsync(() =>
     {
+        // A bulk enable/disable is a manual state change too — clear the vanilla stash so the mode
+        // reverts to Modded (mirrors the single ToggleAsync clear). BulkAsync already null-checked _ctx.
+        VanillaStashStore.Clear(_ctx!.DataDir);
         if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
         if (DirectInjectBacked)
         {
@@ -882,8 +889,9 @@ public sealed partial class MainViewModel : ObservableObject
     {
         get
         {
+            if (CurrentLaunchMode == LaunchMode.Vanilla) return "▶ Play vanilla";
             var t = EffectiveLaunchTarget;
-            return string.IsNullOrEmpty(t?.Label) ? "▶ Launch" : $"▶ {t.Label}";
+            return string.IsNullOrEmpty(t?.Label) ? "▶ Play (modded)" : $"▶ {t.Label}";
         }
     }
 
@@ -983,6 +991,42 @@ public sealed partial class MainViewModel : ObservableObject
         AutoBackupBeforeLaunch();
         try { _svc.Launch(target, _ctx.Game.GameRoot); }
         catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.</summary>
+    public async Task StepAsideAndLaunchAsync()
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            var r = await VanillaLaunch.StepAsideAsync(_ctx.DataDir, BuildVanillaOps());
+            if (!r.Success) { StatusText = $"Couldn't switch to vanilla: {r.Error}"; return; }
+            await ReloadModsAsync();
+            StatusText = "Vanilla mode — mods stepped aside. Launching…";
+            var target = EffectiveLaunchTarget;
+            if (target is not null) await LaunchTargetExplicit(target);
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Play modded: restore exactly the stashed set, refresh rows, then launch with mods.</summary>
+    public async Task RestoreAndLaunchAsync()
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            var r = await VanillaLaunch.RestoreAsync(_ctx.DataDir, BuildVanillaOps());
+            if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}"; return; }
+            await ReloadModsAsync();
+            StatusText = "Modded mode — mods restored. Launching…";
+            var target = EffectiveLaunchTarget;
+            if (target is not null) await LaunchTargetExplicit(target);
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
     }
 
     // When the game opts in, snapshot the save (auto) and prune before launching. Best-effort —
