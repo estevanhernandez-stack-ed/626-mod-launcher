@@ -69,4 +69,13 @@ public class OwnershipMarkersTests : IDisposable
         Assert.Equal(2, markers.Count);                          // both reported
         Assert.Equal(OwnerTool.Vortex, OwnershipMarkers.OwnerOf(f)); // Vortex precedence (first marker wins)
     }
+
+    [Fact]
+    public void Detect_still_matches_the_same_set_after_refactor()
+    {
+        var f = Folder();
+        Assert.Null(ToolOwnership.Detect(f));
+        File.WriteAllText(Path.Combine(f, "vortex.deployment.x.json"), "{}");
+        Assert.Equal(OwnerTool.Vortex, ToolOwnership.Detect(f));
+    }
 }
