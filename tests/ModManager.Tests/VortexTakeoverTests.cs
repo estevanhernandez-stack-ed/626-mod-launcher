@@ -162,6 +162,33 @@ public class VortexTakeoverTests : IDisposable
     }
 
     [Fact]
+    public void TakeOverGame_takes_over_only_the_passed_locations_not_a_sibling_game()
+    {
+        var data = DataDir();
+        var gameRoot = Path.Combine(_tmp, "GameRoot");
+
+        // Two owned folders for THIS game.
+        var locA = Path.Combine(gameRoot, "R5", "A");
+        var locB = Path.Combine(gameRoot, "R5", "B");
+        foreach (var l in new[] { locA, locB })
+        {
+            Directory.CreateDirectory(l);
+            File.WriteAllText(Path.Combine(l, "vortex.deployment.x.json"), "{}");
+        }
+        // A sibling game's owned folder that must NOT be touched.
+        var sibling = Path.Combine(_tmp, "OtherGame", "mods");
+        Directory.CreateDirectory(sibling);
+        File.WriteAllText(Path.Combine(sibling, "vortex.deployment.y.json"), "{}");
+
+        var results = VortexTakeover.TakeOverGame(data, gameRoot, new[] { locA, locB });
+
+        Assert.Equal(2, results.Count(r => r.Success));
+        Assert.Null(ToolOwnership.Detect(locA));
+        Assert.Null(ToolOwnership.Detect(locB));
+        Assert.Equal(OwnerTool.Vortex, ToolOwnership.Detect(sibling)); // untouched
+    }
+
+    [Fact]
     public void LocationKey_is_distinct_for_folders_that_slug_to_the_same_string()
     {
         var gameRoot = @"C:\game";

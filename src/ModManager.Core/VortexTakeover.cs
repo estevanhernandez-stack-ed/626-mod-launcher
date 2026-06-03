@@ -136,6 +136,15 @@ public static partial class VortexTakeover
         return new TakeoverResult(true, folderAbs, archived);
     }
 
+    /// <summary>Take over every passed location. The caller passes ONLY the active game's Vortex-owned
+    /// locations (e.g. from ctx.Locations) — this method never discovers folders on its own, so it is
+    /// intrinsically game-scoped and can never touch another game's folders.</summary>
+    public static IReadOnlyList<TakeoverResult> TakeOverGame(
+        string dataDir, string gameRoot, IReadOnlyList<string> ownedLocationAbsPaths)
+        => (ownedLocationAbsPaths ?? Array.Empty<string>())
+            .Select(folder => TakeOver(dataDir, gameRoot, folder))
+            .ToList();
+
     public static void Undo(string dataDir, string folderAbs)
     {
         // Find the archive dir by scanning vortex-takeover/* for a manifest whose markers point back into
