@@ -53,4 +53,66 @@ public class VanillaLaunchTests : IDisposable
         VanillaStashStore.Clear(data);
         Assert.Null(VanillaStashStore.Load(data));
     }
+
+    [Fact]
+    public async Task StepAside_records_exactly_the_active_set_and_steps_each_aside()
+    {
+        var data = DataDir();
+        var disabledRows = new List<string>();
+        var disabledFw = new List<string>();
+        var disabledProxies = new List<string>();
+
+        var ops = new VanillaLaunchOps
+        {
+            ActiveModRows = () => new[] { new StashedModRow { Name = "FasterShips10", Location = "mods" },
+                                          new StashedModRow { Name = "RareDrops", Location = "mods" } },
+            ActiveFrameworks = () => new[] { "ue4ss" },
+            ActiveDirectInjectProxies = () => new[] { "dwmapi.dll" },
+            DisableModRow = (name, loc) => { disabledRows.Add(name); return Task.CompletedTask; },
+            EnableModRow = (name, loc) => Task.CompletedTask,
+            DisableFramework = id => disabledFw.Add(id),
+            EnableFramework = id => { },
+            DisableDirectInjectProxy = p => disabledProxies.Add(p),
+            EnableDirectInjectProxy = p => { },
+        };
+
+        var result = await VanillaLaunch.StepAsideAsync(data, ops);
+
+        Assert.True(result.Success);
+        Assert.Equal(new[] { "FasterShips10", "RareDrops" }, disabledRows);
+        Assert.Equal(new[] { "ue4ss" }, disabledFw);
+        Assert.Equal(new[] { "dwmapi.dll" }, disabledProxies);
+
+        var stash = VanillaStashStore.Load(data)!;
+        Assert.Equal(2, stash.ModRows.Count);
+        Assert.Contains(stash.ModRows, r => r.Name == "FasterShips10" && r.Location == "mods");
+        Assert.Equal(new[] { "ue4ss" }, stash.Frameworks);
+        Assert.Equal(new[] { "dwmapi.dll" }, stash.DirectInjectProxies);
+    }
+
+    [Fact]
+    public async Task StepAside_rolls_back_and_writes_no_stash_when_a_step_fails()
+    {
+        var data = DataDir();
+        var enabledBack = new List<string>();
+        var ops = new VanillaLaunchOps
+        {
+            ActiveModRows = () => new[] { new StashedModRow { Name = "A", Location = "mods" },
+                                          new StashedModRow { Name = "B", Location = "mods" } },
+            ActiveFrameworks = () => Array.Empty<string>(),
+            ActiveDirectInjectProxies = () => Array.Empty<string>(),
+            DisableModRow = (name, loc) => name == "B"
+                ? throw new IOException("locked")
+                : Task.CompletedTask,
+            EnableModRow = (name, loc) => { enabledBack.Add(name); return Task.CompletedTask; },
+            DisableFramework = _ => { }, EnableFramework = _ => { },
+            DisableDirectInjectProxy = _ => { }, EnableDirectInjectProxy = _ => { },
+        };
+
+        var result = await VanillaLaunch.StepAsideAsync(data, ops);
+
+        Assert.False(result.Success);
+        Assert.Contains("A", enabledBack);
+        Assert.Null(VanillaStashStore.Load(data));
+    }
 }
