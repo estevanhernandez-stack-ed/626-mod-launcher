@@ -58,4 +58,13 @@ public class VortexTakeoverTests : IDisposable
         // HashSet uses OrdinalIgnoreCase, so Assert.Contains hits the set's own case-insensitive Contains.
         Assert.Contains(@"c:\game\mods", TakenOverStore.Load(data));
     }
+
+    [Fact]
+    public void Remove_of_a_non_present_entry_is_a_safe_noop()
+    {
+        var data = DataDir();
+        TakenOverStore.Add(data, @"C:\g\keep");
+        TakenOverStore.Remove(data, @"C:\g\never-added"); // must not throw, must not drop the real entry
+        Assert.Contains(@"C:\g\keep", TakenOverStore.Load(data));
+    }
 }
