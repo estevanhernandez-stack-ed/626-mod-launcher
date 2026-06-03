@@ -91,6 +91,34 @@ public static class DirectInject
             .Select(f => Path.GetFileName(f))
             .Any(n => ProcessLoadProxies.Contains(n, StringComparer.OrdinalIgnoreCase));
 
+    /// <summary>The recognized process-load proxy DLL NAMES present among the given top-level paths
+    /// (the list form of <see cref="AnyProcessLoadProxy"/>; same name set, <see cref="ProcessLoadProxies"/>).</summary>
+    public static IReadOnlyList<string> ProcessLoadProxiesIn(IEnumerable<string> topLevelPaths)
+        => topLevelPaths.Select(Path.GetFileName)
+            .Where(n => n is not null && ProcessLoadProxies.Contains(n!, StringComparer.OrdinalIgnoreCase))
+            .Select(n => n!).ToList();
+
+    /// <summary>Step a single top-level file aside to a holding folder (reversible move, no delete).
+    /// No-op when the file is absent; never clobbers an existing held copy.</summary>
+    public static void DisableSingleFile(string playFolder, string holdingRoot, string fileName)
+    {
+        var src = Path.Combine(playFolder, fileName);
+        if (!File.Exists(src)) return;
+        Directory.CreateDirectory(holdingRoot);
+        var dest = Path.Combine(holdingRoot, fileName);
+        if (File.Exists(dest)) return;          // already aside
+        File.Move(src, dest);
+    }
+
+    /// <summary>Restore a single file stepped aside by <see cref="DisableSingleFile"/> (no-clobber).</summary>
+    public static void EnableSingleFile(string playFolder, string holdingRoot, string fileName)
+    {
+        var src = Path.Combine(holdingRoot, fileName);
+        var dest = Path.Combine(playFolder, fileName);
+        if (!File.Exists(src) || File.Exists(dest)) return;
+        File.Move(src, dest);
+    }
+
     private const string MetaFile = "__626mod.json";
 
     // AtomicJson writes camelCase (Electron-shared convention); read tolerant of casing.
