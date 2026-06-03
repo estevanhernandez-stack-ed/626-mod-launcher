@@ -31,6 +31,15 @@ public sealed partial class MainWindow : Window
             var dialog = new UpdateModsDialog(plan) { XamlRoot = Content.XamlRoot };
             return await dialog.ShowAsync() == ContentDialogResult.Primary ? dialog.ChosenReplacements() : null;
         };
+        // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
+        // the banner visibility, re-collapse the area if the user already dismissed it this session.
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (_suppressVortexBanner
+                && (args.PropertyName == nameof(MainViewModel.OwnedBannerVisibility)
+                    || args.PropertyName == nameof(MainViewModel.ReDeployedBannerVisibility)))
+                VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        };
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
@@ -724,12 +733,51 @@ public sealed partial class MainWindow : Window
             await ViewModel.RemoveActiveGameAsync();
     }
 
+    // Session-level dismiss for the Vortex banner area (set from the Dismiss button).
+    private bool _suppressVortexBanner;
+
+    // "Take them over" / "Take over again" — take over every Vortex-owned + re-deployed location
+    // for the active game, then rescan (the VM flips the banners off when nothing's owned anymore).
+    private async void OnTakeOverGame(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not null) await ViewModel.TakeOverGameAsync();
+    }
+
+    // Dismiss collapses the whole banner area for the session — a re-scan may re-show it (acceptable).
+    private void OnDismissVortexBanner(object sender, RoutedEventArgs e)
+    {
+        VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        _suppressVortexBanner = true;
+    }
+
+    // If the row's folder is Vortex/MO2-owned (not yet taken over), offer to take it over first.
+    // Returns true if the folder is now ours (taken over, or already ours / re-deployed), false if the
+    // user declined — caller should abort the operation.
+    private async Task<bool> EnsureNotVortexOwnedAsync(ModRowViewModel row)
+    {
+        var ctx = ViewModel.ActiveContextPublic;
+        if (ctx is null) return true;
+        var modFolder = row.ModFolderAbs;
+        if (string.IsNullOrEmpty(modFolder)) return true;
+        // The location that OWNS the mod is the mod folder's PARENT (mods live one level under the location).
+        var locationAbs = System.IO.Path.GetDirectoryName(modFolder);
+        if (string.IsNullOrEmpty(locationAbs)) return true;
+        var res = ModManager.Core.ToolOwnership.Resolve(System.IO.Path.GetFullPath(locationAbs), ctx.TakenOver);
+        if (res.State != ModManager.Core.OwnershipState.Owned) return true; // NotOwned or ReDeployed -> ours, proceed
+
+        var dlg = new Vortex.VortexTakeoverDialog(row.DisplayName) { XamlRoot = Content.XamlRoot };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return false;
+        await ViewModel.TakeOverFolderAsync(locationAbs);
+        return true;
+    }
+
     // Gated uninstall: the destructive op is always behind an explicit confirm. Family rows
     // uninstall every variant in the family - the confirm names the count so the blast radius
     // is in front of the user before they click Uninstall.
     private async void OnUninstall(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        if (!await EnsureNotVortexOwnedAsync(row)) return;
         var (title, content) = row.HasVariantOptions
             ? ("Uninstall family?",
                $"Permanently delete \"{row.DisplayName}\" and all {row.VariantOptions.Count} variants? " +

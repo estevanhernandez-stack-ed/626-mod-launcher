@@ -100,6 +100,19 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool HasInstalledFrameworks => FrameworkRows.Count > 0;
 
+    /// <summary>Active-game locations that are Vortex/MO2-owned and NOT yet taken over — drives the
+    /// "Some folders are managed by Vortex" banner. Recomputed each ReloadModsAsync.</summary>
+    public ObservableCollection<string> OwnedLocations { get; } = new();
+
+    /// <summary>Active-game locations we took over but where a marker REAPPEARED (Vortex re-deployed).</summary>
+    public ObservableCollection<string> ReDeployedLocations { get; } = new();
+
+    public bool HasOwnedLocations => OwnedLocations.Count > 0;
+    public bool HasReDeployedLocations => ReDeployedLocations.Count > 0;
+
+    public Visibility OwnedBannerVisibility => HasOwnedLocations ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ReDeployedBannerVisibility => HasReDeployedLocations ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Live "how to use" for an installed framework, read from its on-disk settings. The view
     /// calls this on a framework-button click and renders the lines in a toast.</summary>
     public static FrameworkUsageInfo FrameworkUsageFor(FrameworkInstallManifest m)
@@ -305,11 +318,17 @@ public sealed partial class MainViewModel : ObservableObject
             Tools.Clear();
             MissingTools.Clear();
             FrameworkRows.Clear();
+            OwnedLocations.Clear();
+            ReDeployedLocations.Clear();
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(ToolsRowVisible));
             OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
             OnPropertyChanged(nameof(HasInstalledFrameworks));
+            OnPropertyChanged(nameof(HasOwnedLocations));
+            OnPropertyChanged(nameof(HasReDeployedLocations));
+            OnPropertyChanged(nameof(OwnedBannerVisibility));
+            OnPropertyChanged(nameof(ReDeployedBannerVisibility));
             return;
         }
         IsBusy = true;
@@ -481,6 +500,22 @@ public sealed partial class MainViewModel : ObservableObject
             // buttons next to Tools. Unreadable manifests are skipped by FrameworkRegistry.List.
             FrameworkRows.Clear();
             foreach (var fw in FrameworkRegistry.List(_ctx.DataDir)) FrameworkRows.Add(new FrameworkRowViewModel(fw));
+
+            // Vortex/MO2 ownership posture per active-game location — drives the "managed by Vortex"
+            // banner. Normalize with Path.GetFullPath so the taken-over membership check matches how
+            // the Scanner/Core side stores the set (else a taken-over folder silently reads as owned).
+            OwnedLocations.Clear();
+            ReDeployedLocations.Clear();
+            foreach (var loc in _ctx.Locations)
+            {
+                var res = ToolOwnership.Resolve(System.IO.Path.GetFullPath(loc.Abs), _ctx.TakenOver);
+                if (res.State == OwnershipState.Owned) OwnedLocations.Add(loc.Abs);
+                else if (res.State == OwnershipState.ReDeployed) ReDeployedLocations.Add(loc.Abs);
+            }
+            OnPropertyChanged(nameof(HasOwnedLocations));
+            OnPropertyChanged(nameof(HasReDeployedLocations));
+            OnPropertyChanged(nameof(OwnedBannerVisibility));
+            OnPropertyChanged(nameof(ReDeployedBannerVisibility));
 
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
@@ -704,6 +739,44 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Public accessor for the active game's data dir — used by Tools dialogs to find
     /// <c>tools.json</c>. Returns an empty string when no game is bound (caller short-circuits).</summary>
     public string GameDataDirPublic() => _ctx?.DataDir ?? "";
+
+    /// <summary>The active game context (null when no game). The App uses this for the on-block
+    /// takeover dialog (to resolve a row's folder ownership). Read-only passthrough.</summary>
+    public GameContext? ActiveContextPublic => _ctx;
+
+    /// <summary>Take over one Vortex-owned folder, then rescan so its rows flip to managed.</summary>
+    public async Task TakeOverFolderAsync(string folderAbs)
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            var r = VortexTakeover.TakeOver(_ctx.DataDir, _ctx.GameRoot, folderAbs);
+            StatusText = r.Success
+                ? $"Took over {System.IO.Path.GetFileName(folderAbs.TrimEnd('\\', '/'))} — you manage it here now."
+                : $"Couldn't take over the folder: {r.Error}";
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Take over every Vortex-owned (or re-deployed) location for the ACTIVE game.</summary>
+    public async Task TakeOverGameAsync()
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            var targets = OwnedLocations.Concat(ReDeployedLocations).Distinct().ToList();
+            var results = VortexTakeover.TakeOverGame(_ctx.DataDir, _ctx.GameRoot, targets);
+            var ok = results.Count(x => x.Success);
+            StatusText = $"Took over {ok} folder{(ok == 1 ? "" : "s")} for {_ctx.Game.GameName} — you manage them here now.";
+            await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
 
     // ---------- inline load-order mode ----------
 

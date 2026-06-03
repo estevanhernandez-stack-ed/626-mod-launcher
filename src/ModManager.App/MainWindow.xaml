@@ -272,8 +272,40 @@
         <tools:ToolsPanel x:Name="ToolsRow" Grid.Row="2"
                           Visibility="{x:Bind ViewModel.ToolsRowVisible, Mode=OneWay}" />
 
-        <!-- Mod list -->
-        <ListView Grid.Row="3" Padding="8,4"
+        <!-- Mod list + Vortex banner -->
+        <Grid Grid.Row="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Vortex-managed banners (owned + re-deployed). Stacked so both render cleanly if
+                 both ever apply at once. Dismiss collapses the whole area for the session. -->
+            <StackPanel x:Name="VortexBannerArea" Grid.Row="0">
+                <!-- Owned folders not yet taken over -->
+                <Border Visibility="{x:Bind ViewModel.OwnedBannerVisibility, Mode=OneWay}"
+                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
+                        BorderThickness="0,0,0,1" Padding="12,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Some folders here are managed by Vortex." VerticalAlignment="Center" />
+                        <Button Content="Take them over" Click="OnTakeOverGame" />
+                        <Button Content="Dismiss" Click="OnDismissVortexBanner" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Taken over, but a Vortex marker came back -->
+                <Border Visibility="{x:Bind ViewModel.ReDeployedBannerVisibility, Mode=OneWay}"
+                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeDanger}"
+                        BorderThickness="0,0,0,1" Padding="12,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Vortex re-deployed into a folder you took over." VerticalAlignment="Center" />
+                        <Button Content="Take over again" Click="OnTakeOverGame" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Mod list -->
+            <ListView Grid.Row="1" Padding="8,4"
                   ItemsSource="{x:Bind ViewModel.Mods, Mode=OneWay}" SelectionMode="None"
                   CanReorderItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
                   CanDragItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
@@ -481,7 +513,8 @@
                     </StackPanel>
                 </DataTemplate>
             </ListView.ItemTemplate>
-        </ListView>
+            </ListView>
+        </Grid>
 
         <!-- Empty state -->
         <TextBlock Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6"

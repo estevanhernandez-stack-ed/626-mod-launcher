@@ -29,4 +29,25 @@ public class CoordinationTests
     [Fact]
     public void Conductable_loader_beats_a_stale_declared_hint()
         => Assert.Equal(Posture.Conductor, Coordination.PostureFor(null, "vortex", loaderCanConduct: true));
+
+    [Fact]
+    public void Owned_marker_not_taken_over_is_Coexist()
+        => Assert.Equal(Posture.Coexist,
+            Coordination.PostureFor(OwnerTool.Vortex, declaredManaged: null, loaderCanConduct: false, reDeployed: false));
+
+    [Fact]
+    public void Taken_over_loader_folder_is_Conductor_not_Coexist()
+        // owner is null because the marker was archived; loader can drive its manifest
+        => Assert.Equal(Posture.Conductor,
+            Coordination.PostureFor(owner: null, declaredManaged: null, loaderCanConduct: true, reDeployed: false));
+
+    [Fact]
+    public void ReDeployed_still_lets_us_manage_Own_or_Conductor()
+    {
+        // We took it over; a marker came back. We KEEP managing (Own/Conductor); App shows a notice.
+        Assert.Equal(Posture.Conductor,
+            Coordination.PostureFor(OwnerTool.Vortex, declaredManaged: null, loaderCanConduct: true, reDeployed: true));
+        Assert.Equal(Posture.Own,
+            Coordination.PostureFor(OwnerTool.Vortex, declaredManaged: null, loaderCanConduct: false, reDeployed: true));
+    }
 }
