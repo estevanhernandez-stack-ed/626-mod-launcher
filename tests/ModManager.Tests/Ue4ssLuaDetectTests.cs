@@ -50,4 +50,58 @@ public class Ue4ssLuaDetectTests
     {
         Assert.False(Ue4ssLuaDetect.Detect(Array.Empty<string>()).IsLuaMod);
     }
+
+    [Fact]
+    public void Detects_a_lua_mod_nested_inside_a_version_wrapper_folder()
+    {
+        // The "Windrose Shanties Anywhere" archive from Nexus wraps the mod folder in a version
+        // folder: <version>/<mod>/Scripts/main.lua. The mod that should land under ue4ss\Mods is the
+        // INNER folder, not the version wrapper. (Real bug: this silently installed nothing.)
+        var entries = new[]
+        {
+            "Windrose Shanties Anywhere v1/",
+            "Windrose Shanties Anywhere v1/Windrose Shanties Anywhere/",
+            "Windrose Shanties Anywhere v1/Windrose Shanties Anywhere/enabled.txt",
+            "Windrose Shanties Anywhere v1/Windrose Shanties Anywhere/mod.txt",
+            "Windrose Shanties Anywhere v1/Windrose Shanties Anywhere/Scripts/main.lua",
+        };
+        var v = Ue4ssLuaDetect.Detect(entries);
+        Assert.True(v.IsLuaMod);
+        Assert.Equal("Windrose Shanties Anywhere", v.ModFolderName);
+    }
+
+    [Fact]
+    public void Reports_the_full_archive_relative_folder_path_so_the_installer_can_reroot()
+    {
+        // The installer needs the FULL prefix to strip (version wrapper + inner), not just the leaf,
+        // so files re-root to ue4ss\Mods\<leaf>\... instead of carrying the wrapper.
+        var entries = new[]
+        {
+            "Windrose Shanties Anywhere v1/Windrose Shanties Anywhere/Scripts/main.lua",
+        };
+        var v = Ue4ssLuaDetect.Detect(entries);
+        Assert.Equal("Windrose Shanties Anywhere", v.ModFolderName);
+        Assert.Equal("Windrose Shanties Anywhere v1/Windrose Shanties Anywhere", v.ModFolderPath);
+    }
+
+    [Fact]
+    public void Folder_path_equals_folder_name_for_a_top_level_mod()
+    {
+        var v = Ue4ssLuaDetect.Detect(new[] { "R5ModSettings/Scripts/main.lua" });
+        Assert.Equal("R5ModSettings", v.ModFolderName);
+        Assert.Equal("R5ModSettings", v.ModFolderPath);
+    }
+
+    [Fact]
+    public void A_pak_anywhere_still_vetoes_even_when_a_nested_scripts_folder_exists()
+    {
+        // The veto must win regardless of nesting depth — a content mod that also ships a Scripts
+        // folder is still a content mod, not a Lua mod.
+        var entries = new[]
+        {
+            "Pack v2/InnerMod/Scripts/main.lua",
+            "Pack v2/Content_P.pak",
+        };
+        Assert.False(Ue4ssLuaDetect.Detect(entries).IsLuaMod);
+    }
 }

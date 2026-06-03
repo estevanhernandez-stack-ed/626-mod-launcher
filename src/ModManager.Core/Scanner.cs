@@ -54,6 +54,13 @@ public static class Scanner
             Form = string.IsNullOrEmpty(loc.Form) ? defaultForm : loc.Form,
             Managed = loc.Managed,
         }).ToList();
+
+        // When the launcher owns a UE4SS install, its ue4ss\Mods folder is a real, launcher-managed
+        // surface even though it isn't one of the game's configured modLocations — append it so Lua mods
+        // there (installed + UE4SS's built-ins) get a row + toggle via the existing folders-form path.
+        var installedFrameworks = Frameworks.FrameworkRegistry.List(dataDir);
+        if (Ue4ssAutoLocation.ShouldAppend(installedFrameworks, locations.Select(l => l.Abs).ToList()))
+            locations.Add(Ue4ssAutoLocation.For(installedFrameworks)!);
         return new GameContext
         {
             Game = game,
