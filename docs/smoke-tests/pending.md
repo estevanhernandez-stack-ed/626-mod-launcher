@@ -234,3 +234,22 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 6. **Re-deploy case (if you have Vortex).** After taking a folder over, re-deploy in Vortex so a marker reappears. EXPECT: a "Vortex re-deployed into a folder you took over" banner with "Take over again"; the folder's mods STAY managed (not re-locked).
 
 **Why these matter:** the ownership resolver + marker-archive + registry round-trip are unit-tested, but the banner render, the read-only row state, the on-block dialog routing, the dismiss-for-session flag, and the re-deploy-without-re-lock behavior only exercise on a real WinUI instance with a real Vortex-managed install.
+
+---
+
+## PR (feat/vanilla-modded-launch) — honest vanilla vs modded launch (2026-06-03)
+
+> **STATUS — NEEDS LIVE SMOKE.** UI behavior + on-disk step-aside/restore; covered by unit tests at the Core layer (FrameworkDisable, VanillaLaunch, DirectInjectSingleFile) but the launch-button flow + in-game vanilla run can't be unit-verified.
+
+**Shipped:** The launch split-button now tells the truth per engine. "Play vanilla" used to be a static label that lied on file-presence games (pak/UE4SS mods load on any launch). Now it's a real two-mode launch: **Play vanilla** steps EVERY active loader aside (pak mod rows → holding, UE4SS proxy `dwmapi.dll` → `frameworks/ue4ss/disabled-proxy/`, direct-inject proxies → `_626/vanilla-proxy/`) and they STAY aside until **Play modded** restores EXACTLY the prior-active set (a deliberately-off mod stays off — the "8 of 12" guarantee). Stateful, no game-exit detection. One smart split-button whose label tracks on-disk mode; the opposite mode is in the dropdown. Reversible (move-to-holding, never delete; a stash-write failure rolls back the moves).
+
+**Smoke steps (Windrose — pak + UE4SS):**
+1. With mods enabled, the button reads "▶ Play (modded)" (or the effective target). Open the dropdown → "Play vanilla (no mods)" is the top item.
+2. Click "Play vanilla". EXPECT: status "Vanilla mode — mods stepped aside"; the mod rows show OFF; the button re-labels to "▶ Play vanilla". On disk: pak mods moved to the disabled holding root, `dwmapi.dll` moved to `<gameData>/frameworks/ue4ss/disabled-proxy/`, and `<gameData>/vanilla-stash.json` lists exactly what was active.
+3. Launch in-game and confirm it's actually vanilla — no UE4SS console, no pak mods loaded.
+4. Back in the launcher, dropdown → "Play modded (restore mods)". EXPECT: the EXACT prior-active set comes back (a mod you'd deliberately left off stays off); button reads "▶ Play (modded)"; `vanilla-stash.json` gone.
+5. Manual-toggle-clears-vanilla: step aside (Play vanilla), then manually toggle one mod row back ON. EXPECT: the stash clears and the button reverts to "▶ Play (modded)" (it stops claiming vanilla while a mod is live).
+6. FromSoft (Elden Ring) check if available: Play vanilla steps the Seamless/dinput8 proxy aside too (vanilla isn't a lie there either); Play modded restores it.
+7. **VARIANT FAMILY (regression — found in live smoke 2026-06-03, fixed):** with a multi-variant family like Faster Ships (FasterShips10 / _B / aaUltraFastShips collapsed onto one row with option chips), have ONE variant enabled. Play vanilla. EXPECT: the ENABLED VARIANT's `.pak` (e.g. `FasterShips10_P.pak`) is moved out of `~mods` — verify on disk, not just the row state. The original bug stepped aside the family's *representative* member (often the wrong/already-off variant) and left the active variant loading. `vanilla-stash.json` must list the real variant name (`FasterShips10`), not the representative. Play modded restores exactly that variant.
+
+**Why it matters:** the label was actively misleading on the exact games that prompted this (Windrose). The reversibility law is load-bearing — a failed step-aside or stash-write must never strand the user's mod set in holding with no record. The auditor found + we fixed the stash-write-rollback gap. **Variant families** were the subtle miss: the family row's representative `Mod` isn't the active variant (that's in the option chips), so `ActiveModRows` had to expand families to their enabled variant members by real name — otherwise the active variant's pak never stepped aside (Faster Ships "seemed off" but still loaded). The in-game run + on-disk variant check are the parts tests can't reach (the App VM isn't unit-testable here).

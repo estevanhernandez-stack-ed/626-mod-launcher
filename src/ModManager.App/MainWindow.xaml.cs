@@ -241,14 +241,46 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not MenuFlyout menu) return;
         menu.Items.Clear();
+
+        // Vanilla/modded is a second axis on top of the per-target list. Offer the OPPOSITE of the
+        // current mode at the top: in modded mode you can switch to a clean vanilla run; in vanilla
+        // mode you can restore your exact mod set. Switching steps loaders aside / restores them, then
+        // launches. The per-target items below still launch the current state on the chosen target.
+        if (ViewModel.CurrentLaunchMode == ModManager.Core.LaunchMode.Modded)
+        {
+            var vanilla = new MenuFlyoutItem { Text = "Play vanilla (no mods)" };
+            vanilla.Click += OnPlayVanilla;
+            menu.Items.Add(vanilla);
+        }
+        else
+        {
+            var modded = new MenuFlyoutItem { Text = "Play modded (restore mods)" };
+            modded.Click += OnPlayModded;
+            menu.Items.Add(modded);
+        }
+        if (ViewModel.LaunchTargets.Count > 0)
+            menu.Items.Add(new MenuFlyoutSeparator());
+
         foreach (var target in ViewModel.LaunchTargets)
         {
-            var item = new MenuFlyoutItem { Text = target.Label, Tag = target };
+            // The per-target list is the MECHANISM picker (Steam / Seamless / ME2) — vanilla vs modded
+            // is the top item — so label by how-to-launch, never the target's legacy mode-named label.
+            var item = new MenuFlyoutItem { Text = ViewModel.LaunchTargetMenuLabel(target), Tag = target };
             item.Click += OnLaunchTargetClick;
             menu.Items.Add(item);
         }
-        if (menu.Items.Count == 0)
+        if (ViewModel.LaunchTargets.Count == 0 && menu.Items.Count == 1)
             menu.Items.Add(new MenuFlyoutItem { Text = "No launch options for this game", IsEnabled = false });
+    }
+
+    private async void OnPlayVanilla(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.StepAsideAndLaunchAsync();
+    }
+
+    private async void OnPlayModded(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.RestoreAndLaunchAsync();
     }
 
     private async void OnLaunchTargetClick(object sender, RoutedEventArgs e)

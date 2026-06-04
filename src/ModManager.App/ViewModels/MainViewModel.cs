@@ -527,6 +527,7 @@ public sealed partial class MainViewModel : ObservableObject
             // refresh. Fires after every Toggle / game switch / Redetect that lands in ReloadModsAsync.
             OnPropertyChanged(nameof(EffectiveLaunchTarget));
             OnPropertyChanged(nameof(LaunchButtonLabel));
+            OnPropertyChanged(nameof(CurrentLaunchMode));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -606,6 +607,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
+        // A manual toggle leaves "clean vanilla" — clear the stash so CurrentMode reverts to Modded and
+        // the launch button stops claiming "Play vanilla" while a mod is live again.
+        VanillaStashStore.Clear(_ctx.DataDir);
         row.IsBusy = true;
         try
         {
@@ -712,6 +716,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     private Task SetAllAsync(bool on) => BulkAsync(() =>
     {
+        // A bulk enable/disable is a manual state change too — clear the vanilla stash so the mode
+        // reverts to Modded (mirrors the single ToggleAsync clear). BulkAsync already null-checked _ctx.
+        VanillaStashStore.Clear(_ctx!.DataDir);
         if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
         if (DirectInjectBacked)
         {
@@ -876,15 +883,44 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>The Launch button's label — names the target the primary click will fire so the user
-    /// doesn't have to open the dropdown to find out (Seamless vs vanilla, ME2 vs Steam, etc.).</summary>
+    /// <summary>The Launch button's label. Leads with the MODE (vanilla vs modded) so the word always
+    /// means what it says, then appends the mechanism in parens (Steam, or the alt-launcher's name like
+    /// Seamless Co-op / Mod Engine 2). The target's own free-text Label is NOT used directly — a game
+    /// definition can carry a legacy "Play vanilla (Steam)" target label that would otherwise make a
+    /// MODDED launch read "vanilla". Mode is the source of truth; the target only supplies the how.</summary>
     public string LaunchButtonLabel
     {
         get
         {
             var t = EffectiveLaunchTarget;
-            return string.IsNullOrEmpty(t?.Label) ? "▶ Launch" : $"▶ {t.Label}";
+            var how = LaunchMechanismLabel(t);   // "Steam" | "<launcher>.exe name" | ""
+            if (CurrentLaunchMode == LaunchMode.Vanilla)
+                return string.IsNullOrEmpty(how) ? "▶ Play vanilla" : $"▶ Play vanilla ({how})";
+            return string.IsNullOrEmpty(how) ? "▶ Play (modded)" : $"▶ Play modded ({how})";
         }
+    }
+
+    /// <summary>The launch MECHANISM for a target, mode-agnostic: "Steam" for a steam:// target, else
+    /// the alt-launcher's display name (Seamless Co-op / Mod Engine 2) when the target label names one,
+    /// else the exe's file name. Never returns the legacy "vanilla" wording — that's a MODE, set above.</summary>
+    private static string LaunchMechanismLabel(LaunchTarget? t)
+    {
+        if (t is null) return "";
+        if (string.Equals(t.Kind, "steam", StringComparison.OrdinalIgnoreCase)) return "Steam";
+        // exe target — prefer a recognizable launcher name from the label, else the exe file name.
+        var label = t.Label ?? "";
+        if (label.Contains("Seamless", StringComparison.OrdinalIgnoreCase)) return "Seamless Co-op";
+        if (label.Contains("Mod Engine", StringComparison.OrdinalIgnoreCase)) return "Mod Engine 2";
+        try { return System.IO.Path.GetFileName(t.Target); } catch { return ""; }
+    }
+
+    /// <summary>Dropdown wording for a per-target item: "Launch via Steam" / "Launch via Seamless Co-op".
+    /// The per-target list is the MECHANISM picker (which way to start) — vanilla/modded is the separate
+    /// top item — so these never echo a target's legacy mode-named label ("Play vanilla (Steam)").</summary>
+    public string LaunchTargetMenuLabel(LaunchTarget t)
+    {
+        var how = LaunchMechanismLabel(t);
+        return string.IsNullOrEmpty(how) ? (string.IsNullOrEmpty(t.Label) ? "Launch" : t.Label) : $"Launch via {how}";
     }
 
     /// <summary>The required launcher resolved to a runnable exe target, or null when not set, the
@@ -910,6 +946,39 @@ public sealed partial class MainViewModel : ObservableObject
     /// first because enabled direct-inject DLLs would load into it and crash the vanilla start.</summary>
     public bool NeedsDirectInjectStepAside(LaunchTarget target)
         => _ctx is not null && LaunchGuard.NeedsDirectInjectStepAside(target, _direct.AnyActiveProxyDll(_ctx.Game));
+
+    /// <summary>The launch mode read from on-disk state (a vanilla-stash means we stepped aside).</summary>
+    public LaunchMode CurrentLaunchMode => _ctx is null ? LaunchMode.Modded : VanillaLaunch.CurrentMode(_ctx.DataDir);
+
+    /// <summary>Build the real reversible-mechanism ops from the App services for the active game.</summary>
+    private VanillaLaunchOps BuildVanillaOps()
+    {
+        var ctx = _ctx!;
+        return new VanillaLaunchOps
+        {
+            // A variant FAMILY collapses several mods (FasterShips10 / _B / aaUltraFastShips) onto one
+            // row; the active variant lives in the option chips, NOT the row's representative Mod. Read
+            // the enabled variant members by their REAL name so we step aside the file that's actually
+            // loading — using the representative's name would miss the active variant's .pak entirely.
+            ActiveModRows = () => Mods.SelectMany(m => m.HasVariantOptions
+                    ? m.VariantOptions.Where(v => v.Enabled && v.CanToggle)
+                        .Select(v => new StashedModRow { Name = v.ModName, Location = m.Mod.Location })
+                    : (m.Enabled && !m.Mod.ReadOnly)
+                        ? new[] { new StashedModRow { Name = m.Mod.Name, Location = m.Mod.Location } }
+                        : Enumerable.Empty<StashedModRow>())
+                .ToList(),
+            ActiveFrameworks = () => FrameworkRegistry.List(ctx.DataDir)
+                .Where(f => !FrameworkRegistry.IsDisabled(ctx.DataDir, f.FrameworkId))
+                .Select(f => f.FrameworkId).ToList(),
+            ActiveDirectInjectProxies = () => _direct.ActiveProxyDlls(ctx.Game),
+            DisableModRow = (name, _) => Scanner.DisableModAsync(name, ctx),
+            EnableModRow = (name, _) => Scanner.EnableModAsync(name, ctx),
+            DisableFramework = id => FrameworkRegistry.Disable(ctx.DataDir, id),
+            EnableFramework = id => FrameworkRegistry.Enable(ctx.DataDir, id),
+            DisableDirectInjectProxy = p => _direct.DisableProxy(ctx.Game, p),
+            EnableDirectInjectProxy = p => _direct.EnableProxy(ctx.Game, p),
+        };
+    }
 
     /// <summary>Surface the needs-launcher hint when the required launcher is set but not found.</summary>
     public void NotifyLauncherMissing()
@@ -959,6 +1028,42 @@ public sealed partial class MainViewModel : ObservableObject
         AutoBackupBeforeLaunch();
         try { _svc.Launch(target, _ctx.Game.GameRoot); }
         catch (Exception e) { StatusText = e.Message; }
+    }
+
+    /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.</summary>
+    public async Task StepAsideAndLaunchAsync()
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            var r = await VanillaLaunch.StepAsideAsync(_ctx.DataDir, BuildVanillaOps());
+            if (!r.Success) { StatusText = $"Couldn't switch to vanilla: {r.Error}"; return; }
+            await ReloadModsAsync();
+            StatusText = "Vanilla mode — mods stepped aside. Launching…";
+            var target = EffectiveLaunchTarget;
+            if (target is not null) await LaunchTargetExplicit(target);
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Play modded: restore exactly the stashed set, refresh rows, then launch with mods.</summary>
+    public async Task RestoreAndLaunchAsync()
+    {
+        if (_ctx is null) return;
+        IsBusy = true;
+        try
+        {
+            var r = await VanillaLaunch.RestoreAsync(_ctx.DataDir, BuildVanillaOps());
+            if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}"; return; }
+            await ReloadModsAsync();
+            StatusText = "Modded mode — mods restored. Launching…";
+            var target = EffectiveLaunchTarget;
+            if (target is not null) await LaunchTargetExplicit(target);
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
     }
 
     // When the game opts in, snapshot the save (auto) and prune before launching. Best-effort —
