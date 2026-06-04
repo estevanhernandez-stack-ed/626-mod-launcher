@@ -928,8 +928,17 @@ public sealed partial class MainViewModel : ObservableObject
         var ctx = _ctx!;
         return new VanillaLaunchOps
         {
-            ActiveModRows = () => Mods.Where(m => m.Enabled && !m.Mod.ReadOnly)
-                .Select(m => new StashedModRow { Name = m.Mod.Name, Location = m.Mod.Location }).ToList(),
+            // A variant FAMILY collapses several mods (FasterShips10 / _B / aaUltraFastShips) onto one
+            // row; the active variant lives in the option chips, NOT the row's representative Mod. Read
+            // the enabled variant members by their REAL name so we step aside the file that's actually
+            // loading — using the representative's name would miss the active variant's .pak entirely.
+            ActiveModRows = () => Mods.SelectMany(m => m.HasVariantOptions
+                    ? m.VariantOptions.Where(v => v.Enabled && v.CanToggle)
+                        .Select(v => new StashedModRow { Name = v.ModName, Location = m.Mod.Location })
+                    : (m.Enabled && !m.Mod.ReadOnly)
+                        ? new[] { new StashedModRow { Name = m.Mod.Name, Location = m.Mod.Location } }
+                        : Enumerable.Empty<StashedModRow>())
+                .ToList(),
             ActiveFrameworks = () => FrameworkRegistry.List(ctx.DataDir)
                 .Where(f => !FrameworkRegistry.IsDisabled(ctx.DataDir, f.FrameworkId))
                 .Select(f => f.FrameworkId).ToList(),
