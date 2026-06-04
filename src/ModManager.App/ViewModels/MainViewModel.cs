@@ -883,16 +883,44 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>The Launch button's label — names the target the primary click will fire so the user
-    /// doesn't have to open the dropdown to find out (Seamless vs vanilla, ME2 vs Steam, etc.).</summary>
+    /// <summary>The Launch button's label. Leads with the MODE (vanilla vs modded) so the word always
+    /// means what it says, then appends the mechanism in parens (Steam, or the alt-launcher's name like
+    /// Seamless Co-op / Mod Engine 2). The target's own free-text Label is NOT used directly — a game
+    /// definition can carry a legacy "Play vanilla (Steam)" target label that would otherwise make a
+    /// MODDED launch read "vanilla". Mode is the source of truth; the target only supplies the how.</summary>
     public string LaunchButtonLabel
     {
         get
         {
-            if (CurrentLaunchMode == LaunchMode.Vanilla) return "▶ Play vanilla";
             var t = EffectiveLaunchTarget;
-            return string.IsNullOrEmpty(t?.Label) ? "▶ Play (modded)" : $"▶ {t.Label}";
+            var how = LaunchMechanismLabel(t);   // "Steam" | "<launcher>.exe name" | ""
+            if (CurrentLaunchMode == LaunchMode.Vanilla)
+                return string.IsNullOrEmpty(how) ? "▶ Play vanilla" : $"▶ Play vanilla ({how})";
+            return string.IsNullOrEmpty(how) ? "▶ Play (modded)" : $"▶ Play modded ({how})";
         }
+    }
+
+    /// <summary>The launch MECHANISM for a target, mode-agnostic: "Steam" for a steam:// target, else
+    /// the alt-launcher's display name (Seamless Co-op / Mod Engine 2) when the target label names one,
+    /// else the exe's file name. Never returns the legacy "vanilla" wording — that's a MODE, set above.</summary>
+    private static string LaunchMechanismLabel(LaunchTarget? t)
+    {
+        if (t is null) return "";
+        if (string.Equals(t.Kind, "steam", StringComparison.OrdinalIgnoreCase)) return "Steam";
+        // exe target — prefer a recognizable launcher name from the label, else the exe file name.
+        var label = t.Label ?? "";
+        if (label.Contains("Seamless", StringComparison.OrdinalIgnoreCase)) return "Seamless Co-op";
+        if (label.Contains("Mod Engine", StringComparison.OrdinalIgnoreCase)) return "Mod Engine 2";
+        try { return System.IO.Path.GetFileName(t.Target); } catch { return ""; }
+    }
+
+    /// <summary>Dropdown wording for a per-target item: "Launch via Steam" / "Launch via Seamless Co-op".
+    /// The per-target list is the MECHANISM picker (which way to start) — vanilla/modded is the separate
+    /// top item — so these never echo a target's legacy mode-named label ("Play vanilla (Steam)").</summary>
+    public string LaunchTargetMenuLabel(LaunchTarget t)
+    {
+        var how = LaunchMechanismLabel(t);
+        return string.IsNullOrEmpty(how) ? (string.IsNullOrEmpty(t.Label) ? "Launch" : t.Label) : $"Launch via {how}";
     }
 
     /// <summary>The required launcher resolved to a runnable exe target, or null when not set, the

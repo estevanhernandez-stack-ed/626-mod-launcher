@@ -263,7 +263,9 @@ public sealed partial class MainWindow : Window
 
         foreach (var target in ViewModel.LaunchTargets)
         {
-            var item = new MenuFlyoutItem { Text = target.Label, Tag = target };
+            // The per-target list is the MECHANISM picker (Steam / Seamless / ME2) — vanilla vs modded
+            // is the top item — so label by how-to-launch, never the target's legacy mode-named label.
+            var item = new MenuFlyoutItem { Text = ViewModel.LaunchTargetMenuLabel(target), Tag = target };
             item.Click += OnLaunchTargetClick;
             menu.Items.Add(item);
         }
