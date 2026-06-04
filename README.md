@@ -15,14 +15,13 @@ Double-click the Setup.exe. Windows will warn you the first time (SmartScreen �
 
 Want to look first? The launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
 
-## What's new in v0.4.0
+## What's new in v0.5.0
 
-- **Safe Clear + Restore.** Archive your current setup to a timestamped restore point, reset the launcher to a clean slate, and roll back to any restore point in one click. Snapshot-first and reversible; if a reset gets interrupted, the next launch offers to recover. Your saves are never touched. Settings → Reset launcher.
-- **One-click add from Steam.** The Add a game dialog lists your installed Steam games — check the ones you want, click Add, and the launcher resolves the engine, folder, save location, and app id for each. No per-game form to fill in.
-- **Agent access (read tools).** A local MCP server exposes your games + mod lists read-only, so Claude Code / Claude Desktop / any MCP-aware tool can see what's installed. Writes come next; reads ship first.
-- **Visible mod loader.** The DLL mod loader (Elden Mod Loader) stays a distinguished, independently toggleable row instead of vanishing when it's hosting mods — flip it on or off without dragging your other mods along.
+- **Break free from Vortex.** Moving off Vortex used to leave you stuck — its ownership markers made the launcher treat those folders as read-only, so mods it installed itself could end up unmanageable. Now you can take a folder over: a banner offers it, and the launcher archives Vortex's marker out of the way (moved, never deleted — fully reversible) and manages the folder normally from then on. If Vortex later re-deploys into a folder you took over, the launcher says so instead of silently fighting it. Game-scoped, consent-gated.
+- **Play vanilla actually means vanilla.** "Play vanilla" used to be a label that lied — on pak / UE4SS games, mods load by file presence, so a plain launch ran *with* them. Now it's a real two-mode launch: **Play vanilla** steps every active loader aside (pak mods, the UE4SS loader, direct-inject DLLs) so the game runs genuinely clean, and **Play modded** puts back exactly what you had — eight of twelve mods on stays eight, not all twelve. Everything moves to a holding folder and comes back on demand; a failed step-aside never strands your mods.
+- **Install UE4SS Lua mods from the launcher.** UE4SS shows up as a framework you can install via the same drop-zip flow, and Lua mods drop straight into its `Mods` folder — version-wrapper archives and all — with metadata identified on install.
 
-Full notes: **[v0.4.0 release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**.
+Full notes: **[v0.5.0 release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**.
 
 ## What it does
 
@@ -41,7 +40,8 @@ The slightly longer version:
 - **Save mods.** Some mods install into the save tree (Windrose worlds, etc.), not the game folder. Drop a world zip and it installs to the right place — safely guarded against writing to game-managed save folders.
 - **Themes.** Seven built-ins (Obsidian, Aurora, Ember, Mint, Matrix, Blueprint, the on-brand 626 Labs). Pick an image — your Discord avatar, a screenshot, anything — and the launcher derives a theme from its dominant colors. Local k-means quantization; no AI in the loop. The same image can become your app icon.
 - **Lua keybind editing.** UE4SS Lua mods that bind keys via `RegisterKeyBind` — the launcher reads them, surfaces conflicts, lets you remap. Snapshots first, atomic write.
-- **Coordination with Vortex / MO2.** If another tool owns a folder, the launcher shows those mods read-only with a clear "managed by Vortex" badge. It never touches files another tool claims.
+- **Coordination with — and migration off — Vortex / MO2.** If another tool owns a folder, the launcher shows those mods read-only with a clear "managed by Vortex" badge, and never touches files another tool claims. Moving off that tool? Take the folder over in one click — the launcher archives the old marker out of the way (reversibly) and manages the folder normally, so a migration doesn't leave you stuck.
+- **Honest vanilla vs modded launch.** The launch button knows the difference. **Play vanilla** steps every active loader aside for a genuinely clean run; **Play modded** restores your exact set. The label tells you which mode you're in and how it launches — no more "Play vanilla" that quietly runs with your mods loaded.
 
 ## What it doesn't do
 
@@ -56,7 +56,7 @@ The slightly longer version:
 git clone https://github.com/estevanhernandez-stack-ed/626-mod-launcher
 cd 626-mod-launcher
 
-# Run the Core test suite (940+ tests, full architectural contract)
+# Run the Core test suite (1040+ tests, full architectural contract)
 dotnet test tests/ModManager.Tests/ModManager.Tests.csproj
 
 # Build + run the app
@@ -102,7 +102,7 @@ Tag-triggered GitHub Releases ship the Setup.exe + auto-update payload. See [doc
 
 I was using Vortex (Nexus's official installer) for Windrose mods and it kept either silently failing or doing the wrong thing — re-downloading files I already had, missing mods that came from CurseForge, not understanding UE4SS Lua mods, asking me to "deploy" three times after every change. Mod Organizer is great if you live in the Skyrim ecosystem but it didn't fit non-Bethesda games.
 
-So I built this. The thesis: a mod manager should be honest about what it touches, reversible by default, and decent to the modders whose work makes any of this fun. No mystery overlays, no proprietary databases, no "deploy" buttons.
+So I built this. The thesis: a mod manager should be honest about what it touches, reversible by default, and decent to the modders whose work makes any of this fun. No mystery overlays, no proprietary databases, no "deploy" buttons. And as of v0.5.0, if you're coming from Vortex, the launcher will take your managed folders over for you — migrating off shouldn't mean starting from scratch.
 
 Free, open, licensed per [LICENSE](LICENSE). If you want to contribute, [CONTRIBUTING.md](CONTRIBUTING.md) is a few paragraphs and the test suite is your contract.
 
