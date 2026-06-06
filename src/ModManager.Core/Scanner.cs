@@ -161,6 +161,25 @@ public static class Scanner
     private static IReadOnlyList<string> ListPakFiles(string dir, GameContext c)
         => SafeReadFiles(dir).Where(n => c.FileRe.IsMatch(n)).ToList();
 
+    // Pak files in a dir as (name, sizeBytes) — used by the paks-root branch to classify base vs mod.
+    // Separate from ListPakFiles (name-only, relied on by other callers) so neither changes the other.
+    private static IReadOnlyList<(string Name, long Size)> ListPakFilesWithSize(string dir, GameContext c)
+    {
+        var outList = new List<(string, long)>();
+        try
+        {
+            foreach (var full in Directory.GetFiles(dir))
+            {
+                var name = Path.GetFileName(full);
+                if (name is null || !c.FileRe.IsMatch(name)) continue;
+                long size; try { size = new FileInfo(full).Length; } catch { size = 0; }
+                outList.Add((name, size));
+            }
+        }
+        catch { /* unreadable dir -> empty, same as SafeReadFiles */ }
+        return outList;
+    }
+
     private static IReadOnlyList<string> ListSubfolders(string dir)
         => SafeReadDirs(dir).Where(n => !n.StartsWith('.') && !n.StartsWith('_')).ToList();
 
@@ -219,7 +238,16 @@ public static class Scanner
             }
             else
             {
-                foreach (var f in ListPakFiles(loc.Abs, c))
+                // paks-root (loader-less UE games like Witchfire): mods live in Content/Paks alongside
+                // the base game, so filter base-game paks out by classifier. Other pak forms ("files")
+                // list every pak (no base game is mixed into a dedicated mod folder).
+                var pakFiles = loc.Form == "paks-root"
+                    ? ListPakFilesWithSize(loc.Abs, c)
+                        .Where(p => !PakClassifier.IsBaseGamePak(p.Name, p.Size))
+                        .Select(p => p.Name)
+                    : ListPakFiles(loc.Abs, c);
+
+                foreach (var f in pakFiles)
                 {
                     var k = ModKey(f, c);
                     if (!outMap.TryGetValue(k, out var mod))
