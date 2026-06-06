@@ -172,7 +172,11 @@ public static class Scanner
             {
                 var name = Path.GetFileName(full);
                 if (name is null || !c.FileRe.IsMatch(name)) continue;
-                long size; try { size = new FileInfo(full).Length; } catch { size = 0; }
+                long size;
+                // A stat failure biases to 0 — i.e. "treat as a mod" (show, don't hide). Safe on a scan:
+                // nothing is moved here, and the disable guard re-checks before any file op.
+                try { size = new FileInfo(full).Length; }
+                catch { size = 0; }
                 outList.Add((name, size));
             }
         }
