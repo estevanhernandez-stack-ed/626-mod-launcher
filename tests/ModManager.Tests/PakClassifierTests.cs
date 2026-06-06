@@ -31,4 +31,8 @@ public class PakClassifierTests
     [Fact]
     public void Case_insensitive_on_the_name_pattern()
         => Assert.True(PakClassifier.IsBaseGamePak("PakChunk5-WindowsNoEditor.PAK", 1 * 1024 * 1024));
+
+    [Fact]
+    public void Empty_name_is_not_base_even_at_huge_size()
+        => Assert.False(PakClassifier.IsBaseGamePak("", 5L * 1024 * 1024 * 1024));
 }

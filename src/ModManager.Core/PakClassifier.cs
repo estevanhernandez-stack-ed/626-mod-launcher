@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.RegularExpressions;
 
 namespace ModManager.Core;
@@ -23,7 +24,7 @@ public static class PakClassifier
     public static bool IsBaseGamePak(string fileName, long sizeBytes)
     {
         if (string.IsNullOrEmpty(fileName)) return false;
-        var name = System.IO.Path.GetFileName(fileName);
+        var name = Path.GetFileName(fileName);
         return ShippingPakName.IsMatch(name) || sizeBytes >= ModSizeCeilingBytes;
     }
 }
