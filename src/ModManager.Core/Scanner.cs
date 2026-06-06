@@ -448,10 +448,18 @@ public static class Scanner
         if (loc.Form != "paks-root") return;
         foreach (var f in m.Files)
         {
-            long size; try { size = new FileInfo(Path.Combine(loc.Abs, f)).Length; } catch { size = 0; }
+            // Size from loc.Abs OR any mirror (max) — UninstallMod deletes from all of them, so a base
+            // pak resident only in a mirror must still be sized (and refused). The name check below
+            // independently catches conventionally-named base paks regardless of where they live.
+            long size = 0;
+            foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
+            {
+                try { var len = new FileInfo(Path.Combine(root, f)).Length; if (len > size) size = len; }
+                catch { /* missing in this root — try the next */ }
+            }
             if (PakClassifier.IsBaseGamePak(Path.GetFileName(f), size))
                 throw new InvalidOperationException(
-                    $"\"{f}\" is a base-game file, not a mod — refusing to move it. Nothing was changed.");
+                    $"\"{f}\" is a base-game file, not a mod — refusing to touch it. Nothing was changed.");
         }
     }
 

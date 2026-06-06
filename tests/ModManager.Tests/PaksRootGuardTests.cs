@@ -69,4 +69,35 @@ public class PaksRootGuardTests : IDisposable
         };
         Scanner.GuardNoBasePakMove(m, filesLoc); // must not throw — guard only applies to paks-root
     }
+
+    [Fact]
+    public void Guard_refuses_a_base_named_pak_resident_only_in_a_mirror()
+    {
+        var gameRoot = Path.Combine(_tmp, "GameRoot2");
+        var paks = Path.Combine(gameRoot, "Witchfire", "Content", "Paks");
+        var mirror = Path.Combine(gameRoot, "Mirror", "Paks");
+        Directory.CreateDirectory(paks);
+        Directory.CreateDirectory(mirror);
+        // Base pak lives ONLY in the mirror, not in loc.Abs.
+        File.WriteAllText(Path.Combine(mirror, "pakchunk0-WindowsNoEditor.pak"), "base");
+        var game = new GameEntry
+        {
+            Id = "wf2", GameName = "WF2", Engine = "ue-pak",
+            GameRoot = gameRoot, GroupingRule = "strip_underscore_p_suffix",
+            FileExtensions = new[] { "pak", "ucas", "utoc" },
+            DataDir = Path.Combine(_tmp, "data2"),
+            ModLocations = new[] { new ModLocation("mods", "Paks", "Witchfire/Content/Paks")
+                { Form = "paks-root", Mirrors = new[] { "Mirror/Paks" } } },
+        };
+        Directory.CreateDirectory(game.DataDir!);
+        var ctx = Scanner.GameContext(game);
+        var loc = ctx.Locations.First(l => l.Name == "mods");
+        var hostile = new Mod
+        {
+            Name = "pakchunk0-WindowsNoEditor", Location = "mods", Enabled = true, IsFolder = false,
+            Files = new List<string> { "pakchunk0-WindowsNoEditor.pak" },
+        };
+        var ex = Assert.Throws<InvalidOperationException>(() => Scanner.GuardNoBasePakMove(hostile, loc));
+        Assert.Contains("base", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
