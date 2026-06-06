@@ -418,6 +418,10 @@ public static class Scanner
                 throw new InvalidOperationException($"\"{name}\" is managed by another tool — uninstall it there.");
 
             var loc = LocByName(m.Location, c);
+            // Same reversibility backstop as the disable move path: never delete a base-game pak in a
+            // paks-root location, even if classification was wrong or a stale Mod reaches here. No-op for
+            // every other form (the scan also filters base paks out, so this can't be hit by name).
+            GuardNoBasePakMove(m, loc);
             foreach (var f in m.Files)
             {
                 DeletePath(Path.Combine(loc.Abs, f));
@@ -432,6 +436,23 @@ public static class Scanner
     {
         if (Directory.Exists(p)) Directory.Delete(p, recursive: true);
         else if (File.Exists(p)) File.Delete(p);
+    }
+
+    // Reversibility backstop: refuse to MOVE a pak that classifies as base game — even a wrong
+    // classification or a stale/hostile Mod can never strand the game's own files. Only enforced for
+    // paks-root locations (where base + mods share a folder); other forms never mix the two, so the
+    // guard is a no-op there. internal for direct testing (the public disable paths can't reach a base
+    // pak by name — the scan filters it out — so this is defense-in-depth, verified at the unit level).
+    internal static void GuardNoBasePakMove(Mod m, ModLocationCtx loc)
+    {
+        if (loc.Form != "paks-root") return;
+        foreach (var f in m.Files)
+        {
+            long size; try { size = new FileInfo(Path.Combine(loc.Abs, f)).Length; } catch { size = 0; }
+            if (PakClassifier.IsBaseGamePak(Path.GetFileName(f), size))
+                throw new InvalidOperationException(
+                    $"\"{f}\" is a base-game file, not a mod — refusing to move it. Nothing was changed.");
+        }
     }
 
     private static void DisableEntry(Mod m, GameContext c)
@@ -453,6 +474,7 @@ public static class Scanner
             return;
         }
         var loc = LocByName(m.Location, c);
+        GuardNoBasePakMove(m, loc);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
