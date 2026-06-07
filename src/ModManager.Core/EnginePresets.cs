@@ -120,11 +120,11 @@ public static partial class EnginePresets
             var paks = Path.Combine(projDir, "Content", "Paks");
             if (!Directory.Exists(paks)) continue;
             var project = Path.GetFileName(projDir);
-            var modsConvention = Directory.Exists(Path.Combine(paks, "~mods"))
-                                 || Directory.Exists(Path.Combine(paks, "LogicMods"));
-            return modsConvention
-                ? new ModLocation("mods", "mods", $"{project}/Content/Paks/~mods")
-                : new ModLocation("mods", "Paks", $"{project}/Content/Paks") { Form = "paks-root" };
+            var loaderPresent = Directory.Exists(Path.Combine(paks, "~mods"))
+                                || Directory.Exists(Path.Combine(paks, "LogicMods"));
+            // Delegate the location-shape decision to the shared primitive so this seeder and the
+            // runtime resolver (ModLocator) agree by construction — one definition of paks-root vs ~mods.
+            return ModLocations.UePakModLocation(project, loaderPresent);
         }
         return null; // no <Project>/Content/Paks on disk
     }

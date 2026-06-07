@@ -66,12 +66,12 @@ public static class ModLocations
         return result;
     }
 
-    /// <summary>The fallback mod location for a UE game with a single project and NO existing loader
-    /// folder, given whether Content/Paks exists on disk. Loader-less (Paks exists) -> paks-root on
-    /// Content/Paks; otherwise the ~mods install target. Pure — the caller supplies the disk fact.</summary>
-    public static ModLocation UePakFallbackLocation(string project, bool contentPaksExists)
-        => contentPaksExists
-            ? new ModLocation("mods", "Paks", System.IO.Path.Combine(project, "Content", "Paks")) { Form = "paks-root" }
-            : new ModLocation("mods", System.IO.Path.Combine(project, "Content", "Paks", "~mods"),
-                                       System.IO.Path.Combine(project, "Content", "Paks", "~mods"));
+    /// <summary>The mod location for a single-project UE game: paks-root on Content/Paks for a
+    /// loader-less game (mods sit directly in Paks), or the ~mods install target when a loader
+    /// (UE4SS) mounts a ~mods subfolder. One source of truth for both the add-time seeder
+    /// (EnginePresets) and the runtime resolver (ModLocator).</summary>
+    public static ModLocation UePakModLocation(string project, bool loaderPresent)
+        => loaderPresent
+            ? new ModLocation("mods", "mods", System.IO.Path.Combine(project, "Content", "Paks", "~mods"))
+            : new ModLocation("mods", "Paks", System.IO.Path.Combine(project, "Content", "Paks")) { Form = "paks-root" };
 }

@@ -34,13 +34,17 @@ public static class ModLocator
         }
         if (existing.Count > 0) return existing;
 
-        // No loader folder yet, but one clear UE project: decide the layout from the disk fact.
-        // Loader-less (Content/Paks exists, no ~mods/LogicMods subfolder matched above) -> paks-root
-        // on Content/Paks (base-game-filtering form). Otherwise the ~mods install target. The pure
-        // decision lives in Core (UePakFallbackLocation) so it stays unit-tested; we supply the fact.
+        // No loader folder matched above, but one clear UE project: decide the layout from the disk
+        // fact. The pure decision lives in Core (UePakModLocation) so it stays unit-tested; we supply
+        // the fact. Loader-less (Content/Paks exists) -> paks-root on Content/Paks (base-game-filtering
+        // form). No Paks dir yet -> seed the ~mods install target.
         if (engine == "ue-pak" && projects is { Count: 1 })
-            return new[] { ModLocations.UePakFallbackLocation(
-                projects[0], Directory.Exists(Path.Combine(gameRoot, projects[0], "Content", "Paks"))) };
+        {
+            var paksExists = Directory.Exists(Path.Combine(gameRoot, projects[0], "Content", "Paks"));
+            return new[] { paksExists
+                ? ModLocations.UePakModLocation(projects[0], loaderPresent: false)   // loader-less: paks-root
+                : ModLocations.UePakModLocation(projects[0], loaderPresent: true) }; // no Paks yet: ~mods install target
+        }
 
         return Array.Empty<ModLocation>();
     }
