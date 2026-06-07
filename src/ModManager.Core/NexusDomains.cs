@@ -15,6 +15,7 @@ public static class NexusDomains
     private static readonly IReadOnlyDictionary<string, string> Map = new Dictionary<string, string>
     {
         ["3041230"] = "windrose",            // Windrose (ue-pak / UE4SS)
+        ["3156770"] = "witchfire",           // Witchfire (ue-pak / loader-less content paks)
         ["1245620"] = "eldenring",           // Elden Ring
         ["489830"] = "skyrimspecialedition", // Skyrim Special Edition
         ["377160"] = "fallout4",             // Fallout 4

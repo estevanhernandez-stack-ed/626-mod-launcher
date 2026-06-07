@@ -17,6 +17,14 @@ public class NexusDomainResolutionTests
     }
 
     [Fact]
+    public void NexusDomains_maps_witchfire_appid_to_its_slug()
+    {
+        // appId 3156770 confirmed on disk; nexusmods.com/witchfire. Without this, a Steam-added
+        // Witchfire has no domain and every metadata-identify path no-ops (the reported bug).
+        Assert.Equal("witchfire", NexusDomains.ByAppId("3156770"));
+    }
+
+    [Fact]
     public void NexusDomains_returns_null_for_unknown_appid()
     {
         Assert.Null(NexusDomains.ByAppId("000000"));
