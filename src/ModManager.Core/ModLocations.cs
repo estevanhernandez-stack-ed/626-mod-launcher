@@ -65,4 +65,13 @@ public static class ModLocations
 
         return result;
     }
+
+    /// <summary>The mod location for a single-project UE game: paks-root on Content/Paks for a
+    /// loader-less game (mods sit directly in Paks), or the ~mods install target when a loader
+    /// (UE4SS) mounts a ~mods subfolder. One source of truth for both the add-time seeder
+    /// (EnginePresets) and the runtime resolver (ModLocator).</summary>
+    public static ModLocation UePakModLocation(string project, bool loaderPresent)
+        => loaderPresent
+            ? new ModLocation("mods", "mods", System.IO.Path.Combine(project, "Content", "Paks", "~mods"))
+            : new ModLocation("mods", "Paks", System.IO.Path.Combine(project, "Content", "Paks")) { Form = "paks-root" };
 }

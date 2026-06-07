@@ -430,6 +430,15 @@ public sealed partial class MainViewModel : ObservableObject
                 else
                 {
                     primaryMissing = MissingFrameworks.FirstOrDefault();
+                    // UE4SS is needed only by Lua/script mods + Blueprint LogicMods paks — not plain
+                    // content paks (Witchfire, and ~mods/paks-root content mods generally). Drop the
+                    // chip for a row that doesn't need it so we stop falsely flagging content paks.
+                    if (primaryMissing?.Name == "UE4SS")
+                    {
+                        var locPath = Scanner.LocByName(rep.Location, _ctx!).Abs;
+                        if (!FrameworkApplicability.ModNeedsUe4ss(rep, locPath))
+                            primaryMissing = null;
+                    }
                 }
                 // A direct-inject mod that brings its own proxy (Seamless ships ersc.dll, ReShade
                 // ships its own) doesn't truly need Elden Mod Loader — soften the hint from red

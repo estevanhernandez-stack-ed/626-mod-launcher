@@ -34,12 +34,16 @@ public static class ModLocator
         }
         if (existing.Count > 0) return existing;
 
-        // No mod folder yet: for Unreal we still know the right place if there's one clear project,
-        // so a non-technical user's first install lands under <Project>/Content/Paks/~mods, not root.
+        // No loader folder matched above, but one clear UE project: decide the layout from the disk
+        // fact. The pure decision lives in Core (UePakModLocation) so it stays unit-tested; we supply
+        // the fact. Loader-less (Content/Paks exists) -> paks-root on Content/Paks (base-game-filtering
+        // form). No Paks dir yet -> seed the ~mods install target.
         if (engine == "ue-pak" && projects is { Count: 1 })
         {
-            var canonical = Path.Combine(projects[0], "Content", "Paks", "~mods");
-            return new[] { new ModLocation("mods", canonical, canonical) };
+            var paksExists = Directory.Exists(Path.Combine(gameRoot, projects[0], "Content", "Paks"));
+            return new[] { paksExists
+                ? ModLocations.UePakModLocation(projects[0], loaderPresent: false)   // loader-less: paks-root
+                : ModLocations.UePakModLocation(projects[0], loaderPresent: true) }; // no Paks yet: ~mods install target
         }
 
         return Array.Empty<ModLocation>();

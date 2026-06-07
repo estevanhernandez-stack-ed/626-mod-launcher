@@ -58,16 +58,32 @@ public static partial class EnginePresets
         var preset = (input.Engine is not null && Presets.TryGetValue(input.Engine, out var p)) ? p : Presets["custom"];
         var id = UniqueId(Slugify(input.Id ?? input.Name), existingIds);
         var name = string.IsNullOrEmpty(input.Name) ? "Game" : input.Name;
+        var engine = string.IsNullOrEmpty(input.Engine) ? "custom" : input.Engine;
+
+        // Auto-detect the ue-pak mod layout (loader ~mods vs loader-less paks-root) when the user didn't
+        // set an explicit ModPath and we have a gameRoot to inspect. Falls back to the static preset path.
+        ModLocation modLocation;
+        if (string.IsNullOrEmpty(input.ModPath)
+            && string.Equals(engine, "ue-pak", StringComparison.OrdinalIgnoreCase)
+            && DetectUePakModLocation(input.GameRoot ?? "") is { } detected)
+        {
+            modLocation = detected;
+        }
+        else
+        {
+            modLocation = new ModLocation("mods", "mods", input.ModPath ?? preset.ModPath);
+        }
+
         var entry = new GameEntry
         {
             Id = id,
             GameName = name,
-            Engine = string.IsNullOrEmpty(input.Engine) ? "custom" : input.Engine,
+            Engine = engine,
             WindowTitle = input.WindowTitle ?? (name + " Mod Launcher"),
             GameRoot = input.GameRoot ?? "",
             FileExtensions = input.FileExtensions ?? preset.FileExtensions,
             GroupingRule = input.GroupingRule ?? preset.GroupingRule,
-            ModLocations = new[] { new ModLocation("mods", "mods", input.ModPath ?? preset.ModPath) },
+            ModLocations = new[] { modLocation },
         };
         if (!string.IsNullOrEmpty(input.SteamAppId))
         {
@@ -85,5 +101,31 @@ public static partial class EnginePresets
             ? input.NexusGameDomain
             : NexusDomains.ByAppId(input.SteamAppId);
         return entry;
+    }
+
+    // ue-pak add-time detection: find <Project>/Content/Paks under gameRoot and decide the mod layout.
+    // Loader present (a ~mods or LogicMods subfolder exists) -> keep the ~mods convention (Form null).
+    // Loader-less (no such subfolder) -> manage Content/Paks directly with the base-game-filtering
+    // paks-root form. Returns null when no <Project>/Content/Paks is found on disk (caller falls back
+    // to the static preset path).
+    private static ModLocation? DetectUePakModLocation(string gameRoot)
+    {
+        if (string.IsNullOrEmpty(gameRoot)) return null;
+        string[] projectDirs;
+        try { projectDirs = Directory.GetDirectories(gameRoot); }
+        catch { return null; }
+
+        foreach (var projDir in projectDirs)
+        {
+            var paks = Path.Combine(projDir, "Content", "Paks");
+            if (!Directory.Exists(paks)) continue;
+            var project = Path.GetFileName(projDir);
+            var loaderPresent = Directory.Exists(Path.Combine(paks, "~mods"))
+                                || Directory.Exists(Path.Combine(paks, "LogicMods"));
+            // Delegate the location-shape decision to the shared primitive so this seeder and the
+            // runtime resolver (ModLocator) agree by construction — one definition of paks-root vs ~mods.
+            return ModLocations.UePakModLocation(project, loaderPresent);
+        }
+        return null; // no <Project>/Content/Paks on disk
     }
 }

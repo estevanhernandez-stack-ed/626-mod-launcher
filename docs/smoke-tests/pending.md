@@ -253,3 +253,35 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 7. **VARIANT FAMILY (regression — found in live smoke 2026-06-03, fixed):** with a multi-variant family like Faster Ships (FasterShips10 / _B / aaUltraFastShips collapsed onto one row with option chips), have ONE variant enabled. Play vanilla. EXPECT: the ENABLED VARIANT's `.pak` (e.g. `FasterShips10_P.pak`) is moved out of `~mods` — verify on disk, not just the row state. The original bug stepped aside the family's *representative* member (often the wrong/already-off variant) and left the active variant loading. `vanilla-stash.json` must list the real variant name (`FasterShips10`), not the representative. Play modded restores exactly that variant.
 
 **Why it matters:** the label was actively misleading on the exact games that prompted this (Windrose). The reversibility law is load-bearing — a failed step-aside or stash-write must never strand the user's mod set in holding with no record. The auditor found + we fixed the stash-write-rollback gap. **Variant families** were the subtle miss: the family row's representative `Mod` isn't the active variant (that's in the option chips), so `ActiveModRows` had to expand families to their enabled variant members by real name — otherwise the active variant's pak never stepped aside (Faster Ships "seemed off" but still loaded). The in-game run + on-disk variant check are the parts tests can't reach (the App VM isn't unit-testable here).
+
+---
+
+## PR (feat/paks-root-base-game-filter) — loader-less UE-pak games (Witchfire) (2026-06-06)
+
+> **STATUS — NEEDS LIVE SMOKE.** Core logic is unit-tested (PakClassifier, paks-root scan, base-pak guard incl. mirrors, preset auto-detect, Form round-trip); the App add-game flow + the on-disk result need a real-rig pass.
+
+**Shipped:** Loader-less Unreal-pak games (no UE4SS) keep mods directly in `<Project>/Content/Paks` alongside the base game — Witchfire is the case. A new `paks-root` location form lets the launcher manage that folder while filtering base-game paks out (`PakClassifier`: name `pakchunk*-WindowsNoEditor` OR size ≥ 1.5GB). A hard guard refuses to ever move/delete a base-classified pak (covers `loc.Abs` + mirrors, on both the disable-move and uninstall-delete paths). The `ue-pak` add-game detection auto-picks: `~mods`/`LogicMods` subfolder present → loader convention; else → `paks-root` on `Content/Paks`. Single `UePakModLocation` primitive drives both the add-time seeder and the runtime `ModLocator` resolver (no drift).
+
+**Smoke steps (Witchfire — loader-less UE-pak):**
+1. Remove Witchfire from the launcher if present (its old entry has the wrong `Content/Paks/~mods` location from before this fix). Re-add it from Steam.
+2. EXPECT: the launcher configures the mod location as `Witchfire/Content/Paks` with form `paks-root` (check games.json: `"path": "Witchfire/Content/Paks"`, `"form": "paks-root"`).
+3. EXPECT in the mod list: the 2 mods show — `pakchunk30-2x-witchfire` and `zz_Funner_Witchfire`. The base game paks (`pakchunk0-WindowsNoEditor.pak` ~3.9GB, `pakchunk0optional-WindowsNoEditor.pak` ~591MB) DO NOT appear as rows.
+4. Toggle a mod off → its pak moves to the disabled holding folder (reversible); toggle back → returns. The base game paks never appear and can't be disabled.
+5. Confirm in-game: the 2 mods load as before (this fix only changes management, not how the paks load).
+
+**Why it matters:** the prior add silently pointed Witchfire at a non-existent `Content/Paks/~mods`, so no mods were detected. The base-game filter is reversibility-critical — listing `pakchunk0` as a mod and letting the user disable it would break the game; the guard + classifier ensure the 4GB base pak can never be moved or deleted. App-VM/add-flow behavior isn't unit-testable here (test project can't reference the WinUI App), so the re-add + on-disk check are the parts only a live rig can confirm.
+
+---
+
+## PR #116 follow-on — per-mod UE4SS chip (false-chip fix) (2026-06-06)
+
+> **STATUS — NEEDS LIVE SMOKE.** Core rule unit-tested (FrameworkApplicability.ModNeedsUe4ss); the row-chip gating is App-VM (not unit-testable here) — verify on the rig.
+
+**Shipped:** The "needs UE4SS" chip was assigned engine-wide on every ue-pak row, so plain content paks (Witchfire) were falsely flagged. Now it's per-mod: a pure-Core `ModNeedsUe4ss(mod, locationPath)` returns true only for Lua/script mods (`Loader=="ue4ss"`) and Blueprint LogicMods paks (location leaf == `LogicMods`); the row-builder drops the UE4SS chip for any row that doesn't need it. Plain content paks in `~mods` or a `paks-root` location show no chip.
+
+**Smoke steps:**
+1. **Witchfire** (loader-less, plain content paks): the 2 mod rows show NO "needs UE4SS" chip. (Was: both falsely chipped.)
+2. **Windrose** with UE4SS NOT installed: a Lua/script mod row (e.g. a `ue4ss/Mods` mod) STILL shows the "needs UE4SS" chip; a LogicMods pak row STILL shows it; a plain `~mods` content pak shows NO chip.
+3. **Windrose** with UE4SS installed: no chips anywhere (framework present) — unchanged behavior.
+
+**Why it matters:** UE4SS loads Lua scripts + Blueprint LogicMods; plain content paks load with no framework (there isn't even a UE4SS download for Witchfire). The old engine-wide chip told content-pak users to install something they don't need. The gating is App-VM logic the test project can't reach, so the per-mod-kind behavior is the part only a live rig confirms.

@@ -161,6 +161,29 @@ public static class Scanner
     private static IReadOnlyList<string> ListPakFiles(string dir, GameContext c)
         => SafeReadFiles(dir).Where(n => c.FileRe.IsMatch(n)).ToList();
 
+    // Pak files in a dir as (name, sizeBytes) — used by the paks-root branch to classify base vs mod.
+    // Separate from ListPakFiles (name-only, relied on by other callers) so neither changes the other.
+    private static IReadOnlyList<(string Name, long Size)> ListPakFilesWithSize(string dir, GameContext c)
+    {
+        var outList = new List<(string, long)>();
+        try
+        {
+            foreach (var full in Directory.GetFiles(dir))
+            {
+                var name = Path.GetFileName(full);
+                if (name is null || !c.FileRe.IsMatch(name)) continue;
+                long size;
+                // A stat failure biases to 0 — i.e. "treat as a mod" (show, don't hide). Safe on a scan:
+                // nothing is moved here, and the disable guard re-checks before any file op.
+                try { size = new FileInfo(full).Length; }
+                catch { size = 0; }
+                outList.Add((name, size));
+            }
+        }
+        catch { /* unreadable dir -> empty, same as SafeReadFiles */ }
+        return outList;
+    }
+
     private static IReadOnlyList<string> ListSubfolders(string dir)
         => SafeReadDirs(dir).Where(n => !n.StartsWith('.') && !n.StartsWith('_')).ToList();
 
@@ -219,7 +242,16 @@ public static class Scanner
             }
             else
             {
-                foreach (var f in ListPakFiles(loc.Abs, c))
+                // paks-root (loader-less UE games like Witchfire): mods live in Content/Paks alongside
+                // the base game, so filter base-game paks out by classifier. Other pak forms ("files")
+                // list every pak (no base game is mixed into a dedicated mod folder).
+                var pakFiles = loc.Form == "paks-root"
+                    ? ListPakFilesWithSize(loc.Abs, c)
+                        .Where(p => !PakClassifier.IsBaseGamePak(p.Name, p.Size))
+                        .Select(p => p.Name)
+                    : ListPakFiles(loc.Abs, c);
+
+                foreach (var f in pakFiles)
                 {
                     var k = ModKey(f, c);
                     if (!outMap.TryGetValue(k, out var mod))
@@ -386,6 +418,10 @@ public static class Scanner
                 throw new InvalidOperationException($"\"{name}\" is managed by another tool — uninstall it there.");
 
             var loc = LocByName(m.Location, c);
+            // Same reversibility backstop as the disable move path: never delete a base-game pak in a
+            // paks-root location, even if classification was wrong or a stale Mod reaches here. No-op for
+            // every other form (the scan also filters base paks out, so this can't be hit by name).
+            GuardNoBasePakMove(m, loc);
             foreach (var f in m.Files)
             {
                 DeletePath(Path.Combine(loc.Abs, f));
@@ -400,6 +436,31 @@ public static class Scanner
     {
         if (Directory.Exists(p)) Directory.Delete(p, recursive: true);
         else if (File.Exists(p)) File.Delete(p);
+    }
+
+    // Reversibility backstop: refuse to MOVE a pak that classifies as base game — even a wrong
+    // classification or a stale/hostile Mod can never strand the game's own files. Only enforced for
+    // paks-root locations (where base + mods share a folder); other forms never mix the two, so the
+    // guard is a no-op there. internal for direct testing (the public disable paths can't reach a base
+    // pak by name — the scan filters it out — so this is defense-in-depth, verified at the unit level).
+    internal static void GuardNoBasePakMove(Mod m, ModLocationCtx loc)
+    {
+        if (loc.Form != "paks-root") return;
+        foreach (var f in m.Files)
+        {
+            // Size from loc.Abs OR any mirror (max) — UninstallMod deletes from all of them, so a base
+            // pak resident only in a mirror must still be sized (and refused). The name check below
+            // independently catches conventionally-named base paks regardless of where they live.
+            long size = 0;
+            foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
+            {
+                try { var len = new FileInfo(Path.Combine(root, f)).Length; if (len > size) size = len; }
+                catch { /* missing in this root — try the next */ }
+            }
+            if (PakClassifier.IsBaseGamePak(Path.GetFileName(f), size))
+                throw new InvalidOperationException(
+                    $"\"{f}\" is a base-game file, not a mod — refusing to touch it. Nothing was changed.");
+        }
     }
 
     private static void DisableEntry(Mod m, GameContext c)
@@ -421,6 +482,7 @@ public static class Scanner
             return;
         }
         var loc = LocByName(m.Location, c);
+        GuardNoBasePakMove(m, loc);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
         Directory.CreateDirectory(dest);
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
