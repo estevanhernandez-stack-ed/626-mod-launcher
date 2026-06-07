@@ -270,3 +270,18 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 5. Confirm in-game: the 2 mods load as before (this fix only changes management, not how the paks load).
 
 **Why it matters:** the prior add silently pointed Witchfire at a non-existent `Content/Paks/~mods`, so no mods were detected. The base-game filter is reversibility-critical — listing `pakchunk0` as a mod and letting the user disable it would break the game; the guard + classifier ensure the 4GB base pak can never be moved or deleted. App-VM/add-flow behavior isn't unit-testable here (test project can't reference the WinUI App), so the re-add + on-disk check are the parts only a live rig can confirm.
+
+---
+
+## PR #116 follow-on — per-mod UE4SS chip (false-chip fix) (2026-06-06)
+
+> **STATUS — NEEDS LIVE SMOKE.** Core rule unit-tested (FrameworkApplicability.ModNeedsUe4ss); the row-chip gating is App-VM (not unit-testable here) — verify on the rig.
+
+**Shipped:** The "needs UE4SS" chip was assigned engine-wide on every ue-pak row, so plain content paks (Witchfire) were falsely flagged. Now it's per-mod: a pure-Core `ModNeedsUe4ss(mod, locationPath)` returns true only for Lua/script mods (`Loader=="ue4ss"`) and Blueprint LogicMods paks (location leaf == `LogicMods`); the row-builder drops the UE4SS chip for any row that doesn't need it. Plain content paks in `~mods` or a `paks-root` location show no chip.
+
+**Smoke steps:**
+1. **Witchfire** (loader-less, plain content paks): the 2 mod rows show NO "needs UE4SS" chip. (Was: both falsely chipped.)
+2. **Windrose** with UE4SS NOT installed: a Lua/script mod row (e.g. a `ue4ss/Mods` mod) STILL shows the "needs UE4SS" chip; a LogicMods pak row STILL shows it; a plain `~mods` content pak shows NO chip.
+3. **Windrose** with UE4SS installed: no chips anywhere (framework present) — unchanged behavior.
+
+**Why it matters:** UE4SS loads Lua scripts + Blueprint LogicMods; plain content paks load with no framework (there isn't even a UE4SS download for Witchfire). The old engine-wide chip told content-pak users to install something they don't need. The gating is App-VM logic the test project can't reach, so the per-mod-kind behavior is the part only a live rig confirms.
