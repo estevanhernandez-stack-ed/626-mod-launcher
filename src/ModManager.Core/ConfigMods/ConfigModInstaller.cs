@@ -25,6 +25,7 @@ public static class ConfigModInstaller
         // ---- Validate (no writes yet) ----
         if (payload.Count == 0)
             throw new InvalidOperationException("Nothing to apply — the archive has no config settings.");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, content) in payload)
         {
             var baseName = Path.GetFileName(name.Replace('\\', '/'));
@@ -34,6 +35,8 @@ public static class ConfigModInstaller
                 throw new InvalidOperationException($"\"{baseName}\" isn't a known UE config file — refusing. Nothing was changed.");
             if (string.IsNullOrWhiteSpace(content))
                 throw new InvalidOperationException($"\"{baseName}\" is empty — nothing to apply.");
+            if (!seen.Add(baseName))
+                throw new InvalidOperationException($"The archive contains \"{baseName}\" twice — refusing. Nothing was changed.");
         }
         if (!Directory.Exists(configDir))
             throw new InvalidOperationException(
@@ -44,6 +47,11 @@ public static class ConfigModInstaller
         // Re-drop of the same mod: restore its previous state first so merges never stack.
         var prior = ConfigModStore.Load(dataDir).FirstOrDefault(e => e.Id == id);
         if (prior is not null) RestoreFiles(prior, configDir);
+
+        // Truth-before-write: if the merge below crashes, the registry must say disabled (disk is
+        // at the clean pre-mod state after the restore above), not claim the mod is still applied.
+        // The success path's final Upsert overwrites this with the fresh enabled entry.
+        if (prior is not null) ConfigModStore.Upsert(dataDir, prior with { Enabled = false });
 
         // ---- Snapshot + merge + write, per file ----
         var records = new List<ConfigFileRecord>();
@@ -101,7 +109,15 @@ public static class ConfigModInstaller
     private static void WriteAtomic(string path, string content)
     {
         var tmp = path + ".tmp-" + Guid.NewGuid().ToString("n");
-        File.WriteAllText(tmp, content);
-        File.Move(tmp, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmp, content);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
+            throw;
+        }
     }
 }

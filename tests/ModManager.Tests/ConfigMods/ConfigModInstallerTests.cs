@@ -104,6 +104,50 @@ public class ConfigModInstallerTests : IDisposable
     }
 
     [Fact]
+    public void Install_refuses_duplicate_basenames_nothing_written()
+    {
+        var target = Path.Combine(_configDir, "Engine.ini");
+        File.WriteAllText(target, "[SystemSettings]\r\nr.Shadow=1\r\n");
+        var dup = new[]
+        {
+            ("Engine.ini", "[A]\r\nX=1\r\n"),
+            (@"sub\Engine.ini", "[A]\r\nX=2\r\n"),
+        };
+        var ex = Assert.ThrowsAny<InvalidOperationException>(
+            () => ConfigModInstaller.Install(dup, _configDir, _dataDir, "Dup"));
+        Assert.Contains("twice", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("[SystemSettings]\r\nr.Shadow=1\r\n", File.ReadAllText(target)); // untouched
+        Assert.Empty(ConfigModStore.Load(_dataDir));
+    }
+
+    [Fact]
+    public void Redrop_crash_mid_merge_leaves_registry_disabled_not_lying()
+    {
+        var engine = Path.Combine(_configDir, "Engine.ini");
+        var input = Path.Combine(_configDir, "Input.ini");
+        File.WriteAllText(engine, "[A]\r\nX=1\r\n");
+        File.WriteAllText(input, "[B]\r\nY=1\r\n");
+        var payload = new[]
+        {
+            ("Engine.ini", "[A]\r\nX=9\r\n"),
+            ("Input.ini", "[B]\r\nY=9\r\n"),
+        };
+        ConfigModInstaller.Install(payload, _configDir, _dataDir, "Two");
+
+        // Re-drop with the second target lock-held (ReadWrite shared, Delete NOT shared) -> the
+        // restore + snapshot of Input.ini succeed, but WriteAtomic's File.Move(overwrite) throws.
+        // (FileShare.None would crash the restore itself, before the merge loop — too early.)
+        using (var _ = new FileStream(input, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            Assert.ThrowsAny<Exception>(
+                () => ConfigModInstaller.Install(payload, _configDir, _dataDir, "Two"));
+        }
+        var entry = ConfigModStore.Load(_dataDir).Single();
+        Assert.False(entry.Enabled); // registry tells the truth: not currently applied
+        Assert.Empty(Directory.GetFiles(_configDir, "*.tmp-*")); // no WriteAtomic orphan litter
+    }
+
+    [Fact]
     public void IdFor_slugs_names_stably()
     {
         Assert.Equal("performance-enhancer", ConfigModInstaller.IdFor("Performance Enhancer"));
