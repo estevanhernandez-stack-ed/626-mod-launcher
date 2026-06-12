@@ -1,8 +1,12 @@
+using ModManager.Core.ConfigMods;
+
 namespace ModManager.Core;
 
 /// <summary>
 /// Pure drop-file classification. 'zip' -> extract &amp; route mod entries (any supported archive
-/// format — see <see cref="ArchiveExtensions"/>); 'mod' -> place directly; 'skip' -> ignore.
+/// format — see <see cref="ArchiveExtensions"/>); 'mod' -> place directly; 'skip' -> ignore;
+/// 'config' -> a known UE config file (Engine.ini etc.), routed to the config-mod path App-side
+/// BEFORE pak intake runs.
 /// Mirrors intake-core.js. (The extraction + folder walk with the path-traversal guard live in
 /// Scanner / DirectInject, where the IO is, behind the ArchiveReader seam.)
 /// </summary>

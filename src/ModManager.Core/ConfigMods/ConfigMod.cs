@@ -1,4 +1,4 @@
-namespace ModManager.Core;
+namespace ModManager.Core.ConfigMods;
 
 /// <summary>
 /// Detection for UE config-tweak mods — mods that are a bare known config file (Engine.ini etc.)
@@ -12,6 +12,7 @@ public static class ConfigMod
     public static readonly string[] KnownConfigFiles =
         { "Engine.ini", "Scalability.ini", "Input.ini", "GameUserSettings.ini", "Game.ini" };
 
+    /// <summary>True when the name's basename matches a known UE config file (case-insensitive; subpaths fine).</summary>
     public static bool IsConfigFile(string fileName)
     {
         if (string.IsNullOrEmpty(fileName)) return false;
@@ -28,8 +29,9 @@ public static class ConfigMod
         foreach (var n in names)
         {
             if (IsConfigFile(n)) { sawConfig = true; continue; }
-            var dot = n.LastIndexOf('.');
-            var ext = dot >= 0 ? n[(dot + 1)..].ToLowerInvariant() : "";
+            var baseName = Path.GetFileName(n.Replace('\\', '/'));
+            var dot = baseName.LastIndexOf('.');
+            var ext = dot >= 0 ? baseName[(dot + 1)..].ToLowerInvariant() : "";
             if (exts.Contains(ext)) return false; // pak/mod file present -> pak mod wins
         }
         return sawConfig;

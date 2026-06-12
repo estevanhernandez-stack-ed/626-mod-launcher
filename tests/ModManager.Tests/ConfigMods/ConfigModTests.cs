@@ -1,4 +1,5 @@
 using ModManager.Core;
+using ModManager.Core.ConfigMods;
 
 namespace ModManager.Tests.ConfigMods;
 
@@ -39,6 +40,10 @@ public class ConfigModTests
     public void Junk_entries_are_ignored_when_judging_config_only()
         => Assert.True(ConfigMod.IsConfigOnlyPayload(
             new[] { "README.txt", "preview.jpg", "Engine.ini" }, new[] { "pak" }));
+
+    [Fact]
+    public void Null_pak_extensions_are_tolerated()
+        => Assert.True(ConfigMod.IsConfigOnlyPayload(new[] { "Engine.ini" }, null));
 
     [Fact]
     public void Empty_payload_is_not_config()
