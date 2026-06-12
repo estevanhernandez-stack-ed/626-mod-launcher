@@ -5,11 +5,15 @@ namespace ModManager.Core.ConfigMods;
 /// applied onto the existing file: plain keys replace (or add); UE array ops (+Key / -Key / .Key /
 /// !Key) append — replacing them positionally would corrupt UE's list semantics. Sections the file
 /// lacks are appended whole. Everything the mod doesn't mention — other keys, comments, blank
-/// lines — survives untouched, and the existing file's newline style is preserved (the bare-CR
-/// lesson). Pure string -> string; idempotent (re-merging the same mod adds nothing twice).
+/// lines — survives untouched. Pure string -> string; idempotent (re-merging the same mod adds
+/// nothing twice). First occurrence wins on plain-key replace; pre-existing duplicate keys in a
+/// section are the user's mess and are left alone. CRLF and LF are preserved; bare-CR never
+/// reaches this code (IniEditService normalizes on write).
 /// </summary>
 public static class ConfigMerge
 {
+    /// <summary>Overlay <paramref name="modIni"/> onto <paramref name="existingIni"/> per the class
+    /// semantics. Output always ends with exactly one trailing newline in the existing file's style.</summary>
     public static string Merge(string existingIni, string modIni)
     {
         var nl = DetectNewline(existingIni) ?? DetectNewline(modIni) ?? "\r\n";
@@ -32,6 +36,9 @@ public static class ConfigMerge
             {
                 if (e.IsArrayOp)
                 {
+                    // endIdx++ is load-bearing: it keeps the section-end cursor past the inserted
+                    // line, preserving mod-entry order and the section boundary for the next entry.
+                    // (Same applies to the plain-key insert below.)
                     if (!RangeContainsExact(lines, headerIdx + 1, endIdx, e.Raw))
                     { lines.Insert(endIdx, e.Raw); endIdx++; }
                 }
@@ -111,6 +118,7 @@ public static class ConfigMerge
     private static bool RangeContainsExact(List<string> lines, int start, int end, string raw)
     {
         for (var i = start; i < end && i < lines.Count; i++)
+            // Ordinal, not IgnoreCase: UE array VALUES are case-significant — wrong dedupe would be data loss.
             if (string.Equals(lines[i].Trim(), raw, StringComparison.Ordinal)) return true;
         return false;
     }
