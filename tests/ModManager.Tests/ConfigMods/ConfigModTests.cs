@@ -49,6 +49,16 @@ public class ConfigModTests
     public void Empty_payload_is_not_config()
         => Assert.False(ConfigMod.IsConfigOnlyPayload(Array.Empty<string>(), new[] { "pak" }));
 
+    [Theory]
+    [InlineData(@"C:\Users\u\AppData\Local\Witchfire\Saved\SaveGames", @"C:\Users\u\AppData\Local\Witchfire\Saved\Config")]
+    [InlineData(@"C:\x\Game\Saved\SaveGames\profile1", @"C:\x\Game\Saved\Config")]
+    [InlineData(@"C:\x\Game\Saved", @"C:\x\Game\Saved\Config")]
+    [InlineData(@"C:\no\segment\here", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void ConfigRootFromSaveDir_walks_to_the_Saved_sibling(string? saveDir, string? expected)
+        => Assert.Equal(expected, ConfigMod.ConfigRootFromSaveDir(saveDir));
+
     [Fact]
     public void ClassifyDrop_returns_config_for_a_loose_known_config_file()
         => Assert.Equal("config", Intake.ClassifyDrop(@"C:\downloads\Engine.ini", new[] { "pak" }));

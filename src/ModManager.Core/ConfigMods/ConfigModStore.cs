@@ -33,7 +33,7 @@ public static class ConfigModStore
         try
         {
             var list = JsonSerializer.Deserialize<List<ConfigModEntry>>(File.ReadAllText(path), ReadJson);
-            return list?.Where(e => e is not null && !string.IsNullOrWhiteSpace(e.Id)).ToList()
+            return list?.Where(e => e is not null && !string.IsNullOrWhiteSpace(e.Id) && e.Files is not null).ToList()
                    ?? (IReadOnlyList<ConfigModEntry>)Array.Empty<ConfigModEntry>();
         }
         catch

@@ -36,4 +36,31 @@ public static class ConfigMod
         }
         return sawConfig;
     }
+
+    /// <summary>The game's Saved/Config root derived from its save dir (both live under .../Saved/).
+    /// "C:\...\Witchfire\Saved\SaveGames" -> "C:\...\Witchfire\Saved\Config". Null when the save dir
+    /// is unset or has no Saved segment — the caller refuses with a clear message.</summary>
+    public static string? ConfigRootFromSaveDir(string? saveDir)
+    {
+        if (string.IsNullOrWhiteSpace(saveDir)) return null;
+        var norm = saveDir.Replace('/', '\\').TrimEnd('\\');
+        var idx = norm.LastIndexOf(@"\Saved\", StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+            return norm.EndsWith(@"\Saved", StringComparison.OrdinalIgnoreCase)
+                ? norm + @"\Config" : null;
+        return norm[..(idx + @"\Saved".Length)] + @"\Config";
+    }
+
+    /// <summary>The platform config dir under a config root: UE4 uses WindowsNoEditor, UE5 uses
+    /// Windows. Returns the one that exists on disk, or null when neither does (game never ran —
+    /// the caller refuses; the game must own the tree first).</summary>
+    public static string? ResolveConfigDir(string? configRoot)
+    {
+        if (string.IsNullOrWhiteSpace(configRoot)) return null;
+        var ue4 = Path.Combine(configRoot, "WindowsNoEditor");
+        if (Directory.Exists(ue4)) return ue4;
+        var ue5 = Path.Combine(configRoot, "Windows");
+        if (Directory.Exists(ue5)) return ue5;
+        return null;
+    }
 }

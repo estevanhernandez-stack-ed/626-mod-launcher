@@ -20,6 +20,8 @@ public class ConfigModStoreTests : IDisposable
         ConfigModStore.Upsert(_tmp, Entry());
         var loaded = ConfigModStore.Load(_tmp).Single();
         Assert.Equal("perf-enh", loaded.Id);
+        Assert.Equal("Performance Enhancer", loaded.Name);
+        Assert.Equal(new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc), loaded.InstalledUtc);
         Assert.True(loaded.Enabled);
         var f = loaded.Files.Single();
         Assert.Equal("Engine.ini", f.FileName);
@@ -55,6 +57,14 @@ public class ConfigModStoreTests : IDisposable
     {
         ConfigModStore.Upsert(_tmp, Entry());
         ConfigModStore.Remove(_tmp, "perf-enh");
+        Assert.Empty(ConfigModStore.Load(_tmp));
+    }
+
+    [Fact]
+    public void Entry_with_null_files_from_a_hand_edit_is_filtered_out()
+    {
+        File.WriteAllText(Path.Combine(_tmp, "config-mods.json"),
+            "[{\"id\":\"x\",\"name\":\"X\",\"files\":null,\"installedUtc\":\"2026-06-11T00:00:00Z\",\"enabled\":true}]");
         Assert.Empty(ConfigModStore.Load(_tmp));
     }
 
