@@ -16,6 +16,7 @@ public static class Intake
     {
         var lower = filePath.ToLowerInvariant();
         if (ArchiveExtensions.Any(a => lower.EndsWith(a))) return "zip";
+        if (ConfigMod.IsConfigFile(filePath)) return "config";
         var dot = lower.LastIndexOf('.');
         var ext = dot >= 0 ? lower[(dot + 1)..] : lower;
         var set = (exts ?? Enumerable.Empty<string>()).Select(e => e.ToLowerInvariant());

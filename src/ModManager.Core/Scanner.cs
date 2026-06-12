@@ -953,7 +953,9 @@ public static class Scanner
         {
             if (Directory.Exists(p))
             {
-                foreach (var f in WalkFiles(p)) if (Intake.ClassifyDrop(f, c.Exts) != "skip") outList.Add(f);
+                // "config" is excluded here on purpose: config drops are routed by the App before
+                // the pak-intake walk runs, and placing a config file via PlaceFile would mis-place it.
+                foreach (var f in WalkFiles(p)) if (Intake.ClassifyDrop(f, c.Exts) is not ("skip" or "config")) outList.Add(f);
             }
             else outList.Add(p); // a file (or a missing path) passes through so its reason is reported
         }
@@ -1040,7 +1042,9 @@ public static class Scanner
         foreach (var p in ExpandPaths(paths, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
-            if (kind == "skip") { unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "not a mod file")); continue; }
+            // "config" gets the same not-a-mod-file skip it had before the config verdict existed —
+            // the config-mod route handles those drops upstream of this planner.
+            if (kind is "skip" or "config") { unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "not a mod file")); continue; }
             if (kind == "mod")
             {
                 var name = Path.GetFileName(p);
