@@ -44,15 +44,15 @@ Where the signed feed lives:
 
 **Decision (2026-06-13): separate public `626-game-manifest` repo.** Schema + hand-curated `overrides/` + generated manifest + signing CI live there; the launcher only consumes the signed output.
 
-### Action — CI signing secret (doable now, or when the signing step lands)
+### Action — CI signing secret (in the FEED repo, once it exists)
 
-When ready, add the private key as a GitHub Actions secret:
-1. GitHub → this repo → **Settings → Secrets and variables → Actions → New repository secret**.
+The signing CI runs in the separate `626-game-manifest` repo, so the secret lives **there**, not in the launcher repo. When that repo exists:
+1. GitHub → **`626-game-manifest`** repo → **Settings → Secrets and variables → Actions → New repository secret**.
 2. Name it exactly **`MANIFEST_SIGNING_KEY`**.
-3. Paste the full PKCS#8 PEM (the `-----BEGIN PRIVATE KEY-----` … `-----END PRIVATE KEY-----` block) from your password manager.
+3. Paste the full PKCS#8 PEM **multi-line, verbatim** (the `-----BEGIN PRIVATE KEY-----` … `-----END PRIVATE KEY-----` block, line breaks intact — do NOT flatten to one line; .NET `ImportFromPem` needs the PEM structure) from your password manager.
 4. Save.
 
-It pastes straight from the password manager into GitHub (encrypted at rest) and never touches disk again. **Timing:** harmless to set now — it sits unused until the signing CI step exists — or do it together when that step lands. The signer (a C# step using `ECDsa` + `DSASignatureFormat.IeeeP1363FixedFieldConcatenation`, matching the verify side) reads it from the secret; it never appears in source.
+It pastes straight from the password manager into GitHub (encrypted at rest) and never touches disk again. **Timing: hold until the feed repo exists** — drafts are unsigned, so nothing needs the key before then; keep it in your password manager meanwhile. The signer (a C# step using `ECDsa` + `DSASignatureFormat.IeeeP1363FixedFieldConcatenation`, matching the verify side) reads it from the secret via an env var (never interpolated into a shell line, so multi-line survives); it never appears in source.
 
 ### Action — Review the draft manifest (when the miner runs)
 
