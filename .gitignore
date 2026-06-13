@@ -28,6 +28,9 @@ dist/
 # Local Claude Code overrides (machine-specific) — the shared config is committed, this isn't.
 .claude/settings.local.json
 
+# Manifest miner draft output (never committed; drafts for review only)
+tools/ManifestMiner/out/
+
 # Transient superpowers session state (brainstorm scratch, server markers) — not project config.
 .superpowers/
 

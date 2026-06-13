@@ -33,6 +33,7 @@ public sealed record GameManifestEntry
     public string? NexusDomain { get; init; }
     public int? CurseforgeGameId { get; init; }
     public string? ModPath { get; init; }             // override to the engine-default mod folder
+    public string? SaveDirHint { get; init; }          // descriptive save-location hint (e.g. mined from Ludusavi save paths)
     public IReadOnlyList<string>? FileExtensions { get; init; }
     public string? GroupingRule { get; init; }
     public int? Featured { get; init; }               // quick-pick rank; null = not in the quick-pick list

@@ -24,6 +24,7 @@ public class GameManifestJsonTests
                     Engine = "fromsoft",
                     Stores = new StoreIds { SteamAppId = "1245620" },
                     NexusDomain = "eldenring",
+                    SaveDirHint = "<home>/EldenRing",
                     Provenance = new ManifestProvenance
                     {
                         Sources = new[] { ManifestSources.KnownEngines, ManifestSources.NexusDomains },
@@ -37,8 +38,10 @@ public class GameManifestJsonTests
         Assert.Contains("\"schemaVersion\"", json);
         Assert.Contains("\"steamAppId\"", json);
         Assert.Contains("\"nexusDomain\"", json);
+        Assert.Contains("\"saveDirHint\"", json);
         Assert.DoesNotContain("\"SchemaVersion\"", json);
         Assert.DoesNotContain("\"SteamAppId\"", json);
+        Assert.DoesNotContain("\"SaveDirHint\"", json);
 
         var back = JsonSerializer.Deserialize<GameManifest>(json, ManifestJson.Options);
         Assert.NotNull(back);
