@@ -49,4 +49,42 @@ public class ManifestLoaderWiringTests : IDisposable
 
         Assert.Null(ManifestLoader.LoadVerifiedRemote(bytes, sig, Binary));
     }
+
+    [Fact]
+    public void TryApplyRemote_applies_a_genuinely_signed_manifest()
+    {
+        var (spki, signer) = NewKeyPair();
+        var (bytes, sig) = SignManifest(signer, OneGame("applied-game"));
+
+        var applied = ManifestLoader.TryApplyRemote(bytes, sig, Binary, spki); // explicit test key
+
+        Assert.True(applied);
+        Assert.Contains(EffectiveManifest.Current.Games, g => g.Id == "applied-game");
+    }
+
+    [Fact]
+    public void TryApplyRemote_does_not_apply_a_forged_manifest()
+    {
+        var (spki, signer) = NewKeyPair();
+        var (bytes, sig) = SignManifest(signer, OneGame("forged-game"));
+        bytes[12] ^= 0xFF; // tamper after signing
+
+        var applied = ManifestLoader.TryApplyRemote(bytes, sig, Binary, spki);
+
+        Assert.False(applied);
+        Assert.DoesNotContain(EffectiveManifest.Current.Games, g => g.Id == "forged-game");
+        Assert.Same(EmbeddedGameManifest.Current, EffectiveManifest.Current); // stayed on embedded
+    }
+
+    [Fact]
+    public void TryApplyRemote_with_default_pinned_key_rejects_a_non_pinned_signature()
+    {
+        var (_, attacker) = NewKeyPair();
+        var (bytes, sig) = SignManifest(attacker, OneGame("nope"));
+
+        var applied = ManifestLoader.TryApplyRemote(bytes, sig, Binary); // default -> pinned key
+
+        Assert.False(applied);
+        Assert.Same(EmbeddedGameManifest.Current, EffectiveManifest.Current);
+    }
 }

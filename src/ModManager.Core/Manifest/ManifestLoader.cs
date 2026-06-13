@@ -69,4 +69,31 @@ public static class ManifestLoader
             ManifestSigningKey.PublicKeySpki,
             currentBinaryVersion,
             EnginePresets.Presets.Keys.ToHashSet());
+
+    /// <summary>
+    /// Verify a fetched remote manifest and, if it passes, make it effective via
+    /// <see cref="EffectiveManifest.SetRemote"/>. Returns true iff a remote was applied; on any
+    /// verification/validation failure returns false and leaves the effective manifest on the
+    /// embedded snapshot. <paramref name="publicKey"/> defaults to the pinned production key; tests
+    /// pass an explicit key. This is the entry point the App's remote fetch calls at startup.
+    /// </summary>
+    public static bool TryApplyRemote(
+        byte[] manifestBytes,
+        byte[] signature,
+        Version currentBinaryVersion,
+        byte[]? publicKey = null)
+    {
+        var manifest = LoadVerifiedRemote(
+            manifestBytes,
+            signature,
+            publicKey ?? ManifestSigningKey.PublicKeySpki,
+            currentBinaryVersion,
+            EnginePresets.Presets.Keys.ToHashSet());
+
+        if (manifest is null)
+            return false;
+
+        EffectiveManifest.SetRemote(manifest);
+        return true;
+    }
 }
