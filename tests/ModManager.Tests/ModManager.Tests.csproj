@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\ModManager.Mcp\ModManager.Mcp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\tools\ManifestMiner\ManifestMiner.csproj" />
+  </ItemGroup>
+
 </Project>
