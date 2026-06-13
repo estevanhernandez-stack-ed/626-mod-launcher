@@ -11,6 +11,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Manifest\games-manifest.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="ModManager.Tests" />
   </ItemGroup>
 
