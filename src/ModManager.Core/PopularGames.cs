@@ -1,3 +1,5 @@
+using ModManager.Core.Manifest;
+
 namespace ModManager.Core;
 
 /// <summary>
@@ -17,27 +19,24 @@ public sealed record PopularGame(
 }
 
 /// <summary>
-/// Curated catalog of popular moddable games for the Add Game wizard's quick-pick. Ports
-/// popular-games.js. The list order is intentional and asserted by tests.
+/// Curated catalog of popular moddable games for the Add Game wizard's quick-pick. Facade over
+/// <see cref="EmbeddedGameManifest"/>: projects entries tagged with the "popular-games" provenance
+/// source, ordered by their <see cref="GameManifestEntry.Featured"/> rank. The list order is
+/// intentional and asserted by tests.
 /// </summary>
 public static class PopularGames
 {
-    public static IReadOnlyList<PopularGame> All { get; } = new[]
-    {
-        new PopularGame("skyrim-se", "Skyrim Special Edition", "bethesda", "Data", "489830"),
-        new PopularGame("fallout-4", "Fallout 4", "bethesda", "Data", "377160"),
-        new PopularGame("starfield", "Starfield", "bethesda", "Data", "1716740"),
-        new PopularGame("stardew-valley", "Stardew Valley", "smapi", "Mods", "413150"),
-        new PopularGame("rimworld", "RimWorld", "smapi", "Mods", "294100"),
-        new PopularGame("valheim", "Valheim", "bepinex", "BepInEx/plugins", "892970"),
-        new PopularGame("lethal-company", "Lethal Company", "bepinex", "BepInEx/plugins", "1966720"),
-        new PopularGame("palworld", "Palworld", "ue-pak", "Pal/Content/Paks/~mods", "1623730"),
-        new PopularGame("hogwarts-legacy", "Hogwarts Legacy", "ue-pak", "Phoenix/Content/Paks/~mods", "990080"),
-        new PopularGame("cyberpunk-2077", "Cyberpunk 2077", "custom", "archive/pc/mod", "1091500")
-        {
-            FileExtensions = new[] { "archive" },
-        },
-    };
+    public static IReadOnlyList<PopularGame> All { get; } = Build();
+
+    private static IReadOnlyList<PopularGame> Build()
+        => EmbeddedGameManifest.Current.Games
+            .Where(g => g.Provenance.Sources.Contains(ManifestSources.PopularGames))
+            .OrderBy(g => g.Featured ?? int.MaxValue)
+            .Select(g => new PopularGame(g.Id, g.Name, g.Engine!, g.ModPath!, g.Stores.SteamAppId!)
+            {
+                FileExtensions = g.FileExtensions,
+            })
+            .ToList();
 
     /// <summary>Look up a game by id; null when unknown (or the id is null/empty).</summary>
     public static PopularGame? Find(string? id)
