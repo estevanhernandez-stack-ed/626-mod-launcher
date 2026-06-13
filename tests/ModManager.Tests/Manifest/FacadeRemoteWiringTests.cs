@@ -29,4 +29,22 @@ public class FacadeRemoteWiringTests : IDisposable
 
         Assert.Equal("bethesda", KnownEngines.ByAppId("70000001")); // now resolved via the remote
     }
+
+    [Fact]
+    public void NexusDomains_reflects_a_remote_added_slug()
+    {
+        Assert.Null(NexusDomains.ByAppId("70000002")); // embedded baseline: unknown
+
+        EffectiveManifest.SetRemote(Remote(new GameManifestEntry
+        {
+            Id = "remote-nexus-game",
+            Name = "Remote Nexus Game",
+            Engine = "ue-pak",
+            Stores = new StoreIds { SteamAppId = "70000002" },
+            NexusDomain = "remotegame",
+            Provenance = new ManifestProvenance { Sources = new[] { ManifestSources.NexusDomains } },
+        }));
+
+        Assert.Equal("remotegame", NexusDomains.ByAppId("70000002"));
+    }
 }
