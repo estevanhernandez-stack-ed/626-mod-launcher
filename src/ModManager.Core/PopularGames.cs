@@ -26,10 +26,29 @@ public sealed record PopularGame(
 /// </summary>
 public static class PopularGames
 {
-    public static IReadOnlyList<PopularGame> All { get; } = Build();
+    private static IReadOnlyList<PopularGame>? _all;
+    private static int _allGen = -1;
+    private static readonly object _gate = new();
+
+    public static IReadOnlyList<PopularGame> All
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var gen = EffectiveManifest.Generation;
+                if (_all is null || _allGen != gen)
+                {
+                    _all = Build();
+                    _allGen = gen;
+                }
+                return _all;
+            }
+        }
+    }
 
     private static IReadOnlyList<PopularGame> Build()
-        => EmbeddedGameManifest.Current.Games
+        => EffectiveManifest.Current.Games
             .Where(g => g.Provenance.Sources.Contains(ManifestSources.PopularGames))
             .OrderBy(g => g.Featured ?? int.MaxValue)
             .Select(g => new PopularGame(g.Id, g.Name, g.Engine!, g.ModPath!, g.Stores.SteamAppId!)

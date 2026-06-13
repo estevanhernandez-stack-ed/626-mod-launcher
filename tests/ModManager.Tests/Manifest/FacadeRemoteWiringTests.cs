@@ -47,4 +47,28 @@ public class FacadeRemoteWiringTests : IDisposable
 
         Assert.Equal("remotegame", NexusDomains.ByAppId("70000002"));
     }
+
+    [Fact]
+    public void PopularGames_reflects_a_remote_featured_game()
+    {
+        Assert.DoesNotContain(PopularGames.All, g => g.Id == "remote-featured-game"); // baseline
+
+        EffectiveManifest.SetRemote(Remote(new GameManifestEntry
+        {
+            Id = "remote-featured-game",
+            Name = "Remote Featured Game",
+            Engine = "bethesda",
+            Stores = new StoreIds { SteamAppId = "70000003" },
+            ModPath = "Data",
+            Featured = 99,
+            Provenance = new ManifestProvenance { Sources = new[] { ManifestSources.PopularGames } },
+        }));
+
+        var g = PopularGames.Find("remote-featured-game");
+        Assert.NotNull(g);
+        Assert.Equal("Remote Featured Game", g!.Name);
+        Assert.Equal("bethesda", g.Engine);
+        Assert.Equal("Data", g.ModPath);
+        Assert.Equal("70000003", g.SteamAppId);
+    }
 }
