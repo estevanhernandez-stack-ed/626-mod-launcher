@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 
 namespace ModManager.Core.Manifest;
@@ -55,4 +56,17 @@ public static class ManifestLoader
         // 5. Validate (skips unknown-engine rows, rejects unsafe modPath).
         return ManifestValidator.Validate(parsed, knownEngines).Manifest;
     }
+
+    /// <summary>
+    /// Convenience overload: verify + load a remote manifest using the PINNED production key
+    /// (<see cref="ManifestSigningKey.PublicKeySpki"/>) and this binary's known engine set
+    /// (<see cref="EnginePresets.Presets"/>). Returns null on any failure (caller falls back to embedded).
+    /// </summary>
+    public static GameManifest? LoadVerifiedRemote(byte[] manifestBytes, byte[] signature, Version currentBinaryVersion)
+        => LoadVerifiedRemote(
+            manifestBytes,
+            signature,
+            ManifestSigningKey.PublicKeySpki,
+            currentBinaryVersion,
+            EnginePresets.Presets.Keys.ToHashSet());
 }
