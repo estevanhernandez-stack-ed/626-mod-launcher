@@ -34,7 +34,7 @@ Two conditions keep that true, and both are already our design:
 
 **The judgment that's yours:** are you comfortable publishing on that basis for a **free, not-sold** app? Caveats: if the app is ever sold, re-open the NonCommercial analysis; PCGamingWiki blocks automated fetching (HTTP 403) — that's a Terms-of-Service/access matter *separate* from copyright, so we hand-curate, never bulk-scrape. Optional belt-and-suspenders: a one-paragraph counsel read before the feed goes live.
 
-**Decision:** sign off (proceed facts-only) · counsel read first · defer.
+**Decision (2026-06-13): SIGNED OFF — proceed facts-only.** The app stays free / not-sold; mining is facts-only + cross-verified per the two conditions above. Resolves spec §11 #6. (Re-open only if the app is ever sold.)
 
 ### Action — Feed repo decision (decide anytime)
 
@@ -42,7 +42,7 @@ Where the signed feed lives:
 - **Separate public `626-game-manifest` repo** (recommended) — clean separation: public schema + hand-curated `overrides/` + the generated manifest + signing CI. The spec's design; keeps the data side independent of the launcher release cycle.
 - **Release asset on this repo** — zero new repo, simplest, but mixes feed data into launcher releases and couples the two cycles.
 
-**Decision:** separate repo · release asset.
+**Decision (2026-06-13): separate public `626-game-manifest` repo.** Schema + hand-curated `overrides/` + generated manifest + signing CI live there; the launcher only consumes the signed output.
 
 ### Action — CI signing secret (doable now, or when the signing step lands)
 
