@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "generatedUtc": "2026-06-12T00:00:00Z",
+  "minBinaryVersion": "0.6.0",
+  "games": [
+    { "id": "elden-ring", "name": "Elden Ring", "engine": "fromsoft", "stores": { "steamAppId": "1245620" }, "nexusDomain": "eldenring", "provenance": { "sources": ["known-engines", "nexus-domains"], "status": "curated" } },
+    { "id": "dark-souls-iii", "name": "Dark Souls III", "engine": "fromsoft", "stores": { "steamAppId": "374320" }, "provenance": { "sources": ["known-engines"], "status": "curated" } },
+    { "id": "sekiro", "name": "Sekiro", "engine": "fromsoft", "stores": { "steamAppId": "814380" }, "provenance": { "sources": ["known-engines"], "status": "curated" } },
+    { "id": "armored-core-vi", "name": "Armored Core VI", "engine": "fromsoft", "stores": { "steamAppId": "1888160" }, "provenance": { "sources": ["known-engines"], "status": "curated" } },
+    { "id": "skyrim-se", "name": "Skyrim Special Edition", "engine": "bethesda", "stores": { "steamAppId": "489830" }, "nexusDomain": "skyrimspecialedition", "modPath": "Data", "featured": 1, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "fallout-4", "name": "Fallout 4", "engine": "bethesda", "stores": { "steamAppId": "377160" }, "nexusDomain": "fallout4", "modPath": "Data", "featured": 2, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "starfield", "name": "Starfield", "engine": "bethesda", "stores": { "steamAppId": "1716740" }, "nexusDomain": "starfield", "modPath": "Data", "featured": 3, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "stardew-valley", "name": "Stardew Valley", "engine": "smapi", "stores": { "steamAppId": "413150" }, "nexusDomain": "stardewvalley", "modPath": "Mods", "featured": 4, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "rimworld", "name": "RimWorld", "engine": "smapi", "stores": { "steamAppId": "294100" }, "modPath": "Mods", "featured": 5, "provenance": { "sources": ["popular-games"], "status": "curated" } },
+    { "id": "valheim", "name": "Valheim", "engine": "bepinex", "stores": { "steamAppId": "892970" }, "nexusDomain": "valheim", "modPath": "BepInEx/plugins", "featured": 6, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "lethal-company", "name": "Lethal Company", "engine": "bepinex", "stores": { "steamAppId": "1966720" }, "nexusDomain": "lethalcompany", "modPath": "BepInEx/plugins", "featured": 7, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "palworld", "name": "Palworld", "engine": "ue-pak", "stores": { "steamAppId": "1623730" }, "nexusDomain": "palworld", "modPath": "Pal/Content/Paks/~mods", "featured": 8, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "hogwarts-legacy", "name": "Hogwarts Legacy", "engine": "ue-pak", "stores": { "steamAppId": "990080" }, "nexusDomain": "hogwartslegacy", "modPath": "Phoenix/Content/Paks/~mods", "featured": 9, "provenance": { "sources": ["known-engines", "nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "cyberpunk-2077", "name": "Cyberpunk 2077", "engine": "custom", "stores": { "steamAppId": "1091500" }, "nexusDomain": "cyberpunk2077", "modPath": "archive/pc/mod", "fileExtensions": ["archive"], "featured": 10, "provenance": { "sources": ["nexus-domains", "popular-games"], "status": "curated" } },
+    { "id": "windrose", "name": "Windrose", "stores": { "steamAppId": "3041230" }, "nexusDomain": "windrose", "provenance": { "sources": ["nexus-domains"], "status": "curated" } },
+    { "id": "witchfire", "name": "Witchfire", "stores": { "steamAppId": "3156770" }, "nexusDomain": "witchfire", "provenance": { "sources": ["nexus-domains"], "status": "curated" } }
+  ]
+}
