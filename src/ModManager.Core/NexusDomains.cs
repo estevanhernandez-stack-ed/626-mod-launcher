@@ -13,12 +13,31 @@ namespace ModManager.Core;
 /// </summary>
 public static class NexusDomains
 {
-    private static readonly IReadOnlyDictionary<string, string> Map = Build();
+    private static IReadOnlyDictionary<string, string>? _map;
+    private static int _mapGen = -1;
+    private static readonly object _gate = new();
+
+    private static IReadOnlyDictionary<string, string> Map
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var gen = EffectiveManifest.Generation;
+                if (_map is null || _mapGen != gen)
+                {
+                    _map = Build();
+                    _mapGen = gen;
+                }
+                return _map;
+            }
+        }
+    }
 
     private static IReadOnlyDictionary<string, string> Build()
     {
         var map = new Dictionary<string, string>();
-        foreach (var g in EmbeddedGameManifest.Current.Games)
+        foreach (var g in EffectiveManifest.Current.Games)
         {
             if (g.Provenance.Sources.Contains(ManifestSources.NexusDomains)
                 && g.Stores.SteamAppId is { } appId
