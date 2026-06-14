@@ -54,4 +54,31 @@ public class SteamParseTests
         Assert.Null(m.Name);
         Assert.Null(m.InstallDir);
     }
+
+    [Fact]
+    public void ParseAppManifest_extracts_buildId()
+    {
+        const string acf = """
+        "AppState"
+        {
+            "appid"     "1091500"
+            "name"      "Cyberpunk 2077"
+            "installdir"    "Cyberpunk 2077"
+            "buildid"   "17556649"
+            "StateFlags"    "4"
+        }
+        """;
+        var m = SteamParse.ParseAppManifest(acf);
+        Assert.Equal("1091500", m.AppId);
+        Assert.Equal("Cyberpunk 2077", m.Name);
+        Assert.Equal("Cyberpunk 2077", m.InstallDir);
+        Assert.Equal("17556649", m.BuildId);
+    }
+
+    [Fact]
+    public void ParseAppManifest_buildId_is_null_when_absent()
+    {
+        var m = SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" \"name\" \"X\" \"installdir\" \"X\" }");
+        Assert.Null(m.BuildId);
+    }
 }
