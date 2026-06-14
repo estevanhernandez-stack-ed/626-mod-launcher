@@ -71,6 +71,11 @@ public sealed class GameEntry
     // auto-backup-before-launch opt-in + how many auto snapshots to retain (null = unlimited)
     public bool AutoBackupOnLaunch { get; set; }
     public int? SaveAutoKeep { get; set; } = 25;
+
+    // Steam buildid recorded the last time we saw this game (the "modded against" baseline). When the
+    // live Steam build later differs, the launcher warns that an update may have broken installed mods.
+    // Null = no baseline yet (e.g. an old registry) = no warning.
+    public string? LastKnownSteamBuildId { get; set; }
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>

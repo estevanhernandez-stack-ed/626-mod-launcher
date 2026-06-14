@@ -292,9 +292,16 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - Add Game → pick a popular game installed on Steam (e.g. Cyberpunk 2077): Name, Engine, Mod folder, App ID, AND Game folder all fill; Add works without Browse. Expected: game registers in one step.
 - Add Game → pick a popular game NOT installed: Game folder stays blank, Browse still works. Expected: no crash, manual path still possible.
 - Add Game → "Quick add from Steam" list shows cover art per game; games with no cached art show the empty placeholder, not a broken image.
+- Main-window game switcher (top-bar ComboBox) shows each game's cover art beside its name (open + selected/closed state); non-Steam or no-art games show the placeholder swatch, not a broken image.
 
 ## App-wide exception sink (v0.6.2)
 - Trigger an unhandled exception in a UI handler (e.g. temporarily throw in a button click): the app does NOT die or freeze, and `%LOCALAPPDATA%\ModManagerBuilder\app-errors.log` gets a timestamped `ui` line. Expected: a logged near-miss, not a silent dead UI. (Behavior is entry-point glue the test project can't reach — only a live rig confirms it.)
+
+## Steam build-update warning (Phase 2)
+- Switch to an installed Steam game for the first time on this build: no warning (baseline set silently). Re-switch: still no warning.
+- Simulate an update: edit the game's `appmanifest_*.acf` `buildid` to a different value (or let Steam update it), then re-switch to the game in the launcher → the "Steam updated <game> — your installed mods may need rechecking" banner appears.
+- Click "Mods rechecked" → banner clears and stays cleared on the next switch (baseline re-recorded). Confirm `games.json` shows the new `lastKnownSteamBuildId`.
+- A non-Steam game (no app id) never shows the banner.
 
 ## Steam install-state filter (v0.6.2)
 - Add Game → "Quick add from Steam": games with a pending Steam **update** (StateFlags=6, e.g. Marvel Rivals / Helldivers 2 / Wallpaper Engine) STILL appear — they're installed, just update-pending. Expected: not wrongly hidden.

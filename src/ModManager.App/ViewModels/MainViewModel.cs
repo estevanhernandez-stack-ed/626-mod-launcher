@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -15,7 +16,16 @@ using ModManager.Core.Tools;
 
 namespace ModManager.App.ViewModels;
 
-public sealed record GameOption(string Id, string Name);
+public sealed record GameOption(string Id, string Name)
+{
+    // Local Steam cover-art path, resolved once at load; Cover builds the image on the UI thread when
+    // the switcher renders it. Mirrors SteamAddRow.Cover — null degrades to the placeholder swatch.
+    public string? CoverPath { get; init; }
+
+    public ImageSource? Cover => string.IsNullOrEmpty(CoverPath)
+        ? null
+        : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
+}
 
 /// <summary>
 /// Orchestrates the shell over the proven Core: loads the active game's mods, toggles them
@@ -134,6 +144,18 @@ public sealed partial class MainViewModel : ObservableObject
     private bool launchNeedsAttention;
 
     public Visibility LaunchHintVisibility => LaunchNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
+
+    // Steam updated this game since we last recorded its build — installed mods may need rechecking.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SteamBuildWarningVisibility))]
+    private bool steamBuildChanged;
+
+    [ObservableProperty] private string steamBuildMessage = "";
+
+    // The live build to re-baseline to when the user dismisses the warning.
+    private string? _pendingSteamBuild;
+
+    public Visibility SteamBuildWarningVisibility => SteamBuildChanged ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CoopHintVisibility))]
@@ -286,7 +308,12 @@ public sealed partial class MainViewModel : ObservableObject
                 var reg = _svc.LoadRegistry();
                 _suppressActiveSwitch = true;
                 Games.Clear();
-                foreach (var g in reg.Games) Games.Add(new GameOption(g.Id, g.GameName));
+                var store = App.AppHost.Services.GetRequiredService<IStoreLibrary>();
+                foreach (var g in reg.Games)
+                    Games.Add(new GameOption(g.Id, g.GameName)
+                    {
+                        CoverPath = string.IsNullOrEmpty(g.SteamAppId) ? null : store.ResolveCoverArtPath(g.SteamAppId),
+                    });
                 var active = Registry.GetActiveGame(reg);
                 ActiveGame = active is null ? null : Games.FirstOrDefault(x => x.Id == active.Id);
                 _suppressActiveSwitch = false;
@@ -320,6 +347,7 @@ public sealed partial class MainViewModel : ObservableObject
             FrameworkRows.Clear();
             OwnedLocations.Clear();
             ReDeployedLocations.Clear();
+            SteamBuildChanged = false; // collapse the build-update banner when no game is active
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(ToolsRowVisible));
@@ -471,6 +499,27 @@ public sealed partial class MainViewModel : ObservableObject
             LaunchNeedsAttention = LaunchOptions.NeedsAttention(_ctx.Game.SteamAppId)
                 && !_direct.SeamlessFullyInstalled(_ctx.Game);
             CoopLauncherMissing = _direct.SeamlessNeedsLauncher(_ctx.Game);
+
+            // Build-id watch: warn when Steam updated this game since we last recorded its build. First sight
+            // records the baseline silently; the pure comparator decides. _steam.InstalledGames() is a local
+            // Steam scan (no network) and matches the active game by app id.
+            var liveBuild = InstalledGameMatch.ByAppId(_steam.InstalledGames(), _ctx.Game.SteamAppId)?.BuildId;
+            switch (SteamBuildCheck.Evaluate(_ctx.Game.LastKnownSteamBuildId, liveBuild))
+            {
+                case SteamBuildStatus.NoBaseline:
+                    _svc.SetSteamBuildBaseline(_ctx.Game.Id, liveBuild);
+                    _ctx.Game.LastKnownSteamBuildId = liveBuild;
+                    SteamBuildChanged = false;
+                    break;
+                case SteamBuildStatus.Updated:
+                    _pendingSteamBuild = liveBuild;
+                    SteamBuildMessage = $"Steam updated {_ctx.Game.GameName} since you last modded it — your installed mods may need rechecking.";
+                    SteamBuildChanged = true;
+                    break;
+                default: // Unchanged / Unknown
+                    SteamBuildChanged = false;
+                    break;
+            }
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
                 // read as "you don't have Mod Engine 2 (you should)" — which is wrong; for a
@@ -748,6 +797,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private Task Refresh() => ReloadModsAsync();
+
+    [RelayCommand]
+    private void DismissBuildWarning()
+    {
+        if (_ctx?.Game is null) return;
+        _svc.SetSteamBuildBaseline(_ctx.Game.Id, _pendingSteamBuild);
+        _ctx.Game.LastKnownSteamBuildId = _pendingSteamBuild;   // keep in-memory baseline in sync
+        SteamBuildChanged = false;
+    }
 
     /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>
     public Task RefreshAsync() => ReloadModsAsync();
