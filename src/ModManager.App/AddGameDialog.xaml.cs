@@ -13,6 +13,9 @@ public sealed partial class AddGameDialog : ContentDialog
 {
     private readonly IntPtr _hwnd;
 
+    // Installed store games, kept so a popular-game pick can auto-fill the folder we already resolved.
+    private readonly IReadOnlyList<InstalledGame> _installedGames;
+
     // Resolved save folder from an "Add with AI" apply, stashed for the register path to persist.
     private string? _resolvedSaveDir;
 
@@ -41,6 +44,7 @@ public sealed partial class AddGameDialog : ContentDialog
     {
         InitializeComponent();
         _hwnd = hwnd;
+        _installedGames = steamGames;
         // No default selection — a wrong default reads as "auto-detected" when it isn't.
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
 
@@ -247,6 +251,11 @@ public sealed partial class AddGameDialog : ContentDialog
         NameBox.Text = g.Name;
         ModPathBox.Text = g.ModPath;
         SteamBox.Text = g.SteamAppId;
+
+        // We already parsed this game's install folder from Steam — fill it so the pick is one step from
+        // Add instead of making the user Browse to a path we know. Editable; user can still change it.
+        if (InstalledGameMatch.ByAppId(_installedGames, g.SteamAppId) is { } installed)
+            FolderBox.Text = installed.InstallDir;
 
         // Select the matching engine LAST, and deferred off this SelectionChanged tick. Mutating one
         // combo's selection from inside another combo's SelectionChanged is exactly the re-entrancy
