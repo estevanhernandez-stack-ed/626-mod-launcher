@@ -80,4 +80,29 @@ public class RemoteManifestCacheTests : IDisposable
         Assert.False(applied);
         Assert.Same(EmbeddedGameManifest.Current, EffectiveManifest.Current);
     }
+
+    [Fact]
+    public void WriteCache_then_ApplyCached_round_trips()
+    {
+        var (spki, signer) = NewKeyPair();
+        var (bytes, sig) = SignManifest(signer);
+
+        RemoteManifestCache.WriteCache(_dir, bytes, sig);   // simulates a completed fetch
+        var applied = RemoteManifestCache.ApplyCached(_dir, Binary, spki);
+
+        Assert.True(applied);
+        Assert.True(File.Exists(Path.Combine(_dir, "game-manifest.json")));
+        Assert.True(File.Exists(Path.Combine(_dir, "game-manifest.json.sig")));
+        Assert.Contains(EffectiveManifest.Current.Games, g => g.Id == "cached-game");
+    }
+
+    [Fact]
+    public void WriteCache_creates_the_directory_and_overwrites()
+    {
+        RemoteManifestCache.WriteCache(_dir, new byte[] { 1, 2, 3 }, new byte[] { 9 });
+        RemoteManifestCache.WriteCache(_dir, new byte[] { 4, 5, 6 }, new byte[] { 8 }); // overwrite
+
+        Assert.Equal(new byte[] { 4, 5, 6 }, File.ReadAllBytes(Path.Combine(_dir, "game-manifest.json")));
+        Assert.Equal(new byte[] { 8 }, File.ReadAllBytes(Path.Combine(_dir, "game-manifest.json.sig")));
+    }
 }

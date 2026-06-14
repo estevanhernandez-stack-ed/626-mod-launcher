@@ -33,4 +33,30 @@ public static class RemoteManifestCache
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
     }
+
+    /// <summary>
+    /// Write a freshly fetched manifest + detached signature to the cache atomically (temp file +
+    /// rename, mirroring <see cref="AtomicJson"/>), so a crash mid-write can never leave a torn cache.
+    /// </summary>
+    public static void WriteCache(string cacheDir, byte[] manifestBytes, byte[] signature)
+    {
+        Directory.CreateDirectory(cacheDir);
+        WriteAtomic(Path.Combine(cacheDir, ManifestFileName), manifestBytes);
+        WriteAtomic(Path.Combine(cacheDir, SignatureFileName), signature);
+    }
+
+    private static void WriteAtomic(string file, byte[] bytes)
+    {
+        var tmp = file + ".tmp-" + Environment.ProcessId;
+        try
+        {
+            File.WriteAllBytes(tmp, bytes);
+            File.Move(tmp, file, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch { /* nothing to clean up */ }
+            throw;
+        }
+    }
 }
