@@ -40,12 +40,60 @@ public static class EffectiveManifest
             if (byId.TryAdd(g.Id, g)) order.Add(g.Id);
             else byId[g.Id] = g;
         }
-        foreach (var g in remote.Games) // remote wins on id collision; new ids appended in remote order
+        foreach (var g in remote.Games) // new ids appended in remote order; collisions field-merge (below)
         {
             if (byId.TryAdd(g.Id, g)) order.Add(g.Id);
-            else byId[g.Id] = g;
+            else byId[g.Id] = MergeEntry(byId[g.Id], g);
         }
 
         return embedded with { Games = order.Select(id => byId[id]).ToList() };
     }
+
+    /// <summary>
+    /// Field-merge a remote entry onto the embedded one they share an id with. The feed UPDATES but
+    /// never DOWNGRADES: a remote non-null value wins (so the feed can correct a built-in), but a
+    /// remote null can never blank a field the built-in had. Provenance sources union (so functional
+    /// facade tags from the curated baseline — e.g. <c>popular-games</c> — survive a feed collision),
+    /// and a curated status is never downgraded to auto. Prevents an auto-mined feed entry from
+    /// silently wiping a curated built-in out of a facade (the Stardew quick-pick regression).
+    /// </summary>
+    private static GameManifestEntry MergeEntry(GameManifestEntry embedded, GameManifestEntry remote)
+    {
+        // Union provenance sources, embedded order first, then any new from remote.
+        var sources = new List<string>(embedded.Provenance.Sources);
+        foreach (var s in remote.Provenance.Sources)
+            if (!sources.Contains(s)) sources.Add(s);
+
+        // Never downgrade trust: if either side is curated, the merged entry is curated.
+        var status = embedded.Provenance.Status == "curated" || remote.Provenance.Status == "curated"
+            ? "curated"
+            : remote.Provenance.Status;
+
+        return embedded with
+        {
+            Name = Prefer(remote.Name, embedded.Name),
+            Engine = remote.Engine ?? embedded.Engine,
+            Stores = MergeStores(embedded.Stores, remote.Stores),
+            NexusDomain = remote.NexusDomain ?? embedded.NexusDomain,
+            CurseforgeGameId = remote.CurseforgeGameId ?? embedded.CurseforgeGameId,
+            ModPath = remote.ModPath ?? embedded.ModPath,
+            SaveDirHint = remote.SaveDirHint ?? embedded.SaveDirHint,
+            FileExtensions = remote.FileExtensions ?? embedded.FileExtensions,
+            GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,
+            Featured = remote.Featured ?? embedded.Featured,
+            Provenance = embedded.Provenance with { Sources = sources, Status = status },
+        };
+    }
+
+    private static StoreIds MergeStores(StoreIds embedded, StoreIds remote) => new()
+    {
+        SteamAppId = remote.SteamAppId ?? embedded.SteamAppId,
+        GogId = remote.GogId ?? embedded.GogId,
+        EpicAppName = remote.EpicAppName ?? embedded.EpicAppName,
+        XboxStoreId = remote.XboxStoreId ?? embedded.XboxStoreId,
+    };
+
+    // Non-empty remote string wins; otherwise keep the embedded one (Name is non-nullable).
+    private static string Prefer(string remote, string embedded)
+        => string.IsNullOrEmpty(remote) ? embedded : remote;
 }
