@@ -37,7 +37,7 @@ public sealed partial class AddGameDialog : ContentDialog
 
     public sealed record EngineOption(string Key, string Label);
 
-    public AddGameDialog(IntPtr hwnd, IReadOnlyList<SteamGame> steamGames)
+    public AddGameDialog(IntPtr hwnd, IReadOnlyList<InstalledGame> steamGames)
     {
         InitializeComponent();
         _hwnd = hwnd;
@@ -128,7 +128,7 @@ public sealed partial class AddGameDialog : ContentDialog
     // Build a batched prompt from the picked Steam games. Empty selection -> a status nudge, no copy.
     private void OnCopyBatchPrompt(object sender, RoutedEventArgs e)
     {
-        var picked = BatchSteamList.SelectedItems.Cast<SteamGame>().ToList();
+        var picked = BatchSteamList.SelectedItems.Cast<InstalledGame>().ToList();
         if (picked.Count == 0)
         {
             ShowBatchStatus("Pick at least one Steam game first.", "ThemeDanger");
@@ -153,7 +153,7 @@ public sealed partial class AddGameDialog : ContentDialog
             return;
         }
 
-        var picked = BatchSteamList.SelectedItems.Cast<SteamGame>().ToList();
+        var picked = BatchSteamList.SelectedItems.Cast<InstalledGame>().ToList();
         var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
         var rows = new List<BatchRowVM>();
         int ok = 0;
