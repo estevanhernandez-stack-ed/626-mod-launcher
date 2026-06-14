@@ -86,6 +86,7 @@ public sealed class SteamService : IStoreLibrary
                 {
                     var m = SteamParse.ParseAppManifest(File.ReadAllText(acf));
                     if (m.AppId is null || string.IsNullOrEmpty(m.Name) || string.IsNullOrEmpty(m.InstallDir)) continue;
+                    if (!SteamInstallState.IsFullyInstalled(m.StateFlags)) continue; // skip mid-download; a fully-installed copy in another library still wins (filter precedes seen.Add)
                     if (!seen.Add(m.AppId)) continue;
                     var full = Path.Combine(steamapps, "common", m.InstallDir);
                     if (Directory.Exists(full))

@@ -295,3 +295,8 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 
 ## App-wide exception sink (v0.6.2)
 - Trigger an unhandled exception in a UI handler (e.g. temporarily throw in a button click): the app does NOT die or freeze, and `%LOCALAPPDATA%\ModManagerBuilder\app-errors.log` gets a timestamped `ui` line. Expected: a logged near-miss, not a silent dead UI. (Behavior is entry-point glue the test project can't reach — only a live rig confirms it.)
+
+## Steam install-state filter (v0.6.2)
+- Add Game → "Quick add from Steam": games with a pending Steam **update** (StateFlags=6, e.g. Marvel Rivals / Helldivers 2 / Wallpaper Engine) STILL appear — they're installed, just update-pending. Expected: not wrongly hidden.
+- Start downloading a not-yet-installed game in Steam, then open Add Game while it's mid-download → it does NOT appear in the quick-add list. Expected: only fully-installed games are offered.
+- Multi-library edge (if reproducible): the same app id installed in one library and mid-move/partial in another → the fully-installed copy is the one listed. (App-side IO + multi-library dedup — not unit-coverable; only a live rig with two libraries confirms.)

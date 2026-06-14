@@ -30,6 +30,9 @@ public static partial class SteamParse
     [GeneratedRegex("\"buildid\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
     private static partial Regex BuildIdKeyRe();
 
+    [GeneratedRegex("\"StateFlags\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
+    private static partial Regex StateFlagsKeyRe();
+
     public static string? ParseAppId(string? launchUrl, string? steamAppId)
     {
         if (!string.IsNullOrEmpty(steamAppId)) return steamAppId;
@@ -52,9 +55,10 @@ public static partial class SteamParse
             AppIdKeyRe().Match(s) is { Success: true } a ? a.Groups[1].Value : null,
             NameKeyRe().Match(s) is { Success: true } n ? n.Groups[1].Value : null,
             InstallDirKeyRe().Match(s) is { Success: true } d ? d.Groups[1].Value : null,
-            BuildIdKeyRe().Match(s) is { Success: true } b ? b.Groups[1].Value : null);
+            BuildIdKeyRe().Match(s) is { Success: true } b ? b.Groups[1].Value : null,
+            StateFlagsKeyRe().Match(s) is { Success: true } sf ? sf.Groups[1].Value : null);
     }
 }
 
-/// <summary>Parsed fields from a Steam appmanifest (appid / name / installdir / buildid).</summary>
-public sealed record AppManifest(string? AppId, string? Name, string? InstallDir, string? BuildId = null);
+/// <summary>Parsed fields from a Steam appmanifest (appid / name / installdir / buildid / stateFlags).</summary>
+public sealed record AppManifest(string? AppId, string? Name, string? InstallDir, string? BuildId = null, string? StateFlags = null);

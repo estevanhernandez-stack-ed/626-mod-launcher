@@ -73,6 +73,7 @@ public class SteamParseTests
         Assert.Equal("Cyberpunk 2077", m.Name);
         Assert.Equal("Cyberpunk 2077", m.InstallDir);
         Assert.Equal("17556649", m.BuildId);
+        Assert.Equal("4", m.StateFlags);
     }
 
     [Fact]
@@ -80,5 +81,12 @@ public class SteamParseTests
     {
         var m = SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" \"name\" \"X\" \"installdir\" \"X\" }");
         Assert.Null(m.BuildId);
+    }
+
+    [Fact]
+    public void ParseAppManifest_extracts_stateFlags_and_null_when_absent()
+    {
+        Assert.Equal("6", SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" \"StateFlags\" \"6\" }").StateFlags);
+        Assert.Null(SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" }").StateFlags);
     }
 }
