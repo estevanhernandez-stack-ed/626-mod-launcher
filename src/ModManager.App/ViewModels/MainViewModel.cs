@@ -332,6 +332,7 @@ public sealed partial class MainViewModel : ObservableObject
             FrameworkRows.Clear();
             OwnedLocations.Clear();
             ReDeployedLocations.Clear();
+            SteamBuildChanged = false; // collapse the build-update banner when no game is active
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(ToolsRowVisible));
