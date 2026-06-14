@@ -287,25 +287,9 @@ public sealed partial class AddGameDialog : ContentDialog
             }
             catch (Exception ex)
             {
-                LogPopularPickError(g.Id, ex);
+                AppDiagnostics.Log($"popular-pick '{g.Id}' engine-select", ex);
             }
         });
-    }
-
-    // Best-effort diagnostics for the popular-game engine-select step. Appends to a log next to the
-    // manifest cache so a swallowed WinUI throw here leaves a trail instead of a silent dead dialog.
-    // Never throws — diagnostics must not be able to break the dialog.
-    private static void LogPopularPickError(string gameId, Exception ex)
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ModManagerBuilder");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "add-game-diagnostics.log"),
-                $"{DateTime.UtcNow:O}\tpopular-pick '{gameId}' engine-select failed:\t{ex}\n");
-        }
-        catch { /* diagnostics are best-effort; never let logging break the dialog */ }
     }
 
     // React as the user checks Steam games. The dialog's Add button commits the selection.
