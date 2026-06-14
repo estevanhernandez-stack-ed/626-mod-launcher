@@ -57,6 +57,10 @@ File.WriteAllText(Path.Combine(outDir, "ludusavi-summary.md"), sb.ToString());
 
 Console.WriteLine($"Wrote {validated.Manifest.Games.Count} candidates to {Path.GetFullPath(outDir)}");
 
+// The most-enriched manifest so far. Starts at the Ludusavi backbone; each enrichment step
+// (MO2, then overrides) replaces it so the final merge step always sees the latest data.
+var current = validated.Manifest;
+
 // --with-mo2: fetch (or read --mo2-dir) MO2 basic_games, parse, enrich the Ludusavi backbone by
 // Steam id, re-validate, and emit out/manifest-draft.json + out/enrichment-summary.md. Draft-only —
 // never merged into the shipped manifest.
@@ -64,20 +68,21 @@ if (args.Contains("--with-mo2"))
 {
     var mo2Texts = await LoadMo2Texts(GetArg(args, "--mo2-dir"));
     var mo2Games = mo2Texts.Select(Mo2GameParser.Parse).OfType<Mo2Game>().ToList();
-    var enriched = Mo2Enrich.Apply(validated.Manifest, mo2Games);
+    var enriched = Mo2Enrich.Apply(current, mo2Games);
     var validatedEnriched = ManifestValidator.Validate(enriched, EnginePresets.Presets.Keys.ToHashSet());
+    current = validatedEnriched.Manifest;
 
     File.WriteAllText(Path.Combine(outDir, "manifest-draft.json"),
-        JsonSerializer.Serialize(validatedEnriched.Manifest, ManifestJson.Options));
+        JsonSerializer.Serialize(current, ManifestJson.Options));
 
-    var matched = validatedEnriched.Manifest.Games.Count(g => g.Provenance.Sources.Contains("mo2"));
-    var withMod = validatedEnriched.Manifest.Games.Count(g => g.ModPath is not null);
-    var withEngine = validatedEnriched.Manifest.Games.Count(g => g.Engine is not null);
-    var withNexus = validatedEnriched.Manifest.Games.Count(g => g.NexusDomain is not null);
+    var matched = current.Games.Count(g => g.Provenance.Sources.Contains("mo2"));
+    var withMod = current.Games.Count(g => g.ModPath is not null);
+    var withEngine = current.Games.Count(g => g.Engine is not null);
+    var withNexus = current.Games.Count(g => g.NexusDomain is not null);
     var es = new StringBuilder();
     es.AppendLine("# MO2 enrichment — draft");
     es.AppendLine();
-    es.AppendLine($"- backbone games: {validatedEnriched.Manifest.Games.Count}");
+    es.AppendLine($"- backbone games: {current.Games.Count}");
     es.AppendLine($"- MO2 games parsed: {mo2Games.Count}");
     es.AppendLine($"- matched onto backbone (by Steam id): {matched}");
     es.AppendLine($"- with modPath: {withMod}");
@@ -88,6 +93,27 @@ if (args.Contains("--with-mo2"))
     es.AppendLine("unambiguous; the launcher folder-detects the rest at runtime.");
     File.WriteAllText(Path.Combine(outDir, "enrichment-summary.md"), es.ToString());
     Console.WriteLine($"MO2 enrichment: {matched} matched, {withMod} modPaths, {withEngine} engines -> out/manifest-draft.json");
+}
+
+// --with-overrides: the FINAL merge step. Load hand-curated overrides (default
+// tools/ManifestMiner/overrides/, or --overrides-dir <path>) and apply them onto the most-enriched
+// manifest so far. Curated data wins unconditionally; an override whose Steam id isn't present adds a
+// new entry. Re-validate through the real Core gate and re-emit out/manifest-draft.json. Draft-only.
+if (args.Contains("--with-overrides"))
+{
+    var overridesDir = GetArg(args, "--overrides-dir")
+        ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "overrides");
+    var overrides = OverridesLoader.Load(overridesDir);
+    var curated = OverridesMerge.Apply(current, overrides);
+    var validatedCurated = ManifestValidator.Validate(curated, EnginePresets.Presets.Keys.ToHashSet());
+    current = validatedCurated.Manifest;
+
+    File.WriteAllText(Path.Combine(outDir, "manifest-draft.json"),
+        JsonSerializer.Serialize(current, ManifestJson.Options));
+
+    var curatedCount = current.Games.Count(g => g.Provenance.Sources.Contains("curated"));
+    var withEngine = current.Games.Count(g => g.Engine is not null);
+    Console.WriteLine($"Overrides: {overrides.Count} loaded, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
 }
 
 static string? GetArg(string[] args, string name)
