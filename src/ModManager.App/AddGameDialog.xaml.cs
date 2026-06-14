@@ -248,8 +248,9 @@ public sealed partial class AddGameDialog : ContentDialog
         ProfileStatus.Visibility = Visibility.Visible;
     }
 
-    // Pick a curated game -> pre-fill name, engine, mod folder, and app id. Leaves the game
-    // folder for the user to point at their install. Manual entry still works unchanged.
+    // Pick a curated game -> pre-fill name, engine, mod folder, and app id, plus the game folder
+    // when the game is installed on Steam (matched by app id; left blank otherwise so the user can
+    // Browse). Manual entry still works unchanged.
     private void OnPopularSelected(object sender, SelectionChangedEventArgs e)
     {
         if (PopularGamesBox.SelectedItem is not PopularGame g) return;
