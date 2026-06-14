@@ -4,23 +4,23 @@ Operational runbook for taking the remote game-definition feed from "machinery r
 
 ## Where we are
 
-The in-app machinery is complete and merged: the manifest behind facades (Phase 0), the trust core that verifies/loads/merges a remote manifest, the facade wiring + `SetRemote` hook, the pinned ECDSA P-256 public key, and `ManifestLoader.TryApplyRemote` — the one-call entry point (verify against the pinned key → validate/gate → make effective, fall back to embedded on any failure). The app can fully ingest a signed manifest; nothing produces or serves one yet.
+**The feed is LIVE as of launcher v0.6.0.** The full loop runs end to end: the separate public `626-game-manifest` repo publishes a signed `games-manifest.json`, and the launcher fetches it, verifies the ECDSA P-256 detached signature against the pinned public key, validates/gates it, and merges it over the embedded manifest at startup — falling back silently to the embedded manifest on any failure (offline, bad signature, schema too new). Games update from a live feed; a new game on a known engine is now a data PR to the feed repo, no app release.
+
+The in-app machinery is complete and merged: the manifest behind facades (Phase 0), the trust core that verifies/loads/merges a remote manifest, the facade wiring + `SetRemote` hook, the pinned ECDSA P-256 public key, and `ManifestLoader.TryApplyRemote` — the one-call entry point (verify against the pinned key → validate/gate → make effective, fall back to embedded on any failure). App-side, `RemoteManifestSource` fetches + caches the feed and applies it at startup before any facade reads; the "auto-update definitions" toggle (default on, ~24h debounced) gates it. The feed repo's signing CI runs **weekly + on `overrides/` changes**, signing the mined-facts manifest from the `MANIFEST_SIGNING_KEY` secret.
 
 ## The sequence (dependency order)
 
 Each step is tagged **[you]** (maintainer action) or **[me]** (agent builds it).
 
-| # | Step | Who | Depends on |
-|---|---|---|---|
-| 1 | App-side `RemoteManifestSource` (fetch → cache → `TryApplyRemote` at startup) + "auto-update definitions" toggle | **[me]** | nothing — buildable now, ships dark (no URL = no-op) |
-| 2 | Feed miner (C# in-repo tool: Ludusavi/Vortex/MO2 → draft `games-manifest.json` + diff) | **[me]** | nothing — produces an unsigned draft |
-| 3 | Review the draft manifest | **[you]** | step 2 |
-| 4 | Pre-publish legal sign-off | **[you]** | can decide anytime |
-| 5 | CI signing (Actions secret + signing step) | **[you] + [me]** | the keypair (done); the feed repo (step 6) |
-| 6 | Publish the feed + wire the real URL | **[you] + [me]** | steps 3–5 |
-| 7 | Flip the toggle default + ship a release | **[me]** | step 6 |
-
-**Buildable right now with zero gating:** steps 1 and 2.
+| # | Step | Who | Depends on | Status |
+| --- | --- | --- | --- | --- |
+| 1 | App-side `RemoteManifestSource` (fetch → cache → `TryApplyRemote` at startup) + "auto-update definitions" toggle | **[me]** | nothing — buildable now, ships dark (no URL = no-op) | **Done (v0.6.0)** |
+| 2 | Feed miner (C# in-repo tool: Ludusavi/Vortex/MO2 → draft `games-manifest.json` + diff) | **[me]** | nothing — produces an unsigned draft | **Done** (`tools/ManifestMiner/`) |
+| 3 | Review the draft manifest | **[you]** | step 2 | Ongoing — the per-PR curation gate |
+| 4 | Pre-publish legal sign-off | **[you]** | can decide anytime | **Done (2026-06-13)** |
+| 5 | CI signing (Actions secret + signing step) | **[you] + [me]** | the keypair (done); the feed repo (step 6) | **Done** (feed-repo CI, weekly + on `overrides/`) |
+| 6 | Publish the feed + wire the real URL | **[you] + [me]** | steps 3–5 | **Done (v0.6.0)** — `FeedUrl` wired |
+| 7 | Flip the toggle default + ship a release | **[me]** | step 6 | **Done (v0.6.0)** — default on |
 
 ## Your actions, in detail
 

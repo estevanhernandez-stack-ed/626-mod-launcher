@@ -72,6 +72,12 @@ Run the Setup.exe on a clean Windows install (or a VM, or another user account).
 - **CI test step fails** — run `dotnet test tests/ModManager.Tests/ModManager.Tests.csproj` locally with the same arguments. Don't merge without green Core.
 - **Velopack reports "not installed" in dev** — expected. The auto-updater only runs against installed builds.
 
+## Game-definition feed (separate concern)
+
+The signed game-definition feed (`games-manifest.json`) is **not** built by this pipeline. It's built and signed by CI in the separate **626-game-manifest** repo — on a weekly schedule and whenever `overrides/` changes — then published for the launcher to fetch at startup. A launcher release and a feed publish are independent: a new game on a known engine ships as a data PR to the feed repo, no app tag required.
+
+For the feed build, signing, go-live steps, and the `MANIFEST_SIGNING_KEY` secret, see `docs/manifest-feed-runbook.md`.
+
 ## Channel split (future)
 
 Today: one channel (`win-x64`), tag-driven, auto-update from public GitHub Releases. When the Store path lights up, the MSIX flow runs in parallel and the in-app updater knows to skip when running as MSIX (the Store handles updates).
