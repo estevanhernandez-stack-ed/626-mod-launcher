@@ -239,16 +239,53 @@ public sealed partial class AddGameDialog : ContentDialog
     private void OnPopularSelected(object sender, SelectionChangedEventArgs e)
     {
         if (PopularGamesBox.SelectedItem is not PopularGame g) return;
+
+        // Fill the plain fields FIRST and unconditionally — these can't throw, so the pre-fill always
+        // lands. (Regression guard: a throw while selecting the engine combo below used to abort this
+        // handler right after the name was set, leaving the mod folder + app id blank and the dialog
+        // looking dead. There is no app-level unhandled-exception sink, so the throw was swallowed.)
         NameBox.Text = g.Name;
-        // Select the matching engine option. This fires OnEngineChanged, which seeds ModPathBox
-        // from the engine preset's default — we then override with the game-specific path below.
-        if ((EngineBox.ItemsSource as IEnumerable<EngineOption>)?.FirstOrDefault(o => o.Key == g.Engine) is { } match)
-        {
-            EngineBox.SelectedItem = match;
-            EngineHint.Visibility = Visibility.Collapsed; // this is a curated pick, not folder auto-detection
-        }
         ModPathBox.Text = g.ModPath;
         SteamBox.Text = g.SteamAppId;
+
+        // Select the matching engine LAST, and deferred off this SelectionChanged tick. Mutating one
+        // combo's selection from inside another combo's SelectionChanged is exactly the re-entrancy
+        // WinUI can throw on; deferring runs it cleanly after this event returns. Any failure is
+        // logged + swallowed so it can never blank the fields above. Re-assert the game-specific mod
+        // path after selecting, since that selection fires OnEngineChanged which seeds the engine
+        // preset's default path.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                if ((EngineBox.ItemsSource as IEnumerable<EngineOption>)?.FirstOrDefault(o => o.Key == g.Engine) is { } match)
+                {
+                    EngineBox.SelectedItem = match;
+                    ModPathBox.Text = g.ModPath;                  // game-specific path wins over the preset default
+                    EngineHint.Visibility = Visibility.Collapsed; // a curated pick, not folder auto-detection
+                }
+            }
+            catch (Exception ex)
+            {
+                LogPopularPickError(g.Id, ex);
+            }
+        });
+    }
+
+    // Best-effort diagnostics for the popular-game engine-select step. Appends to a log next to the
+    // manifest cache so a swallowed WinUI throw here leaves a trail instead of a silent dead dialog.
+    // Never throws — diagnostics must not be able to break the dialog.
+    private static void LogPopularPickError(string gameId, Exception ex)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ModManagerBuilder");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "add-game-diagnostics.log"),
+                $"{DateTime.UtcNow:O}\tpopular-pick '{gameId}' engine-select failed:\t{ex}\n");
+        }
+        catch { /* diagnostics are best-effort; never let logging break the dialog */ }
     }
 
     // React as the user checks Steam games. The dialog's Add button commits the selection.
