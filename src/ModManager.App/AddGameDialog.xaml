@@ -12,6 +12,11 @@
     DefaultButton="Primary"
     PrimaryButtonClick="OnPrimary">
 
+    <!-- The dialog (AI + Batch expanders, Steam quick-add, the full manual form) is taller than a
+         ContentDialog can show, especially under display scaling — and a ContentDialog does not scroll
+         its own content. Without this wrap, everything below the name box clips off the bottom with no
+         way to reach it (engine, game folder, Browse, the validation error). Mirrors SettingsDialog. -->
+    <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="12" Width="440">
         <Expander x:Name="AiExpander" HorizontalAlignment="Stretch" Header="Add with AI">
             <StackPanel Spacing="8" Width="400">
@@ -103,4 +108,5 @@
                    Text="Name, game folder, and engine are required." TextWrapping="Wrap" />
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </ContentDialog>
