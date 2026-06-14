@@ -295,3 +295,9 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 
 ## App-wide exception sink (v0.6.2)
 - Trigger an unhandled exception in a UI handler (e.g. temporarily throw in a button click): the app does NOT die or freeze, and `%LOCALAPPDATA%\ModManagerBuilder\app-errors.log` gets a timestamped `ui` line. Expected: a logged near-miss, not a silent dead UI. (Behavior is entry-point glue the test project can't reach — only a live rig confirms it.)
+
+## Steam build-update warning (Phase 2)
+- Switch to an installed Steam game for the first time on this build: no warning (baseline set silently). Re-switch: still no warning.
+- Simulate an update: edit the game's `appmanifest_*.acf` `buildid` to a different value (or let Steam update it), then re-switch to the game in the launcher → the "Steam updated <game> — your installed mods may need rechecking" banner appears.
+- Click "Mods rechecked" → banner clears and stays cleared on the next switch (baseline re-recorded). Confirm `games.json` shows the new `lastKnownSteamBuildId`.
+- A non-Steam game (no app id) never shows the banner.
