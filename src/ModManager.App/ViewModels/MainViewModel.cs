@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -15,7 +16,16 @@ using ModManager.Core.Tools;
 
 namespace ModManager.App.ViewModels;
 
-public sealed record GameOption(string Id, string Name);
+public sealed record GameOption(string Id, string Name)
+{
+    // Local Steam cover-art path, resolved once at load; Cover builds the image on the UI thread when
+    // the switcher renders it. Mirrors SteamAddRow.Cover — null degrades to the placeholder swatch.
+    public string? CoverPath { get; init; }
+
+    public ImageSource? Cover => string.IsNullOrEmpty(CoverPath)
+        ? null
+        : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
+}
 
 /// <summary>
 /// Orchestrates the shell over the proven Core: loads the active game's mods, toggles them
@@ -286,7 +296,12 @@ public sealed partial class MainViewModel : ObservableObject
                 var reg = _svc.LoadRegistry();
                 _suppressActiveSwitch = true;
                 Games.Clear();
-                foreach (var g in reg.Games) Games.Add(new GameOption(g.Id, g.GameName));
+                var store = App.AppHost.Services.GetRequiredService<IStoreLibrary>();
+                foreach (var g in reg.Games)
+                    Games.Add(new GameOption(g.Id, g.GameName)
+                    {
+                        CoverPath = string.IsNullOrEmpty(g.SteamAppId) ? null : store.ResolveCoverArtPath(g.SteamAppId),
+                    });
                 var active = Registry.GetActiveGame(reg);
                 ActiveGame = active is null ? null : Games.FirstOrDefault(x => x.Id == active.Id);
                 _suppressActiveSwitch = false;

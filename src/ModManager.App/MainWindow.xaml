@@ -40,8 +40,23 @@
                         Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
                 <ComboBox MinWidth="180"
                           ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
-                          SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}"
-                          DisplayMemberPath="Name" />
+                          SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="40" Height="19" CornerRadius="3"
+                                        Background="{ThemeResource ControlElevationBorderBrush}">
+                                    <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <Button ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
                         Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
