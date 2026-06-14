@@ -18,11 +18,24 @@ public sealed class AppSettingsService
 
     private WindowBackdropKind _backdrop;
 
+    private bool _autoUpdateDefinitions;
+
     /// <summary>Raised when any setting changes so the shell can re-apply (e.g. swap the backdrop
     /// on the live window).</summary>
     public event EventHandler? BackdropChanged;
 
     public WindowBackdropKind Backdrop => _backdrop;
+
+    /// <summary>Whether the launcher fetches + applies remote game-definition updates (default on).
+    /// When off, the embedded manifest is used and no manifest fetch occurs.</summary>
+    public bool AutoUpdateDefinitions => _autoUpdateDefinitions;
+
+    public void SetAutoUpdateDefinitions(bool enabled)
+    {
+        if (_autoUpdateDefinitions == enabled) return;
+        _autoUpdateDefinitions = enabled;
+        Save();
+    }
 
     public AppSettingsService()
     {
@@ -30,6 +43,7 @@ public sealed class AppSettingsService
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "ModManagerBuilder", "app-settings.json");
         _backdrop = Load();
+        _autoUpdateDefinitions = LoadAutoUpdate();
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
@@ -60,12 +74,28 @@ public sealed class AppSettingsService
         return WindowBackdropKind.Solid;
     }
 
+    private bool LoadAutoUpdate()
+    {
+        try
+        {
+            if (!File.Exists(Path)) return true;
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
+            if (doc.RootElement.TryGetProperty("autoUpdateDefinitions", out var v)
+                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
+                return v.GetBoolean();
+        }
+        catch { /* missing / corrupt — default on */ }
+        return true;
+    }
+
     private void Save()
     {
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-            var json = $"{{\"backdrop\":\"{_backdrop.ToString().ToLowerInvariant()}\"}}";
+            var json =
+                $"{{\"backdrop\":\"{_backdrop.ToString().ToLowerInvariant()}\","
+                + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")}}}";
             File.WriteAllText(Path, json);
         }
         catch { /* best-effort persist; in-memory state still holds */ }

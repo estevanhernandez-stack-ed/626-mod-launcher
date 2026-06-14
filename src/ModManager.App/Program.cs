@@ -23,6 +23,11 @@ public static class Program
     {
         VelopackApp.Build().SetArgs(args).Run();
 
+        // Apply the cached remote game-definition manifest (if enabled) BEFORE WinUI / the facades
+        // read it. Verified against the pinned key in Core; no-op when disabled or no cache. Dark
+        // until a feed exists.
+        ModManager.App.Services.RemoteManifestSource.ApplyCachedAtStartup();
+
         Microsoft.UI.Xaml.Application.Start((p) =>
         {
             var ctx = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());

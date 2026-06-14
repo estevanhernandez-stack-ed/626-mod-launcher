@@ -43,6 +43,7 @@ public partial class App : Application
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
                 services.AddSingleton<UpdateChecker>();
+                services.AddSingleton<RemoteManifestSource>();
                 services.AddSingleton<RestorePointService>();
                 services.AddTransient<MainViewModel>();
             })
@@ -59,5 +60,9 @@ public partial class App : Application
         // Only meaningful when the app was installed via the Velopack Setup.exe — UpdateChecker
         // detects "not installed" (dev runs, portable zip) and exits without touching the network.
         _ = AppHost.Services.GetRequiredService<UpdateChecker>().CheckForUpdatesAsync();
+
+        // Refresh the remote game-definition cache for the next launch (debounced, dark until a
+        // feed URL is set). Fire-and-forget; failures are swallowed.
+        _ = AppHost.Services.GetRequiredService<RemoteManifestSource>().RefreshAsync();
     }
 }
