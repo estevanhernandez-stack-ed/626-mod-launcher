@@ -13,6 +13,9 @@ public sealed partial class AddGameDialog : ContentDialog
 {
     private readonly IntPtr _hwnd;
 
+    // Store library, used to resolve locally-cached cover art for the Steam quick-add rows.
+    private readonly IStoreLibrary _store = App.AppHost.Services.GetRequiredService<IStoreLibrary>();
+
     // Installed store games, kept so a popular-game pick can auto-fill the folder we already resolved.
     private readonly IReadOnlyList<InstalledGame> _installedGames;
 
@@ -29,8 +32,15 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private sealed record BatchRowVM(string Headline, string Detail);
 
-    // One checkable Steam quick-add row: the ready-to-register input + the engine-tagged display label.
-    private sealed record SteamAddRow(GameInput Input, string Display);
+    // One checkable Steam quick-add row: the ready-to-register input + the engine-tagged display label
+    // + the resolved local cover-art path (null when no art is cached). Cover converts the path to an
+    // ImageSource App-side — never in Core — mirroring ModRowViewModel.Thumbnail's null-degrades pattern.
+    private sealed record SteamAddRow(GameInput Input, string Display, string? CoverPath)
+    {
+        public Microsoft.UI.Xaml.Media.ImageSource? Cover =>
+            string.IsNullOrEmpty(CoverPath) ? null
+                : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
+    }
 
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
@@ -66,7 +76,7 @@ public sealed partial class AddGameDialog : ContentDialog
             if (plan.Addable && plan.Input is not null)
             {
                 var label = EnginePresets.Presets.TryGetValue(plan.Engine!, out var p) ? p.Label : plan.Engine!;
-                addable.Add(new SteamAddRow(plan.Input, $"{g.Name}  ·  {label}"));
+                addable.Add(new SteamAddRow(plan.Input, $"{g.Name}  ·  {label}", _store.ResolveCoverArtPath(g.AppId)));
             }
             else
             {

@@ -70,9 +70,24 @@
             <TextBlock Text="Check the games to add — engine, folder, and saves are detected for you. Then click Add."
                        TextWrapping="Wrap" Opacity="0.75" FontSize="12" />
             <ListView x:Name="SteamGamesList" SelectionMode="Multiple" MaxHeight="180"
-                      DisplayMemberPath="Display"
                       BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
-                      SelectionChanged="OnSteamSelectionChanged" />
+                      SelectionChanged="OnSteamSelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="46" Height="22" CornerRadius="3"
+                                    Background="{ThemeResource ControlElevationBorderBrush}">
+                                <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="{Binding Display}" VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
             <TextBlock x:Name="SteamEmptyNote" Visibility="Collapsed"
                        Text="No installed Steam games detected." Opacity="0.7" FontSize="12" />
             <TextBlock x:Name="SteamManualNote" Visibility="Collapsed"
