@@ -123,7 +123,11 @@ if (args.Contains("--with-overrides"))
 // missing/empty, fail hard (non-zero exit, no .sig) so we never emit an unsigned-but-named artifact.
 if (args.Contains("--sign"))
 {
-    var finalManifest = current;
+    // ForPublish tags each entry with the functional facade tag its fields earn (so the launcher's
+    // KnownEngines/NexusDomains/PopularGames actually consume feed entries) and drops entries that earn
+    // none. The unsigned manifest-draft.json above stays the full set for review; only the published
+    // games-manifest.json is the tagged, filtered set.
+    var finalManifest = PublishManifest.ForPublish(current);
     var bytes = JsonSerializer.SerializeToUtf8Bytes(finalManifest, ManifestJson.Options);
     var manifestOut = Path.Combine(outDir, "games-manifest.json");
     File.WriteAllBytes(manifestOut, bytes);   // the published artifact
@@ -138,7 +142,7 @@ if (args.Contains("--sign"))
 
     var sig = ManifestSigner.Sign(bytes, keyPem);          // signs the EXACT published bytes
     File.WriteAllBytes(manifestOut + ".sig", sig);
-    Console.WriteLine($"Signed {finalManifest.Games.Count} games -> games-manifest.json (+ .sig, {sig.Length} bytes)");
+    Console.WriteLine($"Signed {finalManifest.Games.Count} useful games -> games-manifest.json (+ .sig, {sig.Length} bytes)");
 }
 
 static string? GetArg(string[] args, string name)
