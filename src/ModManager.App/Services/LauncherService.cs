@@ -60,6 +60,17 @@ public sealed class LauncherService
         SaveRegistry(reg);
     }
 
+    /// <summary>Record the current Steam build as this game's "modded against" baseline. Used to set the
+    /// baseline silently on first sight and to re-baseline when the user dismisses the update warning.</summary>
+    public void SetSteamBuildBaseline(string gameId, string? buildId)
+    {
+        var reg = LoadRegistry();
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        g.LastKnownSteamBuildId = buildId;
+        SaveRegistry(reg);
+    }
+
     /// <summary>Assemble a game entry from wizard input, persist it, and make it active.</summary>
     public GameEntry AddGame(GameInput input)
     {

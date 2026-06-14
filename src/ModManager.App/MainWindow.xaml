@@ -317,6 +317,26 @@
                         <Button Content="Take over again" Click="OnTakeOverGame" />
                     </StackPanel>
                 </Border>
+
+                <!-- Steam updated this game since we last recorded its build — installed mods may need rechecking.
+                     Dismiss ("Mods rechecked") re-baselines to the live build via the view-model. -->
+                <Border Visibility="{x:Bind ViewModel.SteamBuildWarningVisibility, Mode=OneWay}"
+                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeDanger}"
+                        BorderThickness="0,0,0,1" Padding="12,6">
+                    <Grid ColumnSpacing="8" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="14" VerticalAlignment="Center"
+                                  Foreground="{StaticResource ThemeDanger}" />
+                        <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SteamBuildMessage, Mode=OneWay}"
+                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="2" Content="Mods rechecked" VerticalAlignment="Center"
+                                Command="{x:Bind ViewModel.DismissBuildWarningCommand}" />
+                    </Grid>
+                </Border>
             </StackPanel>
 
             <!-- Mod list -->

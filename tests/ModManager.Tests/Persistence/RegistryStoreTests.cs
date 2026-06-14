@@ -36,4 +36,20 @@ public class RegistryStoreTests
         Assert.NotNull(reg);
         Assert.Empty(reg.Games);
     }
+
+    [Fact]
+    public void GameEntry_lastKnownSteamBuildId_round_trips_as_camelCase()
+    {
+        var dir = TestSupport.TempDir("regstore-buildid-");
+        var reg = new GameRegistry { Games = { new GameEntry { Id = "g1", GameName = "G1", LastKnownSteamBuildId = "17556649" } } };
+
+        RegistryStore.Save(dir, reg);
+
+        var json = File.ReadAllText(RegistryStore.PathFor(dir));
+        Assert.Contains("\"lastKnownSteamBuildId\"", json);
+        Assert.DoesNotContain("\"LastKnownSteamBuildId\"", json);
+
+        var loaded = RegistryStore.Load(dir);
+        Assert.Equal("17556649", loaded.Games[0].LastKnownSteamBuildId);
+    }
 }
