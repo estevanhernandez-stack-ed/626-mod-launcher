@@ -16,9 +16,9 @@ namespace ModManager.App.Services;
 /// </summary>
 public sealed class RemoteManifestSource
 {
-    // Empty until the 626-game-manifest feed is published. Set this (manifest URL) at go-live;
-    // the .sig URL is derived as <FeedUrl>.sig. Empty => RefreshAsync no-ops (ships dark).
-    private const string FeedUrl = "";
+    // The published 626-game-manifest feed (signed, verified against the pinned key in Core).
+    // The .sig URL is derived as <FeedUrl>.sig. Empty => RefreshAsync no-ops (ships dark).
+    private const string FeedUrl = "https://raw.githubusercontent.com/estevanhernandez-stack-ed/626-game-manifest/main/games-manifest.json";
 
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromHours(24);
 
