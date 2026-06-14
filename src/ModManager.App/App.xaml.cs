@@ -25,6 +25,7 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        HookCrashLogging();
         AppHost = Host.CreateDefaultBuilder()
             .ConfigureServices(services =>
             {
@@ -49,6 +50,18 @@ public partial class App : Application
                 services.AddTransient<MainViewModel>();
             })
             .Build();
+    }
+
+    // Wire app-wide exception logging as early as possible. WinUI can swallow exceptions thrown from
+    // input-event handlers — leaving the UI dead with no trace. Log every escape hatch; for the
+    // UI-thread one keep the app alive (a logged near-miss beats a silent dead dialog or a hard crash).
+    // AppDomain / unobserved-Task escapes can only be logged, not recovered.
+    private void HookCrashLogging()
+    {
+        UnhandledException += (_, e) => { AppDiagnostics.Log("ui", e.Exception); e.Handled = true; };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            AppDiagnostics.Log("appdomain", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "unknown"));
+        TaskScheduler.UnobservedTaskException += (_, e) => { AppDiagnostics.Log("task", e.Exception); e.SetObserved(); };
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
