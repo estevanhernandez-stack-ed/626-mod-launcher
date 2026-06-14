@@ -302,3 +302,8 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - Simulate an update: edit the game's `appmanifest_*.acf` `buildid` to a different value (or let Steam update it), then re-switch to the game in the launcher → the "Steam updated <game> — your installed mods may need rechecking" banner appears.
 - Click "Mods rechecked" → banner clears and stays cleared on the next switch (baseline re-recorded). Confirm `games.json` shows the new `lastKnownSteamBuildId`.
 - A non-Steam game (no app id) never shows the banner.
+
+## Steam install-state filter (v0.6.2)
+- Add Game → "Quick add from Steam": games with a pending Steam **update** (StateFlags=6, e.g. Marvel Rivals / Helldivers 2 / Wallpaper Engine) STILL appear — they're installed, just update-pending. Expected: not wrongly hidden.
+- Start downloading a not-yet-installed game in Steam, then open Add Game while it's mid-download → it does NOT appear in the quick-add list. Expected: only fully-installed games are offered.
+- Multi-library edge (if reproducible): the same app id installed in one library and mid-move/partial in another → the fully-installed copy is the one listed. (App-side IO + multi-library dedup — not unit-coverable; only a live rig with two libraries confirms.)
