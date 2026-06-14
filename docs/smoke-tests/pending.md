@@ -285,3 +285,10 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 3. **Windrose** with UE4SS installed: no chips anywhere (framework present) — unchanged behavior.
 
 **Why it matters:** UE4SS loads Lua scripts + Blueprint LogicMods; plain content paks load with no framework (there isn't even a UE4SS download for Witchfire). The old engine-wide chip told content-pak users to install something they don't need. The gating is App-VM logic the test project can't reach, so the per-mod-kind behavior is the part only a live rig confirms.
+
+---
+
+## Richer Steam detection (v0.6.2)
+- Add Game → pick a popular game installed on Steam (e.g. Cyberpunk 2077): Name, Engine, Mod folder, App ID, AND Game folder all fill; Add works without Browse. Expected: game registers in one step.
+- Add Game → pick a popular game NOT installed: Game folder stays blank, Browse still works. Expected: no crash, manual path still possible.
+- Add Game → "Quick add from Steam" list shows cover art per game; games with no cached art show the empty placeholder, not a broken image.
