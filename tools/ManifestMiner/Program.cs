@@ -116,6 +116,31 @@ if (args.Contains("--with-overrides"))
     Console.WriteLine($"Overrides: {overrides.Count} loaded, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
 }
 
+// --sign: the publish step. Serialize the most-processed validated manifest in scope (`current`) ONCE,
+// write out/games-manifest.json with those exact bytes, then sign THOSE SAME bytes with
+// ManifestSigner.Sign (ECDSA P-256 / SHA-256, the launcher's verify format) and write the detached
+// .sig. The private key comes only from the MANIFEST_SIGNING_KEY env var (CI secret) — if it's
+// missing/empty, fail hard (non-zero exit, no .sig) so we never emit an unsigned-but-named artifact.
+if (args.Contains("--sign"))
+{
+    var finalManifest = current;
+    var bytes = JsonSerializer.SerializeToUtf8Bytes(finalManifest, ManifestJson.Options);
+    var manifestOut = Path.Combine(outDir, "games-manifest.json");
+    File.WriteAllBytes(manifestOut, bytes);   // the published artifact
+
+    var keyPem = Environment.GetEnvironmentVariable("MANIFEST_SIGNING_KEY");
+    if (string.IsNullOrWhiteSpace(keyPem))
+    {
+        Console.Error.WriteLine("--sign requires MANIFEST_SIGNING_KEY (PKCS#8 PEM) in the environment.");
+        Environment.Exit(1);
+        return;
+    }
+
+    var sig = ManifestSigner.Sign(bytes, keyPem);          // signs the EXACT published bytes
+    File.WriteAllBytes(manifestOut + ".sig", sig);
+    Console.WriteLine($"Signed {finalManifest.Games.Count} games -> games-manifest.json (+ .sig, {sig.Length} bytes)");
+}
+
 static string? GetArg(string[] args, string name)
 {
     var i = Array.IndexOf(args, name);
