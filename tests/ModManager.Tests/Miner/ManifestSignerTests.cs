@@ -53,4 +53,29 @@ public class ManifestSignerTests
         // The CLI surfaces this as a hard failure (a bad MANIFEST_SIGNING_KEY must not silently no-op).
         Assert.ThrowsAny<CryptographicException>(() => ManifestSigner.Sign(new byte[] { 1 }, "not a pem"));
     }
+
+    [Fact]
+    public void Accepts_a_base64_encoded_pem()
+    {
+        // CI secrets mangle multi-line PEM newlines; a base64-encoded key is newline-proof. Both forms work.
+        var (privatePem, spki) = NewKeyPair();
+        var base64Key = Convert.ToBase64String(Encoding.UTF8.GetBytes(privatePem));
+        var bytes = Encoding.UTF8.GetBytes("{\"schemaVersion\":1}");
+
+        var sig = ManifestSigner.Sign(bytes, base64Key);
+
+        Assert.True(ManifestSignature.Verify(spki, bytes, sig));
+    }
+
+    [Fact]
+    public void Accepts_a_base64_pem_with_surrounding_whitespace()
+    {
+        var (privatePem, spki) = NewKeyPair();
+        var base64Key = "  " + Convert.ToBase64String(Encoding.UTF8.GetBytes(privatePem)) + "\n";
+        var bytes = Encoding.UTF8.GetBytes("payload");
+
+        var sig = ManifestSigner.Sign(bytes, base64Key);
+
+        Assert.True(ManifestSignature.Verify(spki, bytes, sig));
+    }
 }
