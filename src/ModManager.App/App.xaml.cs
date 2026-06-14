@@ -36,6 +36,7 @@ public partial class App : Application
                 services.AddSingleton<DirectInjectService>();
                 services.AddSingleton<ThemeService>();
                 services.AddSingleton<SteamService>();
+                services.AddSingleton<IStoreLibrary>(sp => sp.GetRequiredService<SteamService>());
                 services.AddSingleton<LudusaviService>();
                 services.AddSingleton<GameProfileResolver>();
                 services.AddSingleton<NexusService>();

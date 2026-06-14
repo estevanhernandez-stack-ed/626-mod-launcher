@@ -6,17 +6,16 @@ using Win32Registry = Microsoft.Win32.Registry;
 
 namespace ModManager.App.Services;
 
-/// <summary>One installed Steam game: app id, display name, and the resolved install folder.</summary>
-public sealed record SteamGame(string AppId, string Name, string InstallDir);
-
 /// <summary>
 /// Discovers installed Steam games so the Add Game wizard can pre-fill name/folder/appId.
 /// This is the integration adapter the Core deliberately leaves out: it reads the Windows
 /// registry for the Steam path and scans appmanifest files, but the VDF/ACF parsing itself
 /// lives in Core (<see cref="SteamParse"/>), so it stays tested + portable.
 /// </summary>
-public sealed class SteamService
+public sealed class SteamService : IStoreLibrary
 {
+    public string StoreKind => "steam";
+
     /// <summary>
     /// The 64-bit SteamID of the currently signed-in Steam user, or null if Steam isn't installed
     /// or no user is signed in. Used to expand <c>&lt;storeUserId&gt;</c> in Ludusavi save-path
@@ -67,12 +66,12 @@ public sealed class SteamService
         return IsRunning();
     }
 
-    public IReadOnlyList<SteamGame> InstalledGames()
+    public IReadOnlyList<InstalledGame> InstalledGames()
     {
         var steam = FindSteamPath();
-        if (steam is null) return Array.Empty<SteamGame>();
+        if (steam is null) return Array.Empty<InstalledGame>();
 
-        var games = new List<SteamGame>();
+        var games = new List<InstalledGame>();
         var seen = new HashSet<string>();
         foreach (var lib in Libraries(steam))
         {
@@ -89,12 +88,24 @@ public sealed class SteamService
                     if (m.AppId is null || string.IsNullOrEmpty(m.Name) || string.IsNullOrEmpty(m.InstallDir)) continue;
                     if (!seen.Add(m.AppId)) continue;
                     var full = Path.Combine(steamapps, "common", m.InstallDir);
-                    if (Directory.Exists(full)) games.Add(new SteamGame(m.AppId, m.Name!, full));
+                    if (Directory.Exists(full))
+                        games.Add(new InstalledGame("steam", m.AppId, m.Name!, full) { BuildId = m.BuildId });
                 }
                 catch { /* skip a malformed manifest */ }
             }
         }
         return games.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    public string? ResolveCoverArtPath(string appId)
+    {
+        if (string.IsNullOrEmpty(appId)) return null;
+        var steam = FindSteamPath();
+        if (steam is null) return null;
+        var dir = Path.Combine(steam, "appcache", "librarycache", appId);
+        if (!Directory.Exists(dir)) return null;
+        try { return SteamArt.PickCover(Directory.GetFiles(dir)); }
+        catch { return null; }
     }
 
     private static string? FindSteamPath()

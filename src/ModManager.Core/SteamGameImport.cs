@@ -1,8 +1,8 @@
 namespace ModManager.Core;
 
-/// <summary>One installed Steam game the importer can plan an auto-add for. Mirrors the App's
-/// SteamGame (appId + display name + resolved install folder) but stays in Core so the planning
-/// logic is headless-testable.</summary>
+/// <summary>One installed Steam game the importer can plan an auto-add for. Mirrors the store-
+/// agnostic <see cref="InstalledGame"/> (appId + display name + resolved install folder) but stays
+/// in Core so the planning logic is headless-testable.</summary>
 public sealed record SteamImportCandidate(string AppId, string Name, string GameRoot);
 
 /// <summary>The auto-add plan for one Steam game. <see cref="Addable"/> is true when the engine

@@ -13,6 +13,12 @@ public sealed partial class AddGameDialog : ContentDialog
 {
     private readonly IntPtr _hwnd;
 
+    // Store library, used to resolve locally-cached cover art for the Steam quick-add rows.
+    private readonly IStoreLibrary _store = App.AppHost.Services.GetRequiredService<IStoreLibrary>();
+
+    // Installed store games, kept so a popular-game pick can auto-fill the folder we already resolved.
+    private readonly IReadOnlyList<InstalledGame> _installedGames;
+
     // Resolved save folder from an "Add with AI" apply, stashed for the register path to persist.
     private string? _resolvedSaveDir;
 
@@ -26,8 +32,15 @@ public sealed partial class AddGameDialog : ContentDialog
 
     private sealed record BatchRowVM(string Headline, string Detail);
 
-    // One checkable Steam quick-add row: the ready-to-register input + the engine-tagged display label.
-    private sealed record SteamAddRow(GameInput Input, string Display);
+    // One checkable Steam quick-add row: the ready-to-register input + the engine-tagged display label
+    // + the resolved local cover-art path (null when no art is cached). Cover converts the path to an
+    // ImageSource App-side — never in Core — mirroring ModRowViewModel.Thumbnail's null-degrades pattern.
+    private sealed record SteamAddRow(GameInput Input, string Display, string? CoverPath)
+    {
+        public Microsoft.UI.Xaml.Media.ImageSource? Cover =>
+            string.IsNullOrEmpty(CoverPath) ? null
+                : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
+    }
 
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
@@ -37,10 +50,11 @@ public sealed partial class AddGameDialog : ContentDialog
 
     public sealed record EngineOption(string Key, string Label);
 
-    public AddGameDialog(IntPtr hwnd, IReadOnlyList<SteamGame> steamGames)
+    public AddGameDialog(IntPtr hwnd, IReadOnlyList<InstalledGame> steamGames)
     {
         InitializeComponent();
         _hwnd = hwnd;
+        _installedGames = steamGames;
         // No default selection — a wrong default reads as "auto-detected" when it isn't.
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
 
@@ -62,7 +76,7 @@ public sealed partial class AddGameDialog : ContentDialog
             if (plan.Addable && plan.Input is not null)
             {
                 var label = EnginePresets.Presets.TryGetValue(plan.Engine!, out var p) ? p.Label : plan.Engine!;
-                addable.Add(new SteamAddRow(plan.Input, $"{g.Name}  ·  {label}"));
+                addable.Add(new SteamAddRow(plan.Input, $"{g.Name}  ·  {label}", _store.ResolveCoverArtPath(g.AppId)));
             }
             else
             {
@@ -128,7 +142,7 @@ public sealed partial class AddGameDialog : ContentDialog
     // Build a batched prompt from the picked Steam games. Empty selection -> a status nudge, no copy.
     private void OnCopyBatchPrompt(object sender, RoutedEventArgs e)
     {
-        var picked = BatchSteamList.SelectedItems.Cast<SteamGame>().ToList();
+        var picked = BatchSteamList.SelectedItems.Cast<InstalledGame>().ToList();
         if (picked.Count == 0)
         {
             ShowBatchStatus("Pick at least one Steam game first.", "ThemeDanger");
@@ -153,7 +167,7 @@ public sealed partial class AddGameDialog : ContentDialog
             return;
         }
 
-        var picked = BatchSteamList.SelectedItems.Cast<SteamGame>().ToList();
+        var picked = BatchSteamList.SelectedItems.Cast<InstalledGame>().ToList();
         var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
         var rows = new List<BatchRowVM>();
         int ok = 0;
@@ -234,8 +248,9 @@ public sealed partial class AddGameDialog : ContentDialog
         ProfileStatus.Visibility = Visibility.Visible;
     }
 
-    // Pick a curated game -> pre-fill name, engine, mod folder, and app id. Leaves the game
-    // folder for the user to point at their install. Manual entry still works unchanged.
+    // Pick a curated game -> pre-fill name, engine, mod folder, and app id, plus the game folder
+    // when the game is installed on Steam (matched by app id; left blank otherwise so the user can
+    // Browse). Manual entry still works unchanged.
     private void OnPopularSelected(object sender, SelectionChangedEventArgs e)
     {
         if (PopularGamesBox.SelectedItem is not PopularGame g) return;
@@ -247,6 +262,11 @@ public sealed partial class AddGameDialog : ContentDialog
         NameBox.Text = g.Name;
         ModPathBox.Text = g.ModPath;
         SteamBox.Text = g.SteamAppId;
+
+        // We already parsed this game's install folder from Steam — fill it so the pick is one step from
+        // Add instead of making the user Browse to a path we know. Editable; user can still change it.
+        if (InstalledGameMatch.ByAppId(_installedGames, g.SteamAppId) is { } installed)
+            FolderBox.Text = installed.InstallDir;
 
         // Select the matching engine LAST, and deferred off this SelectionChanged tick. Mutating one
         // combo's selection from inside another combo's SelectionChanged is exactly the re-entrancy
