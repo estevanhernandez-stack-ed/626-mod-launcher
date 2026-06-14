@@ -15,7 +15,7 @@ public class Mo2EnrichTests
     };
 
     [Fact]
-    public void Fills_modPath_and_engine_for_a_matched_game()
+    public void Fills_modPath_but_not_engine_for_a_matched_game()
     {
         var backbone = Backbone(("skyrim-se", "489830"));
         var mo2 = new[] { new Mo2Game("Skyrim SE") { SteamIds = new[] { "489830" }, DataPath = "Data" } };
@@ -24,7 +24,7 @@ public class Mo2EnrichTests
 
         var e = result.Games.Single(g => g.Id == "skyrim-se");
         Assert.Equal("Data", e.ModPath);
-        Assert.Equal("bethesda", e.Engine);                  // unambiguous reverse-map
+        Assert.Null(e.Engine);                               // MO2 never sets engine — only curated overrides do
         Assert.Contains("mo2", e.Provenance.Sources);        // provenance records the enrichment
         Assert.Contains("ludusavi", e.Provenance.Sources);   // original source preserved
     }
@@ -37,7 +37,7 @@ public class Mo2EnrichTests
 
         var e = Mo2Enrich.Apply(backbone, mo2).Games.Single(g => g.Id == "witcher-3");
         Assert.Equal("Mods", e.ModPath);
-        Assert.Null(e.Engine); // "Mods" is ambiguous -> engine stays null
+        Assert.Null(e.Engine); // MO2 never sets engine
     }
 
     [Fact]
