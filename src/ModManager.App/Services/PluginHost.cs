@@ -1,3 +1,4 @@
+#if FULL
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
@@ -88,3 +89,4 @@ public static class PluginHost
         public HttpClient HttpClient { get; } = httpClient;
     }
 }
+#endif // FULL — the entire loader (AssemblyLoadContext + external-code-from-stream) is absent from the STORE build, not just dormant.

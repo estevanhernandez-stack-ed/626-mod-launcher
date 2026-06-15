@@ -30,5 +30,8 @@ public interface IModSource
 }
 
 public sealed record SourceModRef(string SourceId, string GameDomain, int ModId, string Version);
-public sealed record SourceModMetadata(int? Endorsements, long? Downloads, string? LatestVersion, bool Available, bool Endorsed);
+// Available + Endorsed are nullable: "the source didn't report this" must be expressible so a per-mod
+// metadata fetch never clobbers persisted state. Endorse state is owned by the bulk endorsements sweep
+// (a different endpoint) — a per-mod fetch returns Endorsed: null, never false.
+public sealed record SourceModMetadata(int? Endorsements, long? Downloads, string? LatestVersion, bool? Available, bool? Endorsed);
 public sealed record EndorseResult(bool Ok, bool Refused, string? Message, bool? NowEndorsed);
