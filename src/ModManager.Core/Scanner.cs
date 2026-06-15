@@ -1389,6 +1389,17 @@ public static class Scanner
         SaveMetadata(c, next);
     }
 
+    /// <summary>Write a batch of entries into the per-game metadata.json in one atomic pass,
+    /// leaving untouched keys intact. Used by the Nexus by-mod-id sweep / auto-check to persist a
+    /// run of refreshed metas at once. (LoadMetadata + SaveMetadata are already atomic + camelCase.)</summary>
+    public static void WriteManyMeta(GameContext c, IEnumerable<(string ModKey, ModMeta Meta)> entries)
+    {
+        var next = new Dictionary<string, ModMeta>(LoadMetadata(c), StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, meta) in entries)
+            next[key] = meta;
+        SaveMetadata(c, next);
+    }
+
     // The distinct mod keys an archive contributes (its mod-classified entries -> base keys).
     private static IReadOnlyList<string> ZipModKeys(string zipPath, GameContext c)
     {
