@@ -10,8 +10,17 @@ public class NexusRefreshSweepTests
     private sealed class FakeNexus : INexusClient
     {
         private readonly Func<string, int, Task<ModMeta?>> _getMod;
+        private readonly Func<Task<IReadOnlyList<NexusEndorsement>>>? _getEndorsements;
         public int GetModCalls { get; private set; }
-        public FakeNexus(Func<string, int, Task<ModMeta?>> getMod) => _getMod = getMod;
+        public int GetEndorsementsCalls { get; private set; }
+
+        public FakeNexus(
+            Func<string, int, Task<ModMeta?>> getMod,
+            Func<Task<IReadOnlyList<NexusEndorsement>>>? getEndorsements = null)
+        {
+            _getMod = getMod;
+            _getEndorsements = getEndorsements;
+        }
 
         public Task<ModMeta?> GetModAsync(string gameDomain, int modId)
         {
@@ -23,7 +32,15 @@ public class NexusRefreshSweepTests
         public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
         public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
         public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync()
+        {
+            GetEndorsementsCalls++;
+            return _getEndorsements is null
+                ? Task.FromResult<IReadOnlyList<NexusEndorsement>>(Array.Empty<NexusEndorsement>())
+                : _getEndorsements();
+        }
+
         public NexusRateLimit? LastRateLimit => null;
     }
 
@@ -165,5 +182,92 @@ public class NexusRefreshSweepTests
         Assert.Equal(0, result.UpdatesAvailable);
         Assert.Empty(result.Updated);
         Assert.Equal(0, fake.GetModCalls);
+    }
+
+    // ---------- RefreshAllAsync + endorsement sweep (Task 5) ----------
+
+    [Fact]
+    public async Task RefreshAllAsync_fetches_endorsements_once_and_applies_to_returned_metas()
+    {
+        var metas = new[]
+        {
+            new ModMeta { Title = "a", NexusModId = 1, Version = "1.0" },   // endorsed on Nexus
+            new ModMeta { Title = "b", NexusModId = 2, Version = "3.0" },   // abstained on Nexus
+        };
+        var fake = new FakeNexus(
+            (_, id) => Task.FromResult<ModMeta?>(id switch
+            {
+                1 => new ModMeta { Version = "2.0", EndorsementCount = 50 },
+                2 => new ModMeta { Version = "3.0", EndorsementCount = 9 },
+                _ => null,
+            }),
+            () => Task.FromResult<IReadOnlyList<NexusEndorsement>>(new[]
+            {
+                new NexusEndorsement(1, "eldenring", "Endorsed"),
+                new NexusEndorsement(2, "eldenring", "Abstained"),
+            }));
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "eldenring", fake, NoDelay);
+
+        // The stats sweep is unchanged.
+        Assert.False(result.RateLimited);
+        Assert.Equal(2, result.Refreshed);
+        Assert.Equal(1, result.UpdatesAvailable);
+        Assert.Equal(2, result.Updated.Count);
+        Assert.Equal("2.0", result.Updated.Single(m => m.NexusModId == 1).NexusLatestVersion);
+
+        // Exactly one bulk endorsements call, folded onto the returned metas.
+        Assert.Equal(1, fake.GetEndorsementsCalls);
+        Assert.True(result.Updated.Single(m => m.NexusModId == 1).Endorsed);
+        Assert.False(result.Updated.Single(m => m.NexusModId == 2).Endorsed);
+    }
+
+    [Fact]
+    public async Task RefreshAllAsync_endorsements_failure_does_not_abort_the_stats_sweep()
+    {
+        var metas = new[]
+        {
+            new ModMeta { Title = "a", NexusModId = 1, Version = "1.0" },
+            new ModMeta { Title = "b", NexusModId = 2, Version = "3.0" },
+        };
+        var fake = new FakeNexus(
+            (_, id) => Task.FromResult<ModMeta?>(id switch
+            {
+                1 => new ModMeta { Version = "2.0", EndorsementCount = 50 },
+                2 => new ModMeta { Version = "3.0", EndorsementCount = 9 },
+                _ => null,
+            }),
+            () => throw new HttpRequestException("offline"));
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "eldenring", fake, NoDelay);
+
+        // Endorsements were attempted (and swallowed) — the stats refresh still completes intact.
+        Assert.Equal(1, fake.GetEndorsementsCalls);
+        Assert.False(result.RateLimited);
+        Assert.Equal(2, result.Refreshed);
+        Assert.Equal(1, result.UpdatesAvailable);
+        Assert.Equal(2, result.Updated.Count);
+
+        // No endorsement state was applied (the call failed) — metas left at unknown.
+        Assert.Null(result.Updated.Single(m => m.NexusModId == 1).Endorsed);
+        Assert.Null(result.Updated.Single(m => m.NexusModId == 2).Endorsed);
+    }
+
+    [Fact]
+    public async Task RefreshAllAsync_endorsement_rate_limit_does_not_abort_the_stats_sweep()
+    {
+        var metas = new[] { new ModMeta { Title = "a", NexusModId = 1, Version = "1.0" } };
+        var fake = new FakeNexus(
+            (_, _) => Task.FromResult<ModMeta?>(new ModMeta { Version = "2.0" }),
+            () => throw new NexusRateLimitException(new NexusRateLimit(0, 100, 0, 50)));
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "eldenring", fake, NoDelay);
+
+        // A 429 from the endorsements call is best-effort — it must not flip RateLimited (that flag
+        // is the stats-sweep's own throttle signal) nor drop the refreshed stats.
+        Assert.False(result.RateLimited);
+        Assert.Equal(1, result.Refreshed);
+        Assert.Single(result.Updated);
+        Assert.Null(result.Updated[0].Endorsed);
     }
 }

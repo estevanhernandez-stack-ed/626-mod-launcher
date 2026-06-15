@@ -152,6 +152,14 @@ public static class NexusRefresh
     /// <see cref="NexusRateLimitException"/>, the sweep stops cleanly — <see cref="NexusRefreshResult.RateLimited"/>
     /// is set and the partial progress is returned, never re-thrown. Unresolvable metas are skipped
     /// (no client call, not counted).
+    ///
+    /// <para>After the stats sweep, the bulk user-endorsements list is fetched <em>once</em> and
+    /// folded onto the refreshed metas (<see cref="ApplyEndorsements"/>) so hearts reflect reality
+    /// library-wide — including mods endorsed outside the launcher — without per-mod calls. That
+    /// single call is best-effort: any failure (offline, 4xx, even a 429) is swallowed so it can
+    /// never sink the stats refresh. Endorsements are read-only state sync, not the
+    /// <see cref="NexusRefreshResult.RateLimited"/> signal — that flag stays owned by the stats
+    /// sweep's own throttle.</para>
     /// </summary>
     public static async Task<NexusRefreshResult> RefreshAllAsync(
         IEnumerable<ModMeta> metas, string domain, INexusClient client, Func<Task>? throttle = null)
@@ -185,6 +193,18 @@ public static class NexusRefresh
             updated.Add(result);
             if (result.NexusLatestVersion is { } latest && latest != result.Version)
                 updatesAvailable++;
+        }
+
+        // One cheap bulk call to sync endorse hearts library-wide. Best-effort: guarded in its own
+        // try/catch (including a 429) so it can never abort or downgrade the stats sweep above.
+        try
+        {
+            var endorsements = await client.GetUserEndorsementsAsync();
+            ApplyEndorsements(updated, endorsements, domain);
+        }
+        catch
+        {
+            // Endorsements are read-only state sync — swallow and keep the stats result intact.
         }
 
         return new NexusRefreshResult(refreshed, updatesAvailable, rateLimited, updated);
