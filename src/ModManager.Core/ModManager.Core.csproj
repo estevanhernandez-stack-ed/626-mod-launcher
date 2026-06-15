@@ -15,6 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ModManager.Plugins.Abstractions\ModManager.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="ModManager.Tests" />
   </ItemGroup>
 
