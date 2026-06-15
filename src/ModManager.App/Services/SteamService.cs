@@ -95,7 +95,7 @@ public sealed class SteamService : IStoreLibrary
                 catch { /* skip a malformed manifest */ }
             }
         }
-        return games.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        return InstalledGameSort.RecentlyPlayedFirst(games);
     }
 
     public string? ResolveCoverArtPath(string appId)
