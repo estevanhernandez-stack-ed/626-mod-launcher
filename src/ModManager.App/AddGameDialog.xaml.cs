@@ -310,7 +310,7 @@ public sealed partial class AddGameDialog : ContentDialog
         NameBox.Text = row.Name;
         FolderBox.Text = row.InstallDir;
         SteamBox.Text = row.AppId;
-        ApplyDetectedEngine();   // sets engine if we can tell; leaves the placeholder for the user otherwise
+        ApplyDetectedEngine();   // runs the standard auto-detect; these rows are here precisely because detection missed, so it reliably leaves the placeholder for the user to pick
     }
 
     // React as the user checks Steam games. The dialog's Add button commits the selection.
