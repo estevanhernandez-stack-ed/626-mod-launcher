@@ -311,6 +311,10 @@ public sealed partial class AddGameDialog : ContentDialog
         FolderBox.Text = row.InstallDir;
         SteamBox.Text = row.AppId;
         ApplyDetectedEngine();   // runs the standard auto-detect; these rows are here precisely because detection missed, so it reliably leaves the placeholder for the user to pick
+        // The manual form is below this list in the scroll, so the pre-fill lands off-screen and reads
+        // as "nothing happened." Bring it into view and focus the engine picker — the next action.
+        EngineBox.StartBringIntoView();
+        EngineBox.Focus(FocusState.Programmatic);
     }
 
     // React as the user checks Steam games. The dialog's Add button commits the selection.
