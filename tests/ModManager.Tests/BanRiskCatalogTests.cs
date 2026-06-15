@@ -3,7 +3,9 @@ using ModManager.Core.Manifest;
 
 namespace ModManager.Tests;
 
-[Collection("EffectiveManifest")] // serialize: these mutate the shared remote
+// In the DisableParallelization "ManifestState" collection (with every other SetRemote-mutating
+// test) so the process-global EffectiveManifest remote never races a parity test.
+[Collection("ManifestState")]
 public class BanRiskCatalogTests : IDisposable
 {
     public void Dispose() => EffectiveManifest.SetRemote(null);
@@ -26,6 +28,3 @@ public class BanRiskCatalogTests : IDisposable
         Assert.Equal(GameBanRisk.None, BanRiskCatalog.ByAppId(null));
     }
 }
-
-[CollectionDefinition("EffectiveManifest")]
-public class EffectiveManifestCollection { }
