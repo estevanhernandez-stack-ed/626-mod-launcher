@@ -30,6 +30,15 @@ public interface INexusClient
     Task<EndorseOutcome> EndorseAsync(string domain, int modId, string version, EndorseAction action);
 
     /// <summary>
+    /// Bulk read of the current user's endorse state across all games — one cheap call returns the
+    /// whole library's <c>{ mod_id, domain_name, status }</c> rows. Read-only state sync (never a
+    /// write); feeds <see cref="NexusRefresh.ApplyEndorsements"/> so hearts reflect reality even for
+    /// mods endorsed outside the launcher. Rate-limit-aware: a 429 surfaces as
+    /// <see cref="NexusRateLimitException"/>.
+    /// </summary>
+    Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync();
+
+    /// <summary>
     /// The rate-limit snapshot from the most recent response (null until the first call).
     /// Lets a sweep read remaining budget and back off before it gets throttled.
     /// </summary>
@@ -143,6 +152,13 @@ public sealed class NexusClient : INexusClient
     {
         var root = await SendAsync(NexusRequests.UpdatedRequest(gameDomain, period, _opts));
         return NexusRequests.MapUpdatedResponse(root);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync()
+    {
+        var root = await SendAsync(NexusRequests.UserEndorsementsRequest(_opts));
+        return NexusRequests.MapUserEndorsements(root);
     }
 
     /// <summary>md5 file lookup. 404 means "not found" (normal) and returns null; other failures throw.</summary>

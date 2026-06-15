@@ -69,6 +69,36 @@ public static class NexusRefresh
     }
 
     /// <summary>
+    /// Fold the bulk user-endorsements list back onto the library: for each meta whose resolved
+    /// Nexus id (<see cref="ResolveModId"/>) matches an entry in <paramref name="endorsements"/>
+    /// for the active <paramref name="domain"/>, set <see cref="ModMeta.Endorsed"/> to
+    /// <c>status == "Endorsed"</c> (so an <c>Abstained</c> / <c>Undecided</c> match clears it to
+    /// false). Metas with no matching entry — or an unresolvable id, or a same-id entry from a
+    /// different game domain — are left untouched: the bulk list only knows about mods the user has
+    /// interacted with, so absence means "unknown", not "abstained". Pure (mutates the supplied
+    /// metas in place); never throws.
+    /// </summary>
+    public static void ApplyEndorsements(
+        IEnumerable<ModMeta> metas,
+        IEnumerable<NexusEndorsement> endorsements,
+        string domain)
+    {
+        // id -> status, for the active domain only (last entry wins if Nexus ever repeats an id).
+        var byId = new Dictionary<int, string>();
+        foreach (var e in endorsements)
+            if (string.Equals(e.DomainName, domain, StringComparison.OrdinalIgnoreCase))
+                byId[e.ModId] = e.Status;
+
+        foreach (var meta in metas)
+        {
+            var id = ResolveModId(meta);
+            if (id is null) continue;
+            if (!byId.TryGetValue(id.Value, out var status)) continue;
+            meta.Endorsed = string.Equals(status, "Endorsed", StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// Pick the <c>updated.json</c> window by how long it's been since the last poll: under a day
     /// → <c>"1d"</c>, under a week → <c>"1w"</c>, otherwise <c>"1m"</c>. Updates older than the
     /// chosen window are caught only by the full manual sweep (which does not use a window).

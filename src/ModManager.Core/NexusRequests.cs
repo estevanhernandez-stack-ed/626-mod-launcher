@@ -115,6 +115,19 @@ public static class NexusRequests
     }
 
     /// <summary>
+    /// Bulk current-user endorse state across all games: GET /v1/user/endorsements.json.
+    /// One cheap call returns <c>[{ mod_id, domain_name, status }]</c> for the whole library, so
+    /// hearts can reflect reality (including mods endorsed outside the launcher) without per-mod calls.
+    /// The usual auth + ToS headers ride along.
+    /// </summary>
+    public static ApiRequest UserEndorsementsRequest(NexusOptions? opts = null)
+    {
+        opts ??= new NexusOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        return new ApiRequest($"{baseUrl}/v1/user/endorsements.json", "GET", Headers(opts));
+    }
+
+    /// <summary>
     /// Bulk "recently updated by game": GET /v1/games/{domain}/mods/updated.json?period={period}.
     /// <paramref name="period"/> is one of Nexus's fixed windows — "1d", "1w", or "1m".
     /// </summary>
@@ -211,6 +224,27 @@ public static class NexusRequests
                 modId.Value,
                 Long(el, "latest_file_update") ?? 0L,
                 Long(el, "latest_mod_activity") ?? 0L));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// endorsements.json body -> the current user's per-mod endorse state. The root is an array of
+    /// { mod_id, domain_name, status }. Entries missing <c>mod_id</c>, <c>domain_name</c>, or
+    /// <c>status</c> are skipped; a non-array root yields an empty list. Never throws.
+    /// </summary>
+    public static IReadOnlyList<NexusEndorsement> MapUserEndorsements(JsonElement root)
+    {
+        var list = new List<NexusEndorsement>();
+        if (root.ValueKind != JsonValueKind.Array) return list;
+        foreach (var el in root.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            var modId = Int(el, "mod_id");
+            var domain = Str(el, "domain_name");
+            var status = Str(el, "status");
+            if (!modId.HasValue || domain is null || status is null) continue;
+            list.Add(new NexusEndorsement(modId.Value, domain, status));
         }
         return list;
     }

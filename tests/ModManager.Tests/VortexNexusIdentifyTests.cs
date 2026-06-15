@@ -13,6 +13,7 @@ public class VortexNexusIdentifyTests
         public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
         public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
         public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
+        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
         public NexusRateLimit? LastRateLimit => null;
     }
 
