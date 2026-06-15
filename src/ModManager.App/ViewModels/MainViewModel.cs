@@ -42,6 +42,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly NexusService _nexus;
     private readonly AvatarService _avatars;
     private readonly SteamService _steam;
+    private readonly AppSettingsService _appSettings;
+    private readonly NexusUpdatePoll _nexusPoll;
     // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
     // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
     // which fires on a thread-pool thread — back to the UI thread before touching VM state.
@@ -192,7 +194,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll)
     {
         _svc = svc;
         _me2 = me2;
@@ -202,6 +204,8 @@ public sealed partial class MainViewModel : ObservableObject
         _nexus = nexus;
         _avatars = avatars;
         _steam = steam;
+        _appSettings = appSettings;
+        _nexusPoll = nexusPoll;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -589,6 +593,33 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+
+        // Debounced Nexus auto-check (once per 24h per game, off the UI hot path). Fire-and-forget:
+        // it polls Nexus by mod id for the active game, flags newer versions, and persists — then we
+        // reload rows to surface UPDATE chips only if it actually changed something. Self-limiting via
+        // the per-game stamp, so the per-toggle re-entry of ReloadModsAsync costs a stamp read + bail.
+        // Every failure is swallowed inside MaybePollAsync — it can never break the session.
+        if (_ctx is { } ctx) _ = AutoCheckNexusUpdatesAsync(ctx);
+    }
+
+    /// <summary>Fire-and-forget debounced Nexus auto-check launched at the tail of a game load. Runs on
+    /// the thread-pool (off the UI hot path); if it persisted any newer-version data, it marshals a row
+    /// reload back onto the UI thread — but only when the polled game is still the active one (the user
+    /// may have switched games while the network call was in flight).</summary>
+    private async Task AutoCheckNexusUpdatesAsync(GameContext ctx)
+    {
+        var changed = await _nexusPoll.MaybePollAsync(ctx, _nexus, _appSettings);
+        if (!changed) return;
+
+        void Reload()
+        {
+            // Don't clobber a different game the user switched to mid-poll.
+            if (_ctx is null || !ReferenceEquals(_ctx, ctx)) return;
+            _ = ReloadModsAsync();
+        }
+
+        if (_dispatcherQueue is { } dq) dq.TryEnqueue(Reload);
+        else Reload();
     }
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";

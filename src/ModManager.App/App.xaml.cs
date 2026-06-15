@@ -45,6 +45,7 @@ public partial class App : Application
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
                 services.AddSingleton<UpdateChecker>();
+                services.AddSingleton<NexusUpdatePoll>();
                 services.AddSingleton<RemoteManifestSource>();
                 services.AddSingleton<RestorePointService>();
                 services.AddTransient<MainViewModel>();

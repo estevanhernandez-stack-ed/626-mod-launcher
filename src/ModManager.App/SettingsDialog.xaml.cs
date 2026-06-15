@@ -111,6 +111,9 @@ public sealed partial class SettingsDialog : ContentDialog
         };
         _suppressBackdropChange = false;
 
+        // Seed the auto-check-for-mod-updates toggle from the saved setting (default on).
+        AutoCheckModUpdatesCheck.IsChecked = _appSettings.AutoCheckModUpdates;
+
         // Seed the Nexus section. Re-validate the stored key first (offline-safe) so the account
         // name + premium tag are current before we render the banner.
         _ = InitializeNexusSectionAsync();
@@ -396,6 +399,11 @@ public sealed partial class SettingsDialog : ContentDialog
         StatusText.Text = "Disconnected from Nexus.";
         RefreshNexusUi();
     }
+
+    /// <summary>Persist the auto-check-for-mod-updates preference immediately on toggle (no Apply
+    /// needed — it mirrors the backdrop dropdown's apply-on-change behavior).</summary>
+    private void OnAutoCheckModUpdatesToggled(object sender, RoutedEventArgs e)
+        => _appSettings.SetAutoCheckModUpdates(AutoCheckModUpdatesCheck.IsChecked == true);
 
     private async void OnPickImage(object sender, RoutedEventArgs e)
     {
