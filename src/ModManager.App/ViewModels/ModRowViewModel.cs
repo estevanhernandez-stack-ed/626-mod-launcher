@@ -55,6 +55,17 @@ public sealed partial class ModRowViewModel : ObservableObject
         _canUninstall = canUninstall;
     }
 
+    /// <summary>Re-raise the endorse-affordance bindings after a toggle wrote a new <see cref="Mod.Endorsed"/>
+    /// state — the heart flips in place without a full reload. Raised by name (string literals, not
+    /// <c>nameof</c>) so this method is independent of the Task 7 display members that land later; the
+    /// OneWay bindings pick the change up live once they exist.</summary>
+    public void NotifyEndorseChanged()
+    {
+        OnPropertyChanged("IsEndorsed");
+        OnPropertyChanged("EndorseGlyph");
+        OnPropertyChanged("EndorseTooltip");
+    }
+
     // A multi-variant family row shows the BASE title (e.g. "Faster Ships"); the per-level distinction
     // lives in the inline option chips, not the title.
     public string DisplayName => HasVariantOptions && !string.IsNullOrEmpty(Mod.BaseTitle)

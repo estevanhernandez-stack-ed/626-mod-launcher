@@ -1348,6 +1348,66 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>One-click endorse ⇄ abstain for a Nexus-identified row — the give-back half of the
+    /// Nexus loop, honors-the-builders and never automatic (one user click per write). Picks the
+    /// direction from the row's current <see cref="Mod.Endorsed"/> (endorsed → abstain, else endorse),
+    /// version-stamps the POST with the installed version (falling back to the upstream latest), and
+    /// only flips the heart + persists when Nexus accepts the write — a refusal (not downloaded / too
+    /// soon / any other precondition) shows the API's friendly reason in the status line and leaves the
+    /// row honest (no optimistic flip). A 429 degrades to a rate-limit line; nothing throws to the UI.</summary>
+    public async Task ToggleEndorseAsync(ModRowViewModel row)
+    {
+        if (_ctx is null) return;
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        var domain = NexusDomains.Effective(_ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
+
+        // The endorse key is the Nexus mod id. The in-memory Mod doesn't carry it (it lives in the
+        // ModMeta entry), so resolve it off the row's metadata via the same deterministic resolver the
+        // refresh sweep uses — and reuse that meta instance for the write so all other enrichment is
+        // preserved.
+        var meta = Scanner.LoadMetadata(_ctx).TryGetValue(row.Mod.Name, out var existing) ? existing : null;
+        if (meta is null || NexusRefresh.ResolveModId(meta) is not int modId)
+        {
+            StatusText = "This mod isn't identified on Nexus yet.";
+            return;
+        }
+
+        var action = row.Mod.Endorsed == true ? EndorseAction.Abstain : EndorseAction.Endorse;
+        var version = row.Mod.Version ?? row.Mod.NexusLatestVersion ?? "";
+        var name = row.DisplayName;
+
+        IsBusy = true;
+        try
+        {
+            var outcome = await _nexus.Client!.EndorseAsync(domain!, modId, version, action);
+            if (outcome.Refused)
+            {
+                // The row stays honest — no flip on a precondition refusal; the API tells the user why.
+                StatusText = outcome.Message ?? "Nexus declined the endorsement.";
+                return;
+            }
+
+            // Persist Endorsed onto the existing metadata entry (mutate-in-place) so the rest of the
+            // mod's enrichment — title, credit, NexusModId — survives the write. Endorsed is persisted
+            // user intent, so it must outlive a rescan.
+            row.Mod.Endorsed = action == EndorseAction.Endorse;
+            meta.Endorsed = row.Mod.Endorsed;
+            Scanner.WriteOneMeta(_ctx, row.Mod.Name, meta);
+            row.NotifyEndorseChanged();
+
+            StatusText = action == EndorseAction.Endorse
+                ? $"Endorsed \"{name}\" on Nexus."
+                : $"Retracted endorsement for \"{name}\".";
+        }
+        catch (NexusRateLimitException)
+        {
+            StatusText = "Nexus rate limit reached — try again later.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
     /// <summary>Manual-match escape hatch: user pastes a Nexus or CurseForge URL for a row whose
     /// auto-identify didn't land. Parse → fetch metadata from the named provider → write it against
     /// this mod's key with IsManual=true so future rescans can't clobber it. Result via StatusText.</summary>
