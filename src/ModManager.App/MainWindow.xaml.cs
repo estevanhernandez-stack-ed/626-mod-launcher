@@ -31,6 +31,9 @@ public sealed partial class MainWindow : Window
             var dialog = new UpdateModsDialog(plan) { XamlRoot = Content.XamlRoot };
             return await dialog.ShowAsync() == ContentDialogResult.Primary ? dialog.ChosenReplacements() : null;
         };
+        // Ban-risk acknowledgment is a view concern (dialog + XamlRoot). The VM owns the policy
+        // decision (BanRiskRules.ShouldGateEnable) and only invokes this on a high-risk, un-acked game.
+        ViewModel.ConfirmBanRiskEnable = ConfirmBanRiskEnableAsync;
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
         ViewModel.PropertyChanged += (_, args) =>
@@ -203,6 +206,32 @@ public sealed partial class MainWindow : Window
         var ok = await dialog.ShowAsync() == ContentDialogResult.Primary;
         if (ok && dontAsk.IsChecked == true) _suppressOwnedToggleWarning = true;
         return ok;
+    }
+
+    /// <summary>Confirm enabling mods on an anti-cheat/ban-risk game. Returns (proceed, dontWarnAgain).
+    /// Cancel is the safe default; "Enable anyway" proceeds. Distinct copy from the co-op-desync
+    /// warning — this is about getting your account banned, not a multiplayer mismatch.</summary>
+    private async Task<(bool proceed, bool dontWarnAgain)> ConfirmBanRiskEnableAsync(string gameName)
+    {
+        var dontWarn = new CheckBox { Content = "Don't warn me again for this game", Margin = new Thickness(0, 12, 0, 0) };
+        var body = new StackPanel { Spacing = 8 };
+        body.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Text = "This game uses anti-cheat. Enabling mods for online play can get your account banned. Disabling is always reversible.",
+        });
+        body.Children.Add(dontWarn);
+        var dialog = new ContentDialog
+        {
+            Title = $"Enable mods on {gameName}?",
+            Content = body,
+            PrimaryButtonText = "Enable anyway",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close, // cancel is the safe default
+            XamlRoot = Content.XamlRoot,
+        };
+        var proceed = await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return (proceed, proceed && dontWarn.IsChecked == true);
     }
 
     private async void OnAddMods(object sender, RoutedEventArgs e)

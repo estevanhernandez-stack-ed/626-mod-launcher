@@ -64,6 +64,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     public Func<IntakePlan, Task<ISet<string>?>>? ConfirmReplacements { get; set; }
 
+    /// <summary>
+    /// Shows the ban-risk acknowledgment for a high-risk game and returns (proceed, dontWarnAgain).
+    /// The view wires this (the dialog + XamlRoot live in the code-behind, not the VM). When unset
+    /// the gate proceeds — the Core decision (<see cref="BanRiskRules.ShouldGateEnable"/>) only asks
+    /// for it on a high-risk, un-acked game, so an unwired delegate degrades to no extra friction.
+    /// </summary>
+    public Func<string, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
+
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
 
@@ -702,11 +710,33 @@ public sealed partial class MainViewModel : ObservableObject
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
     }
 
+    /// <summary>The single ban-risk enable gate every enable path consults. Resolves the active
+    /// game's risk LIVE by Steam app id (so a feed raising risk protects an already-added game) and
+    /// whether it's been acknowledged, then defers the policy to <see cref="BanRiskRules.ShouldGateEnable"/>.
+    /// Returns true to proceed with the enable, false to abort (caller reverts the visual). On a
+    /// high-risk, un-acked game it warns and waits for an explicit ack — it never auto-enables and
+    /// never refuses (disabling is always one click away). Non-gated games proceed silently.</summary>
+    private async Task<bool> GateBanRiskEnableAsync()
+    {
+        if (_ctx is null) return false;
+        var level = BanRiskCatalog.ByAppId(_ctx.Game.SteamAppId);
+        var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id);
+        if (!BanRiskRules.ShouldGateEnable(level, acked)) return true;
+        if (ConfirmBanRiskEnable is null) return true; // unwired -> no extra friction (Core decision still owns policy)
+        var (proceed, dontWarn) = await ConfirmBanRiskEnable(_ctx.Game.GameName);
+        if (!proceed) return false;
+        if (dontWarn) BanRiskAckStore.Ack(_ctx.DataDir, _ctx.Game.Id);
+        return true;
+    }
+
     /// <summary>Toggle one mod. The reversible disable/enable lives in Scanner; on failure the
     /// switch reverts and the error surfaces (never a silent half-disable).</summary>
     public async Task ToggleAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
+        // Ban-risk gate: only when this toggle is turning a row ON. Disabling is never gated
+        // (getting safer needs no friction). On cancel, revert the visual exactly like the catch.
+        if (row.Enabled && !await GateBanRiskEnableAsync()) { row.Enabled = false; return; }
         // A manual toggle leaves "clean vanilla" — clear the stash so CurrentMode reverts to Modded and
         // the launch button stops claiming "Play vanilla" while a mod is live again.
         VanillaStashStore.Clear(_ctx.DataDir);
@@ -736,6 +766,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleVariantAsync(VariantOptionVM opt, bool enable)
     {
         if (_ctx is null) return;
+        // Ban-risk gate before enabling a variant (the view already reflects the desired state; on
+        // cancel we abort without touching files — the chip rebuild on the next reload corrects it).
+        if (enable && !await GateBanRiskEnableAsync()) { await ReloadModsAsync(); return; }
         try
         {
             if (enable)
@@ -761,6 +794,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleFamilyAsync(ModRowViewModel row, bool on)
     {
         if (_ctx is null || !row.HasVariantOptions) return;
+        // Ban-risk gate before turning a variant family ON (the family switch reflects the desired
+        // state; on cancel we reload so the switch rebuilds from actual state — nothing enabled).
+        if (on && !await GateBanRiskEnableAsync()) { await ReloadModsAsync(); return; }
         var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
         try
         {
@@ -814,27 +850,36 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private Task AllOff() => SetAllAsync(false);
 
-    private Task SetAllAsync(bool on) => BulkAsync(() =>
+    private async Task SetAllAsync(bool on)
     {
-        // A bulk enable/disable is a manual state change too — clear the vanilla stash so the mode
-        // reverts to Modded (mirrors the single ToggleAsync clear). BulkAsync already null-checked _ctx.
-        VanillaStashStore.Clear(_ctx!.DataDir);
-        if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
-        if (DirectInjectBacked)
+        // Ban-risk gate ONCE before a bulk enable (never per-row, so no row can bypass it). A bulk
+        // disable (on == false) is never gated — getting safer needs no friction.
+        if (on && _ctx is not null && !await GateBanRiskEnableAsync()) return;
+        await BulkAsync(() =>
         {
-            foreach (var m in Mods.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
-            return Task.CompletedTask;
-        }
-        return Scanner.SetAllModsAsync(on, _ctx!);
-    });
+            // A bulk enable/disable is a manual state change too — clear the vanilla stash so the mode
+            // reverts to Modded (mirrors the single ToggleAsync clear). BulkAsync already null-checked _ctx.
+            VanillaStashStore.Clear(_ctx!.DataDir);
+            if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
+            if (DirectInjectBacked)
+            {
+                foreach (var m in Mods.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
+                return Task.CompletedTask;
+            }
+            return Scanner.SetAllModsAsync(on, _ctx!);
+        });
+    }
 
     [RelayCommand]
-    private Task SetMode(string mode)
+    private async Task SetMode(string mode)
     {
-        ActiveMode = mode;
         // No MP/SP split for Mod Engine 2 or direct-inject mods — the mode buttons are a no-op there.
-        if (ConfigBacked || DirectInjectBacked) return Task.CompletedTask;
-        return BulkAsync(() => Scanner.ApplyModeAsync(mode, _ctx!));
+        if (ConfigBacked || DirectInjectBacked) { ActiveMode = mode; return; }
+        // Applying a mode enables the mods that match it — gate ONCE before the bulk apply. On cancel,
+        // abort without changing the active mode (nothing was enabled).
+        if (_ctx is not null && !await GateBanRiskEnableAsync()) return;
+        ActiveMode = mode;
+        await BulkAsync(() => Scanner.ApplyModeAsync(mode, _ctx!));
     }
 
     [RelayCommand]
