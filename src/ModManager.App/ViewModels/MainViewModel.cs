@@ -182,6 +182,16 @@ public sealed partial class MainViewModel : ObservableObject
     }
     private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); }
 
+    // Game-level ban-risk banner: resolved live by Steam app id from EffectiveManifest (via
+    // BanRiskCatalog), distinct from the per-mod co-op-desync MpWarning above. Shows for high and
+    // medium; stays visible even after the enable gate is acked (the risk is never hidden) and
+    // covers the dropped-live-pak case the gate can't see. Recomputed on the same notify as
+    // MpWarning when the active game changes.
+    public Visibility BanRiskWarningVisibility =>
+        BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
+    public string BanRiskWarningText => "This game uses anti-cheat — enabling mods for online play can get your account banned.";
+    private void NotifyBanRiskWarning() { OnPropertyChanged(nameof(BanRiskWarningVisibility)); OnPropertyChanged(nameof(BanRiskWarningText)); }
+
     /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
     public void SetMpOverride(ModRowViewModel row, MpRisk? value)
     {
@@ -513,6 +523,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
             OrderAndStampSections(rows);
             NotifyMpWarning();
+            NotifyBanRiskWarning();
             GameRootText = _ctx.GameRoot;
             // LaunchOptions.NeedsAttention fires on Steam App ID alone — it doesn't know what's
             // installed. For Elden Ring, the only recommended option is the anti-cheat OFF swap,
