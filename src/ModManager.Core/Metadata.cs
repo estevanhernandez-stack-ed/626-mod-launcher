@@ -66,6 +66,7 @@ public static partial class Metadata
             m.Category = e?.Category;
             m.Version = e?.Version;
             m.NexusLatestVersion = e?.NexusLatestVersion;
+            m.Endorsed = e?.Endorsed;
             m.HasMeta = e is not null;
             if (e is null && m.Builtin && Ue4ssBuiltins.Lookup(m.Name) is { } b)
             {

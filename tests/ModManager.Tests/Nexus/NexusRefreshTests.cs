@@ -23,6 +23,8 @@ public class NexusRefreshTests
         public Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5) => throw new NotSupportedException();
         public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
         public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
+        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
+        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
         public NexusRateLimit? LastRateLimit => null;
     }
 

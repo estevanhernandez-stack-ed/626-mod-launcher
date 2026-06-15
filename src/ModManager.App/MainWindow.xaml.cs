@@ -352,6 +352,14 @@ public sealed partial class MainWindow : Window
         ViewModel.SetMpOverride(row, value);
     }
 
+    // Heart click: endorse ⇄ abstain this row's Nexus mod. The VM owns the write, the refusal mapping,
+    // the rate-limit handling, and the in-place heart flip — this handler just routes the row through.
+    private async void OnEndorse(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
+        await ViewModel.ToggleEndorseAsync(row);
+    }
+
     // Right-click → "Match to a mod…": opens the URL paste dialog, then hands the URL to the VM.
     private async void OnManualMatch(object sender, RoutedEventArgs e)
     {

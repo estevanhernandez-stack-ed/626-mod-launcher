@@ -55,6 +55,17 @@ public sealed partial class ModRowViewModel : ObservableObject
         _canUninstall = canUninstall;
     }
 
+    /// <summary>Re-raise the endorse-affordance bindings after a toggle wrote a new <see cref="Mod.Endorsed"/>
+    /// state — the heart flips in place without a full reload. Raised by name (string literals, not
+    /// <c>nameof</c>) so this method is independent of the Task 7 display members that land later; the
+    /// OneWay bindings pick the change up live once they exist.</summary>
+    public void NotifyEndorseChanged()
+    {
+        OnPropertyChanged("IsEndorsed");
+        OnPropertyChanged("EndorseGlyph");
+        OnPropertyChanged("EndorseTooltip");
+    }
+
     // A multi-variant family row shows the BASE title (e.g. "Faster Ships"); the per-level distinction
     // lives in the inline option chips, not the title.
     public string DisplayName => HasVariantOptions && !string.IsNullOrEmpty(Mod.BaseTitle)
@@ -309,4 +320,31 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Visibility ThumbnailVisibility => !InLoadOrder && Thumbnail is not null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MonogramVisibility => !InLoadOrder && Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
     public string Initial => DisplayName.Length > 0 ? DisplayName[..1].ToUpperInvariant() : "?";
+
+    // ---------- endorse affordance (the heart) ----------
+    // Whether Nexus is connected, threaded in by the parent VM at row construction (rows are rebuilt on
+    // every rescan, so this stays fresh without a notify). The heart only makes sense when we have both a
+    // resolved Nexus mod id (the endorse key) and an account to endorse from.
+    public bool NexusConnected { get; init; }
+
+    /// <summary>The Nexus mod id for this row, resolved by the parent VM from the mod's metadata at row
+    /// build time — the same key the endorse write uses. The in-memory <see cref="Mod"/> doesn't carry it
+    /// (it lives on the persisted <c>ModMeta</c>), so the parent passes it in. Null = not Nexus-identified.</summary>
+    public int? NexusModId { get; init; }
+
+    /// <summary>The heart shows only on Nexus-identified rows (a resolved mod id) while Nexus is
+    /// connected — there's nothing to endorse otherwise, and no account to endorse from.</summary>
+    public Visibility EndorseVisibility =>
+        NexusModId is not null && NexusConnected ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>True only when the user has actively endorsed (persisted intent). null/false = outline heart.</summary>
+    public bool IsEndorsed => Mod.Endorsed == true;
+
+    /// <summary>Segoe MDL2 heart: filled (HeartFill, U+EB52) when endorsed, outline (Heart, U+EB51)
+    /// otherwise. Bound OneWay so the glyph flips in place after a toggle writes a new
+    /// <see cref="Mod.Endorsed"/>. C# escapes keep the PUA codepoints portable in source.</summary>
+    public string EndorseGlyph => IsEndorsed ? "\uEB52" : "\uEB51";
+
+    /// <summary>Hover copy — terse, builder-to-builder. Bound OneWay to track the toggle.</summary>
+    public string EndorseTooltip => IsEndorsed ? "Endorsed — click to retract" : "Endorse on Nexus";
 }

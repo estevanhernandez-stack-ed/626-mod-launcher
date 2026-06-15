@@ -515,6 +515,18 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <!-- Endorse heart: only on Nexus-identified rows while connected. OneWay so the
+                                 heart flips in place after a toggle. Refusals/rate-limit go to the status line. -->
+                            <Button Click="OnEndorse" VerticalAlignment="Center"
+                                    Background="Transparent" BorderThickness="0" Tag="{x:Bind}"
+                                    ToolTipService.ToolTip="{x:Bind EndorseTooltip, Mode=OneWay}"
+                                    Visibility="{x:Bind EndorseVisibility, Mode=OneWay}">
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
+                                    <FontIcon Glyph="{x:Bind EndorseGlyph, Mode=OneWay}" FontSize="14"
+                                              HorizontalAlignment="Center" Foreground="{StaticResource ThemeAccent}" />
+                                    <TextBlock Text="endorse" FontSize="9" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
                             <Button Click="OnShowReadme" VerticalAlignment="Center"
                                     Background="Transparent" BorderThickness="0"
                                     ToolTipService.ToolTip="Readme"

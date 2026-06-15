@@ -124,4 +124,33 @@ public class ManualMatchMergeTests
         var merged = CallMergeMeta(cf, curated);
         Assert.Null(merged.NexusLatestVersion);
     }
+
+    [Fact]
+    public void MergeMeta_carries_endorsed_from_fetched_when_curated_lacks_it()
+    {
+        var cf = new ModMeta { Endorsed = true };
+        var curated = new ModMeta { Title = "Hand title" };   // no endorsed state
+        var merged = CallMergeMeta(cf, curated);
+        Assert.True(merged.Endorsed);
+        Assert.Equal("Hand title", merged.Title);             // curated still wins where it has a value
+    }
+
+    [Fact]
+    public void MergeMeta_curated_endorsed_wins_per_field()
+    {
+        var cf = new ModMeta { Endorsed = false };
+        var curated = new ModMeta { Endorsed = true };
+        var merged = CallMergeMeta(cf, curated);
+        Assert.True(merged.Endorsed);                         // curated ?? cf, same as siblings
+    }
+
+    [Fact]
+    public void MergeMeta_manual_curated_short_circuits_endorsed()
+    {
+        // IsManual locks the row — incoming endorsed state must not leak in.
+        var cf = new ModMeta { Endorsed = true };
+        var curated = new ModMeta { Title = "Manual", IsManual = true };  // no endorsed state
+        var merged = CallMergeMeta(cf, curated);
+        Assert.Null(merged.Endorsed);
+    }
 }

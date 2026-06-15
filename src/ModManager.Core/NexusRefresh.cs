@@ -69,6 +69,36 @@ public static class NexusRefresh
     }
 
     /// <summary>
+    /// Fold the bulk user-endorsements list back onto the library: for each meta whose resolved
+    /// Nexus id (<see cref="ResolveModId"/>) matches an entry in <paramref name="endorsements"/>
+    /// for the active <paramref name="domain"/>, set <see cref="ModMeta.Endorsed"/> to
+    /// <c>status == "Endorsed"</c> (so an <c>Abstained</c> / <c>Undecided</c> match clears it to
+    /// false). Metas with no matching entry — or an unresolvable id, or a same-id entry from a
+    /// different game domain — are left untouched: the bulk list only knows about mods the user has
+    /// interacted with, so absence means "unknown", not "abstained". Pure (mutates the supplied
+    /// metas in place); never throws.
+    /// </summary>
+    public static void ApplyEndorsements(
+        IEnumerable<ModMeta> metas,
+        IEnumerable<NexusEndorsement> endorsements,
+        string domain)
+    {
+        // id -> status, for the active domain only (last entry wins if Nexus ever repeats an id).
+        var byId = new Dictionary<int, string>();
+        foreach (var e in endorsements)
+            if (string.Equals(e.DomainName, domain, StringComparison.OrdinalIgnoreCase))
+                byId[e.ModId] = e.Status;
+
+        foreach (var meta in metas)
+        {
+            var id = ResolveModId(meta);
+            if (id is null) continue;
+            if (!byId.TryGetValue(id.Value, out var status)) continue;
+            meta.Endorsed = string.Equals(status, "Endorsed", StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// Pick the <c>updated.json</c> window by how long it's been since the last poll: under a day
     /// → <c>"1d"</c>, under a week → <c>"1w"</c>, otherwise <c>"1m"</c>. Updates older than the
     /// chosen window are caught only by the full manual sweep (which does not use a window).
@@ -122,6 +152,14 @@ public static class NexusRefresh
     /// <see cref="NexusRateLimitException"/>, the sweep stops cleanly — <see cref="NexusRefreshResult.RateLimited"/>
     /// is set and the partial progress is returned, never re-thrown. Unresolvable metas are skipped
     /// (no client call, not counted).
+    ///
+    /// <para>After the stats sweep, the bulk user-endorsements list is fetched <em>once</em> and
+    /// folded onto the refreshed metas (<see cref="ApplyEndorsements"/>) so hearts reflect reality
+    /// library-wide — including mods endorsed outside the launcher — without per-mod calls. That
+    /// single call is best-effort: any failure (offline, 4xx, even a 429) is swallowed so it can
+    /// never sink the stats refresh. Endorsements are read-only state sync, not the
+    /// <see cref="NexusRefreshResult.RateLimited"/> signal — that flag stays owned by the stats
+    /// sweep's own throttle.</para>
     /// </summary>
     public static async Task<NexusRefreshResult> RefreshAllAsync(
         IEnumerable<ModMeta> metas, string domain, INexusClient client, Func<Task>? throttle = null)
@@ -157,6 +195,18 @@ public static class NexusRefresh
                 updatesAvailable++;
         }
 
+        // One cheap bulk call to sync endorse hearts library-wide. Best-effort: guarded in its own
+        // try/catch (including a 429) so it can never abort or downgrade the stats sweep above.
+        try
+        {
+            var endorsements = await client.GetUserEndorsementsAsync();
+            ApplyEndorsements(updated, endorsements, domain);
+        }
+        catch
+        {
+            // Endorsements are read-only state sync — swallow and keep the stats result intact.
+        }
+
         return new NexusRefreshResult(refreshed, updatesAvailable, rateLimited, updated);
     }
 
@@ -164,7 +214,10 @@ public static class NexusRefresh
     /// Produce a refreshed clone: copy every field from <paramref name="existing"/> (the installed
     /// truth) then overwrite only the live-stat fields from <paramref name="fetched"/> and capture
     /// the upstream version as <see cref="ModMeta.NexusLatestVersion"/>. The installed
-    /// <see cref="ModMeta.Version"/> / <see cref="ModMeta.NexusFileId"/> are never touched.
+    /// <see cref="ModMeta.Version"/> / <see cref="ModMeta.NexusFileId"/> are never touched, and
+    /// <see cref="ModMeta.Endorsed"/> (persisted user intent) is carried through verbatim — the
+    /// sweep persists these clones wholesale, so a dropped <c>Endorsed</c> here would silently wipe
+    /// the user's heart on disk whenever the best-effort bulk endorsements call fails.
     /// </summary>
     private static ModMeta Overlay(ModMeta existing, ModMeta fetched) => new()
     {
@@ -186,6 +239,7 @@ public static class NexusRefresh
         NexusModId = existing.NexusModId,
         NexusFileId = existing.NexusFileId,   // installed file — NOT the upstream latest
         Version = existing.Version,           // installed version — the "what you have" side
+        Endorsed = existing.Endorsed,         // persisted user intent (like IsManual) — preserved, never recomputed-or-wiped
 
         // live stats — refreshed from the fetched mod
         EndorsementCount = fetched.EndorsementCount ?? existing.EndorsementCount,
