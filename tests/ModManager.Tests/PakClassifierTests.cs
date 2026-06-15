@@ -36,3 +36,33 @@ public class PakClassifierTests
     public void Empty_name_is_not_base_even_at_huge_size()
         => Assert.False(PakClassifier.IsBaseGamePak("", 5L * 1024 * 1024 * 1024));
 }
+
+public class PakClassifierUe5Tests
+{
+    [Fact]
+    public void Ue5_windows_suffix_is_a_shipping_pak_name()
+    {
+        Assert.True(PakClassifier.IsShippingPakName("pakchunk0-Windows.pak"));   // UE5
+        Assert.True(PakClassifier.IsShippingPakName("pakchunk12optional-Windows.pak"));
+    }
+
+    [Fact]
+    public void Ue4_windowsnoeditor_still_matches()
+    {
+        Assert.True(PakClassifier.IsShippingPakName("pakchunk0-WindowsNoEditor.pak")); // UE4
+        Assert.True(PakClassifier.IsBaseGamePak("pakchunk0-WindowsNoEditor.pak", 10));
+    }
+
+    [Fact]
+    public void Mod_pak_name_is_not_a_shipping_name()
+    {
+        Assert.False(PakClassifier.IsShippingPakName("zz_Funner_Witchfire.pak"));
+        Assert.False(PakClassifier.IsShippingPakName("MyCoolMod_P.pak"));
+    }
+
+    [Fact]
+    public void Ue5_base_pak_is_classified_base_by_name()
+    {
+        Assert.True(PakClassifier.IsBaseGamePak("pakchunk0-Windows.pak", sizeBytes: 50)); // name signal, small size
+    }
+}
