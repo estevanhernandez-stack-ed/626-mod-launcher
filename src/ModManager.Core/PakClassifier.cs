@@ -11,20 +11,27 @@ namespace ModManager.Core;
 /// </summary>
 public static class PakClassifier
 {
-    // UE packaged-game convention: pakchunk<N>[optional]-WindowsNoEditor.pak. Case-insensitive.
+    // UE packaged-game convention. UE4: pakchunk<N>[optional]-WindowsNoEditor.pak.
+    // UE5: pakchunk<N>[optional]-Windows.pak (and -WindowsClient/-WindowsServer). Case-insensitive.
     private static readonly Regex ShippingPakName =
-        new(@"^pakchunk\d+.*-WindowsNoEditor\.pak$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"^pakchunk\d+.*-Windows[A-Za-z]*\.pak$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>A pak no real mod reaches — above this it's treated as base game even if the name doesn't
     /// match the shipping convention. Well above any real mod pak, below the multi-GB base chunks.</summary>
     public const long ModSizeCeilingBytes = 1536L * 1024 * 1024; // 1.5 GB
+
+    /// <summary>True when the file name matches the UE shipping-pak convention (UE4 or UE5). Name only.</summary>
+    public static bool IsShippingPakName(string? fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return false;
+        return ShippingPakName.IsMatch(Path.GetFileName(fileName));
+    }
 
     /// <summary>True when <paramref name="fileName"/> + <paramref name="sizeBytes"/> indicate a base-game
     /// pak (hide + protect). Name pattern OR size — see the class summary.</summary>
     public static bool IsBaseGamePak(string fileName, long sizeBytes)
     {
         if (string.IsNullOrEmpty(fileName)) return false;
-        var name = Path.GetFileName(fileName);
-        return ShippingPakName.IsMatch(name) || sizeBytes >= ModSizeCeilingBytes;
+        return IsShippingPakName(fileName) || sizeBytes >= ModSizeCeilingBytes;
     }
 }

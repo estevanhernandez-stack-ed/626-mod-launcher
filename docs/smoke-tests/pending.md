@@ -354,3 +354,12 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **(f) `endorsed` persists + survives a rescan.** After endorsing in the launcher, confirm `metadata.json` carries `"endorsed": true` (camelCase) for the affected mod. Switch games and back (or Redetect) → EXPECT: the heart stays filled (the field round-trips intact, persisted user intent isn't lost on reload).
 
 **Why these matter:** every layer below the button is unit-tested, but the heart render + visibility gating, the `ToggleEndorseAsync` wiring, the no-optimistic-flip-on-refusal behavior, the bulk-list application during the live refresh sweep, and the real endorse/abstain round-trip against a connected Nexus account only exercise on a real Windows machine with a personal API key and a modded library.
+
+---
+
+## Engine detection — 2-level Unreal probe (2026-06-15)
+
+- [ ] **Marvel Rivals (2-level UE5) auto-detects.** Add Marvel Rivals from Steam/Epic (or point at its install). Expect: engine detected as `ue-pak`; mod path resolves to `MarvelGame/Marvel/Content/Paks/~mods`. Drop a `.pak` into `~mods` → it shows as a mod row and toggles on/off (moves to holding, not deleted).
+- [ ] **Single-wrapper games still work (no regression).** A previously-working single-wrapper UE game (e.g. Palworld `Pal/...`, Hogwarts `Phoenix/...`) still detects and lists mods exactly as before.
+- [ ] **Engine sibling is not mis-detected.** A UE install with an `Engine/Content/Paks` beside the project resolves to the project folder, never `Engine` (no engine paks listed as mods, mods never routed into `Engine`).
+- [ ] **Big install stays fast.** Adding a game with a large/deep folder tree does not hang the add (the probe is budget-bounded).

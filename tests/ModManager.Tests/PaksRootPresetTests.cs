@@ -74,4 +74,26 @@ public class PaksRootPresetTests : IDisposable
         Assert.EndsWith("Content/Paks/~mods", entry.ModLocations.Single().Path.Replace('\\', '/'));
         Assert.Null(entry.ModLocations.Single().Form);
     }
+
+    [Fact]
+    public void Two_wrapper_project_resolves_the_nested_mods_path()  // Marvel Rivals
+    {
+        var gameRoot = Path.Combine(_tmp, "GameRoot-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "MarvelGame", "Marvel", "Content", "Paks", "~mods"));
+        var entry = EnginePresets.BuildGameEntry(UeInput(gameRoot), existingIds: null);
+        var loc = entry.ModLocations.Single();
+        Assert.Equal("MarvelGame/Marvel/Content/Paks/~mods", loc.Path.Replace('\\', '/'));
+        Assert.Null(loc.Form); // ~mods present → loader form, not paks-root
+    }
+
+    [Fact]
+    public void Two_wrapper_loaderless_resolves_paks_root()
+    {
+        var gameRoot = Path.Combine(_tmp, "GameRoot-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "MarvelGame", "Marvel", "Content", "Paks"));
+        var entry = EnginePresets.BuildGameEntry(UeInput(gameRoot), existingIds: null);
+        var loc = entry.ModLocations.Single();
+        Assert.Equal("paks-root", loc.Form);
+        Assert.Equal("MarvelGame/Marvel/Content/Paks", loc.Path.Replace('\\', '/'));
+    }
 }

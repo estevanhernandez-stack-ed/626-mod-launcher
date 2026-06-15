@@ -35,4 +35,26 @@ public class PaksRootFormRoundTripTests : IDisposable
         Assert.Equal("paks-root", loc.Form);
         Assert.Equal("Witchfire/Content/Paks", loc.Path);
     }
+
+    [Fact]
+    public void ModLocation_multi_segment_nested_path_round_trips()  // Marvel Rivals: 2-wrapper project
+    {
+        Directory.CreateDirectory(_tmp);
+        var reg = Registry.EmptyRegistry();
+        // The OS-separator value detection produces for a two-wrapper project.
+        var nested = Path.Combine("MarvelGame", "Marvel", "Content", "Paks", "~mods");
+        var game = new GameEntry
+        {
+            Id = "marvel-rivals", GameName = "Marvel Rivals", Engine = "ue-pak",
+            GameRoot = @"C:\game",
+            ModLocations = new[] { new ModLocation("mods", "mods", nested) },
+        };
+        reg.Games.Add(game);
+
+        RegistryStore.Save(_tmp, reg);
+        var loaded = RegistryStore.Load(_tmp);
+        var loc = loaded.Games.Single(g => g.Id == "marvel-rivals").ModLocations.Single();
+        Assert.Equal(nested, loc.Path);  // the 2-segment path survives Save/Load unchanged
+        Assert.Equal("MarvelGame/Marvel/Content/Paks/~mods", loc.Path.Replace('\\', '/'));
+    }
 }

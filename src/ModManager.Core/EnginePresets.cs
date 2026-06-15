@@ -111,21 +111,19 @@ public static partial class EnginePresets
     private static ModLocation? DetectUePakModLocation(string gameRoot)
     {
         if (string.IsNullOrEmpty(gameRoot)) return null;
-        string[] projectDirs;
-        try { projectDirs = Directory.GetDirectories(gameRoot); }
-        catch { return null; }
 
-        foreach (var projDir in projectDirs)
-        {
-            var paks = Path.Combine(projDir, "Content", "Paks");
-            if (!Directory.Exists(paks)) continue;
-            var project = Path.GetFileName(projDir);
-            var loaderPresent = Directory.Exists(Path.Combine(paks, "~mods"))
-                                || Directory.Exists(Path.Combine(paks, "LogicMods"));
-            // Delegate the location-shape decision to the shared primitive so this seeder and the
-            // runtime resolver (ModLocator) agree by construction — one definition of paks-root vs ~mods.
-            return ModLocations.UePakModLocation(project, loaderPresent);
-        }
-        return null; // no <Project>/Content/Paks on disk
+        // Delegate discovery + the false-positive guard to the shared resolver so this seeder, the
+        // engine-decision gate (EngineScan), and the runtime resolver (ModLocator) agree by construction.
+        var withPaks = UeProjectScan.Enumerate(gameRoot)
+                                    .Where(c => Directory.Exists(Path.Combine(gameRoot, c.RelativeProjectPath, "Content", "Paks")))
+                                    .ToList();
+        var pick = UeProjectScan.Pick(withPaks);
+        if (pick.Kind != UeProjectPickKind.One || pick.Chosen is not { } chosen) return null;
+
+        var rel = chosen.RelativeProjectPath;
+        var paks = Path.Combine(gameRoot, rel, "Content", "Paks");
+        var loaderPresent = Directory.Exists(Path.Combine(paks, "~mods"))
+                            || Directory.Exists(Path.Combine(paks, "LogicMods"));
+        return ModLocations.UePakModLocation(rel, loaderPresent);
     }
 }
