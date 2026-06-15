@@ -84,4 +84,79 @@ public static class UeProjectScan
         var parts = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return parts.Length > 0 ? parts[^1] : rel;
     }
+
+    /// <summary>Every Unreal project dir (root + up to 2 wrapper levels) that owns a Content/Paks,
+    /// denylist-skipped and budget-bounded. IO, bounded + deterministic.</summary>
+    public static IReadOnlyList<UeProjectCandidate> Enumerate(string gameRoot, ScanBudget? budget = null)
+    {
+        var list = new List<UeProjectCandidate>();
+        WalkProjectDirs(gameRoot, budget ?? ScanBudget.Default, (rel, depth, abs) =>
+        {
+            if (Directory.Exists(Path.Combine(abs, "Content", "Paks"))) list.Add(Describe(rel, depth, abs));
+            return false; // collect all
+        });
+        return list;
+    }
+
+    /// <summary>Fast gate: does at least one non-denylisted Content/Paks exist within 2 wrappers? Short-circuits.</summary>
+    public static bool HasContentPaks(string gameRoot, ScanBudget? budget = null)
+    {
+        var found = false;
+        WalkProjectDirs(gameRoot, budget ?? ScanBudget.Default, (_, _, abs) =>
+        {
+            if (Directory.Exists(Path.Combine(abs, "Content", "Paks"))) { found = true; return true; }
+            return false;
+        });
+        return found;
+    }
+
+    // Visits root + up to 2 wrapper levels. Calls onProjectDir(rel, depth, absDir) for every dir that
+    // contains a Content folder; returning true stops the walk early. Descends into every non-denylisted
+    // level-1 dir regardless (a wrapper like "MarvelGame" has no Content itself but holds the project).
+    private static void WalkProjectDirs(string gameRoot, ScanBudget budget, Func<string, int, string, bool> onProjectDir)
+    {
+        if (string.IsNullOrEmpty(gameRoot) || !Directory.Exists(gameRoot)) return;
+        var examined = 0;
+
+        bool Check(string rel, int depth)
+        {
+            var abs = depth == 0 ? gameRoot : Path.Combine(gameRoot, rel);
+            return Directory.Exists(Path.Combine(abs, "Content")) && onProjectDir(rel, depth, abs);
+        }
+
+        if (Check("", 0)) return;
+
+        string[] level1;
+        try { level1 = Directory.GetDirectories(gameRoot); } catch { return; }
+        foreach (var w1 in level1)
+        {
+            if (++examined > budget.MaxDirs) return;
+            var w1Name = Path.GetFileName(w1);
+            if (string.IsNullOrEmpty(w1Name) || IsDenied(w1Name)) continue;
+            if (Check(w1Name, 1)) return;
+
+            string[] level2;
+            try { level2 = Directory.GetDirectories(w1); } catch { continue; }
+            foreach (var w2 in level2)
+            {
+                if (++examined > budget.MaxDirs) return;
+                var w2Name = Path.GetFileName(w2);
+                if (string.IsNullOrEmpty(w2Name) || IsDenied(w2Name)) continue;
+                if (Check(Path.Combine(w1Name, w2Name), 2)) return;
+            }
+        }
+    }
+
+    private static UeProjectCandidate Describe(string rel, int depth, string absProjectDir)
+    {
+        var paks = Path.Combine(absProjectDir, "Content", "Paks");
+        var hasShippingPak = false;
+        try { hasShippingPak = Directory.EnumerateFiles(paks, "*.pak").Any(f => PakClassifier.IsShippingPakName(Path.GetFileName(f))); }
+        catch { /* unreadable Paks */ }
+        var hasBinaries = Directory.Exists(Path.Combine(absProjectDir, "Binaries"));
+        var hasUproject = false;
+        try { hasUproject = Directory.EnumerateFiles(absProjectDir, "*.uproject").Any(); }
+        catch { /* unreadable project dir */ }
+        return new UeProjectCandidate(rel, depth, hasShippingPak, hasBinaries, hasUproject);
+    }
 }
