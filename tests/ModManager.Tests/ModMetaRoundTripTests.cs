@@ -36,4 +36,21 @@ public class ModMetaRoundTripTests
         Assert.True(rt.IsManual);
         Assert.Equal(original.Url, rt.Url);
     }
+
+    [Fact]
+    public void ModMeta_nexus_fields_round_trip_as_camelCase()
+    {
+        var m = new ModMeta { EndorsementCount = 1234, Version = "2.3", Available = false, ContainsAdultContent = false, NexusModId = 510, NexusFileId = 99 };
+        var json = JsonSerializer.Serialize(m, Json);
+        Assert.Contains("\"endorsementCount\"", json);
+        Assert.Contains("\"nexusModId\"", json);
+        Assert.Contains("\"nexusFileId\"", json);
+        Assert.DoesNotContain("\"EndorsementCount\"", json);
+        var rt = JsonSerializer.Deserialize<ModMeta>(json, Json)!;
+        Assert.Equal(1234, rt.EndorsementCount);
+        Assert.Equal("2.3", rt.Version);
+        Assert.False(rt.Available);
+        Assert.Equal(510, rt.NexusModId);
+        Assert.Equal(99, rt.NexusFileId);
+    }
 }

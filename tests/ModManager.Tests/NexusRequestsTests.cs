@@ -126,6 +126,36 @@ public class NexusRequestsTests
     }
 
     [Fact]
+    public void MapMod_reads_endorsements_downloads_version_available()
+    {
+        using var doc = JsonDocument.Parse("""
+        { "mod_id": 510, "name": "X", "summary": "s", "author": "a",
+          "endorsement_count": 1234, "mod_downloads": 56789, "version": "2.3",
+          "available": false, "contains_adult_content": false }
+        """);
+        var m = NexusRequests.MapMod("windrose", doc.RootElement);
+        Assert.Equal(1234, m.EndorsementCount);
+        Assert.Equal(56789L, m.Downloads);
+        Assert.Equal("2.3", m.Version);
+        Assert.False(m.Available);
+        Assert.False(m.ContainsAdultContent);
+        Assert.Equal(510, m.NexusModId);
+    }
+
+    [Fact]
+    public void MapMd5Response_stamps_file_id_and_version_from_file_details()
+    {
+        using var doc = JsonDocument.Parse("""
+        [ { "mod": { "mod_id": 510, "name": "X" },
+            "file_details": { "file_id": 99, "version": "2.3.1" } } ]
+        """);
+        var match = NexusRequests.MapMd5Response("windrose", doc.RootElement)!;
+        Assert.Equal(510, match.ModId);
+        Assert.Equal(99, match.Meta.NexusFileId);
+        Assert.Equal("2.3.1", match.Meta.Version);   // file_details.version is the installed-file version
+    }
+
+    [Fact]
     public void MapMd5Response_returns_null_for_empty_array()
     {
         using var doc = JsonDocument.Parse("[]");

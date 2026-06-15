@@ -43,6 +43,14 @@ public static class NexusRequests
     private static bool Bool(JsonElement obj, string name)
         => obj.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.True;
 
+    private static long? Long(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Number ? el.GetInt64() : null;
+
+    private static bool? BoolN(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var el)
+            ? el.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => (bool?)null }
+            : null;
+
     public static ApiRequest ModRequest(string domain, int modId, NexusOptions? opts = null)
     {
         opts ??= new NexusOptions();
@@ -98,7 +106,12 @@ public static class NexusRequests
             Url = modId.HasValue ? $"https://www.nexusmods.com/{domain}/mods/{modId.Value}" : null,
             Source = null,
             Donate = null,
-            Downloads = null,
+            Downloads = Long(modObject, "mod_downloads"),
+            EndorsementCount = Int(modObject, "endorsement_count"),
+            Version = Str(modObject, "version"),
+            Available = BoolN(modObject, "available"),
+            ContainsAdultContent = BoolN(modObject, "contains_adult_content"),
+            NexusModId = modId,
             Category = category,
         };
     }
@@ -149,6 +162,12 @@ public static class NexusRequests
             if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty("mod", out var mod) || mod.ValueKind != JsonValueKind.Object)
                 return null;
             var meta = MapMod(domain, mod, categories);
+            if (el.TryGetProperty("file_details", out var fd) && fd.ValueKind == JsonValueKind.Object)
+            {
+                meta.NexusFileId = Int(fd, "file_id");
+                var fileVersion = Str(fd, "version");
+                if (fileVersion is not null) meta.Version = fileVersion;   // installed-file version beats mod-level
+            }
             return new NexusMd5Match(Int(mod, "mod_id"), meta);
         }
         return null;

@@ -1162,6 +1162,12 @@ public static class Scanner
             Category = curated.Category ?? cf.Category,
             InstalledUtc = curated.InstalledUtc ?? cf.InstalledUtc,
             SourceConfidence = curated.SourceConfidence ?? cf.SourceConfidence,
+            EndorsementCount = curated.EndorsementCount ?? cf.EndorsementCount,
+            Version = curated.Version ?? cf.Version,
+            Available = curated.Available ?? cf.Available,
+            ContainsAdultContent = curated.ContainsAdultContent ?? cf.ContainsAdultContent,
+            NexusModId = curated.NexusModId ?? cf.NexusModId,
+            NexusFileId = curated.NexusFileId ?? cf.NexusFileId,
         };
     }
 
