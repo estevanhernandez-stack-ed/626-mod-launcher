@@ -101,6 +101,20 @@ public static class NexusRequests
     }
 
     /// <summary>
+    /// Endorse/abstain a mod: POST /v1/games/{domain}/mods/{modId}/{endorse|abstain}.json with body
+    /// <c>{"Version": version}</c>. The path segment is chosen from <paramref name="action"/>. The
+    /// body is JSON-serialized (so the version is escaped); the usual auth + ToS headers ride along.
+    /// </summary>
+    public static ApiRequest EndorseRequest(string domain, int modId, string version, EndorseAction action, NexusOptions? opts = null)
+    {
+        opts ??= new NexusOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        var segment = action == EndorseAction.Abstain ? "abstain" : "endorse";
+        var body = JsonSerializer.Serialize(new Dictionary<string, string> { ["Version"] = version });
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/{modId}/{segment}.json", "POST", Headers(opts), body);
+    }
+
+    /// <summary>
     /// Bulk "recently updated by game": GET /v1/games/{domain}/mods/updated.json?period={period}.
     /// <paramref name="period"/> is one of Nexus's fixed windows — "1d", "1w", or "1m".
     /// </summary>

@@ -22,6 +22,14 @@ public interface INexusClient
     Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period);
 
     /// <summary>
+    /// Endorse or abstain a mod. POSTs the version-stamped body to the endorse/abstain endpoint.
+    /// A 2xx returns the new status; a 4xx precondition refusal degrades to a friendly
+    /// <see cref="EndorseOutcome"/> (<c>Refused = true</c>) without throwing; a 429 surfaces as
+    /// <see cref="NexusRateLimitException"/>. Never auto-called — one user click per write.
+    /// </summary>
+    Task<EndorseOutcome> EndorseAsync(string domain, int modId, string version, EndorseAction action);
+
+    /// <summary>
     /// The rate-limit snapshot from the most recent response (null until the first call).
     /// Lets a sweep read remaining budget and back off before it gets throttled.
     /// </summary>
@@ -177,5 +185,65 @@ public sealed class NexusClient : INexusClient
         await using var stream = await res.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
         return NexusRequests.MapValidateResponse(doc.RootElement);
+    }
+
+    /// <inheritdoc />
+    public async Task<EndorseOutcome> EndorseAsync(string domain, int modId, string version, EndorseAction action)
+    {
+        var req = NexusRequests.EndorseRequest(domain, modId, version, action, _opts);
+
+        using var msg = new HttpRequestMessage(new HttpMethod(req.Method), req.Url);
+        foreach (var (k, v) in req.Headers)
+        {
+            if (string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase)) continue; // set on Content below
+            msg.Headers.TryAddWithoutValidation(k, v);
+        }
+        if (req.Body is not null)
+            msg.Content = new StringContent(req.Body, System.Text.Encoding.UTF8, "application/json");
+
+        using var res = await _http.SendAsync(msg);
+        CaptureRateLimit(res); // 429 throws NexusRateLimitException; everything else falls through
+
+        var bodyText = await res.Content.ReadAsStringAsync();
+
+        if (res.IsSuccessStatusCode)
+        {
+            // 2xx: read the new status from { message, status }.
+            var status = TryReadStringProperty(bodyText, "status");
+            return new EndorseOutcome(Status: status, Message: null, Refused: false);
+        }
+
+        // Any other non-2xx (the precondition refusals, etc.): degrade to a friendly status line,
+        // never throw. Surface the human message; map the two known codes to friendlier text.
+        var rawMessage = TryReadStringProperty(bodyText, "message");
+        var friendly = rawMessage is not null
+            ? NexusEndorse.FriendlyRefusal(rawMessage)
+            : $"Nexus declined the endorsement ({(int)res.StatusCode}).";
+        return new EndorseOutcome(Status: null, Message: friendly, Refused: true);
+    }
+
+    /// <summary>
+    /// Best-effort read of a top-level string property from a JSON body. Returns null on any
+    /// parse failure or when the property is absent / not a string — a malformed refusal body
+    /// must never throw on the write path.
+    /// </summary>
+    private static string? TryReadStringProperty(string json, string name)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(name, out var el)
+                && el.ValueKind == JsonValueKind.String)
+            {
+                var s = el.GetString();
+                return string.IsNullOrEmpty(s) ? null : s;
+            }
+        }
+        catch (JsonException)
+        {
+            // Non-JSON body — fall through to null.
+        }
+        return null;
     }
 }
