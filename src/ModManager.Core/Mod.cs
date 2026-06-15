@@ -51,6 +51,10 @@ public sealed class Mod
     public string? Category { get; set; }
     public bool HasMeta { get; set; }
 
+    /// <summary>The current user's endorse state on Nexus (from ModMeta, via Metadata.MergeMetadata).
+    /// null = unknown, true = endorsed, false = abstained/undecided. Drives the heart affordance.</summary>
+    public bool? Endorsed { get; set; }
+
     // version + update-available (from a Nexus by-mod-id poll, via Metadata.MergeMetadata)
     public string? Version { get; set; }              // the installed version (what you have)
     public string? NexusLatestVersion { get; set; }   // current version on Nexus (what's available)
@@ -100,4 +104,10 @@ public sealed class ModMeta
     /// side of the update compare; the installed-side stays in <see cref="Version"/>. Additive/nullable —
     /// metadata that predates the poll has none.</summary>
     public string? NexusLatestVersion { get; set; }
+
+    /// <summary>The current user's endorse state on Nexus: null = unknown, true = endorsed,
+    /// false = abstained/undecided. Persisted user intent (like <see cref="IsManual"/>) — set from an
+    /// endorse/abstain action's response or the bulk user-endorsements list, and must survive a rescan.
+    /// Additive/nullable: metadata that predates this field has none.</summary>
+    public bool? Endorsed { get; set; }
 }

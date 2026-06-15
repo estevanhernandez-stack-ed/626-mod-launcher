@@ -64,4 +64,15 @@ public class ModMetaRoundTripTests
         var rt = JsonSerializer.Deserialize<ModMeta>(json, Json)!;
         Assert.Equal("2.1", rt.NexusLatestVersion);
     }
+
+    [Fact]
+    public void ModMeta_endorsed_round_trips_as_camelCase()
+    {
+        var m = new ModMeta { Endorsed = true };
+        var json = JsonSerializer.Serialize(m, Json);
+        Assert.Contains("\"endorsed\"", json);          // camelCase key on disk
+        Assert.DoesNotContain("\"Endorsed\"", json);
+        var rt = JsonSerializer.Deserialize<ModMeta>(json, Json)!;
+        Assert.True(rt.Endorsed);
+    }
 }

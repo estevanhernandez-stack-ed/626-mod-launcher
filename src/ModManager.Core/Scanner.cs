@@ -1169,6 +1169,7 @@ public static class Scanner
             NexusModId = curated.NexusModId ?? cf.NexusModId,
             NexusFileId = curated.NexusFileId ?? cf.NexusFileId,
             NexusLatestVersion = curated.NexusLatestVersion ?? cf.NexusLatestVersion,
+            Endorsed = curated.Endorsed ?? cf.Endorsed,
         };
     }
 

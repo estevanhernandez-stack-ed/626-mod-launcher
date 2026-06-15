@@ -106,6 +106,24 @@ public class MetadataTests
         Assert.Null(m.NexusLatestVersion);
     }
 
+    [Fact]
+    public void MergeMetadata_copies_endorsed_onto_mod()
+    {
+        var map = new Dictionary<string, ModMeta>
+        {
+            ["jei"] = new() { Endorsed = true },
+        };
+        var m = Metadata.MergeMetadata(new[] { new Mod { Name = "jei", Base = "jei" } }, map)[0];
+        Assert.True(m.Endorsed);
+    }
+
+    [Fact]
+    public void MergeMetadata_leaves_endorsed_null_with_no_entry()
+    {
+        var m = Metadata.MergeMetadata(new[] { new Mod { Name = "x", Base = "x" } }, new Dictionary<string, ModMeta>())[0];
+        Assert.Null(m.Endorsed);
+    }
+
     [Theory]
     [InlineData("2.0", "2.1", true)]    // newer on Nexus → update available
     [InlineData("2.1", "2.1", false)]   // same version → no update
