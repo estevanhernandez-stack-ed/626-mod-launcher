@@ -15,6 +15,13 @@ public interface INexusClient
     Task<NexusUser?> ValidateAsync();
 
     /// <summary>
+    /// Bulk "recently updated by game" — one call returns every mod that changed in the window.
+    /// <paramref name="period"/> is one of Nexus's fixed windows ("1d" / "1w" / "1m").
+    /// Rate-limit-aware: a 429 surfaces as <see cref="NexusRateLimitException"/>.
+    /// </summary>
+    Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period);
+
+    /// <summary>
     /// The rate-limit snapshot from the most recent response (null until the first call).
     /// Lets a sweep read remaining budget and back off before it gets throttled.
     /// </summary>
@@ -109,6 +116,13 @@ public sealed class NexusClient : INexusClient
         var categories = await GetCategoriesAsync(gameDomain);
         var root = await SendAsync(NexusRequests.ModRequest(gameDomain, modId, _opts));
         return NexusRequests.MapModResponse(gameDomain, root, categories);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period)
+    {
+        var root = await SendAsync(NexusRequests.UpdatedRequest(gameDomain, period, _opts));
+        return NexusRequests.MapUpdatedResponse(root);
     }
 
     /// <summary>md5 file lookup. 404 means "not found" (normal) and returns null; other failures throw.</summary>

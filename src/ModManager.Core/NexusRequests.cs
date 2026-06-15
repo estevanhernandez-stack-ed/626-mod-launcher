@@ -101,6 +101,17 @@ public static class NexusRequests
     }
 
     /// <summary>
+    /// Bulk "recently updated by game": GET /v1/games/{domain}/mods/updated.json?period={period}.
+    /// <paramref name="period"/> is one of Nexus's fixed windows — "1d", "1w", or "1m".
+    /// </summary>
+    public static ApiRequest UpdatedRequest(string domain, string period, NexusOptions? opts = null)
+    {
+        opts ??= new NexusOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/updated.json?period={period}", "GET", Headers(opts));
+    }
+
+    /// <summary>
     /// Nexus mod object -> our metadata entry. Url is constructed from domain + mod_id.
     /// When <paramref name="categories"/> is supplied and the mod JSON contains a numeric
     /// <c>category_id</c>, the id is resolved to a name and written to <see cref="ModMeta.Category"/>.
@@ -167,6 +178,28 @@ public static class NexusRequests
     /// <summary>validate.json body -> account identity. Tolerant of missing fields; null if not an object.</summary>
     public static NexusUser? MapValidateResponse(JsonElement root)
         => root.ValueKind == JsonValueKind.Object ? new NexusUser(Str(root, "name"), Bool(root, "is_premium")) : null;
+
+    /// <summary>
+    /// updated.json body -> the list of recently-changed mods. The root is an array of
+    /// { mod_id, latest_file_update, latest_mod_activity } (unix seconds). Entries missing
+    /// <c>mod_id</c> are skipped; a non-array root yields an empty list. Never throws.
+    /// </summary>
+    public static IReadOnlyList<NexusUpdateEntry> MapUpdatedResponse(JsonElement root)
+    {
+        var list = new List<NexusUpdateEntry>();
+        if (root.ValueKind != JsonValueKind.Array) return list;
+        foreach (var el in root.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            var modId = Int(el, "mod_id");
+            if (!modId.HasValue) continue;
+            list.Add(new NexusUpdateEntry(
+                modId.Value,
+                Long(el, "latest_file_update") ?? 0L,
+                Long(el, "latest_mod_activity") ?? 0L));
+        }
+        return list;
+    }
 
     /// <summary>
     /// md5_search returns an array of { mod, file_details }. Take the first element, map its

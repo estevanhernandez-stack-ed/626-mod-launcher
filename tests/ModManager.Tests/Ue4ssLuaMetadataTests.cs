@@ -56,6 +56,7 @@ public class Ue4ssLuaMetadataTests : IDisposable
                 Source = "Nexus (Windrose)",
             }));
         }
+        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
         public NexusRateLimit? LastRateLimit => null;
     }
 
@@ -110,6 +111,7 @@ public class Ue4ssLuaMetadataTests : IDisposable
         public Task<ModMeta?> GetModAsync(string d, int id) => Task.FromResult<ModMeta?>(null);
         public Task<NexusUser?> ValidateAsync() => Task.FromResult<NexusUser?>(null);
         public Task<NexusMd5Match?> GetByMd5Async(string domain, string md5) => Task.FromResult<NexusMd5Match?>(null);
+        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
         public NexusRateLimit? LastRateLimit => null;
     }
 }
