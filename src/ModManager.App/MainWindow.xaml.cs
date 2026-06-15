@@ -632,6 +632,12 @@ public sealed partial class MainWindow : Window
         await ViewModel.BackfillNexusAsync(archives);
     }
 
+    // Refresh Nexus stats for the installed library by polling by mod id — no archive needed.
+    private async void OnNexusRefresh(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.RefreshNexusStatsAsync();
+    }
+
     // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.
     private async void OnCoopHint(object sender, RoutedEventArgs e)
     {

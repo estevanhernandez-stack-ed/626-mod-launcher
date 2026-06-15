@@ -81,6 +81,12 @@
                                     <FontIcon Glyph="&#xE896;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Refresh Nexus stats…" Click="OnNexusRefresh"
+                                            ToolTipService.ToolTip="Poll Nexus by mod id (no archive needed) to refresh endorsements / downloads and flag mods with a newer version available">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72C;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;" />

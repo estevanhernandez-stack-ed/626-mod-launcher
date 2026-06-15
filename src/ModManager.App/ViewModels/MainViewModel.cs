@@ -1262,6 +1262,61 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>Manual "Refresh Nexus stats": poll Nexus <em>by mod id</em> (no archive needed) over
+    /// every identified mod in the active game — refreshing endorsements / downloads / availability and
+    /// capturing the upstream current version (which drives the UPDATE chip). The installed version is
+    /// preserved (it's the "what you have" side of the compare). Throttled + 429-aware via
+    /// <see cref="NexusRefresh.RefreshAllAsync"/>: a rate limit stops the sweep and reports partial
+    /// progress instead of thrashing. The id-resolution is deterministic, so refreshed metas are mapped
+    /// back to their on-disk keys by re-resolving the id, then persisted in one atomic batch.</summary>
+    public async Task RefreshNexusStatsAsync()
+    {
+        if (_ctx is null) return;
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        var domain = NexusDomains.Effective(_ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
+
+        // key -> meta for the rows we can resolve a Nexus id for. RefreshAllAsync skips the rest with
+        // no network call; we map results back to keys by re-resolving the (deterministic) id below.
+        var byKey = Scanner.LoadMetadata(_ctx);
+        var identified = byKey.Where(kv => NexusRefresh.ResolveModId(kv.Value) is not null).ToList();
+        if (identified.Count == 0) { StatusText = "No Nexus-identified mods to refresh — backfill metadata first."; return; }
+
+        IsBusy = true;
+        try
+        {
+            // Small inter-call delay, well under the burst ceiling; RefreshAllAsync applies it between
+            // (not before) calls so a one-item sweep pays nothing.
+            var result = await NexusRefresh.RefreshAllAsync(
+                identified.Select(kv => kv.Value), domain!, _nexus.Client!,
+                throttle: () => System.Threading.Tasks.Task.Delay(120));
+
+            if (result.Updated.Count > 0)
+            {
+                // Re-resolve each refreshed meta's id back to its on-disk key (id-resolution is
+                // deterministic and identity fields survive the refresh, so the lookup is exact).
+                var keyById = new Dictionary<int, string>();
+                foreach (var kv in identified)
+                    if (NexusRefresh.ResolveModId(kv.Value) is { } id)
+                        keyById[id] = kv.Key;
+
+                var writes = new List<(string, ModMeta)>();
+                foreach (var meta in result.Updated)
+                    if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
+                        writes.Add((key, meta));
+
+                Scanner.WriteManyMeta(_ctx, writes);
+                await ReloadModsAsync();
+            }
+
+            StatusText = result.RateLimited
+                ? "Nexus rate limit reached — try again later."
+                : $"Refreshed {result.Refreshed} mod{(result.Refreshed == 1 ? "" : "s")}, {result.UpdatesAvailable} update{(result.UpdatesAvailable == 1 ? "" : "s")} available.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
     /// <summary>Manual-match escape hatch: user pastes a Nexus or CurseForge URL for a row whose
     /// auto-identify didn't land. Parse → fetch metadata from the named provider → write it against
     /// this mod's key with IsManual=true so future rescans can't clobber it. Result via StatusText.</summary>
