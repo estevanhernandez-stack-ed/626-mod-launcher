@@ -73,7 +73,13 @@ public class UeProjectScanTests : IDisposable
         var root = Root();
         for (var i = 0; i < 50; i++) Directory.CreateDirectory(Path.Combine(root, "junk" + i));
         MakePaks(root, "zzz_last", "deep"); // a real one that a tiny budget won't reach
-        var cands = UeProjectScan.Enumerate(root, new ScanBudget(MaxDirs: 5));
-        Assert.True(cands.Count <= 1); // budget stops the walk before exhausting all junk dirs
+        // With MaxDirs:5 and 50 alphabetically-earlier junk dirs, the walk returns before reaching the
+        // deep zzz_last/deep candidate — the capped result must NOT contain it...
+        var capped = UeProjectScan.Enumerate(root, new ScanBudget(MaxDirs: 5));
+        Assert.DoesNotContain(capped, c => c.RelativeProjectPath.Replace('\\', '/') == "zzz_last/deep");
+        // ...while the SAME layout IS found under the default budget, proving the miss above is the budget
+        // engaging, not a broken walk. (If the cap stopped being enforced, the capped walk would find it.)
+        Assert.Contains(UeProjectScan.Enumerate(root),
+            c => c.RelativeProjectPath.Replace('\\', '/') == "zzz_last/deep");
     }
 }

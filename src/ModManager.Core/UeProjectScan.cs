@@ -70,6 +70,8 @@ public static class UeProjectScan
     private static int Score(UeProjectCandidate c)
     {
         var s = 0;
+        // *Server check is intentionally leaf-only: shipped UE dedicated-server builds are leaf-named
+        // (e.g. "<Game>Server"), never a 2-level wrapper. Don't widen past the leaf without revisiting this.
         if (!LastSegment(c.RelativeProjectPath).EndsWith("Server", StringComparison.OrdinalIgnoreCase)) s += 1000;
         s += (2 - Math.Clamp(c.WrapperDepth, 0, 2)) * 100; // shallower wins
         if (c.HasShippingPak) s += 40;

@@ -58,6 +58,15 @@ public class UeProjectScanPickTests
     }
 
     [Fact]
+    public void Uproject_sibling_breaks_a_tie_among_equal_project_candidates()
+    {
+        // Both project-looking (Binaries), same depth, both non-server — identical except the .uproject.
+        var pick = UeProjectScan.Pick(new[] { C("GameA", 1, bin: true), C("GameB", 1, bin: true, upr: true) });
+        Assert.Equal(UeProjectPickKind.One, pick.Kind);
+        Assert.Equal("GameB", pick.Chosen!.RelativeProjectPath); // the +5 .uproject tie-breaker decides it
+    }
+
+    [Fact]
     public void Denylist_includes_engine_and_anticheat()
     {
         Assert.Contains("Engine", UeProjectScan.Denylist);
