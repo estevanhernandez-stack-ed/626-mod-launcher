@@ -69,11 +69,23 @@ public sealed class NexusClient : INexusClient
             throw new NexusRateLimitException(LastRateLimit);
     }
 
-    private async Task<JsonElement> SendAsync(ApiRequest req)
+    /// <summary>
+    /// Build + send a request, capturing rate limits, throwing on a non-2xx (429 as
+    /// <see cref="NexusRateLimitException"/>). When <see cref="ApiRequest.Body"/> is set,
+    /// attaches it as <c>application/json</c> content (the POST write path); GET requests with a
+    /// null body send no content. Mirrors <c>CurseForgeClient.SendAsync</c>. Internal so the
+    /// body plumbing is directly testable.
+    /// </summary>
+    internal async Task<JsonElement> SendAsync(ApiRequest req)
     {
         using var msg = new HttpRequestMessage(new HttpMethod(req.Method), req.Url);
         foreach (var (k, v) in req.Headers)
+        {
+            if (string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase)) continue; // set on Content below
             msg.Headers.TryAddWithoutValidation(k, v);
+        }
+        if (req.Body is not null)
+            msg.Content = new StringContent(req.Body, System.Text.Encoding.UTF8, "application/json");
 
         using var res = await _http.SendAsync(msg);
         CaptureRateLimit(res);
