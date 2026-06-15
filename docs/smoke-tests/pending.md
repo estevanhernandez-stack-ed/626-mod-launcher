@@ -362,3 +362,13 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 > **STATUS — NEEDS LIVE SMOKE.** The gate decision (`BanRiskRules.ShouldGateEnable`), the live `ByAppId` risk resolve, and the per-game ack persistence are unit-tested in Core; the dialog wiring + the profile-apply route through `MainViewModel.LoadProfileAsync` are App wiring the test project can't reach. See `docs/superpowers/specs/2026-06-15-ban-risk-safety-design.md`.
 
 - [ ] **Profile-apply gates once (no per-row bypass).** On an un-acked high-ban-risk game, save a profile that has mods enabled, turn those mods off, then open Profiles → Load that profile. EXPECT: the ban-risk warning prompts **once** (not per mod) before anything is enabled; confirming applies the profile and enables the mods; cancelling applies nothing (no mod is enabled, the status line reads "Load cancelled.") — the profile-apply path no longer bypasses the gate.
+
+---
+
+## Ban-risk safety (2026-06-15)
+
+- [ ] **Gate fires on a high-risk game.** Flag a local game `banRisk: "high"` (manual registry/manifest edit). Enabling a mod prompts the ban-risk acknowledgment naming the game. Cancel -> nothing enables, the row reverts. Enable anyway with "Don't warn me again for this game" -> enables, and the next enable does NOT re-prompt.
+- [ ] **Banner persists.** The ban-risk banner shows on that game and stays visible after the ack; its copy is ban-specific, not the co-op-desync wording.
+- [ ] **Medium = banner only.** A `banRisk: "medium"` game shows the banner but never prompts; a null/None game shows neither.
+- [ ] **Bulk gated once.** "Enable all" / applying a profile that enables mods on the un-acked high game prompts once (no per-row bypass).
+- [ ] **Disable is never gated.** Disabling a mod on a high-risk game is always immediate (reversibility — getting safer needs no friction).

@@ -12,6 +12,7 @@ public sealed record OverrideEntry
     public string? ModPath { get; init; }
     public string? NexusDomain { get; init; }
     public int? Featured { get; init; }
+    public string? BanRisk { get; init; }
     public string? SaveDirHint { get; init; }
     public IReadOnlyList<string>? FileExtensions { get; init; }
 }
