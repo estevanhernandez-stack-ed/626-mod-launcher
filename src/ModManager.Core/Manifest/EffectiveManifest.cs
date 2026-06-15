@@ -81,6 +81,7 @@ public static class EffectiveManifest
             FileExtensions = remote.FileExtensions ?? embedded.FileExtensions,
             GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,
             Featured = remote.Featured ?? embedded.Featured,
+            BanRisk = BanRiskRules.MaxString(embedded.BanRisk, remote.BanRisk),
             Provenance = embedded.Provenance with { Sources = sources, Status = status },
         };
     }
