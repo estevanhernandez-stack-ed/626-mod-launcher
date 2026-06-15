@@ -214,7 +214,10 @@ public static class NexusRefresh
     /// Produce a refreshed clone: copy every field from <paramref name="existing"/> (the installed
     /// truth) then overwrite only the live-stat fields from <paramref name="fetched"/> and capture
     /// the upstream version as <see cref="ModMeta.NexusLatestVersion"/>. The installed
-    /// <see cref="ModMeta.Version"/> / <see cref="ModMeta.NexusFileId"/> are never touched.
+    /// <see cref="ModMeta.Version"/> / <see cref="ModMeta.NexusFileId"/> are never touched, and
+    /// <see cref="ModMeta.Endorsed"/> (persisted user intent) is carried through verbatim — the
+    /// sweep persists these clones wholesale, so a dropped <c>Endorsed</c> here would silently wipe
+    /// the user's heart on disk whenever the best-effort bulk endorsements call fails.
     /// </summary>
     private static ModMeta Overlay(ModMeta existing, ModMeta fetched) => new()
     {
@@ -236,6 +239,7 @@ public static class NexusRefresh
         NexusModId = existing.NexusModId,
         NexusFileId = existing.NexusFileId,   // installed file — NOT the upstream latest
         Version = existing.Version,           // installed version — the "what you have" side
+        Endorsed = existing.Endorsed,         // persisted user intent (like IsManual) — preserved, never recomputed-or-wiped
 
         // live stats — refreshed from the fetched mod
         EndorsementCount = fetched.EndorsementCount ?? existing.EndorsementCount,

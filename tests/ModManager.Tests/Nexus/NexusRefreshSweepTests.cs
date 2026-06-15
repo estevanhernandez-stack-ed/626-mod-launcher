@@ -227,8 +227,8 @@ public class NexusRefreshSweepTests
     {
         var metas = new[]
         {
-            new ModMeta { Title = "a", NexusModId = 1, Version = "1.0" },
-            new ModMeta { Title = "b", NexusModId = 2, Version = "3.0" },
+            new ModMeta { Title = "a", NexusModId = 1, Version = "1.0", Endorsed = true },  // previously endorsed on disk
+            new ModMeta { Title = "b", NexusModId = 2, Version = "3.0" },                   // unknown on disk
         };
         var fake = new FakeNexus(
             (_, id) => Task.FromResult<ModMeta?>(id switch
@@ -248,15 +248,18 @@ public class NexusRefreshSweepTests
         Assert.Equal(1, result.UpdatesAvailable);
         Assert.Equal(2, result.Updated.Count);
 
-        // No endorsement state was applied (the call failed) — metas left at unknown.
-        Assert.Null(result.Updated.Single(m => m.NexusModId == 1).Endorsed);
-        Assert.Null(result.Updated.Single(m => m.NexusModId == 2).Endorsed);
+        // The bulk call failed, so no fresh endorsement state was applied. The refreshed metas are
+        // persisted wholesale, so the PRE-EXISTING Endorsed value (user intent) must survive the
+        // sweep — a dropped value here would silently un-fill the heart on disk on any offline
+        // refresh. Carried through; never recomputed-or-wiped.
+        Assert.True(result.Updated.Single(m => m.NexusModId == 1).Endorsed);   // preserved, not wiped to null
+        Assert.Null(result.Updated.Single(m => m.NexusModId == 2).Endorsed);   // never set — stays unknown
     }
 
     [Fact]
     public async Task RefreshAllAsync_endorsement_rate_limit_does_not_abort_the_stats_sweep()
     {
-        var metas = new[] { new ModMeta { Title = "a", NexusModId = 1, Version = "1.0" } };
+        var metas = new[] { new ModMeta { Title = "a", NexusModId = 1, Version = "1.0", Endorsed = true } };
         var fake = new FakeNexus(
             (_, _) => Task.FromResult<ModMeta?>(new ModMeta { Version = "2.0" }),
             () => throw new NexusRateLimitException(new NexusRateLimit(0, 100, 0, 50)));
@@ -268,6 +271,10 @@ public class NexusRefreshSweepTests
         Assert.False(result.RateLimited);
         Assert.Equal(1, result.Refreshed);
         Assert.Single(result.Updated);
-        Assert.Null(result.Updated[0].Endorsed);
+
+        // Same preservation law as the offline case: the swallowed 429 left the bulk apply unrun, so
+        // the previously-endorsed value (user intent) must survive the wholesale persist, not get
+        // wiped to null.
+        Assert.True(result.Updated[0].Endorsed);   // preserved through the failed best-effort call
     }
 }
