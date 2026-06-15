@@ -312,3 +312,8 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - Add Game → the quick-add list is ordered most-recently-played first (your recent games at the top).
 - Engine-undetected games (Marvel Rivals, Helldivers 2) now appear as "Set up" rows with art, not a plain text note. Clicking "Set up" pre-fills the manual form (name, game folder, app id) and leaves the engine for you to pick; Add then registers it.
 - A fully-detected game still one-click-adds via the checkable list unchanged.
+
+## Nexus enrichment — surfaced fields
+- A mod identified via Nexus (md5/metadata) shows its endorsement count and a real download count on the row (download count was always blank before).
+- A mod whose Nexus page was removed/taken down (available=false) shows a "Removed from Nexus" hint instead of a dead link.
+- metadata.json carries nexusModId / nexusFileId / version for identified mods (persisted, survives a rescan — the groundwork for the future updates check).
