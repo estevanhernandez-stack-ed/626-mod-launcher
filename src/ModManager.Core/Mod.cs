@@ -77,4 +77,12 @@ public sealed class ModMeta
     /// Lets the off-boarding sheet hedge a low-confidence name-search match ("likely source:")
     /// versus a high-confidence one ("source:").</summary>
     public string? SourceConfidence { get; set; }
+
+    // Nexus enrichment (read live from the API response; all optional/additive).
+    public int? EndorsementCount { get; set; }
+    public string? Version { get; set; }
+    public bool? Available { get; set; }              // false = Nexus reports the mod removed/unavailable
+    public bool? ContainsAdultContent { get; set; }
+    public int? NexusModId { get; set; }              // stable handle for endorse / update-check
+    public int? NexusFileId { get; set; }             // the installed file's id (update-check key)
 }

@@ -81,4 +81,18 @@ public class ManualMatchMergeTests
         Assert.Equal("nameSearch", merged.SourceConfidence);
         Assert.Null(merged.InstalledUtc);
     }
+
+    [Fact]
+    public void MergeMeta_carries_nexus_fields_from_fetched_when_curated_lacks_them()
+    {
+        var cf = new ModMeta { NexusModId = 510, EndorsementCount = 1234, Available = false, Version = "2.3", NexusFileId = 99 };
+        var curated = new ModMeta { Title = "Hand title" };   // no nexus fields
+        var merged = CallMergeMeta(cf, curated);              // existing reflection helper
+        Assert.Equal(510, merged.NexusModId);
+        Assert.Equal(1234, merged.EndorsementCount);
+        Assert.False(merged.Available);
+        Assert.Equal("2.3", merged.Version);
+        Assert.Equal(99, merged.NexusFileId);
+        Assert.Equal("Hand title", merged.Title);            // curated still wins where it has a value
+    }
 }
