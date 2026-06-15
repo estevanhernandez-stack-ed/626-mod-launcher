@@ -46,6 +46,8 @@ public sealed class Mod
     public string? Donate { get; set; }
     public string? Image { get; set; }
     public long? Downloads { get; set; }
+    public int? EndorsementCount { get; set; }
+    public bool? Available { get; set; }     // false = removed from Nexus (drives the row hint)
     public string? Category { get; set; }
     public bool HasMeta { get; set; }
 }
