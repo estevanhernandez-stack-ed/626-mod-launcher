@@ -190,6 +190,12 @@ public sealed partial class ModRowViewModel : ObservableObject
     public bool IsLoader => Mod.IsLoader;
     public Visibility LoaderChipVisibility => Mod.IsLoader ? Visibility.Visible : Visibility.Collapsed;
 
+    // A newer version exists on Nexus (a by-mod-id poll fetched NexusLatestVersion != the installed
+    // Version). Surfaced as an UPDATE chip. Computed in Core (Mod.UpdateAvailable); the chip is purely
+    // display. OneTime is correct — the row VM is rebuilt on every rescan, so this never goes stale.
+    public Visibility UpdateAvailableVisibility => Mod.UpdateAvailable ? Visibility.Visible : Visibility.Collapsed;
+    public string UpdateTooltip => $"Nexus has {Mod.NexusLatestVersion} — you have {Mod.Version}";
+
     // Another tool (e.g. Vortex) manages this mod's folder — we surface it read-only with a badge
     // so the picture is complete, but the toggle is disabled and there's no uninstall (honor the law).
     public bool IsManaged => !string.IsNullOrEmpty(Mod.Managed);
