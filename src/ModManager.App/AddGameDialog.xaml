@@ -90,8 +90,28 @@
             </ListView>
             <TextBlock x:Name="SteamEmptyNote" Visibility="Collapsed"
                        Text="No installed Steam games detected." Opacity="0.7" FontSize="12" />
-            <TextBlock x:Name="SteamManualNote" Visibility="Collapsed"
-                       TextWrapping="Wrap" Opacity="0.7" FontSize="12" />
+            <TextBlock x:Name="SteamSetupHeader" Visibility="Collapsed" Margin="0,6,0,0"
+                       Text="Set up (engine not detected)" FontWeight="SemiBold" FontSize="12" Opacity="0.85" />
+            <ListView x:Name="SteamSetupList" Visibility="Collapsed" SelectionMode="None" MaxHeight="160"
+                      BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="46" Height="22" CornerRadius="3"
+                                    Background="{ThemeResource ControlElevationBorderBrush}">
+                                <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Content="Set up" Click="OnSteamSetup" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
             <TextBlock x:Name="SteamSelectionStatus" Visibility="Collapsed" FontSize="12" />
         </StackPanel>
         <StackPanel x:Name="ManualFormPanel" Spacing="12">
