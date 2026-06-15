@@ -398,6 +398,11 @@ public sealed partial class MainViewModel : ObservableObject
             // pick a user-chosen path over the catalog default when set. Empty overrides for the
             // common case (no per-user customization) — no disk hit if file missing.
             var directInjectOverrides = ModManager.Core.Catalog.DirectInjectConfigOverrides.Load(_ctx.DataDir);
+            // Per-game metadata, loaded once for the loop. The endorse heart needs the Nexus mod id, which
+            // lives on the persisted ModMeta (not the in-memory Mod), so each row resolves it from here via
+            // the same deterministic resolver the endorse write uses — keeping the displayed key and the
+            // written key in lockstep.
+            var metaByKey = Scanner.LoadMetadata(_ctx);
             var rows = new List<ModRowViewModel>();
             // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
             // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
@@ -490,6 +495,12 @@ public sealed partial class MainViewModel : ObservableObject
                     MissingFrameworkUrl = primaryMissing?.GetUrl,
                     MissingFrameworkNote = primaryMissing?.Note ?? "",
                     LoaderHintIsSoft = selfProvidesProxy,
+                    // The endorse heart needs a resolved Nexus mod id (the write key) AND a live
+                    // connection — both captured at row build, fresh every rescan, no per-row notify.
+                    NexusModId = metaByKey.TryGetValue(rep.Name, out var repMeta)
+                        ? NexusRefresh.ResolveModId(repMeta)
+                        : null,
+                    NexusConnected = _nexus.IsConnected,
                 });
             }
             OrderAndStampSections(rows);
