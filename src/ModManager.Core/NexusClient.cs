@@ -13,6 +13,12 @@ public interface INexusClient
     Task<ModMeta?> GetModAsync(string gameDomain, int modId);
     Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5);
     Task<NexusUser?> ValidateAsync();
+
+    /// <summary>
+    /// The rate-limit snapshot from the most recent response (null until the first call).
+    /// Lets a sweep read remaining budget and back off before it gets throttled.
+    /// </summary>
+    NexusRateLimit? LastRateLimit { get; }
 }
 
 /// <summary>
@@ -26,6 +32,8 @@ public interface INexusClient
 /// </summary>
 public sealed class NexusClient : INexusClient
 {
+    private const int TooManyRequests = 429;
+
     private readonly HttpClient _http;
     private readonly NexusOptions _opts;
 
@@ -33,10 +41,25 @@ public sealed class NexusClient : INexusClient
     // GetByMd5Async call for a domain; a failed fetch stores nothing so the next call retries.
     private readonly ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _categoriesCache = new();
 
+    /// <inheritdoc />
+    public NexusRateLimit? LastRateLimit { get; private set; }
+
     public NexusClient(HttpClient http, NexusOptions? opts = null)
     {
         _http = http;
         _opts = opts ?? new NexusOptions();
+    }
+
+    /// <summary>
+    /// Snapshot the <c>x-rl-*</c> headers off a response onto <see cref="LastRateLimit"/>, then
+    /// throw <see cref="NexusRateLimitException"/> if the status is 429. Call right after the send,
+    /// before any per-endpoint status branching, so every path stays rate-limit-aware.
+    /// </summary>
+    private void CaptureRateLimit(HttpResponseMessage res)
+    {
+        LastRateLimit = NexusRateLimit.Parse(res.Headers);
+        if ((int)res.StatusCode == TooManyRequests)
+            throw new NexusRateLimitException(LastRateLimit);
     }
 
     private async Task<JsonElement> SendAsync(ApiRequest req)
@@ -46,6 +69,7 @@ public sealed class NexusClient : INexusClient
             msg.Headers.TryAddWithoutValidation(k, v);
 
         using var res = await _http.SendAsync(msg);
+        CaptureRateLimit(res);
         if (!res.IsSuccessStatusCode)
             throw new HttpRequestException($"Nexus request failed ({(int)res.StatusCode})");
 
@@ -98,6 +122,7 @@ public sealed class NexusClient : INexusClient
             msg.Headers.TryAddWithoutValidation(k, v);
 
         using var res = await _http.SendAsync(msg);
+        CaptureRateLimit(res);
         if (res.StatusCode == HttpStatusCode.NotFound)
             return null; // not found is normal for an unknown file hash
         if (!res.IsSuccessStatusCode)
@@ -117,6 +142,7 @@ public sealed class NexusClient : INexusClient
             msg.Headers.TryAddWithoutValidation(k, v);
 
         using var res = await _http.SendAsync(msg);
+        CaptureRateLimit(res);
         if (res.StatusCode == HttpStatusCode.Unauthorized)
             return null; // bad / expired key
         if (!res.IsSuccessStatusCode)

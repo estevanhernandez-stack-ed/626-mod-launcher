@@ -14,6 +14,7 @@ public class Md5IdentifyTests
         public Task<ModMeta?> GetModAsync(string gameDomain, int modId) => throw new NotSupportedException();
         public Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5) => _byMd5(gameDomain, md5);
         public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
+        public NexusRateLimit? LastRateLimit => null;
     }
 
     private static (string modsDir, GameContext c) Fixture(string? nexusDomain)

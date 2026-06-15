@@ -7,6 +7,13 @@ public sealed class NexusOptions
 {
     public string? BaseUrl { get; init; }
     public string? ApiKey { get; init; }
+
+    /// <summary>
+    /// The launcher version reported via the Nexus-ToS <c>Application-Version</c> header.
+    /// Passed in from the App (the entry-assembly version) so <see cref="NexusRequests"/> stays
+    /// pure — when unset the request builder falls back to a fixed default.
+    /// </summary>
+    public string? AppVersion { get; init; }
 }
 
 /// <summary>An md5_search hit: the Nexus mod id + the mapped metadata.</summary>
@@ -25,10 +32,22 @@ public static class NexusRequests
 {
     public const string Base = "https://api.nexusmods.com";
 
-    private static Dictionary<string, string> Headers(string? apiKey)
+    /// <summary>The Nexus-ToS application identity. Sent on every request.</summary>
+    public const string ApplicationName = "626-mod-launcher";
+
+    /// <summary>Fallback <c>Application-Version</c> when <see cref="NexusOptions.AppVersion"/> is unset.</summary>
+    public const string DefaultAppVersion = "0.0.0";
+
+    private static Dictionary<string, string> Headers(NexusOptions opts)
     {
-        var h = new Dictionary<string, string> { ["Accept"] = "application/json" };
-        if (!string.IsNullOrEmpty(apiKey)) h["apikey"] = apiKey; // omitted in proxy mode
+        var h = new Dictionary<string, string>
+        {
+            ["Accept"] = "application/json",
+            // Nexus-ToS identity headers — always present, both key and proxy modes.
+            ["Application-Name"] = ApplicationName,
+            ["Application-Version"] = string.IsNullOrEmpty(opts.AppVersion) ? DefaultAppVersion : opts.AppVersion,
+        };
+        if (!string.IsNullOrEmpty(opts.ApiKey)) h["apikey"] = opts.ApiKey; // omitted in proxy mode
         return h;
     }
 
@@ -55,14 +74,14 @@ public static class NexusRequests
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/{modId}.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/{modId}.json", "GET", Headers(opts));
     }
 
     public static ApiRequest Md5Request(string domain, string md5, NexusOptions? opts = null)
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/md5_search/{md5}.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/md5_search/{md5}.json", "GET", Headers(opts));
     }
 
     /// <summary>Game info (including the categories array): GET /v1/games/{domain}.json.</summary>
@@ -70,7 +89,7 @@ public static class NexusRequests
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/games/{domain}.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}.json", "GET", Headers(opts));
     }
 
     /// <summary>Verify the key + read the account identity: GET /v1/users/validate.json.</summary>
@@ -78,7 +97,7 @@ public static class NexusRequests
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/users/validate.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/users/validate.json", "GET", Headers(opts));
     }
 
     /// <summary>
