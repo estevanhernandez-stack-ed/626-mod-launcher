@@ -33,6 +33,9 @@ public static partial class SteamParse
     [GeneratedRegex("\"StateFlags\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
     private static partial Regex StateFlagsKeyRe();
 
+    [GeneratedRegex("\"LastPlayed\"\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase)]
+    private static partial Regex LastPlayedKeyRe();
+
     public static string? ParseAppId(string? launchUrl, string? steamAppId)
     {
         if (!string.IsNullOrEmpty(steamAppId)) return steamAppId;
@@ -56,9 +59,10 @@ public static partial class SteamParse
             NameKeyRe().Match(s) is { Success: true } n ? n.Groups[1].Value : null,
             InstallDirKeyRe().Match(s) is { Success: true } d ? d.Groups[1].Value : null,
             BuildIdKeyRe().Match(s) is { Success: true } b ? b.Groups[1].Value : null,
-            StateFlagsKeyRe().Match(s) is { Success: true } sf ? sf.Groups[1].Value : null);
+            StateFlagsKeyRe().Match(s) is { Success: true } sf ? sf.Groups[1].Value : null,
+            LastPlayedKeyRe().Match(s) is { Success: true } lp ? lp.Groups[1].Value : null);
     }
 }
 
-/// <summary>Parsed fields from a Steam appmanifest (appid / name / installdir / buildid / stateFlags).</summary>
-public sealed record AppManifest(string? AppId, string? Name, string? InstallDir, string? BuildId = null, string? StateFlags = null);
+/// <summary>Parsed fields from a Steam appmanifest (appid / name / installdir / buildid / stateFlags / lastPlayed).</summary>
+public sealed record AppManifest(string? AppId, string? Name, string? InstallDir, string? BuildId = null, string? StateFlags = null, string? LastPlayed = null);

@@ -90,12 +90,12 @@ public sealed class SteamService : IStoreLibrary
                     if (!seen.Add(m.AppId)) continue;
                     var full = Path.Combine(steamapps, "common", m.InstallDir);
                     if (Directory.Exists(full))
-                        games.Add(new InstalledGame("steam", m.AppId, m.Name!, full) { BuildId = m.BuildId });
+                        games.Add(new InstalledGame("steam", m.AppId, m.Name!, full) { BuildId = m.BuildId, LastPlayed = m.LastPlayed });
                 }
                 catch { /* skip a malformed manifest */ }
             }
         }
-        return games.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        return InstalledGameSort.RecentlyPlayedFirst(games);
     }
 
     public string? ResolveCoverArtPath(string appId)

@@ -307,3 +307,8 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - Add Game → "Quick add from Steam": games with a pending Steam **update** (StateFlags=6, e.g. Marvel Rivals / Helldivers 2 / Wallpaper Engine) STILL appear — they're installed, just update-pending. Expected: not wrongly hidden.
 - Start downloading a not-yet-installed game in Steam, then open Add Game while it's mid-download → it does NOT appear in the quick-add list. Expected: only fully-installed games are offered.
 - Multi-library edge (if reproducible): the same app id installed in one library and mid-move/partial in another → the fully-installed copy is the one listed. (App-side IO + multi-library dedup — not unit-coverable; only a live rig with two libraries confirms.)
+
+## Steam show-all picker (Phase 3)
+- Add Game → the quick-add list is ordered most-recently-played first (your recent games at the top).
+- Engine-undetected games (Marvel Rivals, Helldivers 2) now appear as "Set up" rows with art, not a plain text note. Clicking "Set up" pre-fills the manual form (name, game folder, app id) and leaves the engine for you to pick; Add then registers it.
+- A fully-detected game still one-click-adds via the checkable list unchanged.

@@ -42,6 +42,15 @@ public sealed partial class AddGameDialog : ContentDialog
                 : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
     }
 
+    // One installed game whose engine we couldn't detect — surfaced as a "Set up" row (art + name +
+    // a button that pre-fills the manual form so the user picks the engine).
+    private sealed record SteamSetupRow(string AppId, string Name, string? CoverPath, string InstallDir)
+    {
+        public Microsoft.UI.Xaml.Media.ImageSource? Cover =>
+            string.IsNullOrEmpty(CoverPath) ? null
+                : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
+    }
+
     /// <summary>The save folder resolved during an "Add with AI" apply, or null if none was resolved.</summary>
     public string? ResolvedSaveDir => _resolvedSaveDir;
 
@@ -67,7 +76,7 @@ public sealed partial class AddGameDialog : ContentDialog
         // Quick-add: plan each installed Steam game for one-click auto-add. Detectable-engine games
         // become checkable rows; undetectable ones are listed for manual setup (we never guess an engine).
         var addable = new List<SteamAddRow>();
-        var manual = new List<string>();
+        var manual = new List<SteamSetupRow>();
         foreach (var g in steamGames)
         {
             var plan = SteamGameImport.Plan(
@@ -80,15 +89,16 @@ public sealed partial class AddGameDialog : ContentDialog
             }
             else
             {
-                manual.Add(g.Name);
+                manual.Add(new SteamSetupRow(g.AppId, g.Name, _store.ResolveCoverArtPath(g.AppId), g.InstallDir));
             }
         }
         SteamGamesList.ItemsSource = addable;
         if (addable.Count == 0) SteamEmptyNote.Visibility = Visibility.Visible;
         if (manual.Count > 0)
         {
-            SteamManualNote.Text = $"Add manually (engine not detected): {string.Join(", ", manual)}";
-            SteamManualNote.Visibility = Visibility.Visible;
+            SteamSetupList.ItemsSource = manual;
+            SteamSetupHeader.Visibility = Visibility.Visible;
+            SteamSetupList.Visibility = Visibility.Visible;
         }
 
         // Batch picker mirrors the single-game Steam list. Disable the expander when there's nothing
@@ -290,6 +300,17 @@ public sealed partial class AddGameDialog : ContentDialog
                 AppDiagnostics.Log($"popular-pick '{g.Id}' engine-select", ex);
             }
         });
+    }
+
+    // "Set up" on an engine-undetected game: pre-fill the manual form (name + folder + app id) and
+    // let the user pick the engine. The dialog's Add then registers it via the normal manual path.
+    private void OnSteamSetup(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not SteamSetupRow row) return;
+        NameBox.Text = row.Name;
+        FolderBox.Text = row.InstallDir;
+        SteamBox.Text = row.AppId;
+        ApplyDetectedEngine();   // runs the standard auto-detect; these rows are here precisely because detection missed, so it reliably leaves the placeholder for the user to pick
     }
 
     // React as the user checks Steam games. The dialog's Add button commits the selection.
