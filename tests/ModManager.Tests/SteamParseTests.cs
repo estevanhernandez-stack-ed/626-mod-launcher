@@ -89,4 +89,11 @@ public class SteamParseTests
         Assert.Equal("6", SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" \"StateFlags\" \"6\" }").StateFlags);
         Assert.Null(SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" }").StateFlags);
     }
+
+    [Fact]
+    public void ParseAppManifest_extracts_lastPlayed_and_null_when_absent()
+    {
+        Assert.Equal("1777760600", SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" \"LastPlayed\" \"1777760600\" }").LastPlayed);
+        Assert.Null(SteamParse.ParseAppManifest("\"AppState\" { \"appid\" \"1\" }").LastPlayed);
+    }
 }

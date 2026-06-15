@@ -7,4 +7,8 @@ namespace ModManager.Core;
 public sealed record InstalledGame(string StoreKind, string AppId, string Name, string InstallDir)
 {
     public string? BuildId { get; init; }
+
+    /// <summary>Steam's last-played unix timestamp (seconds), or null. Read live for recently-played
+    /// ordering; never persisted (behavioral data stays off disk).</summary>
+    public string? LastPlayed { get; init; }
 }
