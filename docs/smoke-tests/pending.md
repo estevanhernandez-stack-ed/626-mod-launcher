@@ -357,6 +357,15 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 
 ---
 
+## Engine detection — 2-level Unreal probe (2026-06-15)
+
+- [ ] **Marvel Rivals (2-level UE5) auto-detects.** Add Marvel Rivals from Steam/Epic (or point at its install). Expect: engine detected as `ue-pak`; mod path resolves to `MarvelGame/Marvel/Content/Paks/~mods`. Drop a `.pak` into `~mods` → it shows as a mod row and toggles on/off (moves to holding, not deleted).
+- [ ] **Single-wrapper games still work (no regression).** A previously-working single-wrapper UE game (e.g. Palworld `Pal/...`, Hogwarts `Phoenix/...`) still detects and lists mods exactly as before.
+- [ ] **Engine sibling is not mis-detected.** A UE install with an `Engine/Content/Paks` beside the project resolves to the project folder, never `Engine` (no engine paks listed as mods, mods never routed into `Engine`).
+- [ ] **Big install stays fast.** Adding a game with a large/deep folder tree does not hang the add (the probe is budget-bounded).
+
+---
+
 ## Ban-risk enable gate — profile-apply path prompts once (2026-06-15)
 
 > **STATUS — NEEDS LIVE SMOKE.** The gate decision (`BanRiskRules.ShouldGateEnable`), the live `ByAppId` risk resolve, and the per-game ack persistence are unit-tested in Core; the dialog wiring + the profile-apply route through `MainViewModel.LoadProfileAsync` are App wiring the test project can't reach. See `docs/superpowers/specs/2026-06-15-ban-risk-safety-design.md`.

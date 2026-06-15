@@ -24,7 +24,8 @@ public static class ModLocator
     {
         if (string.IsNullOrEmpty(gameRoot) || !Directory.Exists(gameRoot)) return Array.Empty<ModLocation>();
 
-        var projects = engine == "ue-pak" ? UnrealProjects(gameRoot) : null;
+        var candidates = engine == "ue-pak" ? UeProjectScan.Enumerate(gameRoot) : null;
+        var projects = candidates?.Select(c => c.RelativeProjectPath).ToList();
 
         var existing = new List<ModLocation>();
         foreach (var rel in ModLocations.Candidates(engine, projects))
@@ -34,16 +35,20 @@ public static class ModLocator
         }
         if (existing.Count > 0) return existing;
 
-        // No loader folder matched above, but one clear UE project: decide the layout from the disk
-        // fact. The pure decision lives in Core (UePakModLocation) so it stays unit-tested; we supply
-        // the fact. Loader-less (Content/Paks exists) -> paks-root on Content/Paks (base-game-filtering
-        // form). No Paks dir yet -> seed the ~mods install target.
-        if (engine == "ue-pak" && projects is { Count: 1 })
+        // No loader folder matched. If the resolver picks exactly one project, seed from the disk fact:
+        // Content/Paks present -> loader-less paks-root; not yet present -> the ~mods install target.
+        // Ambiguous / none -> keep the preset default (don't guess), exactly as before.
+        if (engine == "ue-pak" && candidates is { Count: > 0 })
         {
-            var paksExists = Directory.Exists(Path.Combine(gameRoot, projects[0], "Content", "Paks"));
-            return new[] { paksExists
-                ? ModLocations.UePakModLocation(projects[0], loaderPresent: false)   // loader-less: paks-root
-                : ModLocations.UePakModLocation(projects[0], loaderPresent: true) }; // no Paks yet: ~mods install target
+            var pick = UeProjectScan.Pick(candidates);
+            if (pick.Kind == UeProjectPickKind.One && pick.Chosen is { } chosen)
+            {
+                var rel = chosen.RelativeProjectPath;
+                var paksExists = Directory.Exists(Path.Combine(gameRoot, rel, "Content", "Paks"));
+                return new[] { paksExists
+                    ? ModLocations.UePakModLocation(rel, loaderPresent: false)
+                    : ModLocations.UePakModLocation(rel, loaderPresent: true) };
+            }
         }
 
         return Array.Empty<ModLocation>();
@@ -51,19 +56,4 @@ public static class ModLocator
 
     // Distinct location keys so per-location identity (disable meta, mirrors) stays unambiguous.
     private static string Name(int idx) => idx == 0 ? "mods" : "mods" + (idx + 1);
-
-    // UE projects are top-level subfolders that contain a Content directory (e.g. R5/Content).
-    private static IReadOnlyList<string> UnrealProjects(string gameRoot)
-    {
-        try
-        {
-            return Directory.GetDirectories(gameRoot)
-                .Where(d => Directory.Exists(Path.Combine(d, "Content")))
-                .Select(Path.GetFileName)
-                .Where(n => !string.IsNullOrEmpty(n))
-                .Select(n => n!)
-                .ToList();
-        }
-        catch { return Array.Empty<string>(); }
-    }
 }
