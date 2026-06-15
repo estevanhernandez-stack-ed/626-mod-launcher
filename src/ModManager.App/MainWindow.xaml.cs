@@ -436,7 +436,7 @@ public sealed partial class MainWindow : Window
     {
         var ctx = App.AppHost.Services.GetRequiredService<Services.LauncherService>().ActiveContext();
         if (ctx is null) return;
-        var dialog = new ProfilesDialog(ctx) { XamlRoot = Content.XamlRoot };
+        var dialog = new ProfilesDialog(ctx, ViewModel) { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
         if (dialog.Changed) await ViewModel.RefreshAsync(); // a profile was applied
     }

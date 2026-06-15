@@ -354,3 +354,11 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **(f) `endorsed` persists + survives a rescan.** After endorsing in the launcher, confirm `metadata.json` carries `"endorsed": true` (camelCase) for the affected mod. Switch games and back (or Redetect) → EXPECT: the heart stays filled (the field round-trips intact, persisted user intent isn't lost on reload).
 
 **Why these matter:** every layer below the button is unit-tested, but the heart render + visibility gating, the `ToggleEndorseAsync` wiring, the no-optimistic-flip-on-refusal behavior, the bulk-list application during the live refresh sweep, and the real endorse/abstain round-trip against a connected Nexus account only exercise on a real Windows machine with a personal API key and a modded library.
+
+---
+
+## Ban-risk enable gate — profile-apply path prompts once (2026-06-15)
+
+> **STATUS — NEEDS LIVE SMOKE.** The gate decision (`BanRiskRules.ShouldGateEnable`), the live `ByAppId` risk resolve, and the per-game ack persistence are unit-tested in Core; the dialog wiring + the profile-apply route through `MainViewModel.LoadProfileAsync` are App wiring the test project can't reach. See `docs/superpowers/specs/2026-06-15-ban-risk-safety-design.md`.
+
+- [ ] **Profile-apply gates once (no per-row bypass).** On an un-acked high-ban-risk game, save a profile that has mods enabled, turn those mods off, then open Profiles → Load that profile. EXPECT: the ban-risk warning prompts **once** (not per mod) before anything is enabled; confirming applies the profile and enables the mods; cancelling applies nothing (no mod is enabled, the status line reads "Load cancelled.") — the profile-apply path no longer bypasses the gate.

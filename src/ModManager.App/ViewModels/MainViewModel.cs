@@ -897,6 +897,19 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>
     public Task RefreshAsync() => ReloadModsAsync();
 
+    /// <summary>Apply a saved profile through the ban-risk gate. Loading a profile is a bulk enable
+    /// (it can flip mods ON), so it goes through <see cref="GateBanRiskEnableAsync"/> ONCE before
+    /// <see cref="Scanner.LoadProfileAsync"/> touches anything — on cancel nothing is enabled and the
+    /// caller is told it didn't apply. Returns true if the profile was applied. The dialog routes
+    /// here instead of calling Scanner directly so no profile-apply path bypasses the gate.</summary>
+    public async Task<bool> LoadProfileAsync(string name)
+    {
+        if (_ctx is null) return false;
+        if (!await GateBanRiskEnableAsync()) return false; // un-acked high-risk + cancel -> enable nothing
+        await Scanner.LoadProfileAsync(name, _ctx);
+        return true;
+    }
+
     /// <summary>Public accessor for the active game's data dir — used by Tools dialogs to find
     /// <c>tools.json</c>. Returns an empty string when no game is bound (caller short-circuits).</summary>
     public string GameDataDirPublic() => _ctx?.DataDir ?? "";
