@@ -5,8 +5,9 @@ namespace ModManager.App.Services;
 
 /// <summary>
 /// Scans a game folder for engine signatures and asks Core to guess the engine. The IO lives
-/// here; the decision (<see cref="EngineDetect.GuessEngine"/>) stays pure + tested. Bounded to
-/// the root + one level of subfolders so it stays fast on large game installs.
+/// here; the decision (<see cref="EngineDetect.GuessEngine"/>) stays pure + tested. Unreal Content/Paks
+/// discovery is delegated to <see cref="UeProjectScan"/> (root + up to 2 wrapper levels, denylist-skipped,
+/// budget-bounded); the other signatures stay bounded to root + one subfolder level for speed.
 /// </summary>
 public static class EngineScan
 {
@@ -22,8 +23,7 @@ public static class EngineScan
         string[] subs;
         try { subs = Directory.GetDirectories(root); } catch { subs = Array.Empty<string>(); }
 
-        var contentPaks = Directory.Exists(Path.Combine(root, "Content", "Paks"))
-            || subs.Any(s => Directory.Exists(Path.Combine(s, "Content", "Paks")));
+        var contentPaks = UeProjectScan.HasContentPaks(root);
 
         var dataPlugins = false;
         var data = Path.Combine(root, "Data");
