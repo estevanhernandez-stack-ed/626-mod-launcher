@@ -95,4 +95,33 @@ public class ManualMatchMergeTests
         Assert.Equal(99, merged.NexusFileId);
         Assert.Equal("Hand title", merged.Title);            // curated still wins where it has a value
     }
+
+    [Fact]
+    public void MergeMeta_carries_nexusLatestVersion_from_fetched_when_curated_lacks_it()
+    {
+        var cf = new ModMeta { NexusLatestVersion = "2.1" };
+        var curated = new ModMeta { Title = "Hand title" };   // no nexusLatestVersion
+        var merged = CallMergeMeta(cf, curated);
+        Assert.Equal("2.1", merged.NexusLatestVersion);
+        Assert.Equal("Hand title", merged.Title);
+    }
+
+    [Fact]
+    public void MergeMeta_curated_nexusLatestVersion_wins_per_field()
+    {
+        var cf = new ModMeta { NexusLatestVersion = "2.1" };
+        var curated = new ModMeta { NexusLatestVersion = "9.9" };
+        var merged = CallMergeMeta(cf, curated);
+        Assert.Equal("9.9", merged.NexusLatestVersion);   // curated ?? cf, same as siblings
+    }
+
+    [Fact]
+    public void MergeMeta_manual_curated_short_circuits_nexusLatestVersion()
+    {
+        // IsManual locks the row — incoming nexusLatestVersion must not leak in.
+        var cf = new ModMeta { NexusLatestVersion = "2.1" };
+        var curated = new ModMeta { Title = "Manual", IsManual = true };  // no latest version
+        var merged = CallMergeMeta(cf, curated);
+        Assert.Null(merged.NexusLatestVersion);
+    }
 }

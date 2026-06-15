@@ -42,6 +42,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly NexusService _nexus;
     private readonly AvatarService _avatars;
     private readonly SteamService _steam;
+    private readonly AppSettingsService _appSettings;
+    private readonly NexusUpdatePoll _nexusPoll;
     // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
     // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
     // which fires on a thread-pool thread — back to the UI thread before touching VM state.
@@ -192,7 +194,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll)
     {
         _svc = svc;
         _me2 = me2;
@@ -202,6 +204,8 @@ public sealed partial class MainViewModel : ObservableObject
         _nexus = nexus;
         _avatars = avatars;
         _steam = steam;
+        _appSettings = appSettings;
+        _nexusPoll = nexusPoll;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -589,6 +593,33 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
+
+        // Debounced Nexus auto-check (once per 24h per game, off the UI hot path). Fire-and-forget:
+        // it polls Nexus by mod id for the active game, flags newer versions, and persists — then we
+        // reload rows to surface UPDATE chips only if it actually changed something. Self-limiting via
+        // the per-game stamp, so the per-toggle re-entry of ReloadModsAsync costs a stamp read + bail.
+        // Every failure is swallowed inside MaybePollAsync — it can never break the session.
+        if (_ctx is { } ctx) _ = AutoCheckNexusUpdatesAsync(ctx);
+    }
+
+    /// <summary>Fire-and-forget debounced Nexus auto-check launched at the tail of a game load. Runs on
+    /// the thread-pool (off the UI hot path); if it persisted any newer-version data, it marshals a row
+    /// reload back onto the UI thread — but only when the polled game is still the active one (the user
+    /// may have switched games while the network call was in flight).</summary>
+    private async Task AutoCheckNexusUpdatesAsync(GameContext ctx)
+    {
+        var changed = await _nexusPoll.MaybePollAsync(ctx, _nexus, _appSettings);
+        if (!changed) return;
+
+        void Reload()
+        {
+            // Don't clobber a different game the user switched to mid-poll.
+            if (_ctx is null || !ReferenceEquals(_ctx, ctx)) return;
+            _ = ReloadModsAsync();
+        }
+
+        if (_dispatcherQueue is { } dq) dq.TryEnqueue(Reload);
+        else Reload();
     }
 
     private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
@@ -1257,6 +1288,61 @@ public sealed partial class MainViewModel : ObservableObject
                 ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {archives.Count} Nexus archive(s)."
                 : $"Scanned {archives.Count} archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this game).";
             await ReloadModsAsync();
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Manual "Refresh Nexus stats": poll Nexus <em>by mod id</em> (no archive needed) over
+    /// every identified mod in the active game — refreshing endorsements / downloads / availability and
+    /// capturing the upstream current version (which drives the UPDATE chip). The installed version is
+    /// preserved (it's the "what you have" side of the compare). Throttled + 429-aware via
+    /// <see cref="NexusRefresh.RefreshAllAsync"/>: a rate limit stops the sweep and reports partial
+    /// progress instead of thrashing. The id-resolution is deterministic, so refreshed metas are mapped
+    /// back to their on-disk keys by re-resolving the id, then persisted in one atomic batch.</summary>
+    public async Task RefreshNexusStatsAsync()
+    {
+        if (_ctx is null) return;
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        var domain = NexusDomains.Effective(_ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
+
+        // key -> meta for the rows we can resolve a Nexus id for. RefreshAllAsync skips the rest with
+        // no network call; we map results back to keys by re-resolving the (deterministic) id below.
+        var byKey = Scanner.LoadMetadata(_ctx);
+        var identified = byKey.Where(kv => NexusRefresh.ResolveModId(kv.Value) is not null).ToList();
+        if (identified.Count == 0) { StatusText = "No Nexus-identified mods to refresh — backfill metadata first."; return; }
+
+        IsBusy = true;
+        try
+        {
+            // Small inter-call delay, well under the burst ceiling; RefreshAllAsync applies it between
+            // (not before) calls so a one-item sweep pays nothing.
+            var result = await NexusRefresh.RefreshAllAsync(
+                identified.Select(kv => kv.Value), domain!, _nexus.Client!,
+                throttle: () => System.Threading.Tasks.Task.Delay(120));
+
+            if (result.Updated.Count > 0)
+            {
+                // Re-resolve each refreshed meta's id back to its on-disk key (id-resolution is
+                // deterministic and identity fields survive the refresh, so the lookup is exact).
+                var keyById = new Dictionary<int, string>();
+                foreach (var kv in identified)
+                    if (NexusRefresh.ResolveModId(kv.Value) is { } id)
+                        keyById[id] = kv.Key;
+
+                var writes = new List<(string, ModMeta)>();
+                foreach (var meta in result.Updated)
+                    if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
+                        writes.Add((key, meta));
+
+                Scanner.WriteManyMeta(_ctx, writes);
+                await ReloadModsAsync();
+            }
+
+            StatusText = result.RateLimited
+                ? "Nexus rate limit reached — try again later."
+                : $"Refreshed {result.Refreshed} mod{(result.Refreshed == 1 ? "" : "s")}, {result.UpdatesAvailable} update{(result.UpdatesAvailable == 1 ? "" : "s")} available.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }

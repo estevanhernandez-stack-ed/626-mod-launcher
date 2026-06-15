@@ -1168,6 +1168,7 @@ public static class Scanner
             ContainsAdultContent = curated.ContainsAdultContent ?? cf.ContainsAdultContent,
             NexusModId = curated.NexusModId ?? cf.NexusModId,
             NexusFileId = curated.NexusFileId ?? cf.NexusFileId,
+            NexusLatestVersion = curated.NexusLatestVersion ?? cf.NexusLatestVersion,
         };
     }
 
@@ -1385,6 +1386,17 @@ public static class Scanner
     {
         var existing = LoadMetadata(c);
         var next = new Dictionary<string, ModMeta>(existing, StringComparer.OrdinalIgnoreCase) { [modKey] = meta };
+        SaveMetadata(c, next);
+    }
+
+    /// <summary>Write a batch of entries into the per-game metadata.json in one atomic pass,
+    /// leaving untouched keys intact. Used by the Nexus by-mod-id sweep / auto-check to persist a
+    /// run of refreshed metas at once. (LoadMetadata + SaveMetadata are already atomic + camelCase.)</summary>
+    public static void WriteManyMeta(GameContext c, IEnumerable<(string ModKey, ModMeta Meta)> entries)
+    {
+        var next = new Dictionary<string, ModMeta>(LoadMetadata(c), StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, meta) in entries)
+            next[key] = meta;
         SaveMetadata(c, next);
     }
 

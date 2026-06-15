@@ -87,4 +87,39 @@ public class MetadataTests
         Assert.Null(m.Image);
         Assert.Null(m.Downloads);
     }
+
+    [Fact]
+    public void MergeMetadata_copies_nexusLatestVersion_onto_mod()
+    {
+        var map = new Dictionary<string, ModMeta>
+        {
+            ["jei"] = new() { Version = "2.0", NexusLatestVersion = "2.1" },
+        };
+        var m = Metadata.MergeMetadata(new[] { new Mod { Name = "jei", Base = "jei" } }, map)[0];
+        Assert.Equal("2.1", m.NexusLatestVersion);
+    }
+
+    [Fact]
+    public void MergeMetadata_leaves_nexusLatestVersion_null_with_no_entry()
+    {
+        var m = Metadata.MergeMetadata(new[] { new Mod { Name = "x", Base = "x" } }, new Dictionary<string, ModMeta>())[0];
+        Assert.Null(m.NexusLatestVersion);
+    }
+
+    [Theory]
+    [InlineData("2.0", "2.1", true)]    // newer on Nexus → update available
+    [InlineData("2.1", "2.1", false)]   // same version → no update
+    [InlineData("2.1", null, false)]    // no latest fetched → no update
+    public void Mod_UpdateAvailable_compares_latest_against_installed(string? installed, string? latest, bool expected)
+    {
+        var m = new Mod { Name = "x", Base = "x", Version = installed, NexusLatestVersion = latest };
+        Assert.Equal(expected, m.UpdateAvailable);
+    }
+
+    [Fact]
+    public void Mod_UpdateAvailable_false_when_both_null()
+    {
+        var m = new Mod { Name = "x", Base = "x" };
+        Assert.False(m.UpdateAvailable);
+    }
 }

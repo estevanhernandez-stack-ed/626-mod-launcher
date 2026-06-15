@@ -7,6 +7,13 @@ public sealed class NexusOptions
 {
     public string? BaseUrl { get; init; }
     public string? ApiKey { get; init; }
+
+    /// <summary>
+    /// The launcher version reported via the Nexus-ToS <c>Application-Version</c> header.
+    /// Passed in from the App (the entry-assembly version) so <see cref="NexusRequests"/> stays
+    /// pure — when unset the request builder falls back to a fixed default.
+    /// </summary>
+    public string? AppVersion { get; init; }
 }
 
 /// <summary>An md5_search hit: the Nexus mod id + the mapped metadata.</summary>
@@ -25,10 +32,22 @@ public static class NexusRequests
 {
     public const string Base = "https://api.nexusmods.com";
 
-    private static Dictionary<string, string> Headers(string? apiKey)
+    /// <summary>The Nexus-ToS application identity. Sent on every request.</summary>
+    public const string ApplicationName = "626-mod-launcher";
+
+    /// <summary>Fallback <c>Application-Version</c> when <see cref="NexusOptions.AppVersion"/> is unset.</summary>
+    public const string DefaultAppVersion = "0.0.0";
+
+    private static Dictionary<string, string> Headers(NexusOptions opts)
     {
-        var h = new Dictionary<string, string> { ["Accept"] = "application/json" };
-        if (!string.IsNullOrEmpty(apiKey)) h["apikey"] = apiKey; // omitted in proxy mode
+        var h = new Dictionary<string, string>
+        {
+            ["Accept"] = "application/json",
+            // Nexus-ToS identity headers — always present, both key and proxy modes.
+            ["Application-Name"] = ApplicationName,
+            ["Application-Version"] = string.IsNullOrEmpty(opts.AppVersion) ? DefaultAppVersion : opts.AppVersion,
+        };
+        if (!string.IsNullOrEmpty(opts.ApiKey)) h["apikey"] = opts.ApiKey; // omitted in proxy mode
         return h;
     }
 
@@ -55,14 +74,14 @@ public static class NexusRequests
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/{modId}.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/{modId}.json", "GET", Headers(opts));
     }
 
     public static ApiRequest Md5Request(string domain, string md5, NexusOptions? opts = null)
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/md5_search/{md5}.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/md5_search/{md5}.json", "GET", Headers(opts));
     }
 
     /// <summary>Game info (including the categories array): GET /v1/games/{domain}.json.</summary>
@@ -70,7 +89,7 @@ public static class NexusRequests
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/games/{domain}.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}.json", "GET", Headers(opts));
     }
 
     /// <summary>Verify the key + read the account identity: GET /v1/users/validate.json.</summary>
@@ -78,7 +97,18 @@ public static class NexusRequests
     {
         opts ??= new NexusOptions();
         var baseUrl = opts.BaseUrl ?? Base;
-        return new ApiRequest($"{baseUrl}/v1/users/validate.json", "GET", Headers(opts.ApiKey));
+        return new ApiRequest($"{baseUrl}/v1/users/validate.json", "GET", Headers(opts));
+    }
+
+    /// <summary>
+    /// Bulk "recently updated by game": GET /v1/games/{domain}/mods/updated.json?period={period}.
+    /// <paramref name="period"/> is one of Nexus's fixed windows — "1d", "1w", or "1m".
+    /// </summary>
+    public static ApiRequest UpdatedRequest(string domain, string period, NexusOptions? opts = null)
+    {
+        opts ??= new NexusOptions();
+        var baseUrl = opts.BaseUrl ?? Base;
+        return new ApiRequest($"{baseUrl}/v1/games/{domain}/mods/updated.json?period={period}", "GET", Headers(opts));
     }
 
     /// <summary>
@@ -148,6 +178,28 @@ public static class NexusRequests
     /// <summary>validate.json body -> account identity. Tolerant of missing fields; null if not an object.</summary>
     public static NexusUser? MapValidateResponse(JsonElement root)
         => root.ValueKind == JsonValueKind.Object ? new NexusUser(Str(root, "name"), Bool(root, "is_premium")) : null;
+
+    /// <summary>
+    /// updated.json body -> the list of recently-changed mods. The root is an array of
+    /// { mod_id, latest_file_update, latest_mod_activity } (unix seconds). Entries missing
+    /// <c>mod_id</c> are skipped; a non-array root yields an empty list. Never throws.
+    /// </summary>
+    public static IReadOnlyList<NexusUpdateEntry> MapUpdatedResponse(JsonElement root)
+    {
+        var list = new List<NexusUpdateEntry>();
+        if (root.ValueKind != JsonValueKind.Array) return list;
+        foreach (var el in root.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            var modId = Int(el, "mod_id");
+            if (!modId.HasValue) continue;
+            list.Add(new NexusUpdateEntry(
+                modId.Value,
+                Long(el, "latest_file_update") ?? 0L,
+                Long(el, "latest_mod_activity") ?? 0L));
+        }
+        return list;
+    }
 
     /// <summary>
     /// md5_search returns an array of { mod, file_details }. Take the first element, map its

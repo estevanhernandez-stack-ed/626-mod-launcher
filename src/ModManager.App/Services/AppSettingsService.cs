@@ -20,6 +20,8 @@ public sealed class AppSettingsService
 
     private bool _autoUpdateDefinitions;
 
+    private bool _autoCheckModUpdates;
+
     /// <summary>Raised when any setting changes so the shell can re-apply (e.g. swap the backdrop
     /// on the live window).</summary>
     public event EventHandler? BackdropChanged;
@@ -37,6 +39,18 @@ public sealed class AppSettingsService
         Save();
     }
 
+    /// <summary>Whether the launcher polls Nexus by mod id on game load to flag mods with a newer
+    /// version available (default on). When off, no auto-check runs — the manual "Refresh Nexus
+    /// stats" action still works.</summary>
+    public bool AutoCheckModUpdates => _autoCheckModUpdates;
+
+    public void SetAutoCheckModUpdates(bool enabled)
+    {
+        if (_autoCheckModUpdates == enabled) return;
+        _autoCheckModUpdates = enabled;
+        Save();
+    }
+
     public AppSettingsService()
     {
         Path = System.IO.Path.Combine(
@@ -44,6 +58,7 @@ public sealed class AppSettingsService
             "ModManagerBuilder", "app-settings.json");
         _backdrop = Load();
         _autoUpdateDefinitions = LoadAutoUpdate();
+        _autoCheckModUpdates = LoadAutoCheckModUpdates();
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
@@ -88,6 +103,20 @@ public sealed class AppSettingsService
         return true;
     }
 
+    private bool LoadAutoCheckModUpdates()
+    {
+        try
+        {
+            if (!File.Exists(Path)) return true;
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
+            if (doc.RootElement.TryGetProperty("autoCheckModUpdates", out var v)
+                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
+                return v.GetBoolean();
+        }
+        catch { /* missing / corrupt — default on */ }
+        return true;
+    }
+
     private void Save()
     {
         try
@@ -95,7 +124,8 @@ public sealed class AppSettingsService
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
             var json =
                 $"{{\"backdrop\":\"{_backdrop.ToString().ToLowerInvariant()}\","
-                + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")}}}";
+                + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")},"
+                + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")}}}";
             File.WriteAllText(Path, json);
         }
         catch { /* best-effort persist; in-memory state still holds */ }

@@ -11,6 +11,8 @@ public class VortexNexusIdentifyTests
         public Task<ModMeta?> GetModAsync(string gameDomain, int modId) => _byId(gameDomain, modId);
         public Task<NexusMd5Match?> GetByMd5Async(string g, string m) => throw new NotSupportedException();
         public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
+        public NexusRateLimit? LastRateLimit => null;
     }
 
     private static (string modsDir, GameContext c) Fixture(string? domain)

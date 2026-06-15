@@ -81,6 +81,12 @@
                                     <FontIcon Glyph="&#xE896;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Refresh Nexus stats…" Click="OnNexusRefresh"
+                                            ToolTipService.ToolTip="Poll Nexus by mod id (no archive needed) to refresh endorsements / downloads and flag mods with a newer version available">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72C;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;" />
@@ -470,6 +476,11 @@
                                     ToolTipService.ToolTip="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on"
                                     Visibility="{x:Bind LoaderChipVisibility, Mode=OneWay}">
                                 <TextBlock Text="LOADER" FontFamily="Consolas" FontSize="11" Foreground="Black" />
+                            </Border>
+                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                    ToolTipService.ToolTip="{x:Bind UpdateTooltip}"
+                                    Visibility="{x:Bind UpdateAvailableVisibility}">
+                                <TextBlock Text="UPDATE" FontFamily="Consolas" FontSize="11" Foreground="Black" />
                             </Border>
                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"

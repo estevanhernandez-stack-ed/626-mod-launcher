@@ -81,6 +81,14 @@
 
             <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
 
+            <!-- Auto-check toggle. Polls Nexus by mod id on game load (debounced ~24h/game) to flag
+                 mods with a newer version available. The manual "Refresh Nexus stats" action works
+                 regardless of this setting. -->
+            <CheckBox x:Name="AutoCheckModUpdatesCheck"
+                      Content="Check for mod updates automatically"
+                      Click="OnAutoCheckModUpdatesToggled"
+                      ToolTipService.ToolTip="On game load, quietly check Nexus for newer versions of your installed mods (about once a day per game). The manual Refresh Nexus stats action always works." />
+
             <!-- Divider -->
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
