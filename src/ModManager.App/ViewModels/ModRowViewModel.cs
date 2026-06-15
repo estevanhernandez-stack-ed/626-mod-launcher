@@ -116,8 +116,13 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string DownloadsText => Mod.Downloads is > 0 ? $"{Mod.Downloads:N0} downloads" : "";
     public Visibility DownloadsVisibility => Mod.Downloads is > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+    public string EndorsementsText => Mod.EndorsementCount is > 0 ? $"{Mod.EndorsementCount:N0} endorsements" : "";
+    public Visibility EndorsementsVisibility => Mod.EndorsementCount is > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility RemovedFromNexusVisibility => Mod.Available == false ? Visibility.Visible : Visibility.Collapsed;
+
     private bool HasAnyCredit => !string.IsNullOrEmpty(Mod.Author) || ModUri is not null
-        || SourceUri is not null || DonateUri is not null || Mod.Downloads is > 0;
+        || SourceUri is not null || DonateUri is not null || Mod.Downloads is > 0
+        || Mod.EndorsementCount is > 0 || Mod.Available == false;
     public Visibility CreditVisibility => Mod.HasMeta && HasAnyCredit ? Visibility.Visible : Visibility.Collapsed;
 
     // MP-safety: effective = the user's override (if any) over the class-inferred risk. The badge

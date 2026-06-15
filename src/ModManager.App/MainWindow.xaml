@@ -416,6 +416,10 @@
                                                  Foreground="{StaticResource ThemeDanger}" Visibility="{x:Bind DonateVisibility}" />
                                 <TextBlock Text="{x:Bind DownloadsText}" Opacity="0.55" FontSize="12" VerticalAlignment="Center"
                                            Visibility="{x:Bind DownloadsVisibility}" />
+                                <TextBlock Text="{x:Bind EndorsementsText}" Opacity="0.55" FontSize="12" VerticalAlignment="Center"
+                                           Visibility="{x:Bind EndorsementsVisibility}" />
+                                <TextBlock Text="Removed from Nexus" Foreground="{StaticResource ThemeDanger}" FontSize="12" VerticalAlignment="Center"
+                                           Visibility="{x:Bind RemovedFromNexusVisibility}" />
                             </StackPanel>
                             <!-- Multi-variant family: pick which level(s) to run, inline on this one row -->
                             <ItemsControl ItemsSource="{x:Bind VariantOptions}" Margin="0,4,0,0"
