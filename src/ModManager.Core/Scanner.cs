@@ -1168,6 +1168,7 @@ public static class Scanner
             ContainsAdultContent = curated.ContainsAdultContent ?? cf.ContainsAdultContent,
             NexusModId = curated.NexusModId ?? cf.NexusModId,
             NexusFileId = curated.NexusFileId ?? cf.NexusFileId,
+            NexusLatestVersion = curated.NexusLatestVersion ?? cf.NexusLatestVersion,
         };
     }
 

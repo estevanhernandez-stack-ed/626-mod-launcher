@@ -50,6 +50,14 @@ public sealed class Mod
     public bool? Available { get; set; }     // false = removed from Nexus (drives the row hint)
     public string? Category { get; set; }
     public bool HasMeta { get; set; }
+
+    // version + update-available (from a Nexus by-mod-id poll, via Metadata.MergeMetadata)
+    public string? Version { get; set; }              // the installed version (what you have)
+    public string? NexusLatestVersion { get; set; }   // current version on Nexus (what's available)
+
+    /// <summary>True when Nexus reports a different current version than the installed one. Computed,
+    /// never trusted from disk: false when no latest was fetched or the versions match.</summary>
+    public bool UpdateAvailable => NexusLatestVersion is { } v && v != Version;
 }
 
 /// <summary>A per-game metadata.json entry: the real title/credit/links for a mod base.</summary>
@@ -87,4 +95,9 @@ public sealed class ModMeta
     public bool? ContainsAdultContent { get; set; }
     public int? NexusModId { get; set; }              // stable handle for endorse / update-check
     public int? NexusFileId { get; set; }             // the installed file's id (update-check key)
+
+    /// <summary>Last-fetched current version on Nexus (from a by-mod-id poll). The "what's available"
+    /// side of the update compare; the installed-side stays in <see cref="Version"/>. Additive/nullable —
+    /// metadata that predates the poll has none.</summary>
+    public string? NexusLatestVersion { get; set; }
 }

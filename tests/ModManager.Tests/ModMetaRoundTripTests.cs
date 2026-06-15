@@ -53,4 +53,15 @@ public class ModMetaRoundTripTests
         Assert.Equal(510, rt.NexusModId);
         Assert.Equal(99, rt.NexusFileId);
     }
+
+    [Fact]
+    public void ModMeta_nexusLatestVersion_round_trips_as_camelCase()
+    {
+        var m = new ModMeta { NexusLatestVersion = "2.1" };
+        var json = JsonSerializer.Serialize(m, Json);
+        Assert.Contains("\"nexusLatestVersion\"", json);          // camelCase key on disk
+        Assert.DoesNotContain("\"NexusLatestVersion\"", json);
+        var rt = JsonSerializer.Deserialize<ModMeta>(json, Json)!;
+        Assert.Equal("2.1", rt.NexusLatestVersion);
+    }
 }
