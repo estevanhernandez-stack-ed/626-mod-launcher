@@ -27,6 +27,16 @@ public sealed class NexusService
     private readonly HttpClient _http;
     private string? _key;
 
+    /// <summary>The launcher version reported to Nexus via the ToS <c>Application-Version</c> header
+    /// (mirrors <see cref="RemoteManifestSource"/>'s manifest-feed identity). Resolved once from the
+    /// entry-assembly version so we don't ship the <see cref="NexusRequests.DefaultAppVersion"/> placeholder.</summary>
+    private static readonly string AppVersionString =
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? NexusRequests.DefaultAppVersion;
+
+    /// <summary>Build options for a Nexus client bound to <paramref name="key"/>, stamped with the real
+    /// app version so every request carries the correct ToS identity header.</summary>
+    private static NexusOptions MakeOptions(string? key) => new() { ApiKey = key, AppVersion = AppVersionString };
+
     public NexusService(HttpClient http)
     {
         _http = http;
@@ -38,7 +48,7 @@ public sealed class NexusService
     public bool ConnectedPremium { get; private set; }
 
     /// <summary>A client bound to the stored key, or null when not connected.</summary>
-    public INexusClient? Client => string.IsNullOrEmpty(_key) ? null : new NexusClient(_http, new NexusOptions { ApiKey = _key });
+    public INexusClient? Client => string.IsNullOrEmpty(_key) ? null : new NexusClient(_http, MakeOptions(_key));
 
     /// <summary>Validate a pasted personal key against Nexus; on success store it (+ the account name)
     /// and connect. Returns the account name, or null if the key was rejected (401).</summary>
@@ -46,7 +56,7 @@ public sealed class NexusService
     {
         apiKey = (apiKey ?? "").Trim();
         if (apiKey.Length == 0) return null;
-        var user = await new NexusClient(_http, new NexusOptions { ApiKey = apiKey }).ValidateAsync(); // null on bad key
+        var user = await new NexusClient(_http, MakeOptions(apiKey)).ValidateAsync(); // null on bad key
         if (user is null) return null;
         _key = apiKey;
         ConnectedUser = user.Name;
@@ -63,7 +73,7 @@ public sealed class NexusService
         if (string.IsNullOrEmpty(_key)) return;
         try
         {
-            var user = await new NexusClient(_http, new NexusOptions { ApiKey = _key }).ValidateAsync();
+            var user = await new NexusClient(_http, MakeOptions(_key)).ValidateAsync();
             if (user is null) return; // key now rejected — leave it to the connect flow to handle
             ConnectedUser = user.Name;
             ConnectedPremium = user.IsPremium;
