@@ -1,0 +1,90 @@
+using System.IO;
+using System.Net.Http;
+using System.Reflection;
+using System.Runtime.Loader;
+using ModManager.Core.Plugins;
+using ModManager.Plugins.Abstractions;
+
+namespace ModManager.App.Services;
+
+/// <summary>
+/// App-side plugin loader (FULL flavor only — the Store SKU compiles the call site out via <c>#if FULL</c>).
+/// Discovers <c>*.dll</c> + sibling <c>*.dll.sig</c> in <c>%LOCALAPPDATA%\ModManagerBuilder\plugins\</c>,
+/// verifies each against the pinned <see cref="PluginSigningKey"/> via <see cref="PluginSignature.Verify"/>,
+/// and only then loads the verified assembly in a collectible <see cref="AssemblyLoadContext"/>. The single
+/// exported <see cref="IModManagerPlugin"/> type is instantiated and handed an <see cref="IPluginHostServices"/>
+/// it uses to register contributions (mod sources land in the shared <see cref="ModSourceRegistry"/>).
+///
+/// Fail-closed: an unsigned, mis-signed, or tampered assembly is never loaded. Every plugin is wrapped in
+/// try/catch so one bad plugin never crashes startup — the app simply runs with whatever loaded cleanly
+/// (and an empty registry is the zero-plugins path, identical to the Store SKU).
+///
+/// The credential store + <see cref="HttpClient"/> are App-owned and passed in: the host hands the plugin a
+/// per-call credential lookup, never the key itself stored anywhere the plugin controls (operating law #2).
+/// </summary>
+public static class PluginHost
+{
+    /// <summary>The on-disk plugins directory — sibling to the other runtime data under
+    /// <c>%LOCALAPPDATA%\ModManagerBuilder\</c> (matches <c>RemoteManifestSource</c> / <c>AppDiagnostics</c>).</summary>
+    public static string PluginsDir { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ModManagerBuilder", "plugins");
+
+    /// <summary>Discover, verify, load, and register every signed plugin. Contributions land in
+    /// <paramref name="registry"/>. <paramref name="getCredential"/> is the App-owned on-machine key
+    /// lookup (e.g. the Nexus DPAPI store); <paramref name="httpClient"/> is the shared client passed to
+    /// plugins. No-op (and safe) when the plugins dir is missing or empty.</summary>
+    public static void LoadAll(ModSourceRegistry registry, Func<string, string?> getCredential, HttpClient httpClient)
+    {
+        if (!Directory.Exists(PluginsDir)) return;
+
+        foreach (var dll in Directory.EnumerateFiles(PluginsDir, "*.dll"))
+        {
+            try
+            {
+                var sig = dll + ".sig";
+                if (!File.Exists(sig)) continue; // no detached signature -> never load
+
+                var assemblyBytes = File.ReadAllBytes(dll);
+                var signatureBytes = File.ReadAllBytes(sig);
+                if (!PluginSignature.Verify(assemblyBytes, signatureBytes)) continue; // fail closed
+
+                LoadVerified(assemblyBytes, registry, getCredential, httpClient);
+            }
+            catch (Exception ex)
+            {
+                // One bad plugin never crashes startup — log and move on.
+                AppDiagnostics.Log("plugin-host", ex);
+            }
+        }
+    }
+
+    private static void LoadVerified(
+        byte[] assemblyBytes, ModSourceRegistry registry, Func<string, string?> getCredential, HttpClient httpClient)
+    {
+        // Collectible context so a future reload/unload path can drop the assembly cleanly.
+        var alc = new AssemblyLoadContext(name: "ModManagerPlugin", isCollectible: true);
+        using var stream = new MemoryStream(assemblyBytes);
+        var assembly = alc.LoadFromStream(stream);
+
+        var entryType = assembly.GetExportedTypes()
+            .FirstOrDefault(t => typeof(IModManagerPlugin).IsAssignableFrom(t) && t is { IsAbstract: false, IsInterface: false });
+        if (entryType is null) return; // not a plugin assembly
+
+        if (Activator.CreateInstance(entryType) is not IModManagerPlugin plugin) return;
+
+        var services = new HostServices(registry, getCredential, httpClient);
+        plugin.Register(services);
+    }
+
+    /// <summary>The App-side <see cref="IPluginHostServices"/> — owns the registry sink, the credential
+    /// lookup, and the shared <see cref="HttpClient"/>. The plugin receives the credential per call and
+    /// never gets a handle it could persist or exfiltrate.</summary>
+    private sealed class HostServices(ModSourceRegistry registry, Func<string, string?> getCredential, HttpClient httpClient)
+        : IPluginHostServices
+    {
+        public void AddModSource(IModSource source) => registry.Add(source);
+        public string? GetCredential(string key) => getCredential(key);
+        public HttpClient HttpClient { get; } = httpClient;
+    }
+}

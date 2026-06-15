@@ -36,6 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ModManager.Core\ModManager.Core.csproj" />
+    <ProjectReference Include="..\ModManager.Plugins.Abstractions\ModManager.Plugins.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

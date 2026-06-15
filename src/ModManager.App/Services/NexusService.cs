@@ -50,6 +50,13 @@ public sealed class NexusService
     /// <summary>A client bound to the stored key, or null when not connected.</summary>
     public INexusClient? Client => string.IsNullOrEmpty(_key) ? null : new NexusClient(_http, MakeOptions(_key));
 
+    /// <summary>The host-owned credential lookup the <c>PluginHost</c> hands a plugin via
+    /// <c>IPluginHostServices.GetCredential</c>. Returns the on-machine Nexus key (decrypted in memory,
+    /// never persisted by the plugin) for the <c>"nexus"</c> key; null for anything else or when not
+    /// connected. The plugin receives the value per call and gets no handle it could exfiltrate.</summary>
+    public string? GetCredential(string key)
+        => string.Equals(key, "nexus", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_key) ? _key : null;
+
     /// <summary>Validate a pasted personal key against Nexus; on success store it (+ the account name)
     /// and connect. Returns the account name, or null if the key was rejected (401).</summary>
     public async Task<string?> ConnectAsync(string apiKey)
