@@ -37,6 +37,7 @@ public sealed record GameManifestEntry
     public IReadOnlyList<string>? FileExtensions { get; init; }
     public string? GroupingRule { get; init; }
     public int? Featured { get; init; }               // quick-pick rank; null = not in the quick-pick list
+    public string? BanRisk { get; init; }             // null | "low" | "medium" | "high" — anti-cheat/ban exposure for online play (descriptive only)
     public ManifestProvenance Provenance { get; init; } = new();
 }
 

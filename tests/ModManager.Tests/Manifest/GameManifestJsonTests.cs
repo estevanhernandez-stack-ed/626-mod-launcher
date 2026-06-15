@@ -50,4 +50,23 @@ public class GameManifestJsonTests
         Assert.Equal("fromsoft", back.Games[0].Engine);
         Assert.Contains(ManifestSources.NexusDomains, back.Games[0].Provenance.Sources);
     }
+
+    [Fact]
+    public void BanRisk_round_trips_as_camelCase()
+    {
+        var original = new GameManifest
+        {
+            Games = new[]
+            {
+                new GameManifestEntry { Id = "marvel-rivals", Name = "Marvel Rivals", BanRisk = "high" },
+            },
+        };
+
+        var json = JsonSerializer.Serialize(original, ManifestJson.Options);
+        Assert.Contains("\"banRisk\"", json);          // camelCase key on disk
+        Assert.DoesNotContain("\"BanRisk\"", json);     // guards against PascalCase regression
+
+        var back = JsonSerializer.Deserialize<GameManifest>(json, ManifestJson.Options);
+        Assert.Equal("high", back!.Games[0].BanRisk);
+    }
 }

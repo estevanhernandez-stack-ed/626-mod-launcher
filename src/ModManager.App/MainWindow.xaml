@@ -241,6 +241,18 @@
                                    Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
+                <!-- Ban-risk banner: game-level anti-cheat exposure, distinct from the per-mod
+                     co-op-desync warning above. Both can be visible at once; they must read as two
+                     separate warnings. Stays up even after the enable gate is acked. -->
+                <Border Padding="8,2" CornerRadius="4" VerticalAlignment="Bottom" Margin="6,0,0,0"
+                        ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
+                        Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <TextBlock Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
+                                   Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
                 <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
                         VerticalAlignment="Bottom" Margin="6,0,0,0"
                         ToolTipService.ToolTip="This game needs a launch option for mods to load"

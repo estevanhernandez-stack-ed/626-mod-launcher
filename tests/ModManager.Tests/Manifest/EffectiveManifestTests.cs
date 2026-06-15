@@ -169,3 +169,32 @@ public class EffectiveManifestTests
         Assert.Equal("g1", a.Stores.GogId);       // remote filled the gap
     }
 }
+
+public class BanRiskMergeTests
+{
+    private static GameManifest One(string id, string? banRisk) => new()
+    {
+        Games = new[] { new GameManifestEntry { Id = id, Name = id, BanRisk = banRisk } },
+    };
+
+    [Fact]
+    public void Remote_null_cannot_blank_a_curated_high()
+    {
+        var merged = EffectiveManifest.Merge(One("g", "high"), One("g", null));
+        Assert.Equal("high", merged.Games[0].BanRisk);
+    }
+
+    [Fact]
+    public void Remote_can_raise_risk()
+    {
+        var merged = EffectiveManifest.Merge(One("g", "low"), One("g", "high"));
+        Assert.Equal("high", merged.Games[0].BanRisk);
+    }
+
+    [Fact]
+    public void Remote_lower_cannot_downgrade_curated_high()
+    {
+        var merged = EffectiveManifest.Merge(One("g", "high"), One("g", "low"));
+        Assert.Equal("high", merged.Games[0].BanRisk);
+    }
+}

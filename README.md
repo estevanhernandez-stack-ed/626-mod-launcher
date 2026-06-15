@@ -86,6 +86,7 @@ These outrank convenience. Every change in the repo rests on them:
 2. **Never embed an API key.** CurseForge access goes through a proxy that holds the key server-side. Nexus uses the user's personal key, supplied at runtime, kept on-machine.
 3. **File ops stay reversible and atomic.** Temp-write + rename, no clobber on intake, disable rolls back on failure. Snapshot-first on save-tree writes.
 4. **Pure-core, thin-shell.** Core stays UI-free and test-first (guarded by `CorePurityTests`). The app shell is allowed to be the messy edges.
+5. **Never auto-force mods onto a ban-risk game.** Detecting a game's engine and mod path is fine. Enabling a mod on an anti-cheat/ban-risk title (GameGuard, online EAC, BattlEye) warns you and waits for an explicit acknowledgment — the launcher never enables behind your back, and never refuses your call (disable is always one click away).
 
 ## Versions + roadmap
 
