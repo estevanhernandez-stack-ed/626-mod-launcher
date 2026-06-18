@@ -381,3 +381,15 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **Medium = banner only.** A `banRisk: "medium"` game shows the banner but never prompts; a null/None game shows neither.
 - [ ] **Bulk gated once.** "Enable all" / applying a profile that enables mods on the un-acked high game prompts once (no per-row bypass).
 - [ ] **Disable is never gated.** Disabling a mod on a high-risk game is always immediate (reversibility — getting safer needs no friction).
+
+---
+
+## Plugin slice B1 — Nexus as a plugin (2026-06-15)
+
+> **STATUS — NEEDS LIVE SMOKE.** B1 (plugin + App rewiring) is built + whole-branch-reviewed (purity + correctness both approve). The committed branch is **fail-closed** (empty `PluginSigningKey` — no plugin loads) until sub-project 5 mints the real key; these smokes were set up with a **local dev-signed** plugin (dev SPKI pinned locally + reverted; the dev-signed `ModManager.Plugin.Nexus.dll` + `.sig` deployed to `%LOCALAPPDATA%\ModManagerBuilder\plugins\`). Re-run the dev-sign if the plugin is rebuilt. Core's `Scanner`/identify still uses its own `NexusClient` (that's B2).
+
+- [ ] **FULL loads the dev-signed Nexus plugin** and the endorse heart, "Refresh Nexus stats", and the UPDATE chip all work *through the plugin* (parity with the old in-core App-facing Nexus). The plugin assembly contains no API key (read per-call from the on-machine store).
+- [ ] **Stats refresh never wipes a heart** — endorse a mod, run a stats refresh; the filled heart survives (the per-mod fetch returns `Endorsed: null`, so `SourceMetadataMapper` preserves it).
+- [ ] **Endorse refusal degrades** — endorse a not-yet-downloaded mod → friendly status line, no crash, heart doesn't flip (the plugin's `SetEndorsedAsync` returns `Refused`).
+- [ ] **Scan-time identify still works (B2 not done)** — Core's `Scanner` still enriches mods via its own `NexusClient` on add/rescan; md5-identify, manual-match, Vortex-identify unchanged.
+- [ ] **STORE flavor is sealed** — build/run `-p:Configuration=Store` → no plugin loads (host compiled out), no user-facing Nexus surface, core fully functional; STORE dll has no `LoadFromStream`/`PluginHost`/`AssemblyLoadContext`.
