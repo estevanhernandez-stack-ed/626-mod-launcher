@@ -53,11 +53,13 @@ public sealed class NexusModSource : IModSource
 
     /// <summary>
     /// md5 file lookup: <c>GET /v1/games/{domain}/mods/md5_search/{md5}.json</c>. The body is an array
-    /// of <c>{ mod, file_details }</c>; take the first, read <c>mod.mod_id</c> and the installed-file
-    /// version (which beats the mod-level version). 404 / empty / wrong-shape → null (not-found is the
-    /// normal path for an unknown hash).
+    /// of <c>{ mod, file_details }</c>; take the first, read <c>mod.mod_id</c> + the installed-file
+    /// version (which beats the mod-level version) for the <see cref="SourceModRef"/>, and map the full
+    /// identity/credit metadata off the same mod object (mirrors Core's <c>MapMd5Response</c> →
+    /// <c>MapMod</c>). One md5 call yields id + full metadata, matching today's <c>NexusMd5Match</c>.
+    /// 404 / empty / wrong-shape → null (not-found is the normal path for an unknown hash).
     /// </summary>
-    public async Task<SourceModRef?> IdentifyByHashAsync(string gameDomain, string md5)
+    public async Task<SourceIdentifyResult?> IdentifyByHashAsync(string gameDomain, string md5)
     {
         var url = $"{Base}/v1/games/{gameDomain}/mods/md5_search/{md5}.json";
         using var res = await SendAsync(HttpMethod.Get, url);
@@ -77,15 +79,20 @@ public sealed class NexusModSource : IModSource
             var modId = Int(mod, "mod_id");
             if (modId is null) return null;
 
-            // The installed-file version wins over the mod-level version (matches Core's MapMd5Response).
+            // The installed-file version + file id come off file_details; the installed-file version
+            // wins over the mod-level version (matches Core's MapMd5Response).
             string? version = Str(mod, "version");
+            int? fileId = null;
             if (el.TryGetProperty("file_details", out var fd) && fd.ValueKind == JsonValueKind.Object)
             {
+                fileId = Int(fd, "file_id");
                 var fileVersion = Str(fd, "version");
                 if (fileVersion is not null) version = fileVersion;
             }
 
-            return new SourceModRef(SourceId: Id, GameDomain: gameDomain, ModId: modId.Value, Version: version ?? "");
+            var modRef = new SourceModRef(SourceId: Id, GameDomain: gameDomain, ModId: modId.Value, Version: version ?? "");
+            var metadata = MapMod(gameDomain, mod, fileId, latestVersion: Str(mod, "version"));
+            return new SourceIdentifyResult(modRef, metadata);
         }
         return null;
     }
@@ -110,12 +117,42 @@ public sealed class NexusModSource : IModSource
         var mod = doc.RootElement;
         if (mod.ValueKind != JsonValueKind.Object) return null;
 
+        // Full identity/credit metadata off the per-mod object. No file_details here, so NexusFileId
+        // stays null; Endorsed stays null (the heart-wipe guard — see below).
+        return MapMod(gameDomain: modRef.GameDomain, mod, fileId: null, latestVersion: Str(mod, "version"));
+    }
+
+    /// <summary>
+    /// Map a Nexus mod JSON object to the grown <see cref="SourceModMetadata"/> — the identity/credit
+    /// fields md5-identify and per-mod fetch both produce. Mirrors Core's <c>NexusRequests.MapMod</c>
+    /// (same Nexus field names, same constructed mod URL); the plugin has no category dictionary so
+    /// <c>Category</c> stays null. <paramref name="latestVersion"/> is the upstream version reported by
+    /// the mod object (the installed-file version, when known, is carried on the ref, not here).
+    ///
+    /// <para><b>Endorsed is ALWAYS null.</b> Neither md5_search nor the per-mod endpoint carries
+    /// per-user endorse state — that state is owned by the bulk endorsements sweep (a different
+    /// endpoint). Returning <c>false</c> here would let a stats/identify refresh wipe the user's filled
+    /// heart, so this returns <c>Endorsed: null</c> and the mapper preserves the persisted value. This
+    /// is the heart-wipe guard the contract is built around.</para>
+    /// </summary>
+    private static SourceModMetadata MapMod(string gameDomain, JsonElement mod, int? fileId, string? latestVersion)
+    {
+        var modId = Int(mod, "mod_id");
         return new SourceModMetadata(
             Endorsements: Int(mod, "endorsement_count"),
             Downloads: Long(mod, "mod_downloads"),
-            LatestVersion: Str(mod, "version"),
+            LatestVersion: latestVersion,
             Available: BoolN(mod, "available"),
-            Endorsed: null); // per-mod endpoint has no user-endorse state — NEVER false, never wipes the heart
+            Endorsed: null, // no user-endorse state on these endpoints — NEVER false, never wipes the heart
+            Title: Str(mod, "name"),
+            Description: Str(mod, "summary"),
+            Author: Str(mod, "author") ?? Str(mod, "uploaded_by"),
+            AuthorUrl: Str(mod, "uploaded_users_profile_url"),
+            ImageUrl: Str(mod, "picture_url"),
+            ModUrl: modId.HasValue ? $"https://www.nexusmods.com/{gameDomain}/mods/{modId.Value}" : null,
+            Category: null, // plugin has no category dictionary — Category resolution stays a Core concern
+            ContainsAdultContent: BoolN(mod, "contains_adult_content"),
+            NexusFileId: fileId);
     }
 
     /// <summary>
