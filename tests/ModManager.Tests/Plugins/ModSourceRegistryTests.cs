@@ -9,7 +9,7 @@ public class ModSourceRegistryTests
     {
         public string Id => id;
         public bool RequiresApiKey => false;
-        public Task<SourceModRef?> IdentifyByHashAsync(string g, string m) => Task.FromResult<SourceModRef?>(null);
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string g, string m) => Task.FromResult<SourceIdentifyResult?>(null);
         public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef r) => Task.FromResult<SourceModMetadata?>(null);
         public Task<bool> IsUpdateAvailableAsync(SourceModRef r, string v) => Task.FromResult(false);
         public Task<EndorseResult> SetEndorsedAsync(SourceModRef r, bool e) => Task.FromResult(new EndorseResult(true, false, null, e));

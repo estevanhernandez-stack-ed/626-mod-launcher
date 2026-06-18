@@ -16,8 +16,10 @@ public class AbstractionsContractTests
     {
         public string Id => "fake";
         public bool RequiresApiKey => true;
-        public Task<SourceModRef?> IdentifyByHashAsync(string gameDomain, string md5)
-            => Task.FromResult<SourceModRef?>(new SourceModRef("fake", gameDomain, 42, "1.0"));
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string gameDomain, string md5)
+            => Task.FromResult<SourceIdentifyResult?>(new SourceIdentifyResult(
+                new SourceModRef("fake", gameDomain, 42, "1.0"),
+                new SourceModMetadata(10, 1000, "1.1", true, false, Title: "Fake Mod")));
         public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef r)
             => Task.FromResult<SourceModMetadata?>(new SourceModMetadata(10, 1000, "1.1", Available: true, Endorsed: false));
         public Task<bool> IsUpdateAvailableAsync(SourceModRef r, string installedVersion)
@@ -41,11 +43,12 @@ public class AbstractionsContractTests
     {
         var s = new FakeSource();
         var refr = await s.IdentifyByHashAsync("skyrimspecialedition", "abc");
-        Assert.Equal(42, refr!.ModId);
-        var meta = await s.FetchMetadataAsync(refr);
+        Assert.Equal(42, refr!.Ref.ModId);
+        Assert.Equal("Fake Mod", refr.Metadata.Title);
+        var meta = await s.FetchMetadataAsync(refr.Ref);
         Assert.Equal(10, meta!.Endorsements);
-        Assert.True(await s.IsUpdateAvailableAsync(refr with { Version = "1.0" }, "0.9"));
-        var endorse = await s.SetEndorsedAsync(refr, true);
+        Assert.True(await s.IsUpdateAvailableAsync(refr.Ref with { Version = "1.0" }, "0.9"));
+        var endorse = await s.SetEndorsedAsync(refr.Ref, true);
         Assert.True(endorse.Ok && endorse.NowEndorsed == true);
     }
 

@@ -23,7 +23,7 @@ public interface IModSource
 {
     string Id { get; }
     bool RequiresApiKey { get; }
-    Task<SourceModRef?> IdentifyByHashAsync(string gameDomain, string md5);
+    Task<SourceIdentifyResult?> IdentifyByHashAsync(string gameDomain, string md5);
     Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef);
     Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion);
     Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed);
@@ -33,5 +33,14 @@ public sealed record SourceModRef(string SourceId, string GameDomain, int ModId,
 // Available + Endorsed are nullable: "the source didn't report this" must be expressible so a per-mod
 // metadata fetch never clobbers persisted state. Endorse state is owned by the bulk endorsements sweep
 // (a different endpoint) — a per-mod fetch returns Endorsed: null, never false.
-public sealed record SourceModMetadata(int? Endorsements, long? Downloads, string? LatestVersion, bool? Available, bool? Endorsed);
+public sealed record SourceModMetadata(
+    int? Endorsements, long? Downloads, string? LatestVersion, bool? Available, bool? Endorsed,
+    // B2a — identity/credit fields md5-identify produces (what Scanner needs to build a ModMeta):
+    string? Title = null, string? Description = null, string? Author = null, string? AuthorUrl = null,
+    string? ImageUrl = null, string? ModUrl = null, string? Category = null,
+    bool? ContainsAdultContent = null, int? NexusFileId = null);
+
+/// <summary>An identify hit: the mod ref + the full metadata, both from the single md5 call.</summary>
+public sealed record SourceIdentifyResult(SourceModRef Ref, SourceModMetadata Metadata);
+
 public sealed record EndorseResult(bool Ok, bool Refused, string? Message, bool? NowEndorsed);
