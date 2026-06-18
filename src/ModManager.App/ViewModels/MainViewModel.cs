@@ -1346,8 +1346,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <c>Md5Identify*</c> / <c>IdentifyVortexNexusAsync</c> + <c>Ue4ssLuaInstaller.IdentifyMetadataAsync</c>,
     /// rewired in B2a). When null the surfaces are absent and identify no-ops — the app stays a complete
     /// product without them (the zero-plugins invariant).
-    /// <para><b>Out of scope (B2b):</b> the bulk endorse-state read + <c>NexusRefresh</c> still use
-    /// <c>_nexus.Client</c> directly — that rewire is deferred.</para></summary>
+    /// <para>As of B2b-1 every read also routes here: the library-wide endorse-heart sync + windowed
+    /// update poll (<c>NexusRefresh.RefreshAllAsync</c>) and the manual-URL match all go through this
+    /// <c>IModSource</c>. Core's <c>NexusClient</c> has zero live callers left.</para></summary>
     private IModSource? NexusSource => _sources.ById("nexus");
 
     /// <summary>True when the user-facing Nexus surfaces should be shown: a Nexus source is loaded AND the
@@ -1551,7 +1552,18 @@ public sealed partial class MainViewModel : ObservableObject
                         StatusText = "Connect Nexus first (Settings → Nexus Mods).";
                         return false;
                     }
-                    hit = await _nexus.Client!.GetModAsync(parts.GameKey, int.Parse(parts.ModRef));
+                    if (NexusSource is not { } nexusSource)
+                    {
+                        StatusText = "Nexus isn't available — no source loaded.";
+                        return false;
+                    }
+                    // Manual match is identity-authoritative: the user told us exactly which mod this is.
+                    // SourceMetadataMapper.Apply (NOT NexusRefresh.Overlay) is right here — it writes the
+                    // identity/credit fields, with NexusModId pinned from the parsed URL.
+                    var modId = int.Parse(parts.ModRef);
+                    var dto = await nexusSource.FetchMetadataAsync(new SourceModRef("nexus", parts.GameKey, modId, ""));
+                    if (dto is not null)
+                        hit = SourceMetadataMapper.Apply(new ModMeta { NexusModId = modId }, dto);
                     break;
 
                 case ModSiteProvider.CurseForge:
