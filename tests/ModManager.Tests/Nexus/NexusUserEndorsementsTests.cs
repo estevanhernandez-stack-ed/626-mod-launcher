@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using ModManager.Core;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Tests.Nexus;
 
@@ -152,7 +153,7 @@ public class NexusUserEndorsementsTests
         {
             new() { NexusModId = 42, Title = "A" },
         };
-        var endorsements = new List<NexusEndorsement>
+        var endorsements = new List<SourceEndorsement>
         {
             new(42, "eldenring", "Endorsed"),
         };
@@ -170,7 +171,7 @@ public class NexusUserEndorsementsTests
             new() { NexusModId = 42, Title = "A" },
             new() { NexusModId = 7, Title = "B" },
         };
-        var endorsements = new List<NexusEndorsement>
+        var endorsements = new List<SourceEndorsement>
         {
             new(42, "eldenring", "Abstained"),
             new(7, "eldenring", "Undecided"),
@@ -191,7 +192,7 @@ public class NexusUserEndorsementsTests
             new() { NexusModId = 99, Title = "no entry", Endorsed = null }, // not in the list
             new() { CurseforgeId = 5, Title = "no nexus id", Endorsed = null }, // unresolvable id
         };
-        var endorsements = new List<NexusEndorsement>
+        var endorsements = new List<SourceEndorsement>
         {
             new(42, "eldenring", "Endorsed"),
         };
@@ -210,7 +211,7 @@ public class NexusUserEndorsementsTests
         {
             new() { NexusModId = 42, Title = "A", Endorsed = null },
         };
-        var endorsements = new List<NexusEndorsement>
+        var endorsements = new List<SourceEndorsement>
         {
             // same mod id, but a different game domain — must NOT apply to eldenring metas.
             new(42, "skyrimspecialedition", "Endorsed"),
@@ -228,7 +229,7 @@ public class NexusUserEndorsementsTests
         {
             new() { Url = "https://www.nexusmods.com/eldenring/mods/42", Title = "A", Endorsed = null },
         };
-        var endorsements = new List<NexusEndorsement>
+        var endorsements = new List<SourceEndorsement>
         {
             new(42, "eldenring", "Endorsed"),
         };
