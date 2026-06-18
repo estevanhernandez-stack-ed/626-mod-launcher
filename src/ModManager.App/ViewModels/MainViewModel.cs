@@ -1323,7 +1323,7 @@ public sealed partial class MainViewModel : ObservableObject
             var vtx = 0;
             if (_nexus.IsConnected)
             {
-                try { vtx = (await Scanner.IdentifyVortexNexusAsync(_ctx, _nexus.Client!)).Matched; }
+                try { vtx = (await Scanner.IdentifyVortexNexusAsync(_ctx, NexusSource)).Matched; }
                 catch { /* best-effort; CF result still stands */ }
             }
             await ReloadModsAsync();
@@ -1342,10 +1342,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The loaded Nexus mod source from the shared <see cref="ModSourceRegistry"/> — the plugin's
     /// <see cref="IModSource"/> when the FULL flavor loaded one, null on the STORE flavor / zero-plugins
     /// path. Every user-facing Nexus action (endorse heart, "Refresh Nexus stats", the update poll) routes
-    /// through this instead of Core's <c>NexusClient</c>. When null the surfaces are simply absent — the
-    /// app stays a complete product without them (the zero-plugins invariant).
-    /// <para><b>Out of scope (B2):</b> Core's <c>Scanner</c> scan-time md5-identify + <c>Ue4ssLuaInstaller</c>
-    /// still use <c>_nexus.Client</c> directly — that read-path rewire is deferred.</para></summary>
+    /// through this instead of Core's <c>NexusClient</c>, as does scan-time md5-identify (<c>Scanner</c>'s
+    /// <c>Md5Identify*</c> / <c>IdentifyVortexNexusAsync</c> + <c>Ue4ssLuaInstaller.IdentifyMetadataAsync</c>,
+    /// rewired in B2a). When null the surfaces are absent and identify no-ops — the app stays a complete
+    /// product without them (the zero-plugins invariant).
+    /// <para><b>Out of scope (B2b):</b> the bulk endorse-state read + <c>NexusRefresh</c> still use
+    /// <c>_nexus.Client</c> directly — that rewire is deferred.</para></summary>
     private IModSource? NexusSource => _sources.ById("nexus");
 
     /// <summary>True when the user-facing Nexus surfaces should be shown: a Nexus source is loaded AND the
@@ -1384,7 +1386,7 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, archives)).Matched;
+            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, NexusSource, archives)).Matched;
             StatusText = n > 0
                 ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {archives.Count} Nexus archive(s)."
                 : $"Scanned {archives.Count} archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this game).";
@@ -1661,7 +1663,7 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added.Concat(r.Updated))).Matched; }
                     catch { }
-                    try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, paths)).Matched; }
+                    try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, NexusSource, paths)).Matched; }
                     catch { }
                     try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                     catch { }
@@ -1758,7 +1760,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (luaInstalledSources.Count > 0 && _nexus.IsConnected)
                 foreach (var (src, modName) in luaInstalledSources)
                 {
-                    try { await Ue4ssLuaInstaller.IdentifyMetadataAsync(_ctx, _nexus.Client!, src, modName); }
+                    try { await Ue4ssLuaInstaller.IdentifyMetadataAsync(_ctx, NexusSource, src, modName); }
                     catch { /* best-effort; install already succeeded */ }
                 }
 
@@ -1805,7 +1807,7 @@ public sealed partial class MainViewModel : ObservableObject
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
                 catch { /* best-effort; intake already succeeded */ }
                 // Nexus matches the published-ARCHIVE md5 — hash the dropped zip(s), not the extracted files.
-                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, remaining)).Matched; }
+                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, NexusSource, remaining)).Matched; }
                 catch { /* best-effort; a Nexus miss / outage never fails intake */ }
                 try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                 catch { /* best-effort */ }
