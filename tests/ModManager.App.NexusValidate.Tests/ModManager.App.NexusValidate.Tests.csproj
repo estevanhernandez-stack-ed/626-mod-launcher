@@ -28,6 +28,9 @@
     <Compile Include="..\..\src\ModManager.App\Services\NexusKeyValidator.cs">
       <Link>NexusKeyValidator.cs</Link>
     </Compile>
+    <Compile Include="..\..\src\ModManager.App\Services\AppSettingsService.cs">
+      <Link>AppSettingsService.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

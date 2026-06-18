@@ -9,6 +9,7 @@ using ModManager.App.ViewModels;
 using ModManager.Core;
 using ModManager.Core.Catalog;
 using ModManager.Core.Frameworks;
+using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
 using Windows.Storage.Pickers;
 using Windows.UI;
@@ -113,6 +114,10 @@ public sealed partial class SettingsDialog : ContentDialog
 
         // Seed the auto-check-for-mod-updates toggle from the saved setting (default on).
         AutoCheckModUpdatesCheck.IsChecked = _appSettings.AutoCheckModUpdates;
+
+        // Seed the keep-plugins-updated toggle.
+        KeepPluginsUpdatedCheck.IsChecked = _appSettings.KeepPluginsUpdated;
+        RefreshPluginStatus();
 
         // Seed the Nexus section. Re-validate the stored key first (offline-safe) so the account
         // name + premium tag are current before we render the banner.
@@ -407,6 +412,26 @@ public sealed partial class SettingsDialog : ContentDialog
     /// needed — it mirrors the backdrop dropdown's apply-on-change behavior).</summary>
     private void OnAutoCheckModUpdatesToggled(object sender, RoutedEventArgs e)
         => _appSettings.SetAutoCheckModUpdates(AutoCheckModUpdatesCheck.IsChecked == true);
+
+    /// <summary>Persist the keep-plugins-updated preference immediately on toggle.</summary>
+    private void OnKeepPluginsUpdatedToggled(object sender, RoutedEventArgs e)
+        => _appSettings.SetKeepPluginsUpdated(KeepPluginsUpdatedCheck.IsChecked == true);
+
+    /// <summary>Populate the plugin status line. FULL shows the installed version (or "not
+    /// installed"); STORE shows a static note because plugin delivery is desktop-only.</summary>
+    private void RefreshPluginStatus()
+    {
+#if FULL
+        var recordPath = System.IO.Path.Combine(PluginHost.PluginsDir, "installed-plugins.json");
+        var installed = InstalledPluginsStore.Read(recordPath);
+        if (installed.TryGetValue("nexus", out var version))
+            PluginStatusText.Text = $"Nexus plugin: v{version} installed";
+        else
+            PluginStatusText.Text = "Nexus plugin: not installed";
+#else
+        PluginStatusText.Text = "Plugins are a desktop-only feature.";
+#endif
+    }
 
     private async void OnPickImage(object sender, RoutedEventArgs e)
     {

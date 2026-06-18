@@ -89,6 +89,15 @@
                       Click="OnAutoCheckModUpdatesToggled"
                       ToolTipService.ToolTip="On game load, quietly check Nexus for newer versions of your installed mods (about once a day per game). The manual Refresh Nexus stats action always works." />
 
+            <!-- Keep-plugins-updated toggle. Gates the 24h re-check of the plugin feed (the first
+                 install on Nexus connect always fires regardless). Desktop (FULL) only — the STORE
+                 build shows a static note because plugins are a desktop-only delivery channel. -->
+            <CheckBox x:Name="KeepPluginsUpdatedCheck"
+                      Content="Keep plugins updated"
+                      Click="OnKeepPluginsUpdatedToggled"
+                      ToolTipService.ToolTip="Once a day, quietly fetch the latest signed Nexus plugin from the 626 Mod Launcher feed. The first install always runs on connect; this gates the daily re-check." />
+            <TextBlock x:Name="PluginStatusText" Opacity="0.65" FontSize="12" />
+
             <!-- Divider -->
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
