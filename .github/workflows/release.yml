@@ -83,6 +83,19 @@ jobs:
         # Explicit test project — bare `dotnet test` at the solution root hangs building WinUI.
         run: dotnet test tests/ModManager.Tests/ModManager.Tests.csproj --configuration Release --logger "console;verbosity=minimal"
 
+      - name: Test (Nexus plugin)
+        # The plugin test project refs only the plugin + Abstractions (no WinUI, no Core), so running it
+        # explicitly here is safe — it can't trigger the bare-dotnet WinUI hang the Core step guards
+        # against. Without this, the relocated NexusModSource HTTP coverage runs locally only and a
+        # regression in the plugin's read/write surface would pass CI green.
+        run: dotnet test tests/ModManager.Plugin.Nexus.Tests/ModManager.Plugin.Nexus.Tests.csproj --configuration Release --logger "console;verbosity=minimal"
+
+      - name: Test (Nexus key validate)
+        # The App-side validate path (GET /v1/users/validate.json) is covered by NexusKeyValidator, a pure
+        # WinUI-free helper this project source-links directly — so it refs neither WinUI nor Core and is
+        # likewise safe to run explicitly. Guards Connect Nexus / premium detection on the release gate.
+        run: dotnet test tests/ModManager.App.NexusValidate.Tests/ModManager.App.NexusValidate.Tests.csproj --configuration Release --logger "console;verbosity=minimal"
+
       - name: Fetch prior release (for delta generation)
         # First-ever release: no prior release exists -> non-zero exit -> tolerated.
         # All subsequent releases: this populates dist/release/ with the previous

@@ -1,5 +1,4 @@
 using System.IO;
-using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,9 +27,6 @@ public sealed class NexusService
 
     private readonly HttpClient _http;
     private string? _key;
-
-    /// <summary>The Nexus-ToS application identity sent on every validate request.</summary>
-    private const string ApplicationName = "626-mod-launcher";
 
     /// <summary>The launcher version reported to Nexus via the ToS <c>Application-Version</c> header
     /// (mirrors <see cref="RemoteManifestSource"/>'s manifest-feed identity). Resolved once from the
@@ -88,36 +84,14 @@ public sealed class NexusService
     }
 
     /// <summary>
-    /// Verify a Nexus personal key and read the account identity: <c>GET /v1/users/validate.json</c>
-    /// over the shared <see cref="HttpClient"/>, stamped with the Nexus-ToS identity headers
-    /// (<c>apikey</c> + <c>Application-Name</c> + <c>Application-Version</c>). Returns the account
-    /// name + premium flag, or null on a rejected key (401). The validate response is snake_case
-    /// (<c>name</c> / <c>is_premium</c>); any other non-2xx throws (the caller decides whether that
-    /// is fatal). Inline here so Core carries no Nexus client code — the read/write surface lives in
-    /// the Nexus plugin; this is the one App-side credential check the key store needs.
+    /// Verify a Nexus personal key and read the account identity. Delegates to the pure, WinUI-free
+    /// <see cref="NexusKeyValidator.ValidateAsync"/> over the shared <see cref="HttpClient"/> — kept as a
+    /// separate helper so the validate behavior (ToS headers + the snake_case <c>name</c>/<c>is_premium</c>
+    /// parse + the 401-&gt;null / non-2xx-&gt;throw contract) is unit-testable without referencing the WinUI
+    /// App. Returns the account name + premium flag, or null on a rejected key (401).
     /// </summary>
-    private async Task<(string? Name, bool IsPremium)?> ValidateKeyAsync(string key)
-    {
-        using var msg = new HttpRequestMessage(HttpMethod.Get, "https://api.nexusmods.com/v1/users/validate.json");
-        msg.Headers.TryAddWithoutValidation("Accept", "application/json");
-        msg.Headers.TryAddWithoutValidation("Application-Name", ApplicationName);
-        msg.Headers.TryAddWithoutValidation("Application-Version", AppVersionString);
-        msg.Headers.TryAddWithoutValidation("apikey", key);
-
-        using var res = await _http.SendAsync(msg);
-        if (res.StatusCode == HttpStatusCode.Unauthorized) return null; // bad / expired key
-        if (!res.IsSuccessStatusCode)
-            throw new HttpRequestException($"Nexus request failed ({(int)res.StatusCode})");
-
-        await using var stream = await res.Content.ReadAsStreamAsync();
-        using var doc = await JsonDocument.ParseAsync(stream);
-        var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object) return null;
-
-        var name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
-        var premium = root.TryGetProperty("is_premium", out var p) && p.ValueKind == JsonValueKind.True;
-        return (name, premium);
-    }
+    private Task<(string? Name, bool IsPremium)?> ValidateKeyAsync(string key)
+        => NexusKeyValidator.ValidateAsync(_http, key, AppVersionString);
 
     /// <summary>Clear the stored key — Nexus features go inert; everything else is unaffected.</summary>
     public void Disconnect()
