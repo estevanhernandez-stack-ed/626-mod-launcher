@@ -1563,7 +1563,14 @@ public sealed partial class MainViewModel : ObservableObject
                     var modId = int.Parse(parts.ModRef);
                     var dto = await nexusSource.FetchMetadataAsync(new SourceModRef("nexus", parts.GameKey, modId, ""));
                     if (dto is not null)
-                        hit = SourceMetadataMapper.Apply(new ModMeta { NexusModId = modId }, dto);
+                    {
+                        // Apply maps dto.LatestVersion -> NexusLatestVersion and never writes the installed
+                        // Version (Version is owned by the identify path's file context). A manual match has
+                        // no file context, so seed Version from LatestVersion up front — Apply never touches
+                        // Version, so it survives. Without this, Version=null + NexusLatestVersion=<v> lights
+                        // a false UPDATE chip on a freshly matched mod (UpdateAvailable = latest != installed).
+                        hit = SourceMetadataMapper.Apply(new ModMeta { NexusModId = modId, Version = dto.LatestVersion }, dto);
+                    }
                     break;
 
                 case ModSiteProvider.CurseForge:
