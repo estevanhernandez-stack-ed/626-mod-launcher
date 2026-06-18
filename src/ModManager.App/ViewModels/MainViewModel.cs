@@ -1402,13 +1402,15 @@ public sealed partial class MainViewModel : ObservableObject
     /// preserved (it's the "what you have" side of the compare).
     ///
     /// <para><b>Routes through the loaded Nexus <see cref="IModSource"/> plugin</b> (resolved from the
-    /// shared <see cref="ModSourceRegistry"/>) — not Core's <c>NexusClient</c>. Each identified mod gets one
-    /// per-mod <see cref="IModSource.FetchMetadataAsync"/>; the DTO is folded onto the persisted
-    /// <c>ModMeta</c> via <see cref="SourceMetadataMapper.Apply"/>, which preserves the user's heart
-    /// (the per-mod fetch carries <c>Endorsed: null</c> — the bulk-endorsements sweep, the only owner of
-    /// endorse state, is not part of the <see cref="IModSource"/> contract, so a stats refresh can never
-    /// wipe a filled heart). A small inter-call delay throttles the sweep. When no plugin is loaded
-    /// (STORE flavor / zero-plugins) the source is null and the action is absent.</para></summary>
+    /// shared <see cref="ModSourceRegistry"/>) — not Core's <c>NexusClient</c>. The whole sweep is
+    /// delegated to <see cref="NexusRefresh.RefreshAllAsync"/>, which fetches each identified mod by id
+    /// (selective <c>Overlay</c> — stats + upstream version only, never the manual match's title), then
+    /// runs <em>one</em> bulk <see cref="IModSource.GetUserEndorsementsAsync"/> to sync hearts
+    /// library-wide (so an endorsement made on the website reflects here, not just the ones toggled in
+    /// the launcher). The selective overlay preserves the persisted heart; the bulk sync is the only
+    /// writer and is best-effort. A small inter-call delay throttles the sweep; a 429 stops it and
+    /// reports partial progress (the rate-limit note). When no plugin is loaded (STORE flavor /
+    /// zero-plugins) the source is null and the action is absent.</para></summary>
     public async Task RefreshNexusStatsAsync()
     {
         if (_ctx is null) return;
@@ -1417,7 +1419,8 @@ public sealed partial class MainViewModel : ObservableObject
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
 
-        // key -> meta for the rows we can resolve a Nexus id for. Non-Nexus rows are skipped with no call.
+        // key -> meta for the rows we can resolve a Nexus id for. RefreshAllAsync skips the rest with
+        // no network call; we map results back to keys by re-resolving the (deterministic) id below.
         var byKey = Scanner.LoadMetadata(_ctx);
         var identified = byKey.Where(kv => NexusRefresh.ResolveModId(kv.Value) is not null).ToList();
         if (identified.Count == 0) { StatusText = "No Nexus-identified mods to refresh — backfill metadata first."; return; }
@@ -1425,38 +1428,34 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var writes = new List<(string, ModMeta)>();
-            int refreshed = 0, updatesAvailable = 0;
-            bool first = true;
-            foreach (var (key, meta) in identified)
+            // Small inter-call delay, well under the burst ceiling; RefreshAllAsync applies it between
+            // (not before) calls so a one-item sweep pays nothing. The sweep also runs the one bulk
+            // GetUserEndorsementsAsync -> ApplyEndorsements pass that syncs hearts library-wide.
+            var result = await NexusRefresh.RefreshAllAsync(
+                identified.Select(kv => kv.Value), domain!, source,
+                throttle: () => System.Threading.Tasks.Task.Delay(120));
+
+            if (result.Updated.Count > 0)
             {
-                var modId = NexusRefresh.ResolveModId(meta)!.Value; // non-null: identified filter above
+                // Re-resolve each refreshed meta's id back to its on-disk key (id-resolution is
+                // deterministic and identity fields survive the refresh, so the lookup is exact).
+                var keyById = new Dictionary<int, string>();
+                foreach (var kv in identified)
+                    if (NexusRefresh.ResolveModId(kv.Value) is { } id)
+                        keyById[id] = kv.Key;
 
-                // Throttle between (not before) calls so a one-item sweep pays no delay; well under the
-                // Nexus burst ceiling.
-                if (!first) await System.Threading.Tasks.Task.Delay(120);
-                first = false;
+                var writes = new List<(string, ModMeta)>();
+                foreach (var meta in result.Updated)
+                    if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
+                        writes.Add((key, meta));
 
-                // The installed version is the "what you have" side — version-stamp the ref with it.
-                var modRef = new SourceModRef(SourceId: source.Id, GameDomain: domain!, ModId: modId, Version: meta.Version ?? "");
-                var dto = await source.FetchMetadataAsync(modRef);
-                if (dto is null) continue;
-
-                // Fold live stats onto the persisted meta. Endorsed/Available are null-safe (never clobber
-                // a known value); NexusLatestVersion drives the UPDATE chip after the reload below.
-                SourceMetadataMapper.Apply(meta, dto);
-                writes.Add((key, meta));
-                refreshed++;
-                if (meta.NexusLatestVersion is { } latest && latest != meta.Version) updatesAvailable++;
-            }
-
-            if (writes.Count > 0)
-            {
                 Scanner.WriteManyMeta(_ctx, writes);
                 await ReloadModsAsync();
             }
 
-            StatusText = $"Refreshed {refreshed} mod{(refreshed == 1 ? "" : "s")}, {updatesAvailable} update{(updatesAvailable == 1 ? "" : "s")} available.";
+            StatusText = result.RateLimited
+                ? "Nexus rate limit reached — try again later."
+                : $"Refreshed {result.Refreshed} mod{(result.Refreshed == 1 ? "" : "s")}, {result.UpdatesAvailable} update{(result.UpdatesAvailable == 1 ? "" : "s")} available.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
