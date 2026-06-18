@@ -322,9 +322,11 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string Initial => DisplayName.Length > 0 ? DisplayName[..1].ToUpperInvariant() : "?";
 
     // ---------- endorse affordance (the heart) ----------
-    // Whether Nexus is connected, threaded in by the parent VM at row construction (rows are rebuilt on
-    // every rescan, so this stays fresh without a notify). The heart only makes sense when we have both a
-    // resolved Nexus mod id (the endorse key) and an account to endorse from.
+    // Whether the user-facing Nexus actions are available — a Nexus IModSource plugin is loaded AND the
+    // account is connected — threaded in by the parent VM at row construction (rows are rebuilt on every
+    // rescan, so this stays fresh without a notify). The heart only makes sense when we have a resolved
+    // Nexus mod id (the endorse key), an account to endorse from, AND a source to endorse through (absent
+    // on the STORE flavor / zero-plugins path).
     public bool NexusConnected { get; init; }
 
     /// <summary>The Nexus mod id for this row, resolved by the parent VM from the mod's metadata at row

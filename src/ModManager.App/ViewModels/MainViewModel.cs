@@ -12,7 +12,9 @@ using ModManager.App.Services;
 using ModManager.App.Tools;
 using ModManager.Core;
 using ModManager.Core.Frameworks;
+using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.App.ViewModels;
 
@@ -44,6 +46,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly SteamService _steam;
     private readonly AppSettingsService _appSettings;
     private readonly NexusUpdatePoll _nexusPoll;
+    private readonly ModSourceRegistry _sources;
     // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
     // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
     // which fires on a thread-pool thread — back to the UI thread before touching VM state.
@@ -212,7 +215,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources)
     {
         _svc = svc;
         _me2 = me2;
@@ -224,6 +227,7 @@ public sealed partial class MainViewModel : ObservableObject
         _steam = steam;
         _appSettings = appSettings;
         _nexusPoll = nexusPoll;
+        _sources = sources;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -513,12 +517,14 @@ public sealed partial class MainViewModel : ObservableObject
                     MissingFrameworkUrl = primaryMissing?.GetUrl,
                     MissingFrameworkNote = primaryMissing?.Note ?? "",
                     LoaderHintIsSoft = selfProvidesProxy,
-                    // The endorse heart needs a resolved Nexus mod id (the write key) AND a live
-                    // connection — both captured at row build, fresh every rescan, no per-row notify.
+                    // The endorse heart needs a resolved Nexus mod id (the write key), a live connection,
+                    // AND a loaded Nexus source plugin (the heart routes through IModSource.SetEndorsedAsync,
+                    // so it's absent on the STORE flavor / zero-plugins path). All captured at row build,
+                    // fresh every rescan, no per-row notify.
                     NexusModId = metaByKey.TryGetValue(rep.Name, out var repMeta)
                         ? NexusRefresh.ResolveModId(repMeta)
                         : null,
-                    NexusConnected = _nexus.IsConnected,
+                    NexusConnected = NexusActionsAvailable,
                 });
             }
             OrderAndStampSections(rows);
@@ -638,7 +644,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// may have switched games while the network call was in flight).</summary>
     private async Task AutoCheckNexusUpdatesAsync(GameContext ctx)
     {
-        var changed = await _nexusPoll.MaybePollAsync(ctx, _nexus, _appSettings);
+        var changed = await _nexusPoll.MaybePollAsync(ctx, NexusSource, _nexus, _appSettings);
         if (!changed) return;
 
         void Reload()
@@ -1333,6 +1339,21 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool NexusConnected => _nexus.IsConnected;
 
+    /// <summary>The loaded Nexus mod source from the shared <see cref="ModSourceRegistry"/> — the plugin's
+    /// <see cref="IModSource"/> when the FULL flavor loaded one, null on the STORE flavor / zero-plugins
+    /// path. Every user-facing Nexus action (endorse heart, "Refresh Nexus stats", the update poll) routes
+    /// through this instead of Core's <c>NexusClient</c>. When null the surfaces are simply absent — the
+    /// app stays a complete product without them (the zero-plugins invariant).
+    /// <para><b>Out of scope (B2):</b> Core's <c>Scanner</c> scan-time md5-identify + <c>Ue4ssLuaInstaller</c>
+    /// still use <c>_nexus.Client</c> directly — that read-path rewire is deferred.</para></summary>
+    private IModSource? NexusSource => _sources.ById("nexus");
+
+    /// <summary>True when the user-facing Nexus surfaces should be shown: a Nexus source is loaded AND the
+    /// account is connected. Drives the "Refresh Nexus stats" menu item visibility and the endorse heart.
+    /// On the STORE flavor the registry is empty, so this is false and the surfaces are absent.</summary>
+    public bool NexusActionsAvailable => NexusSource is not null && _nexus.IsConnected;
+    public Visibility NexusActionsVisibility => NexusActionsAvailable ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Status dot for the Nexus toolbar button — accent-green when connected, danger-red
     /// when disconnected. The dot IS the affordance now (no separate ACCOUNT section label), so the
     /// state has to read at a glance. Resource-backed brushes so theme switches propagate via
@@ -1376,19 +1397,25 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Manual "Refresh Nexus stats": poll Nexus <em>by mod id</em> (no archive needed) over
     /// every identified mod in the active game — refreshing endorsements / downloads / availability and
     /// capturing the upstream current version (which drives the UPDATE chip). The installed version is
-    /// preserved (it's the "what you have" side of the compare). Throttled + 429-aware via
-    /// <see cref="NexusRefresh.RefreshAllAsync"/>: a rate limit stops the sweep and reports partial
-    /// progress instead of thrashing. The id-resolution is deterministic, so refreshed metas are mapped
-    /// back to their on-disk keys by re-resolving the id, then persisted in one atomic batch.</summary>
+    /// preserved (it's the "what you have" side of the compare).
+    ///
+    /// <para><b>Routes through the loaded Nexus <see cref="IModSource"/> plugin</b> (resolved from the
+    /// shared <see cref="ModSourceRegistry"/>) — not Core's <c>NexusClient</c>. Each identified mod gets one
+    /// per-mod <see cref="IModSource.FetchMetadataAsync"/>; the DTO is folded onto the persisted
+    /// <c>ModMeta</c> via <see cref="SourceMetadataMapper.Apply"/>, which preserves the user's heart
+    /// (the per-mod fetch carries <c>Endorsed: null</c> — the bulk-endorsements sweep, the only owner of
+    /// endorse state, is not part of the <see cref="IModSource"/> contract, so a stats refresh can never
+    /// wipe a filled heart). A small inter-call delay throttles the sweep. When no plugin is loaded
+    /// (STORE flavor / zero-plugins) the source is null and the action is absent.</para></summary>
     public async Task RefreshNexusStatsAsync()
     {
         if (_ctx is null) return;
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
 
-        // key -> meta for the rows we can resolve a Nexus id for. RefreshAllAsync skips the rest with
-        // no network call; we map results back to keys by re-resolving the (deterministic) id below.
+        // key -> meta for the rows we can resolve a Nexus id for. Non-Nexus rows are skipped with no call.
         var byKey = Scanner.LoadMetadata(_ctx);
         var identified = byKey.Where(kv => NexusRefresh.ResolveModId(kv.Value) is not null).ToList();
         if (identified.Count == 0) { StatusText = "No Nexus-identified mods to refresh — backfill metadata first."; return; }
@@ -1396,33 +1423,38 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            // Small inter-call delay, well under the burst ceiling; RefreshAllAsync applies it between
-            // (not before) calls so a one-item sweep pays nothing.
-            var result = await NexusRefresh.RefreshAllAsync(
-                identified.Select(kv => kv.Value), domain!, _nexus.Client!,
-                throttle: () => System.Threading.Tasks.Task.Delay(120));
-
-            if (result.Updated.Count > 0)
+            var writes = new List<(string, ModMeta)>();
+            int refreshed = 0, updatesAvailable = 0;
+            bool first = true;
+            foreach (var (key, meta) in identified)
             {
-                // Re-resolve each refreshed meta's id back to its on-disk key (id-resolution is
-                // deterministic and identity fields survive the refresh, so the lookup is exact).
-                var keyById = new Dictionary<int, string>();
-                foreach (var kv in identified)
-                    if (NexusRefresh.ResolveModId(kv.Value) is { } id)
-                        keyById[id] = kv.Key;
+                var modId = NexusRefresh.ResolveModId(meta)!.Value; // non-null: identified filter above
 
-                var writes = new List<(string, ModMeta)>();
-                foreach (var meta in result.Updated)
-                    if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
-                        writes.Add((key, meta));
+                // Throttle between (not before) calls so a one-item sweep pays no delay; well under the
+                // Nexus burst ceiling.
+                if (!first) await System.Threading.Tasks.Task.Delay(120);
+                first = false;
 
+                // The installed version is the "what you have" side — version-stamp the ref with it.
+                var modRef = new SourceModRef(SourceId: source.Id, GameDomain: domain!, ModId: modId, Version: meta.Version ?? "");
+                var dto = await source.FetchMetadataAsync(modRef);
+                if (dto is null) continue;
+
+                // Fold live stats onto the persisted meta. Endorsed/Available are null-safe (never clobber
+                // a known value); NexusLatestVersion drives the UPDATE chip after the reload below.
+                SourceMetadataMapper.Apply(meta, dto);
+                writes.Add((key, meta));
+                refreshed++;
+                if (meta.NexusLatestVersion is { } latest && latest != meta.Version) updatesAvailable++;
+            }
+
+            if (writes.Count > 0)
+            {
                 Scanner.WriteManyMeta(_ctx, writes);
                 await ReloadModsAsync();
             }
 
-            StatusText = result.RateLimited
-                ? "Nexus rate limit reached — try again later."
-                : $"Refreshed {result.Refreshed} mod{(result.Refreshed == 1 ? "" : "s")}, {result.UpdatesAvailable} update{(result.UpdatesAvailable == 1 ? "" : "s")} available.";
+            StatusText = $"Refreshed {refreshed} mod{(refreshed == 1 ? "" : "s")}, {updatesAvailable} update{(updatesAvailable == 1 ? "" : "s")} available.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1433,11 +1465,19 @@ public sealed partial class MainViewModel : ObservableObject
     /// direction from the row's current <see cref="Mod.Endorsed"/> (endorsed → abstain, else endorse),
     /// version-stamps the POST with the installed version (falling back to the upstream latest), and
     /// only flips the heart + persists when Nexus accepts the write — a refusal (not downloaded / too
-    /// soon / any other precondition) shows the API's friendly reason in the status line and leaves the
-    /// row honest (no optimistic flip). A 429 degrades to a rate-limit line; nothing throws to the UI.</summary>
+    /// soon / any other precondition) surfaces the friendly reason in the status line and leaves the
+    /// row honest (no optimistic flip). A 429 / network failure degrades to a refusal line; nothing
+    /// throws to the UI.
+    ///
+    /// <para><b>Routes through the loaded Nexus <see cref="IModSource"/> plugin</b> (resolved from the
+    /// shared <see cref="ModSourceRegistry"/>) via <see cref="IModSource.SetEndorsedAsync"/> — not Core's
+    /// <c>NexusClient</c>. The plugin degrades every non-2xx (preconditions, 429, offline) to
+    /// <c>Refused = true</c> with a message, so this path never sees a throw from the write. When no
+    /// plugin is loaded the heart is absent (the row gates on <c>NexusActionsAvailable</c>).</para></summary>
     public async Task ToggleEndorseAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -1453,36 +1493,34 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var action = row.Mod.Endorsed == true ? EndorseAction.Abstain : EndorseAction.Endorse;
+        var endorse = row.Mod.Endorsed != true; // endorsed -> abstain, else endorse
         var version = row.Mod.Version ?? row.Mod.NexusLatestVersion ?? "";
         var name = row.DisplayName;
+        var modRef = new SourceModRef(SourceId: source.Id, GameDomain: domain!, ModId: modId, Version: version);
 
         IsBusy = true;
         try
         {
-            var outcome = await _nexus.Client!.EndorseAsync(domain!, modId, version, action);
-            if (outcome.Refused)
+            var result = await source.SetEndorsedAsync(modRef, endorse);
+            if (!result.Ok)
             {
-                // The row stays honest — no flip on a precondition refusal; the API tells the user why.
-                StatusText = outcome.Message ?? "Nexus declined the endorsement.";
+                // The row stays honest — no flip on a refusal; surface the friendly reason.
+                StatusText = result.Message ?? "Nexus declined the endorsement.";
                 return;
             }
 
             // Persist Endorsed onto the existing metadata entry (mutate-in-place) so the rest of the
             // mod's enrichment — title, credit, NexusModId — survives the write. Endorsed is persisted
-            // user intent, so it must outlive a rescan.
-            row.Mod.Endorsed = action == EndorseAction.Endorse;
+            // user intent, so it must outlive a rescan. Trust the source's reported NowEndorsed when set,
+            // else the direction we asked for.
+            row.Mod.Endorsed = result.NowEndorsed ?? endorse;
             meta.Endorsed = row.Mod.Endorsed;
             Scanner.WriteOneMeta(_ctx, row.Mod.Name, meta);
             row.NotifyEndorseChanged();
 
-            StatusText = action == EndorseAction.Endorse
+            StatusText = (result.NowEndorsed ?? endorse)
                 ? $"Endorsed \"{name}\" on Nexus."
                 : $"Retracted endorsement for \"{name}\".";
-        }
-        catch (NexusRateLimitException)
-        {
-            StatusText = "Nexus rate limit reached — try again later.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1553,6 +1591,8 @@ public sealed partial class MainViewModel : ObservableObject
                 : $"Connected to Nexus as {NexusAccountLine}.";
             OnPropertyChanged(nameof(NexusConnected));
             OnPropertyChanged(nameof(NexusStatusBrush));
+            OnPropertyChanged(nameof(NexusActionsAvailable));
+            OnPropertyChanged(nameof(NexusActionsVisibility));
             return user is not null;
         }
         catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
@@ -1564,6 +1604,8 @@ public sealed partial class MainViewModel : ObservableObject
         StatusText = "Disconnected from Nexus.";
         OnPropertyChanged(nameof(NexusConnected));
         OnPropertyChanged(nameof(NexusStatusBrush));
+        OnPropertyChanged(nameof(NexusActionsAvailable));
+        OnPropertyChanged(nameof(NexusActionsVisibility));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
