@@ -49,15 +49,17 @@ camelCase on disk (the convention rule), signed with a sibling `plugins.json.sig
       "displayName": "Nexus Mods",
       "version": "1.0.0",
       "minBinaryVersion": "0.7.0",
-      "downloadUrl": "https://github.com/<org>/626-mod-plugins/releases/download/nexus-v1.0.0/ModManager.Plugin.Nexus.dll",
-      "sigUrl": "https://github.com/<org>/626-mod-plugins/releases/download/nexus-v1.0.0/ModManager.Plugin.Nexus.dll.sig",
+      "downloadUrl": "https://github.com/estevanhernandez-stack-ed/626-mod-plugins/releases/download/nexus-v1.0.0/ModManager.Plugin.Nexus.dll",
+      "sigUrl": "https://github.com/estevanhernandez-stack-ed/626-mod-plugins/releases/download/nexus-v1.0.0/ModManager.Plugin.Nexus.dll.sig",
       "sha256": "<hex of the dll>"
     }
   ]
 }
 ```
 
-The consumer rejects an index whose `schemaVersion` exceeds what it knows (forward-compat: a newer feed never breaks an older binary), and skips any plugin whose `minBinaryVersion` exceeds this binary's version.
+The index + its `.sig` are published as assets on the repo's **latest** release, so the consumer has one stable feed URL: `https://github.com/estevanhernandez-stack-ed/626-mod-plugins/releases/latest/download/plugins.json` (and `…/plugins.json.sig`). The consumer rejects an index whose `schemaVersion` exceeds what it knows (forward-compat: a newer feed never breaks an older binary), and skips any plugin whose `minBinaryVersion` exceeds this binary's version.
+
+> **Producer prerequisite — done (2026-06-18):** the public `estevanhernandez-stack-ed/626-mod-plugins` repo exists and holds the `PLUGIN_SIGNING_KEY` Actions secret (the minted PKCS#8 PEM, multi-line). The repo is otherwise empty until 5c-producer lands the source + CI; the secret sits unused (verified on the first CI sign via a sign→verify round-trip).
 
 ## 5c-producer — the `626-mod-plugins` repo
 
