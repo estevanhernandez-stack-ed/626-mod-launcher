@@ -38,25 +38,29 @@ public static class PluginHost
     public static void LoadAll(ModSourceRegistry registry, Func<string, string?> getCredential, HttpClient httpClient)
     {
         if (!Directory.Exists(PluginsDir)) return;
-
         foreach (var dll in Directory.EnumerateFiles(PluginsDir, "*.dll"))
+            LoadOne(dll, registry, getCredential, httpClient);
+    }
+
+    /// <summary>Verify + load a single plugin dll (the just-downloaded hot-load path and the per-file
+    /// step of <see cref="LoadAll"/>). Returns true iff a plugin assembly was loaded and registered.
+    /// Fail-closed + never throws: a missing/bad signature or a load error logs and returns false.</summary>
+    public static bool LoadOne(string dllPath, ModSourceRegistry registry, Func<string, string?> getCredential, HttpClient httpClient)
+    {
+        try
         {
-            try
-            {
-                var sig = dll + ".sig";
-                if (!File.Exists(sig)) continue; // no detached signature -> never load
-
-                var assemblyBytes = File.ReadAllBytes(dll);
-                var signatureBytes = File.ReadAllBytes(sig);
-                if (!PluginSignature.Verify(assemblyBytes, signatureBytes)) continue; // fail closed
-
-                LoadVerified(assemblyBytes, registry, getCredential, httpClient);
-            }
-            catch (Exception ex)
-            {
-                // One bad plugin never crashes startup — log and move on.
-                AppDiagnostics.Log("plugin-host", ex);
-            }
+            var sig = dllPath + ".sig";
+            if (!File.Exists(sig)) return false;
+            var assemblyBytes = File.ReadAllBytes(dllPath);
+            var signatureBytes = File.ReadAllBytes(sig);
+            if (!PluginSignature.Verify(assemblyBytes, signatureBytes)) return false;
+            LoadVerified(assemblyBytes, registry, getCredential, httpClient);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.Log("plugin-host", ex);
+            return false;
         }
     }
 
