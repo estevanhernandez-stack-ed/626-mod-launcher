@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ModManager.Core.Plugins;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Core;
 
@@ -1252,8 +1254,9 @@ public static class Scanner
     /// mod it is by md5_search, merge that metadata (curated/CF wins, Nexus fills the gaps). The
     /// md5 twin of <see cref="FingerprintIdentifyAsync"/>. No fuzzy matching. Best-effort per file.
     /// </summary>
-    public static async Task<IdentifyResult> Md5IdentifyAsync(GameContext c, INexusClient nexus, IEnumerable<string> fileNames)
+    public static async Task<IdentifyResult> Md5IdentifyAsync(GameContext c, IModSource? source, IEnumerable<string> fileNames)
     {
+        if (source is null) return new IdentifyResult(0); // no mod-source plugin loaded (STORE / zero-plugins)
         var domain = NexusDomains.Effective(c.Game);
         if (string.IsNullOrWhiteSpace(domain)) return new IdentifyResult(0); // no Nexus key for this game
 
@@ -1269,10 +1272,10 @@ public static class Scanner
             {
                 var md5 = Md5Hash.OfFile(Path.Combine(primary.Abs, name));
                 var key = Variant.ParseVariant(ModKey(name, c)).Base;
-                var match = await nexus.GetByMd5Async(domain, md5);
-                if (match?.Meta is not null)
+                var hit = await source.IdentifyByHashAsync(domain, md5);
+                if (hit is not null)
                 {
-                    meta[key] = MergeMeta(match.Meta, meta.GetValueOrDefault(key));
+                    meta[key] = MergeMeta(SourceMetadataMapper.FromIdentify(hit), meta.GetValueOrDefault(key));
                     matchedKeys.Add(key);
                 }
             }
@@ -1288,8 +1291,9 @@ public static class Scanner
     /// extracted .pak's md5 never matches). For each dropped .zip: hash it, ask Nexus, and apply the
     /// match to every mod key the zip contributes. Best-effort; needs a Nexus domain on the game.
     /// </summary>
-    public static async Task<IdentifyResult> Md5IdentifyArchivesAsync(GameContext c, INexusClient nexus, IEnumerable<string> droppedPaths)
+    public static async Task<IdentifyResult> Md5IdentifyArchivesAsync(GameContext c, IModSource? source, IEnumerable<string> droppedPaths)
     {
+        if (source is null) return new IdentifyResult(0); // no mod-source plugin loaded (STORE / zero-plugins)
         var domain = NexusDomains.Effective(c.Game);
         if (string.IsNullOrWhiteSpace(domain)) return new IdentifyResult(0);
 
@@ -1301,8 +1305,9 @@ public static class Scanner
             try
             {
                 if (!File.Exists(path)) continue;
-                var match = await nexus.GetByMd5Async(domain, Md5Hash.OfFile(path)); // hash the ARCHIVE
-                if (match?.Meta is null) continue;
+                var hit = await source.IdentifyByHashAsync(domain, Md5Hash.OfFile(path)); // hash the ARCHIVE
+                if (hit is null) continue;
+                var nexusMeta = SourceMetadataMapper.FromIdentify(hit);
 
                 // Get the mod keys this archive INSTALLS. Extension-based engines (pak/dll/jar) name mods
                 // after their files, so ZipModKeys (filter by c.Exts + strip variants) is right. Catalog-based
@@ -1328,7 +1333,7 @@ public static class Scanner
                     // existing CurseForge match; CF only fills the fields Nexus lacks (downloads,
                     // source-code link). This is what makes backfill override a CF-won collision.
                     // Manual matches (ModMeta.IsManual) still lock the row — MergeMeta short-circuits.
-                    meta[key] = MergeMeta(meta.GetValueOrDefault(key) ?? new ModMeta(), match.Meta);
+                    meta[key] = MergeMeta(meta.GetValueOrDefault(key) ?? new ModMeta(), nexusMeta);
                     matchedKeys.Add(key);
                 }
             }
@@ -1343,8 +1348,9 @@ public static class Scanner
     /// deployment manifest, fetching metadata from Nexus by id (no archive needed). Merges Nexus as
     /// authoritative provenance (same as the archive-md5 path); curated/CF fills what Nexus lacks.
     /// </summary>
-    public static async Task<IdentifyResult> IdentifyVortexNexusAsync(GameContext c, INexusClient client)
+    public static async Task<IdentifyResult> IdentifyVortexNexusAsync(GameContext c, IModSource? source)
     {
+        if (source is null) return new IdentifyResult(0); // no mod-source plugin loaded (STORE / zero-plugins)
         var domain = NexusDomains.Effective(c.Game);
         if (string.IsNullOrEmpty(domain)) return new IdentifyResult(0);
 
@@ -1355,9 +1361,10 @@ public static class Scanner
             foreach (var r in VortexManifest.Read(loc.Abs))
             {
                 if (r.NexusModId is not int id) continue;
-                ModMeta? hit;
-                try { hit = await client.GetModAsync(domain!, id); } catch { continue; }
-                if (hit is null) continue;
+                SourceModMetadata? dto;
+                try { dto = await source.FetchMetadataAsync(new SourceModRef("nexus", domain!, id, "")); } catch { continue; }
+                if (dto is null) continue;
+                var hit = SourceMetadataMapper.Apply(new ModMeta { NexusModId = id }, dto);
                 var key = Variant.ParseVariant(r.Folder).Base;
                 meta[key] = MergeMeta(meta.GetValueOrDefault(key) ?? new ModMeta(), hit); // Nexus wins, existing fills
                 matched++;
