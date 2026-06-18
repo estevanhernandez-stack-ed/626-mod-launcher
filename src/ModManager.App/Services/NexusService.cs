@@ -1,4 +1,6 @@
 using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +9,7 @@ using ModManager.Core;
 namespace ModManager.App.Services;
 
 /// <summary>
-/// Holds the user's Nexus connection: their own personal API key + the resolved <see cref="NexusClient"/>.
+/// Holds the user's Nexus connection: their own personal API key + the connection state.
 /// The key is stored per-user at %APPDATA%\ModManagerBuilder\nexus.json (sibling to games.json) — it is
 /// the USER's key, obtained at runtime, and is NEVER baked into the binary (operating law #2). At rest it
 /// is **DPAPI-encrypted** (<see cref="DataProtectionScope.CurrentUser"/>), so the ciphertext is bound to
@@ -27,15 +29,14 @@ public sealed class NexusService
     private readonly HttpClient _http;
     private string? _key;
 
+    /// <summary>The Nexus-ToS application identity sent on every validate request.</summary>
+    private const string ApplicationName = "626-mod-launcher";
+
     /// <summary>The launcher version reported to Nexus via the ToS <c>Application-Version</c> header
     /// (mirrors <see cref="RemoteManifestSource"/>'s manifest-feed identity). Resolved once from the
-    /// entry-assembly version so we don't ship the <see cref="NexusRequests.DefaultAppVersion"/> placeholder.</summary>
+    /// entry-assembly version, falling back to a fixed placeholder when the version is unavailable.</summary>
     private static readonly string AppVersionString =
-        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? NexusRequests.DefaultAppVersion;
-
-    /// <summary>Build options for a Nexus client bound to <paramref name="key"/>, stamped with the real
-    /// app version so every request carries the correct ToS identity header.</summary>
-    private static NexusOptions MakeOptions(string? key) => new() { ApiKey = key, AppVersion = AppVersionString };
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
 
     public NexusService(HttpClient http)
     {
@@ -46,9 +47,6 @@ public sealed class NexusService
     public bool IsConnected => !string.IsNullOrEmpty(_key);
     public string? ConnectedUser { get; private set; }
     public bool ConnectedPremium { get; private set; }
-
-    /// <summary>A client bound to the stored key, or null when not connected.</summary>
-    public INexusClient? Client => string.IsNullOrEmpty(_key) ? null : new NexusClient(_http, MakeOptions(_key));
 
     /// <summary>The host-owned credential lookup the <c>PluginHost</c> hands a plugin via
     /// <c>IPluginHostServices.GetCredential</c>. Returns the on-machine Nexus key (decrypted in memory,
@@ -63,13 +61,13 @@ public sealed class NexusService
     {
         apiKey = (apiKey ?? "").Trim();
         if (apiKey.Length == 0) return null;
-        var user = await new NexusClient(_http, MakeOptions(apiKey)).ValidateAsync(); // null on bad key
+        var user = await ValidateKeyAsync(apiKey); // null on bad key
         if (user is null) return null;
         _key = apiKey;
-        ConnectedUser = user.Name;
-        ConnectedPremium = user.IsPremium;
+        ConnectedUser = user.Value.Name;
+        ConnectedPremium = user.Value.IsPremium;
         Save();
-        return user.Name;
+        return user.Value.Name;
     }
 
     /// <summary>Re-validate the stored key to refresh the account name + premium flag (e.g. after an
@@ -80,13 +78,45 @@ public sealed class NexusService
         if (string.IsNullOrEmpty(_key)) return;
         try
         {
-            var user = await new NexusClient(_http, MakeOptions(_key)).ValidateAsync();
+            var user = await ValidateKeyAsync(_key);
             if (user is null) return; // key now rejected — leave it to the connect flow to handle
-            ConnectedUser = user.Name;
-            ConnectedPremium = user.IsPremium;
+            ConnectedUser = user.Value.Name;
+            ConnectedPremium = user.Value.IsPremium;
             Save();
         }
         catch { /* offline / transient — keep the cached name + premium */ }
+    }
+
+    /// <summary>
+    /// Verify a Nexus personal key and read the account identity: <c>GET /v1/users/validate.json</c>
+    /// over the shared <see cref="HttpClient"/>, stamped with the Nexus-ToS identity headers
+    /// (<c>apikey</c> + <c>Application-Name</c> + <c>Application-Version</c>). Returns the account
+    /// name + premium flag, or null on a rejected key (401). The validate response is snake_case
+    /// (<c>name</c> / <c>is_premium</c>); any other non-2xx throws (the caller decides whether that
+    /// is fatal). Inline here so Core carries no Nexus client code — the read/write surface lives in
+    /// the Nexus plugin; this is the one App-side credential check the key store needs.
+    /// </summary>
+    private async Task<(string? Name, bool IsPremium)?> ValidateKeyAsync(string key)
+    {
+        using var msg = new HttpRequestMessage(HttpMethod.Get, "https://api.nexusmods.com/v1/users/validate.json");
+        msg.Headers.TryAddWithoutValidation("Accept", "application/json");
+        msg.Headers.TryAddWithoutValidation("Application-Name", ApplicationName);
+        msg.Headers.TryAddWithoutValidation("Application-Version", AppVersionString);
+        msg.Headers.TryAddWithoutValidation("apikey", key);
+
+        using var res = await _http.SendAsync(msg);
+        if (res.StatusCode == HttpStatusCode.Unauthorized) return null; // bad / expired key
+        if (!res.IsSuccessStatusCode)
+            throw new HttpRequestException($"Nexus request failed ({(int)res.StatusCode})");
+
+        await using var stream = await res.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return null;
+
+        var name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+        var premium = root.TryGetProperty("is_premium", out var p) && p.ValueKind == JsonValueKind.True;
+        return (name, premium);
     }
 
     /// <summary>Clear the stored key — Nexus features go inert; everything else is unaffected.</summary>
