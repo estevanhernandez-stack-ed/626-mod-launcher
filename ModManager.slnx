@@ -8,5 +8,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ModManager.Tests/ModManager.Tests.csproj" />
+    <Project Path="tests/ModManager.Plugin.Nexus.Tests/ModManager.Plugin.Nexus.Tests.csproj" />
   </Folder>
 </Solution>
