@@ -57,6 +57,19 @@ public class NexusValidateTests
     }
 
     [Fact]
+    public async Task MapValidateResponse_coerces_an_empty_name_to_null()
+    {
+        // Mirrors the deleted NexusRequests.Str/Z() coercion: an empty name surfaces as "not named"
+        // (ConnectedUser == null), never as a blank string. Still connects (the tuple is non-null).
+        var h = new StubHandler(HttpStatusCode.OK, """{ "name": "", "is_premium": false }""");
+
+        var user = await Validate(h);
+
+        Assert.NotNull(user);
+        Assert.Null(user!.Value.Name);
+    }
+
+    [Fact]
     public async Task MapValidateResponse_returns_null_on_a_non_object_body()
     {
         // A JSON array (or any non-object) is not a valid user — map to null, not a throw.

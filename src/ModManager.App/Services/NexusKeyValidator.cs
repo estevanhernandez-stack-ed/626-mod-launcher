@@ -47,7 +47,10 @@ internal static class NexusKeyValidator
         var root = doc.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return null;
 
-        var name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+        // Empty name -> null, matching the deleted NexusRequests.Str/Z() coercion so ConnectedUser stays
+        // strictly equivalent (an empty Nexus name surfaces as "not named", never as a blank string).
+        var name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
+            && n.GetString() is { Length: > 0 } s ? s : null;
         var premium = root.TryGetProperty("is_premium", out var p) && p.ValueKind == JsonValueKind.True;
         return (name, premium);
     }
