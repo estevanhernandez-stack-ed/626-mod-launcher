@@ -27,6 +27,10 @@ public interface IModSource
     Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef);
     Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion);
     Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed);
+    /// <summary>Bulk current-user endorse state across all games (one call). Read-only sync.</summary>
+    Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync();
+    /// <summary>Recently-updated mods for a game in a fixed window ("1d"/"1w"/"1m").</summary>
+    Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period);
 }
 
 public sealed record SourceModRef(string SourceId, string GameDomain, int ModId, string Version);
@@ -44,3 +48,16 @@ public sealed record SourceModMetadata(
 public sealed record SourceIdentifyResult(SourceModRef Ref, SourceModMetadata Metadata);
 
 public sealed record EndorseResult(bool Ok, bool Refused, string? Message, bool? NowEndorsed);
+
+/// <summary>One row of the user's bulk endorse state (mirrors Nexus /v1/user/endorsements.json).</summary>
+public sealed record SourceEndorsement(int ModId, string DomainName, string Status);
+
+/// <summary>One recently-updated mod in a game window (mirrors Nexus updated.json): unix-seconds file-update time.</summary>
+public sealed record SourceUpdateEntry(int ModId, long LatestFileUpdate);
+
+/// <summary>Thrown by a source when the service rate-limits (HTTP 429). Lets a bulk sweep stop and
+/// report partial progress without the App referencing any provider-specific exception.</summary>
+public sealed class SourceRateLimitException : Exception
+{
+    public SourceRateLimitException(string? message = null) : base(message ?? "Mod source rate limit reached.") { }
+}

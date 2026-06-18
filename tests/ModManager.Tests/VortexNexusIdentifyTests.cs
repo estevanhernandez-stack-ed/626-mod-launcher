@@ -17,6 +17,8 @@ public class VortexNexusIdentifyTests
         public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef) => _byRef(modRef);
         public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
         public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
 
     private static (string modsDir, GameContext c) Fixture(string? domain)

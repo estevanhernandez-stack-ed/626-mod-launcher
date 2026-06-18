@@ -26,6 +26,12 @@ public class AbstractionsContractTests
             => Task.FromResult(r.Version != installedVersion);
         public Task<EndorseResult> SetEndorsedAsync(SourceModRef r, bool endorsed)
             => Task.FromResult(new EndorseResult(Ok: true, Refused: false, Message: null, NowEndorsed: endorsed));
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync()
+            => Task.FromResult<IReadOnlyList<SourceEndorsement>>(
+                new[] { new SourceEndorsement(42, "skyrimspecialedition", "Endorsed") });
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period)
+            => Task.FromResult<IReadOnlyList<SourceUpdateEntry>>(
+                new[] { new SourceUpdateEntry(42, 1700000000) });
     }
 
     [Fact]

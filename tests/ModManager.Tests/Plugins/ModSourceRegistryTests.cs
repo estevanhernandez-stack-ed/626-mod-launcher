@@ -13,6 +13,10 @@ public class ModSourceRegistryTests
         public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef r) => Task.FromResult<SourceModMetadata?>(null);
         public Task<bool> IsUpdateAvailableAsync(SourceModRef r, string v) => Task.FromResult(false);
         public Task<EndorseResult> SetEndorsedAsync(SourceModRef r, bool e) => Task.FromResult(new EndorseResult(true, false, null, e));
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync()
+            => Task.FromResult<IReadOnlyList<SourceEndorsement>>(System.Array.Empty<SourceEndorsement>());
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period)
+            => Task.FromResult<IReadOnlyList<SourceUpdateEntry>>(System.Array.Empty<SourceUpdateEntry>());
     }
 
     [Fact]
