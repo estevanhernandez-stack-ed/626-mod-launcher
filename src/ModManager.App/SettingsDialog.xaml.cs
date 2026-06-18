@@ -389,6 +389,9 @@ public sealed partial class SettingsDialog : ContentDialog
             StatusText.Text = ok ? $"Connected as {_vm.NexusAccountLine}." : "Nexus key rejected — check it on your account's API access page.";
             if (ok) NexusKeyBox.Password = "";
             RefreshNexusUi();
+#if FULL
+            if (ok) _ = App.AppHost.Services.GetRequiredService<PluginFeedSource>().MaybeFetchOnConnectAsync(); // off-Store: pull/refresh the Nexus plugin
+#endif
         }
         finally { NexusConnectButton.IsEnabled = true; }
     }
