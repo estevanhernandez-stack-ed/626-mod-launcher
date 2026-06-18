@@ -218,6 +218,81 @@ public sealed class NexusModSource : IModSource
     }
 
     /// <summary>
+    /// Bulk current-user endorse state across all games: <c>GET /v1/user/endorsements.json</c>. The body
+    /// is an array of <c>{ mod_id, domain_name, status }</c>; one cheap call returns the whole library's
+    /// hearts (mirrors Core's <c>NexusRequests.MapUserEndorsements</c>). Entries missing
+    /// <c>mod_id</c>/<c>domain_name</c>/<c>status</c> are skipped; a non-array body yields an empty list.
+    /// HTTP 429 throws <see cref="SourceRateLimitException"/> so a bulk sweep can stop and report partial
+    /// progress; any other non-2xx yields an empty list (best-effort sync — a failed read never throws).
+    /// </summary>
+    public async Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync()
+    {
+        var url = $"{Base}/v1/user/endorsements.json";
+        using var res = await SendAsync(HttpMethod.Get, url);
+        ThrowIfRateLimited(res);
+        if (!res.IsSuccessStatusCode) return Array.Empty<SourceEndorsement>();
+
+        using var doc = await ParseAsync(res);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Array) return Array.Empty<SourceEndorsement>();
+
+        var list = new List<SourceEndorsement>();
+        foreach (var el in root.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            var modId = Int(el, "mod_id");
+            var domain = Str(el, "domain_name");
+            var status = Str(el, "status");
+            if (!modId.HasValue || domain is null || status is null) continue;
+            list.Add(new SourceEndorsement(modId.Value, domain, status));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Recently-updated mods for a game in a fixed window:
+    /// <c>GET /v1/games/{domain}/mods/updated.json?period={period}</c> where <paramref name="period"/>
+    /// is one of Nexus's fixed windows ("1d"/"1w"/"1m"). The body is an array of
+    /// <c>{ mod_id, latest_file_update, latest_mod_activity }</c> (unix seconds); maps
+    /// <c>mod_id</c> + <c>latest_file_update</c> (mirrors Core's <c>NexusRequests.MapUpdatedResponse</c>).
+    /// Entries missing <c>mod_id</c> are skipped; a non-array body yields an empty list. HTTP 429 throws
+    /// <see cref="SourceRateLimitException"/> so the windowed poll can leave its stamp unwritten; any
+    /// other non-2xx yields an empty list.
+    /// </summary>
+    public async Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period)
+    {
+        var url = $"{Base}/v1/games/{gameDomain}/mods/updated.json?period={period}";
+        using var res = await SendAsync(HttpMethod.Get, url);
+        ThrowIfRateLimited(res);
+        if (!res.IsSuccessStatusCode) return Array.Empty<SourceUpdateEntry>();
+
+        using var doc = await ParseAsync(res);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Array) return Array.Empty<SourceUpdateEntry>();
+
+        var list = new List<SourceUpdateEntry>();
+        foreach (var el in root.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            var modId = Int(el, "mod_id");
+            if (!modId.HasValue) continue;
+            list.Add(new SourceUpdateEntry(modId.Value, Long(el, "latest_file_update") ?? 0L));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// The rate-limit signal for the bulk read path: an HTTP 429 throws
+    /// <see cref="SourceRateLimitException"/> so a sweep stops and reports partial progress (the write
+    /// path degrades to a refusal instead — see <see cref="SetEndorsedAsync"/>).
+    /// </summary>
+    private static void ThrowIfRateLimited(HttpResponseMessage res)
+    {
+        if ((int)res.StatusCode == TooManyRequests)
+            throw new SourceRateLimitException();
+    }
+
+    /// <summary>
     /// Map a Nexus refusal code/message to user-facing text (mirrors Core's <c>NexusEndorse</c>). The
     /// two known precondition codes get friendly copy; any other value passes through verbatim so the
     /// API's own human wording surfaces.
