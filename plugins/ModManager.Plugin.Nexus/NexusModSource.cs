@@ -34,6 +34,13 @@ public sealed class NexusModSource : IModSource
     private readonly Func<string?> _getApiKey;
     private readonly string _appVersion;
 
+    /// <summary>Per-domain category dictionary (category_id -> name), fetched once per game from the
+    /// game-info endpoint and cached for the session. Restores the category-label enrichment Core's
+    /// <c>NexusClient</c> used to provide (the lean B1 re-implementation had dropped it).</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _categoryCache = new();
+
+    private static readonly IReadOnlyDictionary<int, string> EmptyCategories = new Dictionary<int, string>();
+
     /// <param name="http">The shared host <see cref="HttpClient"/>.</param>
     /// <param name="getApiKey">Per-call key lookup against the host-owned on-machine store. Invoked on
     /// every request; the result is attached to that request only and never retained.</param>
@@ -91,7 +98,8 @@ public sealed class NexusModSource : IModSource
             }
 
             var modRef = new SourceModRef(SourceId: Id, GameDomain: gameDomain, ModId: modId.Value, Version: version ?? "");
-            var metadata = MapMod(gameDomain, mod, fileId, latestVersion: Str(mod, "version"));
+            var categories = await GetCategoriesAsync(gameDomain);
+            var metadata = MapMod(gameDomain, mod, fileId, latestVersion: Str(mod, "version"), categories);
             return new SourceIdentifyResult(modRef, metadata);
         }
         return null;
@@ -119,14 +127,16 @@ public sealed class NexusModSource : IModSource
 
         // Full identity/credit metadata off the per-mod object. No file_details here, so NexusFileId
         // stays null; Endorsed stays null (the heart-wipe guard — see below).
-        return MapMod(gameDomain: modRef.GameDomain, mod, fileId: null, latestVersion: Str(mod, "version"));
+        var categories = await GetCategoriesAsync(modRef.GameDomain);
+        return MapMod(gameDomain: modRef.GameDomain, mod, fileId: null, latestVersion: Str(mod, "version"), categories);
     }
 
     /// <summary>
     /// Map a Nexus mod JSON object to the grown <see cref="SourceModMetadata"/> — the identity/credit
     /// fields md5-identify and per-mod fetch both produce. Mirrors Core's <c>NexusRequests.MapMod</c>
-    /// (same Nexus field names, same constructed mod URL); the plugin has no category dictionary so
-    /// <c>Category</c> stays null. <paramref name="latestVersion"/> is the upstream version reported by
+    /// (same Nexus field names, same constructed mod URL). <c>Category</c> is resolved from the per-domain
+    /// dictionary the caller passes in (<see cref="GetCategoriesAsync"/>) — an unknown id or an empty dict
+    /// leaves it null. <paramref name="latestVersion"/> is the upstream version reported by
     /// the mod object (the installed-file version, when known, is carried on the ref, not here).
     ///
     /// <para><b>Endorsed is ALWAYS null.</b> Neither md5_search nor the per-mod endpoint carries
@@ -135,9 +145,13 @@ public sealed class NexusModSource : IModSource
     /// heart, so this returns <c>Endorsed: null</c> and the mapper preserves the persisted value. This
     /// is the heart-wipe guard the contract is built around.</para>
     /// </summary>
-    private static SourceModMetadata MapMod(string gameDomain, JsonElement mod, int? fileId, string? latestVersion)
+    private static SourceModMetadata MapMod(string gameDomain, JsonElement mod, int? fileId, string? latestVersion,
+        IReadOnlyDictionary<int, string> categories)
     {
         var modId = Int(mod, "mod_id");
+        var categoryId = Int(mod, "category_id");
+        string? category = null;
+        if (categoryId.HasValue) categories.TryGetValue(categoryId.Value, out category);
         return new SourceModMetadata(
             Endorsements: Int(mod, "endorsement_count"),
             Downloads: Long(mod, "mod_downloads"),
@@ -150,9 +164,61 @@ public sealed class NexusModSource : IModSource
             AuthorUrl: Str(mod, "uploaded_users_profile_url"),
             ImageUrl: Str(mod, "picture_url"),
             ModUrl: modId.HasValue ? $"https://www.nexusmods.com/{gameDomain}/mods/{modId.Value}" : null,
-            Category: null, // plugin has no category dictionary — Category resolution stays a Core concern
+            Category: category, // resolved category_id -> name via the per-domain dict (null when unknown or unavailable)
             ContainsAdultContent: BoolN(mod, "contains_adult_content"),
             NexusFileId: fileId);
+    }
+
+    /// <summary>
+    /// The per-domain category dictionary (category_id -> name), fetched once per game from
+    /// <c>GET /v1/games/{domain}.json</c> and cached for the session. Best-effort: a non-2xx, malformed,
+    /// or offline game-info fetch caches + returns an empty dict so a Nexus identify simply leaves
+    /// <c>Category</c> null — it never throws and never re-fetches a failed domain (one game-info call per
+    /// domain per session bounds the cost). Restores the category-label enrichment Core's
+    /// <c>NexusClient</c> resolved before the extraction.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, string>> GetCategoriesAsync(string gameDomain)
+    {
+        if (_categoryCache.TryGetValue(gameDomain, out var cached)) return cached;
+
+        IReadOnlyDictionary<int, string> dict = EmptyCategories;
+        try
+        {
+            var url = $"{Base}/v1/games/{gameDomain}.json";
+            using var res = await SendAsync(HttpMethod.Get, url);
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = await ParseAsync(res);
+                dict = MapCategories(doc.RootElement);
+            }
+        }
+        catch (HttpRequestException) { /* offline / DNS / TLS — categories are cosmetic, never break identify */ }
+        catch (JsonException) { /* malformed game-info body */ }
+
+        _categoryCache[gameDomain] = dict; // cache the result (incl. empty) — one game-info fetch per domain per session
+        return dict;
+    }
+
+    /// <summary>
+    /// Read the <c>categories</c> array from a Nexus game-info body (<c>GET /v1/games/{domain}.json</c>)
+    /// into a category_id -> name dict. Entries missing <c>category_id</c> or <c>name</c> are skipped; a
+    /// non-object or array-less body yields an empty dict (never throws). Mirrors Core's deleted
+    /// <c>NexusRequests.MapCategories</c>.
+    /// </summary>
+    private static IReadOnlyDictionary<int, string> MapCategories(JsonElement gameJson)
+    {
+        var dict = new Dictionary<int, string>();
+        if (gameJson.ValueKind != JsonValueKind.Object) return dict;
+        if (!gameJson.TryGetProperty("categories", out var arr) || arr.ValueKind != JsonValueKind.Array) return dict;
+
+        foreach (var entry in arr.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object) continue;
+            var id = Int(entry, "category_id");
+            var name = Str(entry, "name");
+            if (id.HasValue && name != null) dict[id.Value] = name;
+        }
+        return dict;
     }
 
     /// <summary>
