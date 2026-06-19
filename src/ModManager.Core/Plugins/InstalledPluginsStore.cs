@@ -1,3 +1,4 @@
+// src/ModManager.Core/Plugins/InstalledPluginsStore.cs
 using System.IO;
 using System.Text.Json;
 
