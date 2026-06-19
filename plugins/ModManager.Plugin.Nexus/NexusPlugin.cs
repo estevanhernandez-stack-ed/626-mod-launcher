@@ -17,5 +17,5 @@ public sealed class NexusPlugin : IModManagerPlugin
     public string DisplayName => "Nexus Mods";
 
     public void Register(IPluginHostServices host)
-        => host.AddModSource(new NexusModSource(host.HttpClient, () => host.GetCredential("nexus")));
+        => host.AddModSource(new NexusModSource(host.HttpClient, () => host.GetCredential("nexus"), host.AppVersion));
 }

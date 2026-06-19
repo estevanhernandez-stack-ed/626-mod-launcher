@@ -63,5 +63,6 @@ public class AbstractionsContractTests
         public void AddModSource(IModSource source) => sink.Add(source);
         public string? GetCredential(string key) => null;
         public System.Net.Http.HttpClient HttpClient { get; } = new();
+        public string AppVersion => "0.0.0";
     }
 }

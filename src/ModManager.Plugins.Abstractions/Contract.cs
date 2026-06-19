@@ -15,6 +15,9 @@ public interface IPluginHostServices
     void AddModSource(IModSource source);
     string? GetCredential(string key);                 // host-owned, on-machine per-user key store
     System.Net.Http.HttpClient HttpClient { get; }
+    /// <summary>The launcher version, for any ToS / telemetry-identity header a source must send
+    /// (e.g. Nexus's <c>Application-Version</c>). A plain string — Abstractions stays BCL-pure.</summary>
+    string AppVersion { get; }
 }
 
 /// <summary>A mod-source site (Nexus, CurseForge, ...). Speaks DTOs only — never Core types — so a plugin

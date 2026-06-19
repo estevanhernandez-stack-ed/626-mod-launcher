@@ -91,6 +91,12 @@ public static class PluginHost
         public void AddModSource(IModSource source) => registry.Add(source);
         public string? GetCredential(string key) => getCredential(key);
         public HttpClient HttpClient { get; } = httpClient;
+
+        /// <summary>The launcher's own assembly version — handed to plugins for ToS-identity headers
+        /// (e.g. the Nexus <c>Application-Version</c>). Resolved from the executing assembly so the real
+        /// shipped version flows through instead of the source's "0.0.0" fallback.</summary>
+        public string AppVersion { get; } =
+            System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
     }
 }
 #endif // FULL — the entire loader (AssemblyLoadContext + external-code-from-stream) is absent from the STORE build, not just dormant.
