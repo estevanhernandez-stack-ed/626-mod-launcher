@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 
 namespace ModManager.Plugin.Nexus.Tests;
 
@@ -62,5 +63,35 @@ public class NexusCategoryTests
         Assert.NotNull(meta);
         Assert.Equal("Cool Mod", meta!.Title); // metadata still mapped
         Assert.Null(meta.Category);            // category gracefully absent, no throw
+    }
+
+    // FIX 4: an HttpClient TIMEOUT (TaskCanceledException, which derives from OperationCanceledException)
+    // on the game-info GET must NOT escape — the category fetch is cosmetic and may never abort the
+    // identify/fetch scan. The dedicated handler below throws TaskCanceledException only on the game-info
+    // URL; the per-mod call still succeeds, so FetchMetadataAsync returns non-null with Category null.
+    private sealed class GameInfoTimeoutHandler(string modBody) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/games/windrose.json", StringComparison.Ordinal))
+                throw new TaskCanceledException("Simulated HttpClient timeout on the game-info GET.");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(modBody, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    [Fact]
+    public async Task A_game_info_timeout_leaves_category_null_and_does_not_throw()
+    {
+        var handler = new GameInfoTimeoutHandler("""{ "mod_id": 1, "name": "Cool Mod", "category_id": 7 }""");
+        var src = new ModManager.Plugin.Nexus.NexusModSource(new HttpClient(handler), () => "K", "0.3.0");
+
+        var meta = await src.FetchMetadataAsync(Ref); // must not throw despite the game-info timeout
+
+        Assert.NotNull(meta);
+        Assert.Equal("Cool Mod", meta!.Title); // per-mod metadata still mapped
+        Assert.Null(meta.Category);            // category gracefully absent — the timeout was swallowed
     }
 }

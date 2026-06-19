@@ -22,7 +22,8 @@ public class NexusMetadataTests
 
         var meta = await src.FetchMetadataAsync(Ref);
 
-        // The per-mod fetch IS the only call (no category prefetch in the plugin).
+        // The per-mod fetch is Calls[0]. (A cached per-domain game-info GET also fires for category
+        // resolution, but with the single canned-body stub it lands after this and never displaces Calls[0].)
         Assert.Equal("https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/3863.json", h.Calls[0].Url);
         Assert.Equal("K", h.Calls[0].ApiKey);
         Assert.NotNull(meta);

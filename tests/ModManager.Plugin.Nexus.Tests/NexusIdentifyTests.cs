@@ -4,11 +4,12 @@ using ModManager.Plugins.Abstractions;
 namespace ModManager.Plugin.Nexus.Tests;
 
 // md5 file-identify over the plugin: GET /v1/games/{domain}/mods/md5_search/{md5}.json returns an
-// array of { mod, file_details }; the plugin reads the first element into a SourceIdentifyResult
-// (the ref + the full metadata, both from the one call). Relocated from the deleted Core
-// NexusClientTests.GetByMd5Async* + NexusRequestsTests.MapMd5Response* — reworked over
-// NexusModSource. NOTE: unlike the old NexusClient, the plugin does NO category-prefetch call, so
-// the md5/mod request is Calls[0], not Calls[1].
+// array of { mod, file_details }; the plugin reads the first valid element into a SourceIdentifyResult
+// (the ref + the full metadata, both from the md5 call). Relocated from the deleted Core
+// NexusClientTests.GetByMd5Async* + NexusRequestsTests.MapMd5Response* — reworked over NexusModSource.
+// NOTE: the md5_search request is Calls[0]; the category restore adds ONE cached per-domain game-info
+// GET (/v1/games/{domain}.json) on the side, so when a category dict is served that lands at Calls[1].
+// The tests in THIS file serve a single canned body to every URL, so Calls[0] is always the md5 call.
 public class NexusIdentifyTests
 {
     [Fact]
@@ -20,7 +21,8 @@ public class NexusIdentifyTests
 
         var result = await src.IdentifyByHashAsync("skyrimspecialedition", "abc123");
 
-        // The plugin's only HTTP call IS the md5-search request (no game-info prefetch).
+        // The md5-search request is Calls[0]. (A cached per-domain game-info GET also fires for category
+        // resolution, but with the single canned-body stub it lands after this and never displaces Calls[0].)
         Assert.Equal("https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/md5_search/abc123.json", h.Calls[0].Url);
         Assert.Equal("GET", h.Calls[0].Method);
         Assert.Equal("K", h.Calls[0].ApiKey);
@@ -89,6 +91,24 @@ public class NexusIdentifyTests
         var src = h.Source();
 
         Assert.Null(await src.IdentifyByHashAsync("skyrim", "abc"));
+    }
+
+    [Fact]
+    public async Task IdentifyByHashAsync_skips_a_malformed_first_element_and_takes_the_next_valid_one()
+    {
+        // FIX 8: per-element shape guards must SKIP (continue), not abort. A malformed FIRST entry used to
+        // sink the whole identify; now the second, valid entry is returned.
+        var h = new StubHandler(HttpStatusCode.OK,
+            """[ { "junk": 1 }, { "mod": { "mod_id": 5, "name": "Real" }, "file_details": { "file_id": 9, "version": "2.0" } } ]""");
+        var src = h.Source();
+
+        var result = await src.IdentifyByHashAsync("skyrim", "abc");
+
+        Assert.NotNull(result);
+        Assert.Equal(5, result!.Ref.ModId);          // the SECOND (valid) element won, not null
+        Assert.Equal("2.0", result.Ref.Version);
+        Assert.Equal("Real", result.Metadata.Title);
+        Assert.Equal(9, result.Metadata.NexusFileId);
     }
 
     [Fact]

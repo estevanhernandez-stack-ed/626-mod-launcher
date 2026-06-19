@@ -111,4 +111,51 @@ public class SourceMetadataMapperTests
         Assert.Equal("Mxyz", meta.Author);
         Assert.Equal(9, meta.NexusFileId);
     }
+
+    [Fact]
+    public void FromIdentify_seeds_installed_version_from_the_ref_so_no_false_update_chip()
+    {
+        // The ref carries the INSTALLED-file version; FromIdentify must seed ModMeta.Version from it.
+        // When the installed version matches the upstream latest, the UPDATE chip (NexusLatestVersion !=
+        // Version) must read false — the regression this guards is Version landing null (chip always on).
+        var r = new SourceIdentifyResult(
+            new SourceModRef("nexus", "skyrimspecialedition", 777, "1.2.0"),
+            new SourceModMetadata(5, 100, LatestVersion: "1.2.0", Available: true, Endorsed: null));
+        var meta = SourceMetadataMapper.FromIdentify(r);
+        Assert.Equal("1.2.0", meta.Version);                  // installed version seeded from the ref
+        Assert.Equal("1.2.0", meta.NexusLatestVersion);       // upstream latest from the metadata
+        Assert.Equal(meta.NexusLatestVersion, meta.Version);  // equal => no UPDATE chip (the fix)
+    }
+
+    [Fact]
+    public void FromIdentify_with_empty_ref_version_leaves_version_null()
+    {
+        // An empty installed-file version (the md5 hit had no file_details.version) maps to null, not "".
+        var r = new SourceIdentifyResult(
+            new SourceModRef("nexus", "skyrimspecialedition", 777, ""),
+            new SourceModMetadata(5, 100, LatestVersion: "2.0", Available: true, Endorsed: null));
+        var meta = SourceMetadataMapper.FromIdentify(r);
+        Assert.Null(meta.Version);
+    }
+
+    [Fact]
+    public void Apply_never_wipes_a_filled_heart_even_when_a_source_reports_endorsed_false()
+    {
+        // Fill-only-never-wipe: a non-null `false` from any source must NOT clear a persisted Endorsed=true.
+        // Only the bulk ApplyEndorsements sweep clears hearts; a per-mod metadata mapping never does.
+        var dto = new SourceModMetadata(Endorsements: 50, Downloads: 1000, LatestVersion: "3.0", Available: true, Endorsed: false);
+        var meta = new ModMeta { Endorsed = true };
+        var mapped = SourceMetadataMapper.Apply(meta, dto);
+        Assert.True(mapped.Endorsed);               // heart preserved despite dto Endorsed=false
+        Assert.Equal(50, mapped.EndorsementCount);  // stats still enriched
+    }
+
+    [Fact]
+    public void Apply_fills_an_empty_heart_when_a_source_reports_endorsed_true()
+    {
+        // The other side of fill-only: a true DOES fill an unset heart.
+        var dto = new SourceModMetadata(Endorsements: 1, Downloads: 1, LatestVersion: "1.0", Available: true, Endorsed: true);
+        var mapped = SourceMetadataMapper.Apply(new ModMeta { Endorsed = null }, dto);
+        Assert.True(mapped.Endorsed);
+    }
 }

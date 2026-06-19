@@ -79,12 +79,14 @@ public sealed class NexusModSource : IModSource
 
         foreach (var el in root.EnumerateArray())
         {
+            // Per-element shape guards SKIP (continue), never abort: a malformed leading element must not
+            // sink an identify whose valid match sits later in the array.
             if (el.ValueKind != JsonValueKind.Object
                 || !el.TryGetProperty("mod", out var mod) || mod.ValueKind != JsonValueKind.Object)
-                return null;
+                continue;
 
             var modId = Int(mod, "mod_id");
-            if (modId is null) return null;
+            if (modId is null) continue;
 
             // The installed-file version + file id come off file_details; the installed-file version
             // wins over the mod-level version (matches Core's MapMd5Response).
@@ -194,6 +196,7 @@ public sealed class NexusModSource : IModSource
         }
         catch (HttpRequestException) { /* offline / DNS / TLS — categories are cosmetic, never break identify */ }
         catch (JsonException) { /* malformed game-info body */ }
+        catch (OperationCanceledException) { /* HttpClient timeout / cancellation — categories are cosmetic, never abort the identify scan (TaskCanceledException derives from this) */ }
 
         _categoryCache[gameDomain] = dict; // cache the result (incl. empty) — one game-info fetch per domain per session
         return dict;
@@ -377,7 +380,7 @@ public sealed class NexusModSource : IModSource
     /// </summary>
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, string? body = null)
     {
-        var msg = new HttpRequestMessage(method, url);
+        using var msg = new HttpRequestMessage(method, url);
         msg.Headers.TryAddWithoutValidation("Accept", "application/json");
         msg.Headers.TryAddWithoutValidation("Application-Name", ApplicationName);
         msg.Headers.TryAddWithoutValidation("Application-Version", _appVersion);
