@@ -205,7 +205,9 @@ jobs:
 
       - name: NuGet login (Trusted Publishing / OIDC)
         id: login
-        uses: NuGet/login@v1
+        # Third-party action with id-token (OIDC) access — pinned to a full commit SHA, not the mutable
+        # v1 tag, so a repointed tag can't exfiltrate the publish token. Bump deliberately (track via Dependabot).
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841  # v1.2.0
         with:
           user: 626labs
 
