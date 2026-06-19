@@ -176,6 +176,16 @@ jobs:
     # so the OIDC token authorizes the push; no API key is stored anywhere. Runs on a release tag
     # (publishing the contract alongside the app) and on a manual dispatch (incl. abstractionsOnly for a
     # standalone contract publish). The package version tracks the launcher version (drives minBinaryVersion).
+    #
+    # Gate: NuGet.org pushes are immutable, so an UNTESTED contract must never ship. `needs: [release]`
+    # orders this after the build/test job; the `if:` runs it only when release SUCCEEDED or was SKIPPED —
+    # NEVER when it failed. A skip is not a failure, so the abstractionsOnly dispatch path (where release's
+    # own `if:` skips it) still publishes. Matrix:
+    #   tag push, release passes  -> release success  -> publish RUNS
+    #   tag push, release fails    -> release failure  -> publish SKIPPED (the fix)
+    #   abstractionsOnly dispatch  -> release skipped  -> publish RUNS
+    needs: [release]
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
