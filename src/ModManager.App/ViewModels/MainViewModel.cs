@@ -1368,11 +1368,19 @@ public sealed partial class MainViewModel : ObservableObject
     {
         feed.PluginLoaded += (_, _) =>
         {
-            void Apply()
+            async void Apply()
             {
                 OnPropertyChanged(nameof(NexusActionsAvailable));
                 OnPropertyChanged(nameof(NexusActionsVisibility));
-                _ = ReloadModsAsync(); // re-build rows so endorse hearts + per-row Nexus state appear
+                // Re-detect + reload rows so per-row Nexus state reflects the now-loaded plugin.
+                // RedetectActiveAsync re-runs the scan with the registered source; it calls
+                // ReloadModsAsync internally (which fires the auto-check poll).
+                await RedetectActiveAsync();
+                // RefreshNexusStatsAsync runs the full RefreshAllAsync sweep — including the one
+                // bulk GetUserEndorsementsAsync → ApplyEndorsements pass that fills hearts.
+                // This is intentionally not debounced: the hot-load event fires exactly once
+                // per install and the hearts must be live immediately, not gated behind 24h.
+                await RefreshNexusStatsAsync();
             }
             if (_dispatcherQueue is { } dq) dq.TryEnqueue(Apply);
             else Apply();
