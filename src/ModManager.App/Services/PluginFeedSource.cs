@@ -58,6 +58,7 @@ public sealed class PluginFeedSource
     private readonly HttpClient _http;
     private readonly ModSourceRegistry _registry;
     private readonly Func<string, string?> _getCredential;
+    private readonly Func<bool> _isConnected;
     private readonly AppSettingsService _settings;
 
     /// <summary>In-flight guard: two rapid Nexus-connect events can both clear the debounce and race into
@@ -73,9 +74,10 @@ public sealed class PluginFeedSource
     public event EventHandler? PluginLoaded;
 
     public PluginFeedSource(HttpClient http, ModSourceRegistry registry,
-        Func<string, string?> getCredential, AppSettingsService settings)
+        Func<string, string?> getCredential, Func<bool> isConnected, AppSettingsService settings)
     {
-        _http = http; _registry = registry; _getCredential = getCredential; _settings = settings;
+        _http = http; _registry = registry; _getCredential = getCredential;
+        _isConnected = isConnected; _settings = settings;
     }
 
     /// <summary>
@@ -99,6 +101,13 @@ public sealed class PluginFeedSource
 
         try
         {
+            // Connection guard: force bypasses debounce and the toggle, but not the connectivity
+            // requirement. Without Nexus credentials the feed would hit the network and return a
+            // vague network error. NotApplicable here lets Task 4 (the manual button) map this to
+            // the "Connect Nexus first." UI string instead.
+            if (!_isConnected())
+                return new PluginFetchResult(PluginFetchOutcome.NotApplicable, null, "not connected");
+
             // Debounce / toggle guard (mirrors RemoteManifestSource.RefreshAsync): a debounced or
             // toggle-off re-check returns WITHOUT stamping. Stamping a skipped run would rewrite
             // last-plugin-check.txt to "now" on every call and starve the 24h re-check.

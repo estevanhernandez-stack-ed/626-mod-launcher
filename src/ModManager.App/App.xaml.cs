@@ -55,11 +55,16 @@ public partial class App : Application
 #if FULL
                 // The off-Store plugin feed: fetches, verifies, and hot-loads the Nexus plugin on connect.
                 // Absent from the STORE build — the Store SKU has no plugin host and no feed URL.
-                services.AddSingleton<PluginFeedSource>(sp => new PluginFeedSource(
-                    sp.GetRequiredService<HttpClient>(),
-                    sp.GetRequiredService<ModSourceRegistry>(),
-                    sp.GetRequiredService<NexusService>().GetCredential,
-                    sp.GetRequiredService<AppSettingsService>()));
+                services.AddSingleton<PluginFeedSource>(sp =>
+                {
+                    var nexus = sp.GetRequiredService<NexusService>();
+                    return new PluginFeedSource(
+                        sp.GetRequiredService<HttpClient>(),
+                        sp.GetRequiredService<ModSourceRegistry>(),
+                        nexus.GetCredential,
+                        () => nexus.IsConnected,
+                        sp.GetRequiredService<AppSettingsService>());
+                });
 #endif
                 services.AddTransient<MainViewModel>();
             })
