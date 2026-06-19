@@ -31,15 +31,29 @@ public static class PluginHost
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ModManagerBuilder", "plugins");
 
-    /// <summary>Discover, verify, load, and register every signed plugin. Contributions land in
-    /// <paramref name="registry"/>. <paramref name="getCredential"/> is the App-owned on-machine key
-    /// lookup (e.g. the Nexus DPAPI store); <paramref name="httpClient"/> is the shared client passed to
-    /// plugins. No-op (and safe) when the plugins dir is missing or empty.</summary>
+    /// <summary>Load every plugin recorded in <c>installed-plugins.json</c>. Loads exactly the
+    /// <c>&lt;id&gt;.dll</c> files the feed installer wrote — any other dll in the directory (e.g. a
+    /// stale hand-dropped <c>ModManager.Plugin.Nexus.dll</c> from dev-testing) is silently skipped.
+    /// This prevents a leftover verified-but-stale dll from loading first (alphabetical order) and
+    /// shadowing the feed-installed plugin with an older build. The signature gate inside
+    /// <see cref="LoadOne"/> still applies — an id-named but tampered dll is refused.
+    /// No-op (and safe) when the plugins dir or the record is missing.</summary>
     public static void LoadAll(ModSourceRegistry registry, Func<string, string?> getCredential, HttpClient httpClient)
     {
         if (!Directory.Exists(PluginsDir)) return;
-        foreach (var dll in Directory.EnumerateFiles(PluginsDir, "*.dll"))
+        var recordPath = Path.Combine(PluginsDir, "installed-plugins.json");
+        var recorded = InstalledPluginsStore.Read(recordPath);
+        if (recorded.Count == 0) return;
+        foreach (var id in recorded.Keys)
+        {
+            var dll = Path.Combine(PluginsDir, $"{id}.dll");
+            if (!File.Exists(dll))
+            {
+                AppDiagnostics.Log("plugin-host", new FileNotFoundException($"Recorded plugin dll not found: {dll}"));
+                continue;
+            }
             LoadOne(dll, registry, getCredential, httpClient);
+        }
     }
 
     /// <summary>Verify + load a single plugin dll (the just-downloaded hot-load path and the per-file
