@@ -12,7 +12,9 @@ using ModManager.App.Services;
 using ModManager.App.Tools;
 using ModManager.Core;
 using ModManager.Core.Frameworks;
+using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.App.ViewModels;
 
@@ -44,6 +46,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly SteamService _steam;
     private readonly AppSettingsService _appSettings;
     private readonly NexusUpdatePoll _nexusPoll;
+    private readonly ModSourceRegistry _sources;
     // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
     // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
     // which fires on a thread-pool thread — back to the UI thread before touching VM state.
@@ -212,7 +215,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources)
     {
         _svc = svc;
         _me2 = me2;
@@ -224,6 +227,7 @@ public sealed partial class MainViewModel : ObservableObject
         _steam = steam;
         _appSettings = appSettings;
         _nexusPoll = nexusPoll;
+        _sources = sources;
         ThemeOptions = themes.Themes;
         SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
     }
@@ -513,12 +517,14 @@ public sealed partial class MainViewModel : ObservableObject
                     MissingFrameworkUrl = primaryMissing?.GetUrl,
                     MissingFrameworkNote = primaryMissing?.Note ?? "",
                     LoaderHintIsSoft = selfProvidesProxy,
-                    // The endorse heart needs a resolved Nexus mod id (the write key) AND a live
-                    // connection — both captured at row build, fresh every rescan, no per-row notify.
+                    // The endorse heart needs a resolved Nexus mod id (the write key), a live connection,
+                    // AND a loaded Nexus source plugin (the heart routes through IModSource.SetEndorsedAsync,
+                    // so it's absent on the STORE flavor / zero-plugins path). All captured at row build,
+                    // fresh every rescan, no per-row notify.
                     NexusModId = metaByKey.TryGetValue(rep.Name, out var repMeta)
                         ? NexusRefresh.ResolveModId(repMeta)
                         : null,
-                    NexusConnected = _nexus.IsConnected,
+                    NexusConnected = NexusActionsAvailable,
                 });
             }
             OrderAndStampSections(rows);
@@ -638,7 +644,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// may have switched games while the network call was in flight).</summary>
     private async Task AutoCheckNexusUpdatesAsync(GameContext ctx)
     {
-        var changed = await _nexusPoll.MaybePollAsync(ctx, _nexus, _appSettings);
+        var changed = await _nexusPoll.MaybePollAsync(ctx, NexusSource, _nexus, _appSettings);
         if (!changed) return;
 
         void Reload()
@@ -1317,7 +1323,7 @@ public sealed partial class MainViewModel : ObservableObject
             var vtx = 0;
             if (_nexus.IsConnected)
             {
-                try { vtx = (await Scanner.IdentifyVortexNexusAsync(_ctx, _nexus.Client!)).Matched; }
+                try { vtx = (await Scanner.IdentifyVortexNexusAsync(_ctx, NexusSource)).Matched; }
                 catch { /* best-effort; CF result still stands */ }
             }
             await ReloadModsAsync();
@@ -1332,6 +1338,47 @@ public sealed partial class MainViewModel : ObservableObject
     // ---------- Nexus connection ----------
 
     public bool NexusConnected => _nexus.IsConnected;
+
+    /// <summary>The loaded Nexus mod source from the shared <see cref="ModSourceRegistry"/> — the plugin's
+    /// <see cref="IModSource"/> when the FULL flavor loaded one, null on the STORE flavor / zero-plugins
+    /// path. Every user-facing Nexus action (endorse heart, "Refresh Nexus stats", the update poll) routes
+    /// through this instead of Core's <c>NexusClient</c>, as does scan-time md5-identify (<c>Scanner</c>'s
+    /// <c>Md5Identify*</c> / <c>IdentifyVortexNexusAsync</c> + <c>Ue4ssLuaInstaller.IdentifyMetadataAsync</c>,
+    /// rewired in B2a). When null the surfaces are absent and identify no-ops — the app stays a complete
+    /// product without them (the zero-plugins invariant).
+    /// <para>As of B2b-1 every read also routes here: the library-wide endorse-heart sync + windowed
+    /// update poll (<c>NexusRefresh.RefreshAllAsync</c>) and the manual-URL match all go through this
+    /// <c>IModSource</c>. Core's <c>NexusClient</c> has zero live callers left.</para></summary>
+    private IModSource? NexusSource => _sources.ById("nexus");
+
+    /// <summary>True when the user-facing Nexus surfaces should be shown: a Nexus source is loaded AND the
+    /// account is connected. Drives the "Refresh Nexus stats" menu item visibility and the endorse heart.
+    /// On the STORE flavor the registry is empty, so this is false and the surfaces are absent.</summary>
+    public bool NexusActionsAvailable => NexusSource is not null && _nexus.IsConnected;
+    public Visibility NexusActionsVisibility => NexusActionsAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+#if FULL
+    /// <summary>Subscribe to the off-Store feed's hot-load signal so the first-ever Nexus connect lights
+    /// up the Nexus surfaces immediately. Without this, <see cref="NexusActionsAvailable"/> was evaluated
+    /// while the registry was still empty (no plugin) and stayed false until the next rescan / game switch.
+    /// The event fires on a background thread, so the handler marshals to the UI thread (the same
+    /// <see cref="DispatcherQueue"/> the VM uses elsewhere) before re-notifying + reloading rows. Wired
+    /// from the MainWindow ctor — keeps the shared ctor untouched and absent from the STORE build.</summary>
+    public void WirePluginFeed(PluginFeedSource feed)
+    {
+        feed.PluginLoaded += (_, _) =>
+        {
+            void Apply()
+            {
+                OnPropertyChanged(nameof(NexusActionsAvailable));
+                OnPropertyChanged(nameof(NexusActionsVisibility));
+                _ = ReloadModsAsync(); // re-build rows so endorse hearts + per-row Nexus state appear
+            }
+            if (_dispatcherQueue is { } dq) dq.TryEnqueue(Apply);
+            else Apply();
+        };
+    }
+#endif
 
     /// <summary>Status dot for the Nexus toolbar button — accent-green when connected, danger-red
     /// when disconnected. The dot IS the affordance now (no separate ACCOUNT section label), so the
@@ -1357,13 +1404,14 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task BackfillNexusAsync(IReadOnlyList<string> archives)
     {
         if (_ctx is null) return;
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         if (string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game))) { StatusText = "This game has no Nexus domain set."; return; }
         if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
         IsBusy = true;
         try
         {
-            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, archives)).Matched;
+            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, source, archives)).Matched;
             StatusText = n > 0
                 ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {archives.Count} Nexus archive(s)."
                 : $"Scanned {archives.Count} archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this game).";
@@ -1376,13 +1424,22 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Manual "Refresh Nexus stats": poll Nexus <em>by mod id</em> (no archive needed) over
     /// every identified mod in the active game — refreshing endorsements / downloads / availability and
     /// capturing the upstream current version (which drives the UPDATE chip). The installed version is
-    /// preserved (it's the "what you have" side of the compare). Throttled + 429-aware via
-    /// <see cref="NexusRefresh.RefreshAllAsync"/>: a rate limit stops the sweep and reports partial
-    /// progress instead of thrashing. The id-resolution is deterministic, so refreshed metas are mapped
-    /// back to their on-disk keys by re-resolving the id, then persisted in one atomic batch.</summary>
+    /// preserved (it's the "what you have" side of the compare).
+    ///
+    /// <para><b>Routes through the loaded Nexus <see cref="IModSource"/> plugin</b> (resolved from the
+    /// shared <see cref="ModSourceRegistry"/>) — not Core's <c>NexusClient</c>. The whole sweep is
+    /// delegated to <see cref="NexusRefresh.RefreshAllAsync"/>, which fetches each identified mod by id
+    /// (selective <c>Overlay</c> — stats + upstream version only, never the manual match's title), then
+    /// runs <em>one</em> bulk <see cref="IModSource.GetUserEndorsementsAsync"/> to sync hearts
+    /// library-wide (so an endorsement made on the website reflects here, not just the ones toggled in
+    /// the launcher). The selective overlay preserves the persisted heart; the bulk sync is the only
+    /// writer and is best-effort. A small inter-call delay throttles the sweep; a 429 stops it and
+    /// reports partial progress (the rate-limit note). When no plugin is loaded (STORE flavor /
+    /// zero-plugins) the source is null and the action is absent.</para></summary>
     public async Task RefreshNexusStatsAsync()
     {
         if (_ctx is null) return;
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -1397,9 +1454,10 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             // Small inter-call delay, well under the burst ceiling; RefreshAllAsync applies it between
-            // (not before) calls so a one-item sweep pays nothing.
+            // (not before) calls so a one-item sweep pays nothing. The sweep also runs the one bulk
+            // GetUserEndorsementsAsync -> ApplyEndorsements pass that syncs hearts library-wide.
             var result = await NexusRefresh.RefreshAllAsync(
-                identified.Select(kv => kv.Value), domain!, _nexus.Client!,
+                identified.Select(kv => kv.Value), domain!, source,
                 throttle: () => System.Threading.Tasks.Task.Delay(120));
 
             if (result.Updated.Count > 0)
@@ -1433,11 +1491,19 @@ public sealed partial class MainViewModel : ObservableObject
     /// direction from the row's current <see cref="Mod.Endorsed"/> (endorsed → abstain, else endorse),
     /// version-stamps the POST with the installed version (falling back to the upstream latest), and
     /// only flips the heart + persists when Nexus accepts the write — a refusal (not downloaded / too
-    /// soon / any other precondition) shows the API's friendly reason in the status line and leaves the
-    /// row honest (no optimistic flip). A 429 degrades to a rate-limit line; nothing throws to the UI.</summary>
+    /// soon / any other precondition) surfaces the friendly reason in the status line and leaves the
+    /// row honest (no optimistic flip). A 429 / network failure degrades to a refusal line; nothing
+    /// throws to the UI.
+    ///
+    /// <para><b>Routes through the loaded Nexus <see cref="IModSource"/> plugin</b> (resolved from the
+    /// shared <see cref="ModSourceRegistry"/>) via <see cref="IModSource.SetEndorsedAsync"/> — not Core's
+    /// <c>NexusClient</c>. The plugin degrades every non-2xx (preconditions, 429, offline) to
+    /// <c>Refused = true</c> with a message, so this path never sees a throw from the write. When no
+    /// plugin is loaded the heart is absent (the row gates on <c>NexusActionsAvailable</c>).</para></summary>
     public async Task ToggleEndorseAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -1453,36 +1519,34 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var action = row.Mod.Endorsed == true ? EndorseAction.Abstain : EndorseAction.Endorse;
+        var endorse = row.Mod.Endorsed != true; // endorsed -> abstain, else endorse
         var version = row.Mod.Version ?? row.Mod.NexusLatestVersion ?? "";
         var name = row.DisplayName;
+        var modRef = new SourceModRef(SourceId: source.Id, GameDomain: domain!, ModId: modId, Version: version);
 
         IsBusy = true;
         try
         {
-            var outcome = await _nexus.Client!.EndorseAsync(domain!, modId, version, action);
-            if (outcome.Refused)
+            var result = await source.SetEndorsedAsync(modRef, endorse);
+            if (!result.Ok)
             {
-                // The row stays honest — no flip on a precondition refusal; the API tells the user why.
-                StatusText = outcome.Message ?? "Nexus declined the endorsement.";
+                // The row stays honest — no flip on a refusal; surface the friendly reason.
+                StatusText = result.Message ?? "Nexus declined the endorsement.";
                 return;
             }
 
             // Persist Endorsed onto the existing metadata entry (mutate-in-place) so the rest of the
             // mod's enrichment — title, credit, NexusModId — survives the write. Endorsed is persisted
-            // user intent, so it must outlive a rescan.
-            row.Mod.Endorsed = action == EndorseAction.Endorse;
+            // user intent, so it must outlive a rescan. Trust the source's reported NowEndorsed when set,
+            // else the direction we asked for.
+            row.Mod.Endorsed = result.NowEndorsed ?? endorse;
             meta.Endorsed = row.Mod.Endorsed;
             Scanner.WriteOneMeta(_ctx, row.Mod.Name, meta);
             row.NotifyEndorseChanged();
 
-            StatusText = action == EndorseAction.Endorse
+            StatusText = (result.NowEndorsed ?? endorse)
                 ? $"Endorsed \"{name}\" on Nexus."
                 : $"Retracted endorsement for \"{name}\".";
-        }
-        catch (NexusRateLimitException)
-        {
-            StatusText = "Nexus rate limit reached — try again later.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1512,7 +1576,25 @@ public sealed partial class MainViewModel : ObservableObject
                         StatusText = "Connect Nexus first (Settings → Nexus Mods).";
                         return false;
                     }
-                    hit = await _nexus.Client!.GetModAsync(parts.GameKey, int.Parse(parts.ModRef));
+                    if (NexusSource is not { } nexusSource)
+                    {
+                        StatusText = "Nexus isn't available — no source loaded.";
+                        return false;
+                    }
+                    // Manual match is identity-authoritative: the user told us exactly which mod this is.
+                    // SourceMetadataMapper.Apply (NOT NexusRefresh.Overlay) is right here — it writes the
+                    // identity/credit fields, with NexusModId pinned from the parsed URL.
+                    var modId = int.Parse(parts.ModRef);
+                    var dto = await nexusSource.FetchMetadataAsync(new SourceModRef("nexus", parts.GameKey, modId, ""));
+                    if (dto is not null)
+                    {
+                        // Apply maps dto.LatestVersion -> NexusLatestVersion and never writes the installed
+                        // Version (Version is owned by the identify path's file context). A manual match has
+                        // no file context, so seed Version from LatestVersion up front — Apply never touches
+                        // Version, so it survives. Without this, Version=null + NexusLatestVersion=<v> lights
+                        // a false UPDATE chip on a freshly matched mod (UpdateAvailable = latest != installed).
+                        hit = SourceMetadataMapper.Apply(new ModMeta { NexusModId = modId, Version = dto.LatestVersion }, dto);
+                    }
                     break;
 
                 case ModSiteProvider.CurseForge:
@@ -1553,6 +1635,8 @@ public sealed partial class MainViewModel : ObservableObject
                 : $"Connected to Nexus as {NexusAccountLine}.";
             OnPropertyChanged(nameof(NexusConnected));
             OnPropertyChanged(nameof(NexusStatusBrush));
+            OnPropertyChanged(nameof(NexusActionsAvailable));
+            OnPropertyChanged(nameof(NexusActionsVisibility));
             return user is not null;
         }
         catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
@@ -1564,6 +1648,8 @@ public sealed partial class MainViewModel : ObservableObject
         StatusText = "Disconnected from Nexus.";
         OnPropertyChanged(nameof(NexusConnected));
         OnPropertyChanged(nameof(NexusStatusBrush));
+        OnPropertyChanged(nameof(NexusActionsAvailable));
+        OnPropertyChanged(nameof(NexusActionsVisibility));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
@@ -1619,7 +1705,7 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added.Concat(r.Updated))).Matched; }
                     catch { }
-                    try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, paths)).Matched; }
+                    try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, NexusSource, paths)).Matched; }
                     catch { }
                     try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                     catch { }
@@ -1716,7 +1802,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (luaInstalledSources.Count > 0 && _nexus.IsConnected)
                 foreach (var (src, modName) in luaInstalledSources)
                 {
-                    try { await Ue4ssLuaInstaller.IdentifyMetadataAsync(_ctx, _nexus.Client!, src, modName); }
+                    try { await Ue4ssLuaInstaller.IdentifyMetadataAsync(_ctx, NexusSource, src, modName); }
                     catch { /* best-effort; install already succeeded */ }
                 }
 
@@ -1763,7 +1849,7 @@ public sealed partial class MainViewModel : ObservableObject
                 try { identified = (await Scanner.FingerprintIdentifyAsync(_ctx, _svc.CurseForge, r.Added)).Matched; }
                 catch { /* best-effort; intake already succeeded */ }
                 // Nexus matches the published-ARCHIVE md5 — hash the dropped zip(s), not the extracted files.
-                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, _nexus.Client!, remaining)).Matched; }
+                try { if (_nexus.IsConnected) nexusIdentified = (await Scanner.Md5IdentifyArchivesAsync(_ctx, NexusSource, remaining)).Matched; }
                 catch { /* best-effort; a Nexus miss / outage never fails intake */ }
                 try { await Scanner.RefreshMetadataByNameAsync(_ctx, _svc.CurseForge); }
                 catch { /* best-effort */ }

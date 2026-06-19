@@ -1,24 +1,33 @@
 using ModManager.Core;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Tests;
 
 // Md5IdentifyAsync — the md5 twin of FingerprintIdentifyAsync. Hash each just-dropped file,
-// ask Nexus which mod it is by md5, merge that metadata (curated/CF wins, Nexus fills gaps).
+// ask the mod-source plugin which mod it is by md5, merge that metadata (curated/CF wins, source fills gaps).
 public class Md5IdentifyTests
 {
-    // A hand-rolled fake INexusClient — only GetByMd5Async is exercised here.
-    private sealed class FakeNexusClient : INexusClient
+    // A hand-rolled fake IModSource — only IdentifyByHashAsync is exercised here. The func returns the
+    // SourceIdentifyResult (ref + full metadata) the grown contract carries.
+    private sealed class FakeModSource : IModSource
     {
-        private readonly Func<string, string, Task<NexusMd5Match?>> _byMd5;
-        public FakeNexusClient(Func<string, string, Task<NexusMd5Match?>> byMd5) => _byMd5 = byMd5;
-        public Task<ModMeta?> GetModAsync(string gameDomain, int modId) => throw new NotSupportedException();
-        public Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5) => _byMd5(gameDomain, md5);
-        public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
-        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
-        public NexusRateLimit? LastRateLimit => null;
+        private readonly Func<string, string, Task<SourceIdentifyResult?>> _byMd5;
+        public FakeModSource(Func<string, string, Task<SourceIdentifyResult?>> byMd5) => _byMd5 = byMd5;
+        public string Id => "nexus";
+        public bool RequiresApiKey => true;
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string gameDomain, string md5) => _byMd5(gameDomain, md5);
+        public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef) => throw new NotSupportedException();
+        public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
+        public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
+
+    // Convenience: build an identify hit from a modId + the identity fields the assertions check.
+    private static SourceIdentifyResult Hit(string domain, int modId,
+        string? title = null, string? author = null, string? url = null, long? downloads = null)
+        => new(new SourceModRef("nexus", domain, modId, ""),
+               new SourceModMetadata(null, downloads, null, null, null, Title: title, Author: author, ModUrl: url));
 
     private static (string modsDir, GameContext c) Fixture(string? nexusDomain)
     {
@@ -41,8 +50,8 @@ public class Md5IdentifyTests
     {
         var (modsDir, c) = Fixture("windrose");
         File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "COOLBYTES");
-        var fake = new FakeNexusClient((_, _) =>
-            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(123, new ModMeta { Title = "Pirate Depot", Author = "someone" })));
+        var fake = new FakeModSource((d, _) =>
+            Task.FromResult<SourceIdentifyResult?>(Hit(d, 123, title: "Pirate Depot", author: "someone")));
 
         var r = await Scanner.Md5IdentifyAsync(c, fake, new[] { "cool.pak" });
 
@@ -59,8 +68,8 @@ public class Md5IdentifyTests
     {
         var (modsDir, c) = Fixture(null);
         File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "COOLBYTES");
-        var fake = new FakeNexusClient((_, _) =>
-            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(123, new ModMeta { Title = "Pirate Depot" })));
+        var fake = new FakeModSource((d, _) =>
+            Task.FromResult<SourceIdentifyResult?>(Hit(d, 123, title: "Pirate Depot")));
 
         var r = await Scanner.Md5IdentifyAsync(c, fake, new[] { "cool.pak" });
 
@@ -73,7 +82,7 @@ public class Md5IdentifyTests
     {
         var (modsDir, c) = Fixture("windrose");
         File.WriteAllText(Path.Combine(modsDir, "cool.pak"), "COOLBYTES");
-        var fake = new FakeNexusClient((_, _) => Task.FromResult<NexusMd5Match?>(null));
+        var fake = new FakeModSource((_, _) => Task.FromResult<SourceIdentifyResult?>(null));
 
         var r = await Scanner.Md5IdentifyAsync(c, fake, new[] { "cool.pak" });
 
@@ -92,10 +101,10 @@ public class Md5IdentifyTests
         var expectedArchiveMd5 = Md5Hash.OfFile(zipPath);
 
         string? seenMd5 = null;
-        var fake = new FakeNexusClient((_, md5) =>
+        var fake = new FakeModSource((d, md5) =>
         {
             seenMd5 = md5;
-            return Task.FromResult<NexusMd5Match?>(new NexusMd5Match(123, new ModMeta { Title = "Pirate Depot", Author = "IceBox" }));
+            return Task.FromResult<SourceIdentifyResult?>(Hit(d, 123, title: "Pirate Depot", author: "IceBox"));
         });
 
         var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
@@ -119,8 +128,8 @@ public class Md5IdentifyTests
         {
             [key] = new ModMeta { Title = "Cool (CF)", Url = "https://www.curseforge.com/windrose/mods/cool", Downloads = 999 },
         });
-        var fake = new FakeNexusClient((_, _) => Task.FromResult<NexusMd5Match?>(
-            new NexusMd5Match(285, new ModMeta { Title = "Cool", Url = "https://www.nexusmods.com/windrose/mods/285", Author = "Kingtology" })));
+        var fake = new FakeModSource((d, _) => Task.FromResult<SourceIdentifyResult?>(
+            Hit(d, 285, title: "Cool", url: "https://www.nexusmods.com/windrose/mods/285", author: "Kingtology")));
 
         await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
 
@@ -136,8 +145,8 @@ public class Md5IdentifyTests
         var (_, c) = Fixture(null);
         var zipPath = Path.Combine(TestSupport.TempDir("md5arch-"), "x.zip");
         TestSupport.WriteZip(zipPath, ("cool.pak", "PAKBYTES"));
-        var fake = new FakeNexusClient((_, _) =>
-            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(1, new ModMeta { Title = "X" })));
+        var fake = new FakeModSource((d, _) =>
+            Task.FromResult<SourceIdentifyResult?>(Hit(d, 1, title: "X")));
 
         var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
 

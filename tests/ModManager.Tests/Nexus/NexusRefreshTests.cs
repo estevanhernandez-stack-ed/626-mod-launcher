@@ -1,31 +1,39 @@
 using ModManager.Core;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Tests.Nexus;
 
 // The per-mod refresh primitive: resolve a mod id (stored NexusModId or parsed from the stored
-// Url), GetMod by id, then refresh the live stats + capture the latest version WITHOUT touching
-// the installed Version / NexusFileId (the "what you have" side of the update compare).
+// Url), FetchMetadata by id over the IModSource contract, then refresh the live stats + capture
+// the latest version WITHOUT touching the installed Version / NexusFileId (the "what you have"
+// side of the update compare).
 public class NexusRefreshTests
 {
-    // A fake INexusClient — only GetModAsync is exercised; everything else throws if touched.
-    private sealed class FakeNexus : INexusClient
+    // A fake IModSource — only FetchMetadataAsync is exercised; everything else throws if touched.
+    private sealed class FakeSource : IModSource
     {
-        private readonly Func<string, int, Task<ModMeta?>> _getMod;
-        public int GetModCalls { get; private set; }
-        public FakeNexus(Func<string, int, Task<ModMeta?>> getMod) => _getMod = getMod;
+        private readonly Func<SourceModRef, Task<SourceModMetadata?>> _fetch;
+        public int FetchCalls { get; private set; }
+        public string? LastDomain { get; private set; }
+        public int LastModId { get; private set; }
+        public FakeSource(Func<SourceModRef, Task<SourceModMetadata?>> fetch) => _fetch = fetch;
 
-        public Task<ModMeta?> GetModAsync(string gameDomain, int modId)
+        public string Id => "nexus";
+        public bool RequiresApiKey => true;
+
+        public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef)
         {
-            GetModCalls++;
-            return _getMod(gameDomain, modId);
+            FetchCalls++;
+            LastDomain = modRef.GameDomain;
+            LastModId = modRef.ModId;
+            return _fetch(modRef);
         }
 
-        public Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5) => throw new NotSupportedException();
-        public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
-        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
-        public NexusRateLimit? LastRateLimit => null;
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string gameDomain, string md5) => throw new NotSupportedException();
+        public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
+        public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
 
     [Fact]
@@ -73,18 +81,12 @@ public class NexusRefreshTests
             Available = true,
         };
 
-        // The fetched mod reports new stats + a newer current version.
-        var fetched = new ModMeta
-        {
-            Title = "Cool Mod (renamed upstream)",
-            EndorsementCount = 99,
-            Downloads = 5000,
-            Available = true,
-            Version = "2.1",             // the current Nexus version
-            NexusModId = 1234,
-            NexusFileId = 9999,          // upstream's latest file — must be ignored
-        };
-        var fake = new FakeNexus((_, id) => Task.FromResult<ModMeta?>(id == 1234 ? fetched : null));
+        // The fetched metadata reports new stats + a newer current version. Identity fields the
+        // source happens to report (Title, NexusFileId) MUST be ignored by the selective overlay.
+        var fetched = new SourceModMetadata(
+            Endorsements: 99, Downloads: 5000, LatestVersion: "2.1", Available: true, Endorsed: null,
+            Title: "Cool Mod (renamed upstream)", NexusFileId: 9999);
+        var fake = new FakeSource(r => Task.FromResult<SourceModMetadata?>(r.ModId == 1234 ? fetched : null));
 
         var result = await NexusRefresh.RefreshOneAsync(existing, "eldenring", fake);
 
@@ -98,20 +100,24 @@ public class NexusRefreshTests
         // installed side preserved
         Assert.Equal("1.0", result.Version);
         Assert.Equal(5000, result.NexusFileId);
-        // identity preserved
+        // identity preserved (selective overlay never clobbers the manual/installed title)
         Assert.Equal("Cool Mod", result.Title);
         Assert.Equal("modder", result.Author);
         Assert.Equal("Nexus", result.Source);
         Assert.Equal(1234, result.NexusModId);
-        Assert.Equal(1, fake.GetModCalls);
+        Assert.Equal(1, fake.FetchCalls);
+        Assert.Equal("eldenring", fake.LastDomain);
+        Assert.Equal(1234, fake.LastModId);
     }
 
     [Fact]
     public async Task RefreshOneAsync_preserves_manual_flag_and_identity()
     {
         var existing = new ModMeta { IsManual = true, NexusModId = 1234, Version = "1.0", Title = "Pinned" };
-        var fetched = new ModMeta { Version = "2.0", EndorsementCount = 5 };
-        var fake = new FakeNexus((_, _) => Task.FromResult<ModMeta?>(fetched));
+        var fetched = new SourceModMetadata(
+            Endorsements: 5, Downloads: null, LatestVersion: "2.0", Available: null, Endorsed: null,
+            Title: "Upstream Title");
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(fetched));
 
         var result = await NexusRefresh.RefreshOneAsync(existing, "eldenring", fake);
 
@@ -123,37 +129,37 @@ public class NexusRefreshTests
     }
 
     [Fact]
-    public async Task RefreshOneAsync_skips_when_no_resolvable_id_no_client_call()
+    public async Task RefreshOneAsync_skips_when_no_resolvable_id_no_source_call()
     {
         var existing = new ModMeta { Url = "https://www.curseforge.com/skyrim/mods/x" };
-        var fake = new FakeNexus((_, _) => Task.FromResult<ModMeta?>(new ModMeta { Version = "9" }));
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(null, null, "9", null, null)));
 
         var result = await NexusRefresh.RefreshOneAsync(existing, "skyrim", fake);
 
         Assert.Null(result);
-        Assert.Equal(0, fake.GetModCalls);
+        Assert.Equal(0, fake.FetchCalls);
     }
 
     [Fact]
-    public async Task RefreshOneAsync_returns_null_when_GetMod_misses()
+    public async Task RefreshOneAsync_returns_null_when_fetch_misses()
     {
         var existing = new ModMeta { NexusModId = 1234, Version = "1.0" };
-        var fake = new FakeNexus((_, _) => Task.FromResult<ModMeta?>(null));
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(null));
 
         var result = await NexusRefresh.RefreshOneAsync(existing, "eldenring", fake);
 
         Assert.Null(result);
-        Assert.Equal(1, fake.GetModCalls);
+        Assert.Equal(1, fake.FetchCalls);
     }
 
     [Fact]
     public async Task RefreshOneAsync_propagates_rate_limit_exception()
     {
         var existing = new ModMeta { NexusModId = 1234, Version = "1.0" };
-        var fake = new FakeNexus((_, _) =>
-            throw new NexusRateLimitException(new NexusRateLimit(0, 100, 0, 50)));
+        var fake = new FakeSource(_ => throw new SourceRateLimitException());
 
-        await Assert.ThrowsAsync<NexusRateLimitException>(
+        await Assert.ThrowsAsync<SourceRateLimitException>(
             () => NexusRefresh.RefreshOneAsync(existing, "eldenring", fake));
     }
 }

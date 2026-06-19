@@ -1,3 +1,5 @@
+using ModManager.Plugins.Abstractions;
+
 namespace ModManager.Core;
 
 /// <summary>
@@ -44,28 +46,29 @@ public static class NexusRefresh
 
     /// <summary>
     /// Refresh one mod's Nexus stats by id. Resolves the id (<see cref="ResolveModId"/>); if none,
-    /// returns null without calling the client. Otherwise <c>GetMod</c> by id and overlay only the
-    /// live stats + the upstream current version onto a clone of <paramref name="existing"/>:
+    /// returns null without calling the source. Otherwise fetch the metadata by id over the
+    /// <see cref="IModSource"/> contract and overlay only the live stats + the upstream current
+    /// version onto a clone of <paramref name="existing"/>:
     /// <list type="bullet">
     ///   <item>refresh <see cref="ModMeta.EndorsementCount"/>, <see cref="ModMeta.Downloads"/>,
     ///         <see cref="ModMeta.Available"/>,</item>
     ///   <item>set <see cref="ModMeta.NexusLatestVersion"/> = the fetched current version,</item>
     ///   <item><strong>preserve</strong> the installed <see cref="ModMeta.Version"/> and
     ///         <see cref="ModMeta.NexusFileId"/> (the "what you have" side), plus all identity
-    ///         (Title/Author/Source/links), <see cref="ModMeta.IsManual"/>, etc.</item>
+    ///         (Title/Author/Source/links), <see cref="ModMeta.IsManual"/>, <see cref="ModMeta.Endorsed"/>.</item>
     /// </list>
-    /// A <see cref="NexusRateLimitException"/> from the client propagates (the caller decides how to
+    /// A <see cref="SourceRateLimitException"/> from the source propagates (the caller decides how to
     /// handle a 429 — the sweep stops and reports partial progress).
     /// </summary>
-    public static async Task<ModMeta?> RefreshOneAsync(ModMeta existing, string domain, INexusClient client)
+    public static async Task<ModMeta?> RefreshOneAsync(ModMeta existing, string domain, IModSource source)
     {
         var id = ResolveModId(existing);
         if (id is null) return null;
 
-        var fetched = await client.GetModAsync(domain, id.Value);
-        if (fetched is null) return null;
+        var dto = await source.FetchMetadataAsync(new SourceModRef("nexus", domain, id.Value, existing.Version ?? ""));
+        if (dto is null) return null;
 
-        return Overlay(existing, fetched);
+        return Overlay(existing, dto);
     }
 
     /// <summary>
@@ -80,7 +83,7 @@ public static class NexusRefresh
     /// </summary>
     public static void ApplyEndorsements(
         IEnumerable<ModMeta> metas,
-        IEnumerable<NexusEndorsement> endorsements,
+        IEnumerable<SourceEndorsement> endorsements,
         string domain)
     {
         // id -> status, for the active domain only (last entry wins if Nexus ever repeats an id).
@@ -120,7 +123,7 @@ public static class NexusRefresh
     /// </summary>
     public static IReadOnlyList<ModMeta> SelectCandidates(
         IEnumerable<ModMeta> installedMetas,
-        IEnumerable<NexusUpdateEntry> updatedEntries,
+        IEnumerable<SourceUpdateEntry> updatedEntries,
         DateTime baselineUtc)
     {
         // id -> latest_file_update (keep the freshest if the feed ever repeats an id).
@@ -149,9 +152,9 @@ public static class NexusRefresh
     /// throttled by an injectable <paramref name="throttle"/> delay between calls (tests pass a
     /// no-op; the App passes a small inter-call delay well under the burst ceiling). Returns a
     /// <see cref="NexusRefreshResult"/> with the refreshed metas. If a call throws
-    /// <see cref="NexusRateLimitException"/>, the sweep stops cleanly — <see cref="NexusRefreshResult.RateLimited"/>
+    /// <see cref="SourceRateLimitException"/>, the sweep stops cleanly — <see cref="NexusRefreshResult.RateLimited"/>
     /// is set and the partial progress is returned, never re-thrown. Unresolvable metas are skipped
-    /// (no client call, not counted).
+    /// (no source call, not counted).
     ///
     /// <para>After the stats sweep, the bulk user-endorsements list is fetched <em>once</em> and
     /// folded onto the refreshed metas (<see cref="ApplyEndorsements"/>) so hearts reflect reality
@@ -162,7 +165,7 @@ public static class NexusRefresh
     /// sweep's own throttle.</para>
     /// </summary>
     public static async Task<NexusRefreshResult> RefreshAllAsync(
-        IEnumerable<ModMeta> metas, string domain, INexusClient client, Func<Task>? throttle = null)
+        IEnumerable<ModMeta> metas, string domain, IModSource source, Func<Task>? throttle = null)
     {
         var updated = new List<ModMeta>();
         int refreshed = 0, updatesAvailable = 0;
@@ -180,9 +183,9 @@ public static class NexusRefresh
             ModMeta? result;
             try
             {
-                result = await RefreshOneAsync(meta, domain, client);
+                result = await RefreshOneAsync(meta, domain, source);
             }
-            catch (NexusRateLimitException)
+            catch (SourceRateLimitException)
             {
                 rateLimited = true;
                 break; // stop the sweep, return partial progress
@@ -199,7 +202,7 @@ public static class NexusRefresh
         // try/catch (including a 429) so it can never abort or downgrade the stats sweep above.
         try
         {
-            var endorsements = await client.GetUserEndorsementsAsync();
+            var endorsements = await source.GetUserEndorsementsAsync();
             ApplyEndorsements(updated, endorsements, domain);
         }
         catch
@@ -212,16 +215,22 @@ public static class NexusRefresh
 
     /// <summary>
     /// Produce a refreshed clone: copy every field from <paramref name="existing"/> (the installed
-    /// truth) then overwrite only the live-stat fields from <paramref name="fetched"/> and capture
-    /// the upstream version as <see cref="ModMeta.NexusLatestVersion"/>. The installed
-    /// <see cref="ModMeta.Version"/> / <see cref="ModMeta.NexusFileId"/> are never touched, and
-    /// <see cref="ModMeta.Endorsed"/> (persisted user intent) is carried through verbatim — the
-    /// sweep persists these clones wholesale, so a dropped <c>Endorsed</c> here would silently wipe
-    /// the user's heart on disk whenever the best-effort bulk endorsements call fails.
+    /// truth) then overwrite only the live-stat fields from <paramref name="dto"/> and capture the
+    /// upstream version (<see cref="SourceModMetadata.LatestVersion"/>) as
+    /// <see cref="ModMeta.NexusLatestVersion"/>.
+    ///
+    /// <para>This is a <strong>selective</strong> overlay, not <c>SourceMetadataMapper.Apply</c>:
+    /// the stats refresh deliberately ignores the DTO's identity/credit fields (Title, Author, Url,
+    /// Image, Category, …). The installed <see cref="ModMeta.Version"/> /
+    /// <see cref="ModMeta.NexusFileId"/> are never touched, and <see cref="ModMeta.Endorsed"/>
+    /// (persisted user intent) is carried through verbatim — the sweep persists these clones
+    /// wholesale, so a dropped <c>Endorsed</c> here, or a clobbered manual-match Title, would
+    /// silently corrupt user state on disk whenever the best-effort bulk endorsements call fails.</para>
     /// </summary>
-    private static ModMeta Overlay(ModMeta existing, ModMeta fetched) => new()
+    private static ModMeta Overlay(ModMeta existing, SourceModMetadata dto) => new()
     {
-        // identity + installed side — preserved verbatim from existing
+        // identity + installed side — preserved verbatim from existing (the DTO's identity fields,
+        // if any, are intentionally ignored: a stats refresh must never rewrite a manual match's title)
         Title = existing.Title,
         Description = existing.Description,
         Author = existing.Author,
@@ -241,12 +250,12 @@ public static class NexusRefresh
         Version = existing.Version,           // installed version — the "what you have" side
         Endorsed = existing.Endorsed,         // persisted user intent (like IsManual) — preserved, never recomputed-or-wiped
 
-        // live stats — refreshed from the fetched mod
-        EndorsementCount = fetched.EndorsementCount ?? existing.EndorsementCount,
-        Downloads = fetched.Downloads ?? existing.Downloads,
-        Available = fetched.Available ?? existing.Available,
+        // live stats — refreshed from the fetched metadata
+        EndorsementCount = dto.Endorsements ?? existing.EndorsementCount,
+        Downloads = dto.Downloads ?? existing.Downloads,
+        Available = dto.Available ?? existing.Available,
 
         // the "what's available" side of the compare
-        NexusLatestVersion = fetched.Version ?? existing.NexusLatestVersion,
+        NexusLatestVersion = dto.LatestVersion ?? existing.NexusLatestVersion,
     };
 }

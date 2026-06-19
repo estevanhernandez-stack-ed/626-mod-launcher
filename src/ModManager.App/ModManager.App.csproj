@@ -25,6 +25,15 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
+  <!--
+    Build flavors. FULL (GitHub SKU) compiles the plugin host in; STORE (sealed core, MS Store SKU)
+    leaves FULL undefined so the `#if FULL` host call site in App.xaml.cs compiles out and no plugin
+    ever loads. Debug/Release are FULL; build the Store flavor with `-p:Configuration=Store`.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Store'">
+    <DefineConstants>$(DefineConstants);FULL</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
@@ -36,6 +45,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ModManager.Core\ModManager.Core.csproj" />
+    <ProjectReference Include="..\ModManager.Plugins.Abstractions\ModManager.Plugins.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

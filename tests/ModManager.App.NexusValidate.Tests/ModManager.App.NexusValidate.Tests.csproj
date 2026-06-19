@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- The App-side Nexus validate path (GET /v1/users/validate.json) is the one credential check the
+       key store needs. It lives in NexusKeyValidator, a deliberately pure, WinUI-free helper. We
+       source-link JUST that file rather than ProjectReference the WinUI App, so this test project
+       references NEITHER WinUI nor ModManager.Core — it won't trigger the bare-dotnet WinUI build hang
+       that the release.yml comment guards against, yet it still pins the exact validate contract
+       (ToS headers + snake_case name/is_premium parse + 401->null / non-2xx->throw). -->
+  <ItemGroup>
+    <Compile Include="..\..\src\ModManager.App\Services\NexusKeyValidator.cs">
+      <Link>NexusKeyValidator.cs</Link>
+    </Compile>
+    <Compile Include="..\..\src\ModManager.App\Services\AppSettingsService.cs">
+      <Link>AppSettingsService.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>

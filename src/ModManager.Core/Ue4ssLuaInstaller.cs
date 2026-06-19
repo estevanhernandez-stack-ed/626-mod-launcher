@@ -1,3 +1,6 @@
+using ModManager.Core.Plugins;
+using ModManager.Plugins.Abstractions;
+
 namespace ModManager.Core;
 
 /// <summary>The result of installing a UE4SS Lua mod: the leaf folder name it landed under in
@@ -122,9 +125,9 @@ public static class Ue4ssLuaInstaller
     /// never clobbered. Returns true iff a match was found and written. Best-effort — never throws.
     /// </summary>
     public static async Task<bool> IdentifyMetadataAsync(
-        GameContext ctx, INexusClient nexus, string archivePath, string modName)
+        GameContext ctx, IModSource? source, string archivePath, string modName)
     {
-        if (ctx is null || nexus is null || string.IsNullOrEmpty(modName)) return false;
+        if (ctx is null || source is null || string.IsNullOrEmpty(modName)) return false;
         if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath)) return false;
 
         var domain = NexusDomains.Effective(ctx.Game);
@@ -132,13 +135,13 @@ public static class Ue4ssLuaInstaller
 
         try
         {
-            var match = await nexus.GetByMd5Async(domain, Md5Hash.OfFile(archivePath));
-            if (match?.Meta is null) return false;
+            var hit = await source.IdentifyByHashAsync(domain, Md5Hash.OfFile(archivePath));
+            if (hit is null) return false;
 
             var existing = Scanner.LoadMetadata(ctx).GetValueOrDefault(modName);
             if (existing?.IsManual == true) return false; // user's hand-pick is locked — don't override
 
-            var m = match.Meta;
+            var m = SourceMetadataMapper.FromIdentify(hit);
             // Nexus md5 is exact provenance → authoritative; fill gaps from any existing entry.
             var merged = new ModMeta
             {

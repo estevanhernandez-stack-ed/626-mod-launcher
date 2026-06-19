@@ -1,4 +1,5 @@
 using ModManager.Core;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Tests;
 
@@ -7,18 +8,23 @@ namespace ModManager.Tests;
 // like "Seamless Co-op" or "ReShade". Pin that the branch fires + the right keys land.
 public class Md5IdentifyFromsoftTests
 {
-    private sealed class FakeNexusClient : INexusClient
+    private sealed class FakeModSource : IModSource
     {
-        private readonly Func<string, string, Task<NexusMd5Match?>> _byMd5;
-        public FakeNexusClient(Func<string, string, Task<NexusMd5Match?>> byMd5) => _byMd5 = byMd5;
-        public Task<ModMeta?> GetModAsync(string gameDomain, int modId) => throw new NotSupportedException();
-        public Task<NexusMd5Match?> GetByMd5Async(string gameDomain, string md5) => _byMd5(gameDomain, md5);
-        public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
-        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
-        public NexusRateLimit? LastRateLimit => null;
+        private readonly Func<string, string, Task<SourceIdentifyResult?>> _byMd5;
+        public FakeModSource(Func<string, string, Task<SourceIdentifyResult?>> byMd5) => _byMd5 = byMd5;
+        public string Id => "nexus";
+        public bool RequiresApiKey => true;
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string gameDomain, string md5) => _byMd5(gameDomain, md5);
+        public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef) => throw new NotSupportedException();
+        public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
+        public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
+
+    private static SourceIdentifyResult Hit(string domain, int modId, string? title = null, string? author = null)
+        => new(new SourceModRef("nexus", domain, modId, ""),
+               new SourceModMetadata(null, null, null, null, null, Title: title, Author: author));
 
     // A fromsoft GameContext mirrors the EnginePresets["fromsoft"] shape: Exts is empty (mods are
     // catalog-named, not extension-based) and NexusGameDomain is set so the md5 path runs.
@@ -47,8 +53,8 @@ public class Md5IdentifyFromsoftTests
             ("ersc_settings.ini", "[settings]"),
             ("launch_elden_ring_seamlesscoop.exe", "fakeexe"));
 
-        var fake = new FakeNexusClient((_, _) =>
-            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(510, new ModMeta { Title = "Seamless Co-op (Nexus)", Author = "LukeYui" })));
+        var fake = new FakeModSource((d, _) =>
+            Task.FromResult<SourceIdentifyResult?>(Hit(d, 510, title: "Seamless Co-op (Nexus)", author: "LukeYui")));
 
         var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
 
@@ -67,8 +73,8 @@ public class Md5IdentifyFromsoftTests
         var zipPath = Path.Combine(TestSupport.TempDir("md5fs-noop-"), "random.zip");
         TestSupport.WriteZip(zipPath, ("readme.txt", "hi"), ("screenshot.png", "x"));
 
-        var fake = new FakeNexusClient((_, _) =>
-            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(1, new ModMeta { Title = "Whatever" })));
+        var fake = new FakeModSource((d, _) =>
+            Task.FromResult<SourceIdentifyResult?>(Hit(d, 1, title: "Whatever")));
 
         var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
 
@@ -89,8 +95,8 @@ public class Md5IdentifyFromsoftTests
             ("ersc_settings.ini", "x"),
             ("regulation.bin", "x"));
 
-        var fake = new FakeNexusClient((_, _) =>
-            Task.FromResult<NexusMd5Match?>(new NexusMd5Match(999, new ModMeta { Title = "Combo Pack" })));
+        var fake = new FakeModSource((d, _) =>
+            Task.FromResult<SourceIdentifyResult?>(Hit(d, 999, title: "Combo Pack")));
 
         var r = await Scanner.Md5IdentifyArchivesAsync(c, fake, new[] { zipPath });
 

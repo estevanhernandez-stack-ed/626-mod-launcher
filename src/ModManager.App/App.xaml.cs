@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using ModManager.App.Services;
 using ModManager.App.ViewModels;
 using ModManager.Core;
+using ModManager.Core.Plugins;
 
 namespace ModManager.App;
 
@@ -48,9 +49,32 @@ public partial class App : Application
                 services.AddSingleton<NexusUpdatePoll>();
                 services.AddSingleton<RemoteManifestSource>();
                 services.AddSingleton<RestorePointService>();
+                // The contribution sink loaded plugins register their mod sources into. Empty when no
+                // plugin loads (the Store SKU + the zero-plugins path) — every consumer tolerates empty.
+                services.AddSingleton<ModSourceRegistry>();
+#if FULL
+                // The off-Store plugin feed: fetches, verifies, and hot-loads the Nexus plugin on connect.
+                // Absent from the STORE build — the Store SKU has no plugin host and no feed URL.
+                services.AddSingleton<PluginFeedSource>(sp => new PluginFeedSource(
+                    sp.GetRequiredService<HttpClient>(),
+                    sp.GetRequiredService<ModSourceRegistry>(),
+                    sp.GetRequiredService<NexusService>().GetCredential,
+                    sp.GetRequiredService<AppSettingsService>()));
+#endif
                 services.AddTransient<MainViewModel>();
             })
             .Build();
+
+#if FULL
+        // Discover + verify + load signed plugins (FULL flavor only — the Store SKU compiles this out).
+        // Each plugin's mod sources land in the shared registry; the credential lookup + shared HttpClient
+        // are App-owned and passed in. Fail-closed + per-plugin try/catch live in PluginHost — a bad or
+        // missing plugins dir is a clean no-op, leaving the app on the zero-plugins path.
+        PluginHost.LoadAll(
+            AppHost.Services.GetRequiredService<ModSourceRegistry>(),
+            AppHost.Services.GetRequiredService<NexusService>().GetCredential,
+            AppHost.Services.GetRequiredService<HttpClient>());
+#endif
     }
 
     // Wire app-wide exception logging as early as possible. WinUI can swallow exceptions thrown from

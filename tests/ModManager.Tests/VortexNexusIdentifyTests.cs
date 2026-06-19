@@ -1,20 +1,24 @@
 using ModManager.Core;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Tests;
 
 public class VortexNexusIdentifyTests
 {
-    private sealed class FakeNexus : INexusClient
+    // The Vortex-by-modId path fetches metadata by ref (FetchMetadataAsync), not by md5. The func is
+    // handed the SourceModRef the rewired Scanner builds from the Vortex-recorded modId.
+    private sealed class FakeModSource : IModSource
     {
-        private readonly Func<string, int, Task<ModMeta?>> _byId;
-        public FakeNexus(Func<string, int, Task<ModMeta?>> byId) => _byId = byId;
-        public Task<ModMeta?> GetModAsync(string gameDomain, int modId) => _byId(gameDomain, modId);
-        public Task<NexusMd5Match?> GetByMd5Async(string g, string m) => throw new NotSupportedException();
-        public Task<NexusUser?> ValidateAsync() => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
-        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
-        public NexusRateLimit? LastRateLimit => null;
+        private readonly Func<SourceModRef, Task<SourceModMetadata?>> _byRef;
+        public FakeModSource(Func<SourceModRef, Task<SourceModMetadata?>> byRef) => _byRef = byRef;
+        public string Id => "nexus";
+        public bool RequiresApiKey => true;
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string g, string m) => throw new NotSupportedException();
+        public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef) => _byRef(modRef);
+        public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
+        public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
 
     private static (string modsDir, GameContext c) Fixture(string? domain)
@@ -40,8 +44,10 @@ public class VortexNexusIdentifyTests
     {
         var (_, c) = Fixture("windrose");
         int? seenId = null; string? seenDomain = null;
-        var fake = new FakeNexus((d, id) => { seenDomain = d; seenId = id;
-            return Task.FromResult<ModMeta?>(new ModMeta { Title = "Pet Boar Plus", Author = "IceBox", Url = "https://www.nexusmods.com/windrose/mods/227" }); });
+        var fake = new FakeModSource(modRef => { seenDomain = modRef.GameDomain; seenId = modRef.ModId;
+            return Task.FromResult<SourceModMetadata?>(new SourceModMetadata(
+                null, null, null, null, null,
+                Title: "Pet Boar Plus", Author: "IceBox", ModUrl: "https://www.nexusmods.com/windrose/mods/227")); });
 
         var r = await Scanner.IdentifyVortexNexusAsync(c, fake);
 
@@ -58,7 +64,8 @@ public class VortexNexusIdentifyTests
     public async Task Returns_zero_without_a_nexus_domain()
     {
         var (_, c) = Fixture(null);
-        var fake = new FakeNexus((_, _) => Task.FromResult<ModMeta?>(new ModMeta { Title = "X" }));
+        var fake = new FakeModSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(null, null, null, null, null, Title: "X")));
         Assert.Equal(0, (await Scanner.IdentifyVortexNexusAsync(c, fake)).Matched);
     }
 
@@ -69,6 +76,7 @@ public class VortexNexusIdentifyTests
         File.WriteAllText(Path.Combine(modsDir, "vortex.deployment.windrose.json"), """
         { "files": [ { "relPath": "CleanName\\main.lua", "source": "CleanName" } ]}
         """);
-        Assert.Equal(0, (await Scanner.IdentifyVortexNexusAsync(c, new FakeNexus((_, _) => Task.FromResult<ModMeta?>(new ModMeta { Title = "X" })))).Matched);
+        Assert.Equal(0, (await Scanner.IdentifyVortexNexusAsync(c, new FakeModSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(null, null, null, null, null, Title: "X"))))).Matched);
     }
 }

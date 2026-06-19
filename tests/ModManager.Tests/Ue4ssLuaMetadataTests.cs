@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using ModManager.Core;
+using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Tests;
 
@@ -7,7 +8,7 @@ namespace ModManager.Tests;
 // backfill nor fetch-all buttons fix it — because the existing md5-identify keys mods via ZipModKeys,
 // which filters to pak/ucas/utoc and so returns ZERO keys for a Scripts-only Lua archive. The fix:
 // identify the dropped archive at install time and bind the metadata under the mod-FOLDER key (the
-// same key the auto-located row uses), via INexusClient — no .pak required.
+// same key the auto-located row uses), via the mod-source plugin (IModSource) — no .pak required.
 public class Ue4ssLuaMetadataTests : IDisposable
 {
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "ue4ss-meta-" + Guid.NewGuid().ToString("n"));
@@ -39,40 +40,40 @@ public class Ue4ssLuaMetadataTests : IDisposable
         return zipPath;
     }
 
-    // A Nexus stub that returns a fixed match for any md5 (simulating the archive being a known Nexus upload).
-    private sealed class StubNexus : INexusClient
+    // A mod-source stub that returns a fixed identify hit for any md5 (simulating the archive being a known Nexus upload).
+    private sealed class StubModSource : IModSource
     {
         public int Calls;
-        public Task<ModMeta?> GetModAsync(string d, int id) => Task.FromResult<ModMeta?>(null);
-        public Task<NexusUser?> ValidateAsync() => Task.FromResult<NexusUser?>(new NexusUser("tester", false));
-        public Task<NexusMd5Match?> GetByMd5Async(string domain, string md5)
+        public string Id => "nexus";
+        public bool RequiresApiKey => true;
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string domain, string md5)
         {
             Calls++;
-            return Task.FromResult<NexusMd5Match?>(new NexusMd5Match(465, new ModMeta
-            {
-                Title = "Windrose Shanties Anywhere",
-                Author = "SomeModder",
-                Url = "https://www.nexusmods.com/windrose/mods/465",
-                Source = "Nexus (Windrose)",
-            }));
+            return Task.FromResult<SourceIdentifyResult?>(new SourceIdentifyResult(
+                new SourceModRef("nexus", domain, 465, ""),
+                new SourceModMetadata(null, null, null, null, null,
+                    Title: "Windrose Shanties Anywhere",
+                    Author: "SomeModder",
+                    ModUrl: "https://www.nexusmods.com/windrose/mods/465")));
         }
-        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
-        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
-        public NexusRateLimit? LastRateLimit => null;
+        public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef) => throw new NotSupportedException();
+        public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
+        public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
 
     [Fact]
     public async Task IdentifyInstalledLuaMod_binds_nexus_metadata_under_the_mod_folder_key()
     {
         var ctx = Ctx();
-        var nexus = new StubNexus();
+        var source = new StubModSource();
 
         var matched = await Ue4ssLuaInstaller.IdentifyMetadataAsync(
-            ctx, nexus, archivePath: ShantiesZip(), modName: "Windrose Shanties Anywhere");
+            ctx, source, archivePath: ShantiesZip(), modName: "Windrose Shanties Anywhere");
 
         Assert.True(matched);
-        Assert.Equal(1, nexus.Calls);
+        Assert.Equal(1, source.Calls);
 
         // The metadata must be keyed by the mod-FOLDER name — the key the auto-located row uses.
         var meta = Scanner.LoadMetadata(ctx);
@@ -85,7 +86,7 @@ public class Ue4ssLuaMetadataTests : IDisposable
     public async Task IdentifyInstalledLuaMod_is_a_safe_noop_when_nexus_has_no_match()
     {
         var ctx = Ctx();
-        var noHit = new NoMatchNexus();
+        var noHit = new NoMatchModSource();
 
         var matched = await Ue4ssLuaInstaller.IdentifyMetadataAsync(
             ctx, noHit, archivePath: ShantiesZip(), modName: "Windrose Shanties Anywhere");
@@ -102,20 +103,21 @@ public class Ue4ssLuaMetadataTests : IDisposable
             new ModMeta { Title = "My Hand-Picked Title", IsManual = true });
 
         await Ue4ssLuaInstaller.IdentifyMetadataAsync(
-            ctx, new StubNexus(), archivePath: ShantiesZip(), modName: "Windrose Shanties Anywhere");
+            ctx, new StubModSource(), archivePath: ShantiesZip(), modName: "Windrose Shanties Anywhere");
 
         // Manual entries are locked — auto-identify must not overwrite the user's pick.
         Assert.Equal("My Hand-Picked Title", Scanner.LoadMetadata(ctx)["Windrose Shanties Anywhere"].Title);
     }
 
-    private sealed class NoMatchNexus : INexusClient
+    private sealed class NoMatchModSource : IModSource
     {
-        public Task<ModMeta?> GetModAsync(string d, int id) => Task.FromResult<ModMeta?>(null);
-        public Task<NexusUser?> ValidateAsync() => Task.FromResult<NexusUser?>(null);
-        public Task<NexusMd5Match?> GetByMd5Async(string domain, string md5) => Task.FromResult<NexusMd5Match?>(null);
-        public Task<IReadOnlyList<NexusUpdateEntry>> GetRecentlyUpdatedAsync(string d, string p) => throw new NotSupportedException();
-        public Task<EndorseOutcome> EndorseAsync(string d, int id, string v, EndorseAction a) => throw new NotSupportedException();
-        public Task<IReadOnlyList<NexusEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
-        public NexusRateLimit? LastRateLimit => null;
+        public string Id => "nexus";
+        public bool RequiresApiKey => true;
+        public Task<SourceIdentifyResult?> IdentifyByHashAsync(string domain, string md5) => Task.FromResult<SourceIdentifyResult?>(null);
+        public Task<SourceModMetadata?> FetchMetadataAsync(SourceModRef modRef) => throw new NotSupportedException();
+        public Task<bool> IsUpdateAvailableAsync(SourceModRef modRef, string installedVersion) => throw new NotSupportedException();
+        public Task<EndorseResult> SetEndorsedAsync(SourceModRef modRef, bool endorsed) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceEndorsement>> GetUserEndorsementsAsync() => throw new NotSupportedException();
+        public Task<IReadOnlyList<SourceUpdateEntry>> GetRecentlyUpdatedAsync(string gameDomain, string period) => throw new NotSupportedException();
     }
 }

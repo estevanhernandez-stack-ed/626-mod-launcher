@@ -22,6 +22,8 @@ public sealed class AppSettingsService
 
     private bool _autoCheckModUpdates;
 
+    private bool _keepPluginsUpdated;
+
     /// <summary>Raised when any setting changes so the shell can re-apply (e.g. swap the backdrop
     /// on the live window).</summary>
     public event EventHandler? BackdropChanged;
@@ -51,6 +53,17 @@ public sealed class AppSettingsService
         Save();
     }
 
+    /// <summary>Whether the launcher auto-updates installed off-Store plugins on a 24h debounce
+    /// (default on). The first install on Nexus connect happens regardless; this gates re-checks.</summary>
+    public bool KeepPluginsUpdated => _keepPluginsUpdated;
+
+    public void SetKeepPluginsUpdated(bool enabled)
+    {
+        if (_keepPluginsUpdated == enabled) return;
+        _keepPluginsUpdated = enabled;
+        Save();
+    }
+
     public AppSettingsService()
     {
         Path = System.IO.Path.Combine(
@@ -59,6 +72,7 @@ public sealed class AppSettingsService
         _backdrop = Load();
         _autoUpdateDefinitions = LoadAutoUpdate();
         _autoCheckModUpdates = LoadAutoCheckModUpdates();
+        _keepPluginsUpdated = LoadKeepPluginsUpdated();
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
@@ -117,6 +131,20 @@ public sealed class AppSettingsService
         return true;
     }
 
+    private bool LoadKeepPluginsUpdated()
+    {
+        try
+        {
+            if (!File.Exists(Path)) return true;
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
+            if (doc.RootElement.TryGetProperty("keepPluginsUpdated", out var v)
+                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
+                return v.GetBoolean();
+        }
+        catch { /* missing / corrupt — default on */ }
+        return true;
+    }
+
     private void Save()
     {
         try
@@ -125,7 +153,8 @@ public sealed class AppSettingsService
             var json =
                 $"{{\"backdrop\":\"{_backdrop.ToString().ToLowerInvariant()}\","
                 + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")},"
-                + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")}}}";
+                + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")},"
+                + $"\"keepPluginsUpdated\":{(_keepPluginsUpdated ? "true" : "false")}}}";
             File.WriteAllText(Path, json);
         }
         catch { /* best-effort persist; in-memory state still holds */ }

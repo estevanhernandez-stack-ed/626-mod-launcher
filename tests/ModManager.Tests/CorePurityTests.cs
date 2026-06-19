@@ -10,6 +10,7 @@ public class CorePurityTests
     private static readonly string[] Forbidden =
     {
         "Microsoft.UI", "Microsoft.WinUI", "WinRT", "Microsoft.Windows.SDK", "Microsoft.Windows.ApplicationModel",
+        "Windows.UI", "Windows.Storage", "Windows.ApplicationModel", "Electron",
         "ModManager.App", "PresentationFramework", "PresentationCore", "WindowsBase", "System.Windows.Forms", "Microsoft.Maui",
     };
 
@@ -22,6 +23,18 @@ public class CorePurityTests
         var core = typeof(Scanner).Assembly;
         var names = core.GetReferencedAssemblies().Select(a => a.Name ?? "");
         Assert.Empty(Offenders(names));
+    }
+
+    [Fact]
+    public void Abstractions_assembly_references_no_ui_frameworks()
+    {
+        // The plugin contract is a transitive Core dependency and the assembly most likely to grow new
+        // file types — guard it directly so a future `using Microsoft.UI.*` in Contract.cs can't slip past CI.
+        var abstractions = typeof(ModManager.Plugins.Abstractions.IModSource).Assembly;
+        var names = abstractions.GetReferencedAssemblies().Select(a => a.Name ?? "");
+        Assert.Empty(Offenders(names));
+        // Non-vacuous: the guarded assembly really holds the contract.
+        Assert.Contains("IModSource", abstractions.GetTypes().Select(t => t.Name));
     }
 
     [Fact]

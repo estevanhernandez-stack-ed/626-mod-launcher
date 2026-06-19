@@ -4,9 +4,12 @@
       <Platform Project="x64" />
     </Project>
     <Project Path="src/ModManager.Core/ModManager.Core.csproj" />
+    <Project Path="src/ModManager.Plugins.Abstractions/ModManager.Plugins.Abstractions.csproj" />
     <Project Path="src/ModManager.Mcp/ModManager.Mcp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ModManager.Tests/ModManager.Tests.csproj" />
+    <Project Path="tests/ModManager.Plugin.Nexus.Tests/ModManager.Plugin.Nexus.Tests.csproj" />
+    <Project Path="tests/ModManager.App.NexusValidate.Tests/ModManager.App.NexusValidate.Tests.csproj" />
   </Folder>
 </Solution>

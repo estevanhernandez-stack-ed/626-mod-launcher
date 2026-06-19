@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ModManager.Core\ModManager.Core.csproj" />
     <ProjectReference Include="..\..\src\ModManager.Mcp\ModManager.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\ModManager.Plugins.Abstractions\ModManager.Plugins.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
