@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.2",
+  "timestamp": "2026-06-19T00:00:00Z",
+  "commit": "33f8c109c264c5a37d671e1f2504ccbe8007e3dc",
+  "branch": "fix/plugin-0.8.1-delivery",
+  "mode": "local",
+  "tier": 2,
+  "verdict": "PASS",
+  "score": 0.778,
+  "threshold": 0.70,
+  "tests": {
+    "passed": 1309,
+    "failed": 0,
+    "skipped": 2,
+    "total": 1311
+  },
+  "levels": {
+    "smoke": { "score": 0.85, "weight": 0.15, "contribution": 0.1275 },
+    "behavioral": { "score": 0.95, "weight": 0.40, "contribution": 0.38 },
+    "edge": { "score": 0.90, "weight": 0.30, "contribution": 0.27 },
+    "integration": { "score": 0.00, "weight": 0.045, "contribution": 0.00, "applicability": 0.30 }
+  },
+  "would_exit": 0,
+  "session_log": {
+    "outcome": "completed",
+    "skill": "vibe-test:gate"
+  }
+}
