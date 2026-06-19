@@ -47,18 +47,21 @@ public sealed class PluginFeedSource
     /// update check gated on the "keep plugins updated" setting. Never throws.</summary>
     public async Task MaybeFetchOnConnectAsync()
     {
+        // Debounce / toggle guard sits ABOVE the try/finally (mirrors RemoteManifestSource.RefreshAsync):
+        // a debounced or toggle-off re-check returns WITHOUT stamping. Stamping a skipped run would rewrite
+        // last-plugin-check.txt to "now" on every Nexus connect and starve the 24h re-check — it could
+        // never become due. First install (anyInstalled == false) bypasses this and proceeds to fetch.
+        bool anyInstalled = InstalledPluginsStore.Read(RecordPath).Count > 0;
+        if (anyInstalled)
+        {
+            if (!_settings.KeepPluginsUpdated) return;                // re-checks are opt-out-able
+            var last = ReadStamp();
+            if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, DebounceWindow)) return;
+        }
+        // else: first install — fetch now regardless of stamp/toggle (they connected to use Nexus).
+
         try
         {
-            bool anyInstalled = InstalledPluginsStore.Read(RecordPath).Count > 0;
-
-            if (anyInstalled)
-            {
-                if (!_settings.KeepPluginsUpdated) return;                // re-checks are opt-out-able
-                var last = ReadStamp();
-                if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, DebounceWindow)) return;
-            }
-            // else: first install — fetch now regardless of stamp/toggle (they connected to use Nexus).
-
             var req = new PluginFeedRequest(FeedUrl, PluginSigningKey.PublicKeySpki.ToArray(),
                 AppVersion, PluginHost.PluginsDir, RecordPath);
 
@@ -68,7 +71,7 @@ public sealed class PluginFeedSource
                 PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);  // hot-load — Nexus live now
         }
         catch (Exception ex) { AppDiagnostics.Log("plugin-feed", ex); }
-        finally { WriteStamp(); }
+        finally { WriteStamp(); }  // only after an actual fetch attempt
     }
 
     private async Task<byte[]?> Download(string url, CancellationToken ct)
