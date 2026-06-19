@@ -62,14 +62,16 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 7, 0), dir, record);
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            var result = await PluginFeedInstaller.RunAsync(req, Serve(map));
 
-            var one = Assert.Single(installed);
+            var one = Assert.Single(result.Installed);
             Assert.Equal("nexus", one.Id);
             Assert.Equal("1.0.0", one.Version);
             Assert.True(File.Exists(Path.Combine(dir, "nexus.dll")));
             Assert.True(File.Exists(Path.Combine(dir, "nexus.dll.sig")));
             Assert.Equal("1.0.0", InstalledPluginsStore.Read(record)["nexus"]);
+            Assert.True(result.FeedReached);                 // reached + parsed
+            Assert.Null(result.RequiresNewerBinary);         // binary satisfied the floor
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
@@ -95,7 +97,7 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 7, 0), dir, record);
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            var installed = (await PluginFeedInstaller.RunAsync(req, Serve(map))).Installed;
 
             Assert.Empty(installed);
             Assert.False(File.Exists(Path.Combine(dir, "nexus.dll")));
@@ -123,7 +125,7 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 7, 0), dir, record);
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            var installed = (await PluginFeedInstaller.RunAsync(req, Serve(map))).Installed;
 
             Assert.Empty(installed);
             Assert.False(File.Exists(Path.Combine(dir, "nexus.dll")));
@@ -151,8 +153,12 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 6, 0), dir, record);   // binary older than minBinaryVersion 0.7.0
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
-            Assert.Empty(installed);
+            var result = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            Assert.Empty(result.Installed);
+            // The feed WAS reached — the only reason nothing installed is the binary being too old.
+            // RequiresNewerBinary lets the caller say "update the launcher" instead of "up to date".
+            Assert.True(result.FeedReached);
+            Assert.Equal(new Version(0, 7, 0), result.RequiresNewerBinary);
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
@@ -169,8 +175,11 @@ public class PluginFeedInstallerTests
                 new Version(0, 7, 0), dir, record);
 
             // The download delegate returns null for everything (offline).
-            var installed = await PluginFeedInstaller.RunAsync(req, (_, _) => Task.FromResult<byte[]?>(null));
-            Assert.Empty(installed);
+            var result = await PluginFeedInstaller.RunAsync(req, (_, _) => Task.FromResult<byte[]?>(null));
+            Assert.Empty(result.Installed);
+            // Offline must read as "feed not reached" (→ a Failed/"couldn't reach" message), never "up to date".
+            Assert.False(result.FeedReached);
+            Assert.Null(result.RequiresNewerBinary);
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
@@ -211,7 +220,7 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 7, 0), dir, record);
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            var installed = (await PluginFeedInstaller.RunAsync(req, Serve(map))).Installed;
 
             // Update was refused; the working pair is untouched byte-for-byte.
             Assert.Empty(installed);
@@ -251,7 +260,7 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 7, 0), dir, record);
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            var installed = (await PluginFeedInstaller.RunAsync(req, Serve(map))).Installed;
 
             Assert.Single(installed);
             Assert.Equal(newDll, File.ReadAllBytes(dllPath));
@@ -282,7 +291,7 @@ public class PluginFeedInstallerTests
             var req = new PluginFeedRequest("https://x/plugins.json", signer.PublicKey,
                 new Version(0, 7, 0), dir, record);
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Serve(map));
+            var installed = (await PluginFeedInstaller.RunAsync(req, Serve(map))).Installed;
 
             Assert.Empty(installed);
             // Nothing landed anywhere — not in PluginsDir, not in its parent.

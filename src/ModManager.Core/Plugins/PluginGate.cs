@@ -26,4 +26,26 @@ public static class PluginGate
         }
         return result;
     }
+
+    /// <summary>The lowest binary version that would let at least one currently-version-gated plugin
+    /// install, or <see langword="null"/> if nothing in the feed is blocked solely by the binary being
+    /// too old. Lets a caller turn a silent gate-out into an honest "update the launcher to vX" message
+    /// instead of mis-reporting "up to date". Pure — no I/O.</summary>
+    public static Version? MinimumBinaryToUnblock(
+        PluginIndex index, Version binaryVersion, IReadOnlyDictionary<string, string> installedVersions)
+    {
+        // A schema we refuse isn't a version problem — don't suggest a launcher update for it.
+        if (index.SchemaVersion < 1 || index.SchemaVersion > PluginIndex.KnownSchemaVersion)
+            return null;
+
+        Version? lowest = null;
+        foreach (var e in index.Plugins)
+        {
+            if (!Version.TryParse(e.MinBinaryVersion, out var min)) continue; // unparseable → not a clear update ask
+            if (binaryVersion >= min) continue;                              // not version-blocked
+            if (installedVersions.TryGetValue(e.Id, out var have) && have == e.Version) continue; // already current
+            if (lowest is null || min < lowest) lowest = min;                // the smallest bump that unblocks something
+        }
+        return lowest;
+    }
 }

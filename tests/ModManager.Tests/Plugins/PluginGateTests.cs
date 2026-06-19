@@ -70,4 +70,49 @@ public class PluginGateTests
             Index(1, Entry("nexus", "1.0.0", "not-a-version")), new Version(9, 9, 9), None);
         Assert.Empty(got);
     }
+
+    [Fact]
+    public void MinimumBinaryToUnblock_reports_the_floor_when_the_binary_is_too_old()
+    {
+        var need = PluginGate.MinimumBinaryToUnblock(
+            Index(1, Entry("nexus", "1.0.0", "0.9.0")), new Version(0, 7, 0), None);
+        Assert.Equal(new Version(0, 9, 0), need);
+    }
+
+    [Fact]
+    public void MinimumBinaryToUnblock_is_null_when_everything_is_installable()
+    {
+        var need = PluginGate.MinimumBinaryToUnblock(
+            Index(1, Entry("nexus", "1.0.0", "0.7.0")), new Version(0, 7, 0), None);
+        Assert.Null(need);
+    }
+
+    [Fact]
+    public void MinimumBinaryToUnblock_picks_the_lowest_unblocking_version()
+    {
+        // Two gated plugins; the lowest floor is the smallest launcher bump that unblocks anything.
+        var need = PluginGate.MinimumBinaryToUnblock(
+            Index(1, Entry("a", "1.0.0", "1.2.0"), Entry("b", "1.0.0", "0.9.0")),
+            new Version(0, 7, 0), None);
+        Assert.Equal(new Version(0, 9, 0), need);
+    }
+
+    [Fact]
+    public void MinimumBinaryToUnblock_ignores_an_already_current_entry()
+    {
+        // Already installed at the listed version → not something an update would "unblock".
+        var need = PluginGate.MinimumBinaryToUnblock(
+            Index(1, Entry("nexus", "1.0.0", "0.9.0")), new Version(0, 7, 0),
+            new Dictionary<string, string> { ["nexus"] = "1.0.0" });
+        Assert.Null(need);
+    }
+
+    [Fact]
+    public void MinimumBinaryToUnblock_is_null_for_an_unknown_schema()
+    {
+        // A schema we refuse isn't a version problem — don't suggest a launcher update for it.
+        var need = PluginGate.MinimumBinaryToUnblock(
+            Index(99, Entry("nexus", "1.0.0", "9.9.9")), new Version(0, 7, 0), None);
+        Assert.Null(need);
+    }
 }

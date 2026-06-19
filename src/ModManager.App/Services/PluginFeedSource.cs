@@ -18,6 +18,9 @@ public enum PluginFetchOutcome
     UpToDate,
     /// <summary>One or more plugins were downloaded, verified, and hot-loaded.</summary>
     Installed,
+    /// <summary>The feed offers a plugin this launcher build is too old for — the user should update the
+    /// launcher. <see cref="PluginFetchResult.Version"/> carries the required minimum binary version.</summary>
+    RequiresUpdate,
     /// <summary>The fetch failed (offline, signature failure, installer error).</summary>
     Failed,
 }
@@ -132,11 +135,11 @@ public sealed class PluginFeedSource
                 var req = new PluginFeedRequest(FeedUrl, PluginSigningKey.PublicKeySpki.ToArray(),
                     AppVersion, PluginHost.PluginsDir, RecordPath);
 
-                var installed = await PluginFeedInstaller.RunAsync(req, Download).ConfigureAwait(false);
+                var run = await PluginFeedInstaller.RunAsync(req, Download).ConfigureAwait(false);
 
                 var anyLoaded = false;
                 string? version = null;
-                foreach (var p in installed)
+                foreach (var p in run.Installed)
                 {
                     anyLoaded |= PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);
                     version ??= p.Version;
@@ -149,8 +152,22 @@ public sealed class PluginFeedSource
                 if (anyLoaded)
                     return new PluginFetchResult(PluginFetchOutcome.Installed, version, null);
 
-                // Feed was reachable but nothing new to install — already up to date.
-                // Try to surface the current installed version for the status display.
+                // Nothing loaded — say WHY honestly, never a blanket "up to date":
+                // installed-to-disk-but-wouldn't-load is a real failure, not "current".
+                if (run.Installed.Count > 0)
+                    return new PluginFetchResult(PluginFetchOutcome.Failed, null, "plugin installed but failed to load");
+
+                // Feed offline / unverifiable — not "up to date".
+                if (!run.FeedReached)
+                    return new PluginFetchResult(PluginFetchOutcome.Failed, null, "couldn't reach or verify the plugin feed");
+
+                // Feed offers a plugin this build is too old for — point the user at a launcher update,
+                // not a misleading "up to date". This is exactly what a sub-minBinaryVersion build hit.
+                if (run.RequiresNewerBinary is { } need)
+                    return new PluginFetchResult(PluginFetchOutcome.RequiresUpdate, need.ToString(),
+                        $"this plugin needs launcher v{need} — update the launcher");
+
+                // Feed reached, plugin present + current. Surface the current installed version.
                 var existing = InstalledPluginsStore.Read(RecordPath);
                 // Prefer the Nexus plugin's own version; fall back to any recorded entry (FirstOrDefault is
                 // null-safe on an empty record). Guards against showing a non-Nexus version once a 2nd plugin exists.

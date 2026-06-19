@@ -441,6 +441,7 @@ public sealed partial class SettingsDialog : ContentDialog
             {
                 PluginFetchOutcome.Installed    => $"Nexus plugin v{result.Version} installed.",
                 PluginFetchOutcome.UpToDate     => $"Nexus plugin is up to date (v{result.Version}).",
+                PluginFetchOutcome.RequiresUpdate => $"This plugin needs launcher v{result.Version} — update the launcher.",
                 PluginFetchOutcome.NotApplicable => "Connect Nexus first.",
                 PluginFetchOutcome.Failed        => $"Couldn’t fetch the plugin: {result.Message}",
                 _                               => result.Message ?? "Done.",
