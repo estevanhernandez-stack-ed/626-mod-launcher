@@ -6,6 +6,15 @@ namespace ModManager.Core.Plugins;
 /// <summary>A plugin the installer placed on disk (ready for the host to load).</summary>
 public sealed record InstalledPlugin(string Id, string Version, string DllPath);
 
+/// <summary>The outcome of one feed run. <c>Installed</c> is what landed on disk this run.
+/// <c>FeedReached</c> is true only when the index was downloaded, signature-verified, and parsed — false
+/// for offline / 404 / bad-signature / malformed, so a caller can say "couldn't reach the feed" instead of
+/// "up to date". <c>RequiresNewerBinary</c> is the lowest binary version that would unblock a plugin the
+/// feed offers but this binary is too old for (null otherwise) — so a caller can say "update the launcher
+/// to vX" instead of "up to date". Together these let the manual button tell the honest truth.</summary>
+public sealed record PluginFeedRunResult(
+    IReadOnlyList<InstalledPlugin> Installed, bool FeedReached, Version? RequiresNewerBinary);
+
 /// <summary>Inputs for one feed run. <c>VerifyKey</c> is the pinned plugin SPKI in production (the App
 /// passes <c>PluginSigningKey.PublicKeySpki</c>); tests inject a throwaway public key.</summary>
 public sealed record PluginFeedRequest(
@@ -25,20 +34,25 @@ public static class PluginFeedInstaller
     /// <c>HttpClient</c> and swallows network errors into null).</summary>
     public delegate Task<byte[]?> PluginDownload(string url, CancellationToken ct);
 
-    public static async Task<IReadOnlyList<InstalledPlugin>> RunAsync(
+    public static async Task<PluginFeedRunResult> RunAsync(
         PluginFeedRequest req, PluginDownload download, CancellationToken ct = default)
     {
         var installed = new List<InstalledPlugin>();
 
+        // Feed-unreachable / untrustworthy / malformed all share one shape: nothing installed, FeedReached
+        // false. The caller turns that into an honest "couldn't reach the feed" rather than "up to date".
         var indexBytes = await download(req.IndexUrl, ct).ConfigureAwait(false);
         var indexSig = await download(req.IndexUrl + ".sig", ct).ConfigureAwait(false);
-        if (indexBytes is null || indexSig is null) return installed;
-        if (!PluginSignature.VerifyWithKey(req.VerifyKey, indexBytes, indexSig)) return installed;
-        if (!PluginIndex.TryParse(indexBytes, out var index)) return installed;
+        if (indexBytes is null || indexSig is null) return new PluginFeedRunResult(installed, FeedReached: false, null);
+        if (!PluginSignature.VerifyWithKey(req.VerifyKey, indexBytes, indexSig)) return new PluginFeedRunResult(installed, false, null);
+        if (!PluginIndex.TryParse(indexBytes, out var index)) return new PluginFeedRunResult(installed, false, null);
 
         var have = InstalledPluginsStore.Read(req.InstalledRecordPath);
+        // The feed parsed: from here FeedReached is true. RequiresNewerBinary distinguishes "you're current"
+        // from "this build is too old for the plugin the feed offers".
+        var requiresNewer = PluginGate.MinimumBinaryToUnblock(index!, req.BinaryVersion, have);
         var toInstall = PluginGate.SelectInstallable(index!, req.BinaryVersion, have);
-        if (toInstall.Count == 0) return installed;
+        if (toInstall.Count == 0) return new PluginFeedRunResult(installed, FeedReached: true, requiresNewer);
 
         // Mutable copy of the record so multiple installs in one run all persist.
         var record = new Dictionary<string, string>(have);
@@ -105,7 +119,7 @@ public static class PluginFeedInstaller
         {
             try { InstalledPluginsStore.Write(req.InstalledRecordPath, record); } catch { /* best-effort */ }
         }
-        return installed;
+        return new PluginFeedRunResult(installed, FeedReached: true, requiresNewer);
     }
 
     // An entry Id is safe to compose into a filename only if it's a non-empty run of lowercase
