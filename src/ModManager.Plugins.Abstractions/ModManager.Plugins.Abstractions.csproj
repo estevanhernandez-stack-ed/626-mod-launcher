@@ -4,5 +4,21 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- 5c-producer: packed as a NuGet package so the off-Store plugin repo (626-mod-plugins)
+         builds its plugin against this exact contract version. The release pipeline passes
+         -p:Version=<launcher version> at pack time so the package version tracks the launcher and
+         drives the plugin's minBinaryVersion gate. The base Version here is the local-pack default. -->
+    <IsPackable>true</IsPackable>
+    <PackageId>ModManager.Plugins.Abstractions</PackageId>
+    <Version>0.6.0</Version>
+    <Authors>626 Labs LLC</Authors>
+    <Company>626 Labs LLC</Company>
+    <Description>The plugin contract for the 626 Mod Launcher: the interfaces and DTOs an off-Store plugin implements (IModSource, IModManagerPlugin, IPluginHostServices) plus the source DTOs. Pure and dependency-free (BCL only).</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/estevanhernandez-stack-ed/626-mod-launcher</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/estevanhernandez-stack-ed/626-mod-launcher</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>mod-launcher;plugin;modding;626</PackageTags>
   </PropertyGroup>
 </Project>
