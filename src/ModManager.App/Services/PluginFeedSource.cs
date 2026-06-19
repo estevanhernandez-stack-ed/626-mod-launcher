@@ -152,9 +152,9 @@ public sealed class PluginFeedSource
                 // Feed was reachable but nothing new to install — already up to date.
                 // Try to surface the current installed version for the status display.
                 var existing = InstalledPluginsStore.Read(RecordPath);
-                var currentVersion = existing.Count > 0
-                    ? existing.Values.First()
-                    : null;
+                // Prefer the Nexus plugin's own version; fall back to any recorded entry (FirstOrDefault is
+                // null-safe on an empty record). Guards against showing a non-Nexus version once a 2nd plugin exists.
+                var currentVersion = existing.TryGetValue("nexus", out var nv) ? nv : existing.Values.FirstOrDefault();
                 return new PluginFetchResult(PluginFetchOutcome.UpToDate, currentVersion, null);
             }
             catch (Exception ex)
