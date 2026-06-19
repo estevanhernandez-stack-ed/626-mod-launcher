@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- net10.0 / nullable / warnings-as-errors come from the repo-root Directory.Build.props. -->
-  <!-- This plugin is loaded by the host from a dll on disk; it is never referenced by the App at
-       compile time. It references ONLY ModManager.Plugins.Abstractions (the slim DTO contract) plus
-       the BCL (System.Net.Http / System.Text.Json) — NEVER ModManager.Core. -->
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\ModManager.Plugins.Abstractions\ModManager.Plugins.Abstractions.csproj" />
-  </ItemGroup>
-</Project>
