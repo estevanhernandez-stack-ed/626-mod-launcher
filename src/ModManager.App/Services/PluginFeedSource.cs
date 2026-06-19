@@ -36,6 +36,18 @@ public sealed class PluginFeedSource
     private readonly Func<string, string?> _getCredential;
     private readonly AppSettingsService _settings;
 
+    /// <summary>In-flight guard: two rapid Nexus-connect events can both clear the debounce and race into
+    /// the installer (identical temp-file paths collide, double LoadOne, last-writer race on the record).
+    /// A 0/1 flag set via <see cref="Interlocked.Exchange(ref int, int)"/> makes a concurrent second
+    /// connect a clean no-op.</summary>
+    private int _running;
+
+    /// <summary>Raised after a connect-time fetch hot-loads at least one plugin via
+    /// <see cref="PluginHost.LoadOne"/>. The UI subscribes to re-evaluate Nexus-action availability (the
+    /// hearts / "Refresh Nexus stats" surface) without waiting for the next rescan or game switch. Raised
+    /// on a background thread — the handler marshals to the UI thread.</summary>
+    public event EventHandler? PluginLoaded;
+
     public PluginFeedSource(HttpClient http, ModSourceRegistry registry,
         Func<string, string?> getCredential, AppSettingsService settings)
     {
@@ -47,31 +59,44 @@ public sealed class PluginFeedSource
     /// update check gated on the "keep plugins updated" setting. Never throws.</summary>
     public async Task MaybeFetchOnConnectAsync()
     {
-        // Debounce / toggle guard sits ABOVE the try/finally (mirrors RemoteManifestSource.RefreshAsync):
-        // a debounced or toggle-off re-check returns WITHOUT stamping. Stamping a skipped run would rewrite
-        // last-plugin-check.txt to "now" on every Nexus connect and starve the 24h re-check — it could
-        // never become due. First install (anyInstalled == false) bypasses this and proceeds to fetch.
-        bool anyInstalled = InstalledPluginsStore.Read(RecordPath).Count > 0;
-        if (anyInstalled)
-        {
-            if (!_settings.KeepPluginsUpdated) return;                // re-checks are opt-out-able
-            var last = ReadStamp();
-            if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, DebounceWindow)) return;
-        }
-        // else: first install — fetch now regardless of stamp/toggle (they connected to use Nexus).
-
+        // In-flight guard: a concurrent second connect no-ops cleanly instead of racing the installer
+        // (colliding temp-file paths / double LoadOne / last-writer record race). Wraps the WHOLE body so
+        // the flag is held across the debounce check + fetch + hot-load and cleared in the finally.
+        if (Interlocked.Exchange(ref _running, 1) == 1) return;
         try
         {
-            var req = new PluginFeedRequest(FeedUrl, PluginSigningKey.PublicKeySpki.ToArray(),
-                AppVersion, PluginHost.PluginsDir, RecordPath);
+            // Debounce / toggle guard (mirrors RemoteManifestSource.RefreshAsync): a debounced or
+            // toggle-off re-check returns WITHOUT stamping. Stamping a skipped run would rewrite
+            // last-plugin-check.txt to "now" on every Nexus connect and starve the 24h re-check — it could
+            // never become due. First install (anyInstalled == false) bypasses this and proceeds to fetch.
+            bool anyInstalled = InstalledPluginsStore.Read(RecordPath).Count > 0;
+            if (anyInstalled)
+            {
+                if (!_settings.KeepPluginsUpdated) return;                // re-checks are opt-out-able
+                var last = ReadStamp();
+                if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, DebounceWindow)) return;
+            }
+            // else: first install — fetch now regardless of stamp/toggle (they connected to use Nexus).
 
-            var installed = await PluginFeedInstaller.RunAsync(req, Download).ConfigureAwait(false);
+            try
+            {
+                var req = new PluginFeedRequest(FeedUrl, PluginSigningKey.PublicKeySpki.ToArray(),
+                    AppVersion, PluginHost.PluginsDir, RecordPath);
 
-            foreach (var p in installed)
-                PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);  // hot-load — Nexus live now
+                var installed = await PluginFeedInstaller.RunAsync(req, Download).ConfigureAwait(false);
+
+                var anyLoaded = false;
+                foreach (var p in installed)
+                    anyLoaded |= PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);  // hot-load — Nexus live now
+
+                // Tell the UI a plugin went live so Nexus actions (hearts / Refresh stats) light up
+                // without a rescan. Only when something actually loaded — a no-op fetch must not nudge.
+                if (anyLoaded) PluginLoaded?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex) { AppDiagnostics.Log("plugin-feed", ex); }
+            finally { WriteStamp(); }  // only after an actual fetch attempt
         }
-        catch (Exception ex) { AppDiagnostics.Log("plugin-feed", ex); }
-        finally { WriteStamp(); }  // only after an actual fetch attempt
+        finally { Interlocked.Exchange(ref _running, 0); }
     }
 
     private async Task<byte[]?> Download(string url, CancellationToken ct)

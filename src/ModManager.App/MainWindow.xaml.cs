@@ -24,6 +24,12 @@ public sealed partial class MainWindow : Window
         // Hand the same VM instance to the tools row. The control reads installed tools + catalog
         // gaps off MainViewModel directly — no separate data context for this slim strip.
         ToolsRow.ViewModel = ViewModel;
+#if FULL
+        // Off-Store: let the live VM light up the Nexus surfaces the instant the feed hot-loads the
+        // plugin on a first-ever connect (no rescan needed). FULL-only — the Store SKU has no feed.
+        if (App.AppHost.Services.GetService<Services.PluginFeedSource>() is { } feed)
+            ViewModel.WirePluginFeed(feed);
+#endif
         // The collision prompt is a view concern (dialog + XamlRoot) — the VM builds the plan and
         // sequences intake, the window owns showing the dialog. null result = user cancelled.
         ViewModel.ConfirmReplacements = async plan =>

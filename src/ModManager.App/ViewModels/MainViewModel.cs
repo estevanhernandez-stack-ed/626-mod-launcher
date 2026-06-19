@@ -1357,6 +1357,29 @@ public sealed partial class MainViewModel : ObservableObject
     public bool NexusActionsAvailable => NexusSource is not null && _nexus.IsConnected;
     public Visibility NexusActionsVisibility => NexusActionsAvailable ? Visibility.Visible : Visibility.Collapsed;
 
+#if FULL
+    /// <summary>Subscribe to the off-Store feed's hot-load signal so the first-ever Nexus connect lights
+    /// up the Nexus surfaces immediately. Without this, <see cref="NexusActionsAvailable"/> was evaluated
+    /// while the registry was still empty (no plugin) and stayed false until the next rescan / game switch.
+    /// The event fires on a background thread, so the handler marshals to the UI thread (the same
+    /// <see cref="DispatcherQueue"/> the VM uses elsewhere) before re-notifying + reloading rows. Wired
+    /// from the MainWindow ctor — keeps the shared ctor untouched and absent from the STORE build.</summary>
+    public void WirePluginFeed(PluginFeedSource feed)
+    {
+        feed.PluginLoaded += (_, _) =>
+        {
+            void Apply()
+            {
+                OnPropertyChanged(nameof(NexusActionsAvailable));
+                OnPropertyChanged(nameof(NexusActionsVisibility));
+                _ = ReloadModsAsync(); // re-build rows so endorse hearts + per-row Nexus state appear
+            }
+            if (_dispatcherQueue is { } dq) dq.TryEnqueue(Apply);
+            else Apply();
+        };
+    }
+#endif
+
     /// <summary>Status dot for the Nexus toolbar button — accent-green when connected, danger-red
     /// when disconnected. The dot IS the affordance now (no separate ACCOUNT section label), so the
     /// state has to read at a glance. Resource-backed brushes so theme switches propagate via
@@ -1381,13 +1404,14 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task BackfillNexusAsync(IReadOnlyList<string> archives)
     {
         if (_ctx is null) return;
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
         if (string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game))) { StatusText = "This game has no Nexus domain set."; return; }
         if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
         IsBusy = true;
         try
         {
-            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, NexusSource, archives)).Matched;
+            var n = (await Scanner.Md5IdentifyArchivesAsync(_ctx, source, archives)).Matched;
             StatusText = n > 0
                 ? $"Backfilled {n} mod{(n == 1 ? "" : "s")} from {archives.Count} Nexus archive(s)."
                 : $"Scanned {archives.Count} archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this game).";
