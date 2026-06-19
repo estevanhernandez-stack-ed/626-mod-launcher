@@ -1368,11 +1368,35 @@ public sealed partial class MainViewModel : ObservableObject
     {
         feed.PluginLoaded += (_, _) =>
         {
-            void Apply()
+            async void Apply()
             {
-                OnPropertyChanged(nameof(NexusActionsAvailable));
-                OnPropertyChanged(nameof(NexusActionsVisibility));
-                _ = ReloadModsAsync(); // re-build rows so endorse hearts + per-row Nexus state appear
+                // async void (DispatcherQueue callback) — never let an exception escape the UI thread.
+                try
+                {
+                    OnPropertyChanged(nameof(NexusActionsAvailable));
+                    OnPropertyChanged(nameof(NexusActionsVisibility));
+                    // Re-detect + reload rows so per-row Nexus state reflects the now-loaded plugin.
+                    // RedetectActiveAsync re-runs the scan with the registered source; it calls
+                    // ReloadModsAsync internally (which fires the auto-check poll).
+                    await RedetectActiveAsync();
+                    // Re-identify what CAN be identified post-install: Vortex-deployed Nexus mods carry the
+                    // modId in their manifest (no archive needed). This backfills the ids so the stats sweep
+                    // below fills their hearts on hot-load — without it, mods that predate the plugin (and so
+                    // were never identified through a then-null source) would stay dark until the next manual
+                    // backfill. Best-effort. (Mods raw-dropped before the plugin existed have no recoverable
+                    // md5 — the archive is gone — so those genuinely need the manual "Fetch metadata" or a
+                    // re-drop; that's an inherent limit of post-extract identify, not a bug.)
+                    if (_ctx is not null && NexusSource is { } src)
+                    {
+                        try { await Scanner.IdentifyVortexNexusAsync(_ctx, src); } catch { /* best-effort identify */ }
+                    }
+                    // RefreshNexusStatsAsync runs the full RefreshAllAsync sweep — including the one
+                    // bulk GetUserEndorsementsAsync → ApplyEndorsements pass that fills hearts — then reloads.
+                    // Not debounced: the hot-load event fires exactly once per install and the hearts must be
+                    // live immediately, not gated behind 24h.
+                    await RefreshNexusStatsAsync();
+                }
+                catch (Exception ex) { StatusText = ex.Message; }
             }
             if (_dispatcherQueue is { } dq) dq.TryEnqueue(Apply);
             else Apply();

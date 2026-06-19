@@ -417,6 +417,42 @@ public sealed partial class SettingsDialog : ContentDialog
     private void OnKeepPluginsUpdatedToggled(object sender, RoutedEventArgs e)
         => _appSettings.SetKeepPluginsUpdated(KeepPluginsUpdatedCheck.IsChecked == true);
 
+    /// <summary>Manual "Install / refresh Nexus plugin" button. FULL only — awaits
+    /// <see cref="PluginFeedSource.FetchAsync"/> with <c>force: true</c> and maps the outcome to a
+    /// human-readable status line. The button is disabled while the fetch is in flight so rapid
+    /// double-clicks don't race the installer. STORE: <see cref="PluginFeedSource"/> is not
+    /// registered, so we guard with <see cref="Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService{T}"/> and
+    /// show the desktop-only note instead.</summary>
+    private async void OnRefreshPlugin(object sender, RoutedEventArgs e)
+    {
+#if FULL
+        var feed = App.AppHost.Services.GetService<PluginFeedSource>();
+        if (feed is null)
+        {
+            PluginStatusText.Text = "Plugins are a desktop-only feature.";
+            return;
+        }
+        RefreshPluginButton.IsEnabled = false;
+        PluginStatusText.Text = "Checking the plugin feed…";
+        try
+        {
+            var result = await feed.FetchAsync(force: true);
+            PluginStatusText.Text = result.Outcome switch
+            {
+                PluginFetchOutcome.Installed    => $"Nexus plugin v{result.Version} installed.",
+                PluginFetchOutcome.UpToDate     => $"Nexus plugin is up to date (v{result.Version}).",
+                PluginFetchOutcome.NotApplicable => "Connect Nexus first.",
+                PluginFetchOutcome.Failed        => $"Couldn’t fetch the plugin: {result.Message}",
+                _                               => result.Message ?? "Done.",
+            };
+        }
+        finally { RefreshPluginButton.IsEnabled = true; }
+#else
+        PluginStatusText.Text = "Plugins are a desktop-only feature.";
+        await System.Threading.Tasks.Task.CompletedTask;
+#endif
+    }
+
     /// <summary>Populate the plugin status line. FULL shows the installed version (or "not
     /// installed"); STORE shows a static note because plugin delivery is desktop-only.</summary>
     private void RefreshPluginStatus()

@@ -8,6 +8,30 @@ using ModManager.Core.Plugins;
 namespace ModManager.App.Services;
 
 /// <summary>
+/// The outcome of a <see cref="PluginFeedSource.FetchAsync"/> call.
+/// </summary>
+public enum PluginFetchOutcome
+{
+    /// <summary>The fetch was skipped (not connected, debounce active, or concurrent call in progress).</summary>
+    NotApplicable,
+    /// <summary>The feed was reached and the installed plugin is already current.</summary>
+    UpToDate,
+    /// <summary>One or more plugins were downloaded, verified, and hot-loaded.</summary>
+    Installed,
+    /// <summary>The fetch failed (offline, signature failure, installer error).</summary>
+    Failed,
+}
+
+/// <summary>
+/// Result returned by <see cref="PluginFeedSource.FetchAsync"/>.
+/// </summary>
+/// <param name="Outcome">High-level outcome code.</param>
+/// <param name="Version">Version string of the installed/current plugin, when known.</param>
+/// <param name="Message">Short human-readable reason — populated on <see cref="PluginFetchOutcome.Failed"/>
+/// and optionally on other outcomes for UI display.</param>
+public sealed record PluginFetchResult(PluginFetchOutcome Outcome, string? Version, string? Message);
+
+/// <summary>
 /// Drives the off-Store plugin feed on the FULL flavor. On Nexus connect (or a 24h-debounced re-check)
 /// it fetches the signed plugins.json from the 626-mod-plugins repo, verifies + gates + installs via the
 /// headless <see cref="PluginFeedInstaller"/>, then hot-loads anything new through <see cref="PluginHost.LoadOne"/>
@@ -34,6 +58,7 @@ public sealed class PluginFeedSource
     private readonly HttpClient _http;
     private readonly ModSourceRegistry _registry;
     private readonly Func<string, string?> _getCredential;
+    private readonly Func<bool> _isConnected;
     private readonly AppSettingsService _settings;
 
     /// <summary>In-flight guard: two rapid Nexus-connect events can both clear the debounce and race into
@@ -42,41 +67,65 @@ public sealed class PluginFeedSource
     /// connect a clean no-op.</summary>
     private int _running;
 
-    /// <summary>Raised after a connect-time fetch hot-loads at least one plugin via
-    /// <see cref="PluginHost.LoadOne"/>. The UI subscribes to re-evaluate Nexus-action availability (the
-    /// hearts / "Refresh Nexus stats" surface) without waiting for the next rescan or game switch. Raised
-    /// on a background thread — the handler marshals to the UI thread.</summary>
+    /// <summary>Raised after a fetch hot-loads at least one plugin via <see cref="PluginHost.LoadOne"/>.
+    /// The UI subscribes to re-evaluate Nexus-action availability (the hearts / "Refresh Nexus stats"
+    /// surface) without waiting for the next rescan or game switch. Raised on a background thread —
+    /// the handler marshals to the UI thread.</summary>
     public event EventHandler? PluginLoaded;
 
     public PluginFeedSource(HttpClient http, ModSourceRegistry registry,
-        Func<string, string?> getCredential, AppSettingsService settings)
+        Func<string, string?> getCredential, Func<bool> isConnected, AppSettingsService settings)
     {
-        _http = http; _registry = registry; _getCredential = getCredential; _settings = settings;
+        _http = http; _registry = registry; _getCredential = getCredential;
+        _isConnected = isConnected; _settings = settings;
     }
 
-    /// <summary>Called after a successful Nexus connect. Installs the plugin immediately if none is
-    /// installed yet (bypassing the debounce — the user wants Nexus now); otherwise it's a debounced
-    /// update check gated on the "keep plugins updated" setting. Never throws.</summary>
-    public async Task MaybeFetchOnConnectAsync()
+    /// <summary>
+    /// Core fetch implementation used by both the connect-trigger and the manual button.
+    /// <para>
+    /// When <paramref name="force"/> is <see langword="true"/> the debounce and the
+    /// <see cref="AppSettingsService.KeepPluginsUpdated"/> gate are bypassed — used for the first-install
+    /// path and the manual "Install / refresh" button. When <see langword="false"/> the usual debounce +
+    /// toggle logic applies.
+    /// </para>
+    /// <para>
+    /// Never throws. Every failure is caught, logged via <see cref="AppDiagnostics"/>, and returned as
+    /// <see cref="PluginFetchOutcome.Failed"/> with a short message.
+    /// </para>
+    /// </summary>
+    public async Task<PluginFetchResult> FetchAsync(bool force)
     {
-        // In-flight guard: a concurrent second connect no-ops cleanly instead of racing the installer
-        // (colliding temp-file paths / double LoadOne / last-writer record race). Wraps the WHOLE body so
-        // the flag is held across the debounce check + fetch + hot-load and cleared in the finally.
-        if (Interlocked.Exchange(ref _running, 1) == 1) return;
+        // In-flight guard: a concurrent call no-ops cleanly instead of racing the installer.
+        if (Interlocked.Exchange(ref _running, 1) == 1)
+            return new PluginFetchResult(PluginFetchOutcome.NotApplicable, null, "already running");
+
         try
         {
+            // Connection guard: force bypasses debounce and the toggle, but not the connectivity
+            // requirement. Without Nexus credentials the feed would hit the network and return a
+            // vague network error. NotApplicable here lets Task 4 (the manual button) map this to
+            // the "Connect Nexus first." UI string instead.
+            if (!_isConnected())
+                return new PluginFetchResult(PluginFetchOutcome.NotApplicable, null, "not connected");
+
             // Debounce / toggle guard (mirrors RemoteManifestSource.RefreshAsync): a debounced or
             // toggle-off re-check returns WITHOUT stamping. Stamping a skipped run would rewrite
-            // last-plugin-check.txt to "now" on every Nexus connect and starve the 24h re-check — it could
-            // never become due. First install (anyInstalled == false) bypasses this and proceeds to fetch.
-            bool anyInstalled = InstalledPluginsStore.Read(RecordPath).Count > 0;
-            if (anyInstalled)
+            // last-plugin-check.txt to "now" on every call and starve the 24h re-check.
+            // force bypasses both guards (first-install path + manual button).
+            if (!force)
             {
-                if (!_settings.KeepPluginsUpdated) return;                // re-checks are opt-out-able
-                var last = ReadStamp();
-                if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, DebounceWindow)) return;
+                bool anyInstalled = InstalledPluginsStore.Read(RecordPath).Count > 0;
+                if (anyInstalled)
+                {
+                    if (!_settings.KeepPluginsUpdated)
+                        return new PluginFetchResult(PluginFetchOutcome.NotApplicable, null, "keep-plugins-updated is off");
+
+                    var last = ReadStamp();
+                    if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, DebounceWindow))
+                        return new PluginFetchResult(PluginFetchOutcome.NotApplicable, null, "debounce active");
+                }
+                // else: first install — fetch now regardless of stamp/toggle.
             }
-            // else: first install — fetch now regardless of stamp/toggle (they connected to use Nexus).
 
             try
             {
@@ -86,24 +135,57 @@ public sealed class PluginFeedSource
                 var installed = await PluginFeedInstaller.RunAsync(req, Download).ConfigureAwait(false);
 
                 var anyLoaded = false;
+                string? version = null;
                 foreach (var p in installed)
-                    anyLoaded |= PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);  // hot-load — Nexus live now
+                {
+                    anyLoaded |= PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);
+                    version ??= p.Version;
+                }
 
                 // Tell the UI a plugin went live so Nexus actions (hearts / Refresh stats) light up
                 // without a rescan. Only when something actually loaded — a no-op fetch must not nudge.
                 if (anyLoaded) PluginLoaded?.Invoke(this, EventArgs.Empty);
+
+                if (anyLoaded)
+                    return new PluginFetchResult(PluginFetchOutcome.Installed, version, null);
+
+                // Feed was reachable but nothing new to install — already up to date.
+                // Try to surface the current installed version for the status display.
+                var existing = InstalledPluginsStore.Read(RecordPath);
+                // Prefer the Nexus plugin's own version; fall back to any recorded entry (FirstOrDefault is
+                // null-safe on an empty record). Guards against showing a non-Nexus version once a 2nd plugin exists.
+                var currentVersion = existing.TryGetValue("nexus", out var nv) ? nv : existing.Values.FirstOrDefault();
+                return new PluginFetchResult(PluginFetchOutcome.UpToDate, currentVersion, null);
             }
-            catch (Exception ex) { AppDiagnostics.Log("plugin-feed", ex); }
-            finally { WriteStamp(); }  // only after an actual fetch attempt
+            catch (Exception ex)
+            {
+                AppDiagnostics.Log("plugin-feed", ex);
+                return new PluginFetchResult(PluginFetchOutcome.Failed,
+                    null, FriendlyMessage(ex));
+            }
+            finally { WriteStamp(); }  // only after an actual fetch attempt (debounce-skipped paths return before here)
         }
         finally { Interlocked.Exchange(ref _running, 0); }
     }
+
+    /// <summary>Called after a successful Nexus connect. Installs the plugin immediately if none is
+    /// installed yet (bypassing the debounce — the user wants Nexus now); otherwise it's a debounced
+    /// update check gated on the "keep plugins updated" setting. Never throws (fire-and-forget).</summary>
+    public Task MaybeFetchOnConnectAsync()
+        => FetchAsync(force: InstalledPluginsStore.Read(RecordPath).Count == 0);
 
     private async Task<byte[]?> Download(string url, CancellationToken ct)
     {
         try { return await _http.GetByteArrayAsync(url, ct).ConfigureAwait(false); }
         catch { return null; }  // offline / 404 (feed not published yet) → null, the installer treats as skip
     }
+
+    private static string FriendlyMessage(Exception ex) => ex switch
+    {
+        HttpRequestException   => "couldn't reach the plugin feed",
+        TaskCanceledException  => "plugin feed request timed out",
+        _                      => ex.Message is { Length: > 0 } m ? m : "plugin fetch failed",
+    };
 
     private static DateTime? ReadStamp()
     {

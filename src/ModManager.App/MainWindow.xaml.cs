@@ -93,6 +93,18 @@ public sealed partial class MainWindow : Window
 
         await ViewModel.LoadAsync();
 
+#if FULL
+        // Startup fetch for already-connected users: if Nexus credentials are persisted from a
+        // previous session, the user never triggers a ConnectAsync (so MaybeFetchOnConnectAsync
+        // never fires). Kick off a debounced update check here — force:false lets FetchAsync
+        // decide whether to first-install or honour the 24h debounce. Fire-and-forget; LoadAsync
+        // already completed so the app is fully usable. The PluginLoaded event (wired in the
+        // constructor via WirePluginFeed) carries the UI refresh when a new plugin is installed.
+        if (App.AppHost.Services.GetService<Services.PluginFeedSource>() is { } feedOnStart
+            && App.AppHost.Services.GetRequiredService<Services.NexusService>().IsConnected)
+            _ = feedOnStart.FetchAsync(force: false);
+#endif
+
         // After load: wire registry-changed so Safe Clear / Restore cause the mod list to repaint.
         var launcherService = App.AppHost.Services.GetRequiredService<Services.LauncherService>();
         launcherService.RegistryChanged += () =>
