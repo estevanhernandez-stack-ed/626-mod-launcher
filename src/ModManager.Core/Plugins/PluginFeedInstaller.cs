@@ -45,6 +45,11 @@ public static class PluginFeedInstaller
 
         foreach (var e in toInstall)
         {
+            // Defense-in-depth: the index is signature-verified (maintainer-trust-bounded), but never
+            // let an entry Id escape PluginsDir. Only [a-z0-9-] ids compose a filename — anything with a
+            // separator, "..", or a stray char is skipped before we touch the filesystem.
+            if (!IsSafeId(e.Id)) continue;
+
             var dll = await download(e.DownloadUrl, ct).ConfigureAwait(false);
             var dllSig = await download(e.SigUrl, ct).ConfigureAwait(false);
             if (dll is null || dllSig is null) continue;
@@ -53,13 +58,44 @@ public static class PluginFeedInstaller
 
             string dllPath = Path.Combine(req.PluginsDir, e.Id + ".dll");
             string sigPath = dllPath + ".sig";
+
+            // Belt-and-suspenders: the composed full path must stay strictly under PluginsDir.
+            var pluginsRoot = Path.GetFullPath(req.PluginsDir);
+            var rootWithSep = pluginsRoot.EndsWith(Path.DirectorySeparatorChar)
+                ? pluginsRoot : pluginsRoot + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(dllPath).StartsWith(rootWithSep, StringComparison.Ordinal)) continue;
+
+            // Stage BOTH temp files first, then rename the pair back-to-back. The dll and its .sig must
+            // land as a matched set: on an UPDATE, a new dll + an old/missing sig would fail the host's
+            // load-time verify and silently break a previously-working plugin. If EITHER staging write
+            // throws, we delete whatever temp we wrote and skip — the existing live pair is never touched.
+            // Residual risk: a hard process-kill in the microsecond between the two final renames can leave
+            // a new dll + old sig. It self-heals on the next successful feed run (the sha/version still
+            // points at the new pair, so the entry is re-selected and re-written cleanly).
+            string dllTmp = dllPath + ".tmp-" + Environment.ProcessId;
+            string sigTmp = sigPath + ".tmp-" + Environment.ProcessId;
             try
             {
                 Directory.CreateDirectory(req.PluginsDir);
-                AtomicWriteBytes(dllPath, dll);     // verify-before-replace: only verified bytes land
-                AtomicWriteBytes(sigPath, dllSig);
+                File.WriteAllBytes(dllTmp, dll);    // verify-before-replace: only verified bytes land
+                File.WriteAllBytes(sigTmp, dllSig);
             }
-            catch { continue; } // a write failure leaves any prior install intact
+            catch
+            {
+                TryDelete(dllTmp); TryDelete(sigTmp);
+                continue; // staging failed → the existing live install stays intact
+            }
+
+            try
+            {
+                File.Move(dllTmp, dllPath, overwrite: true);
+                File.Move(sigTmp, sigPath, overwrite: true);
+            }
+            catch
+            {
+                TryDelete(dllTmp); TryDelete(sigTmp);
+                continue; // a rename failure leaves any prior install intact (best-effort cleanup above)
+            }
 
             record[e.Id] = e.Version;
             installed.Add(new InstalledPlugin(e.Id, e.Version, dllPath));
@@ -72,11 +108,21 @@ public static class PluginFeedInstaller
         return installed;
     }
 
-    // Atomic byte write: temp sibling + rename (mirrors AtomicJson for non-JSON payloads).
-    private static void AtomicWriteBytes(string path, byte[] bytes)
+    // An entry Id is safe to compose into a filename only if it's a non-empty run of lowercase
+    // alphanumerics and hyphens — no separators, no "..", no anything that could escape PluginsDir.
+    private static bool IsSafeId(string? id)
     {
-        var tmp = path + ".tmp-" + Environment.ProcessId;
-        try { File.WriteAllBytes(tmp, bytes); File.Move(tmp, path, overwrite: true); }
-        catch { try { File.Delete(tmp); } catch { } throw; }
+        if (string.IsNullOrEmpty(id)) return false;
+        foreach (var c in id)
+        {
+            bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+            if (!ok) return false;
+        }
+        return true;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch { /* best-effort */ }
     }
 }
