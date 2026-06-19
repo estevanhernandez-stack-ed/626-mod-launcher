@@ -29,6 +29,15 @@ public class PluginGateTests
     }
 
     [Fact]
+    public void Schema_zero_rejects_the_whole_feed()
+    {
+        // schemaVersion 0 is < Known but must NOT be treated as schema 1 — it's a malformed feed.
+        var got = PluginGate.SelectInstallable(
+            Index(0, Entry("nexus", "1.0.0", "0.0.0")), new Version(9, 9, 9), None);
+        Assert.Empty(got);
+    }
+
+    [Fact]
     public void Entry_needing_a_newer_binary_is_skipped()
     {
         var got = PluginGate.SelectInstallable(
