@@ -30,6 +30,11 @@ on:
         required: false
         type: boolean
         default: false
+      abstractionsOnly:
+        description: 'Publish ONLY the Abstractions NuGet (skip the Velopack release) — standalone contract publish'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # create + upload to Releases
@@ -41,6 +46,8 @@ env:
 jobs:
   release:
     name: build + pack + upload
+    # Skip the full Velopack release when a manual dispatch only wants the Abstractions NuGet published.
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.abstractionsOnly }}
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -161,3 +168,46 @@ jobs:
 
           $(if ($isDraft) { 'Open the release URL, review the assets, add release notes, then click ' + '**Publish release**' + '.' } else { 'Live now. Auto-update will roll out to existing installs within 24h (debounced).' })
           "@ | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
+  publish-abstractions:
+    name: publish Abstractions (NuGet, keyless OIDC)
+    # The off-Store plugin repo (626-mod-plugins) builds its plugin against this contract package.
+    # Keyless via NuGet Trusted Publishing — the policy is scoped to THIS workflow file (release.yml),
+    # so the OIDC token authorizes the push; no API key is stored anywhere. Runs on a release tag
+    # (publishing the contract alongside the app) and on a manual dispatch (incl. abstractionsOnly for a
+    # standalone contract publish). The package version tracks the launcher version (drives minBinaryVersion).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write   # OIDC token for NuGet Trusted Publishing
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $v = $env:GITHUB_REF_NAME -replace '^v', '' }
+          else { $v = '${{ inputs.version }}' }
+          if ($v -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw "Invalid version: '$v'. Expected semver-ish (e.g. 0.6.0)." }
+          "version=$v" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Host "Abstractions package version: $v"
+
+      - name: Pack Abstractions
+        run: dotnet pack src/ModManager.Plugins.Abstractions/ModManager.Plugins.Abstractions.csproj -c Release -p:Version=${{ steps.ver.outputs.version }} -o ./nupkg
+
+      - name: NuGet login (Trusted Publishing / OIDC)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: 626labs
+
+      - name: Push to NuGet.org
+        run: dotnet nuget push "./nupkg/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

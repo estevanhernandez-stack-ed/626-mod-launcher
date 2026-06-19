@@ -31,31 +31,29 @@
 
 ---
 
-## Task 2: Choose the registry + provision publish auth — **[Este]** (operational gate)
+## Task 2: Registry + publish auth — ✅ DONE (2026-06-18): NuGet.org Trusted Publishing (keyless)
 
-The launcher needs somewhere to publish the package and the plugins repo needs to restore it. Two options:
+Chose **NuGet.org** (public — third-party plugin authors restore with no auth) with **Trusted Publishing**
+(OIDC) instead of an API key — NuGet.org's own recommended path, and keyless (no long-lived secret to
+store or rotate).
 
-- **NuGet.org (recommended for a public contract package).** Third-party plugin authors restore with no auth; the package is public + discoverable. Provision: create a NuGet.org account/org, mint an API key scoped to push `ModManager.Plugins.Abstractions`, add it as the launcher repo secret **`NUGET_API_KEY`**. Caveat: published versions are immutable (unlist, can't delete) — fine for a contract that only moves forward.
-- **GitHub Packages (lower setup).** Publishes via the auto-provided `GITHUB_TOKEN` (no separate key), but **restore requires auth even for public packages** — every consumer (incl. third parties) needs a token + a `nuget.config` source. Friendlier to set up, less friendly to consume.
-
-- [ ] **[Este]** Pick the registry and provision auth (the API key secret for NuGet.org, or confirm GitHub Packages). Tell the agent which — it changes only the publish step (Task 3) and the plugin's restore source (Task 4), not the package itself.
+- [x] **[Este]** Created the trusted-publishing policy "626 Abstractions push" on nuget.org: package owner
+  `626labs`, repository owner `estevanhernandez-stack-ed`, repository `626-mod-launcher`, workflow `release.yml`.
+  No `NUGET_API_KEY` secret needed — the policy authorizes the OIDC token from the `release.yml` workflow.
+  (Trusted Publishing has no per-package glob; scope is owner + repo + workflow. The package ID is created
+  under `626labs` on first push — see the Task 3 first-publish caveat.)
 
 ---
 
-## Task 3: Publish the Abstractions package (launcher repo)
+## Task 3: Publish the Abstractions package (launcher repo) — keyless via Trusted Publishing
 
-**Files:** `.github/workflows/release.yml` (add a pack+push step) OR a documented manual `scripts/publish-abstractions.ps1`.
+**Resolved (2026-06-18):** NuGet.org **Trusted Publishing** (OIDC), not an API key. A trusted-publishing
+policy ("626 Abstractions push") is scoped to owner `626labs` + repo `626-mod-launcher` + workflow
+`release.yml`; the GitHub Actions OIDC token authorizes the push, so **no secret is stored**.
 
-- [ ] **Step 1:** Add a publish step gated on the chosen registry (Task 2). For NuGet.org, in the release job after the build:
-  ```yaml
-  - name: Pack + push Abstractions
-    run: |
-      dotnet pack src/ModManager.Plugins.Abstractions/ModManager.Plugins.Abstractions.csproj -c Release -p:Version=${{ github.ref_name }} -o ./nupkg
-      dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-  ```
-  (`github.ref_name` is the tag, e.g. `v0.7.0` → strip the leading `v` if the pack rejects it; use a small step to normalize.) For GitHub Packages, push to `https://nuget.pkg.github.com/<owner>/index.json` with `GITHUB_TOKEN`.
-- [ ] **Step 2: [Este / outward-facing]** Cut a launcher release (or run the manual script once) so `ModManager.Plugins.Abstractions <version>` exists on the registry. Verify it's restorable (`dotnet add package ModManager.Plugins.Abstractions --version <v>` in a scratch project). This unblocks Task 4.
-- [ ] **Step 3:** Commit the workflow/script change (conventional + trailer).
+- [x] **Step 1 (done):** Added a `publish-abstractions` job to `.github/workflows/release.yml`: ubuntu, `permissions: id-token: write`, resolve version (tag or dispatch input) → `dotnet pack -p:Version=<v>` → `NuGet/login@v1` (`user: 626labs`, OIDC handshake) → `dotnet nuget push --api-key <temp> --source nuget.org --skip-duplicate`. A `workflow_dispatch` input `abstractionsOnly` skips the Velopack `release` job so the contract can publish standalone. Runs on a version tag (contract publishes with the app) and on dispatch.
+- [ ] **Step 2: [outward-facing]** Publish the first version: `gh workflow run release.yml --ref <branch> -f version=<v> -f abstractionsOnly=true`, watch the run, confirm `ModManager.Plugins.Abstractions <v>` appears on nuget.org. **First-publish caveat:** if NuGet rejects creating a brand-new package ID via OIDC, do one manual seed push (short-lived key) to claim the ID, then Trusted Publishing owns every version after. This unblocks Task 4.
+- [ ] **Step 3:** (n/a — the workflow change is committed with this task.)
 
 ---
 
