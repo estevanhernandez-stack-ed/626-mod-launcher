@@ -97,6 +97,13 @@
                       Click="OnKeepPluginsUpdatedToggled"
                       ToolTipService.ToolTip="Once a day, quietly fetch the latest signed Nexus plugin from the 626 Mod Launcher feed. The first install always runs on connect; this gates the daily re-check." />
             <TextBlock x:Name="PluginStatusText" Opacity="0.65" FontSize="12" />
+            <!-- Manual install / refresh button — FULL only. On STORE the PluginStatusText already
+                 shows "Plugins are a desktop-only feature." and this button is absent from the tree.
+                 The x:Name is referenced in the code-behind; the code-behind #if FULL guards it. -->
+            <Button x:Name="RefreshPluginButton"
+                    Content="Install / refresh Nexus plugin"
+                    Click="OnRefreshPlugin"
+                    Margin="0,4,0,0" />
 
             <!-- Divider -->
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
