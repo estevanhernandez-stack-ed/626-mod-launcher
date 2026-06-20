@@ -3,6 +3,8 @@
 A mod manager for your own installed games. It enables, disables, and organizes mods
 reversibly — disabling *moves* a mod to a holding folder, it never deletes anything.
 
+> **Easiest install: the [Microsoft Store](https://apps.microsoft.com/detail/9N53V6RRJK95)** — signed, no SmartScreen warning, auto-updates. That's the sealed-core build (full mod management, minus the Nexus integration + anti-cheat toggle). This guide covers the **portable** build; the full GitHub `Setup.exe` and the portable zip add the Nexus integration.
+
 This is a portable build: no installer, nothing to set up. Unzip and run.
 
 ## Run it

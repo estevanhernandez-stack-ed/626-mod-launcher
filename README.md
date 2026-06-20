@@ -9,19 +9,23 @@ A reversible, atomic mod toggler for PC games — Bethesda, Unreal pak, FromSoft
 
 ## Download
 
-Latest release: **[Setup.exe on GitHub Releases](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**
+Two ways to get it:
 
-Double-click the Setup.exe. Windows will warn you the first time (SmartScreen — we haven't bought a code-signing certificate yet); click **More info → Run anyway**. The launcher installs to your user profile, lands in the Start Menu, and auto-updates from then on. Uninstall via the normal Add/Remove Programs.
+**[Get it from the Microsoft Store](https://apps.microsoft.com/detail/9N53V6RRJK95)** — the easy path. Signed by Microsoft, so no SmartScreen warning; installs and auto-updates through the Store. This is the **sealed-core build**: full mod management — intake, reversible toggles, load order, saves, config editor, profiles, themes — but *without* the optional Nexus integration and the anti-cheat toggle, which live on the GitHub build below.
 
-Want to look first? The launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
+[![Get it from Microsoft Store](https://get.microsoft.com/images/en-us%20dark.svg)](https://apps.microsoft.com/detail/9N53V6RRJK95)
 
-## What's new in v0.5.0
+**[Setup.exe on GitHub Releases](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)** — the full build, everything including the Nexus integration. Windows will warn you the first time (SmartScreen — no code-signing cert on this channel); click **More info → Run anyway**. Installs to your user profile, lands in the Start Menu, and auto-updates from GitHub. Uninstall via the normal Add/Remove Programs.
 
-- **Break free from Vortex.** Moving off Vortex used to leave you stuck — its ownership markers made the launcher treat those folders as read-only, so mods it installed itself could end up unmanageable. Now you can take a folder over: a banner offers it, and the launcher archives Vortex's marker out of the way (moved, never deleted — fully reversible) and manages the folder normally from then on. If Vortex later re-deploys into a folder you took over, the launcher says so instead of silently fighting it. Game-scoped, consent-gated.
-- **Play vanilla actually means vanilla.** "Play vanilla" used to be a label that lied — on pak / UE4SS games, mods load by file presence, so a plain launch ran *with* them. Now it's a real two-mode launch: **Play vanilla** steps every active loader aside (pak mods, the UE4SS loader, direct-inject DLLs) so the game runs genuinely clean, and **Play modded** puts back exactly what you had — eight of twelve mods on stays eight, not all twelve. Everything moves to a holding folder and comes back on demand; a failed step-aside never strands your mods.
-- **Install UE4SS Lua mods from the launcher.** UE4SS shows up as a framework you can install via the same drop-zip flow, and Lua mods drop straight into its `Mods` folder — version-wrapper archives and all — with metadata identified on install.
+Either way, the launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
 
-Full notes: **[v0.5.0 release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**.
+## What's new
+
+- **On the Microsoft Store.** The launcher now ships as a signed Microsoft Store app — install with no SmartScreen warning, auto-updated through the Store. It's the sealed-core build (full mod management; the Nexus integration and anti-cheat toggle stay on the GitHub build).
+- **Nexus integration is an off-Store plugin.** On the GitHub build, Nexus support (mod identification, endorsements, update checks) loads as a signed plugin fetched from the [626-mod-plugins](https://github.com/estevanhernandez-stack-ed/626-mod-plugins) repo — verified against a key pinned in the binary, and absent entirely from the sealed Store build. New mod sources can ship without an app release.
+- **Signed game-definition feed.** Game definitions stay current from the signed [626-game-manifest](https://github.com/estevanhernandez-stack-ed/626-game-manifest) feed — a new game on an engine the launcher already knows arrives without an app update.
+
+Full notes: **[latest release](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**.
 
 ## What it does
 
