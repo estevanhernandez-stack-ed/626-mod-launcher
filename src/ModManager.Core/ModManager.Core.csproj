@@ -6,6 +6,14 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Build flavors mirror ModManager.App: FULL (GitHub SKU) compiles in the EAC-disable mechanism
+       (AntiCheat.cs) + the launch-option toggle surface; STORE (sealed core, MS Store SKU) leaves FULL
+       undefined so that #if FULL code is absent from the shipped Core binary. Build the Store flavor
+       with -p:Configuration=Store. Tests build Debug/Release (FULL), so they see the full surface. -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Store'">
+    <DefineConstants>$(DefineConstants);FULL</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="SharpCompress" Version="0.48.1" />
   </ItemGroup>

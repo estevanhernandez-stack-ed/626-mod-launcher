@@ -1268,6 +1268,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The verified launch options for the active game (internal + external), for the dialog.</summary>
     public IReadOnlyList<LaunchOption> ActiveLaunchOptions => LaunchOptions.For(_ctx?.Game.SteamAppId);
 
+#if FULL
+    // FULL flavor only — the EAC-disable toggle is stripped from the sealed Store SKU. AntiCheat (the
+    // Core mechanism) is absent from the Store Core binary, and LaunchOptions.For filters the toggle
+    // option out for Store, so these call sites compile out cleanly.
     /// <summary>Current anti-cheat state for a toggle option on the active game.</summary>
     public AntiCheatState AntiCheatStateOf(LaunchOption opt)
     {
@@ -1293,6 +1297,7 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception e) { StatusText = e.Message; }
         return AntiCheatStateOf(opt);
     }
+#endif
 
     /// <summary>Run an internal launch option (the app starts the real exe directly).</summary>
     public async Task RunInternalOption(LaunchOption opt)

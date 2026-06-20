@@ -744,9 +744,13 @@ public sealed partial class MainWindow : Window
 
                 switch (opt.Kind)
                 {
+#if FULL
+                    // FULL only — the EAC-disable toggle is stripped from the Store SKU (LaunchOptions.For
+                    // also filters the option out for Store, so this case never fires there).
                     case ModManager.Core.LaunchOptionKind.AntiCheatToggle:
                         AddAntiCheatToggle(card, opt, Build);
                         break;
+#endif
 
                     case ModManager.Core.LaunchOptionKind.Internal:
                         var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
@@ -775,8 +779,10 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+#if FULL
     // Anti-cheat toggle card: shows current state and a button to flip it (reversible swap), then
     // rebuilds the dialog in place so the new state shows. Off = press Play for modded + offline.
+    // FULL only — stripped from the sealed Store SKU (the option is filtered out + AntiCheat is absent).
     private void AddAntiCheatToggle(StackPanel card, ModManager.Core.LaunchOption opt, Action rebuild)
     {
         var state = ViewModel.AntiCheatStateOf(opt);
@@ -808,6 +814,7 @@ public sealed partial class MainWindow : Window
         toggle.Click += (_, _) => { ViewModel.SetAntiCheat(opt, turnOn: !on); rebuild(); };
         card.Children.Add(toggle);
     }
+#endif
 
     private async void OnRemoveGame(object sender, RoutedEventArgs e)
     {

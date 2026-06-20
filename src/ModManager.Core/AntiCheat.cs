@@ -1,3 +1,8 @@
+// FULL flavor only. The EAC-disable bootstrapper swap is stripped from the sealed Store SKU:
+// Configuration=Store leaves FULL undefined (see ModManager.Core.csproj), so this whole mechanism is
+// absent from the shipped Store Core binary — not merely off-by-default. The launch-option surface
+// (LaunchOptions.For) filters the toggle out for Store too, and the App's call sites are #if FULL.
+#if FULL
 namespace ModManager.Core;
 
 /// <summary>Whether a game's anti-cheat is currently engaged. Unsupported = no bootstrapper present.</summary>
@@ -56,3 +61,4 @@ public static class AntiCheat
         File.Move(backup, boot);                   // restore the original bootstrapper
     }
 }
+#endif
