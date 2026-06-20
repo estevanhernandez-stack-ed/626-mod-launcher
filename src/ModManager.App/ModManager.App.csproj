@@ -34,6 +34,35 @@
     <DefineConstants>$(DefineConstants);FULL</DefineConstants>
   </PropertyGroup>
 
+  <!--
+    Store SKU (sealed core): package as a single-project MSIX with the reserved Partner Center identity
+    (Package.appxmanifest). The FULL/GitHub SKU keeps WindowsPackageType=None above and ships unpackaged
+    via Velopack - only the Store build packages. AppxPackageSigningEnabled=false: the Store re-signs, so
+    no cert is ever embedded. x64 first; ARM64 is a later bundle decision.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Store'">
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxBundle>Always</AppxBundle>
+    <AppxBundlePlatforms>x64</AppxBundlePlatforms>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Store'">
+    <AppxManifest Include="Package.appxmanifest">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <Content Include="Assets\Square44x44Logo.png" />
+    <Content Include="Assets\Square71x71Logo.png" />
+    <Content Include="Assets\Square150x150Logo.png" />
+    <Content Include="Assets\Square310x310Logo.png" />
+    <Content Include="Assets\Wide310x150Logo.png" />
+    <Content Include="Assets\SplashScreen.png" />
+    <Content Include="Assets\StoreLogo.png" />
+    <Content Include="Assets\LockScreenLogo.png" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
