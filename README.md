@@ -9,11 +9,15 @@ A reversible, atomic mod toggler for PC games — Bethesda, Unreal pak, FromSoft
 
 ## Download
 
-Latest release: **[Setup.exe on GitHub Releases](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)**
+Two ways to get it:
 
-Double-click the Setup.exe. Windows will warn you the first time (SmartScreen — we haven't bought a code-signing certificate yet); click **More info → Run anyway**. The launcher installs to your user profile, lands in the Start Menu, and auto-updates from then on. Uninstall via the normal Add/Remove Programs.
+**[Get it from the Microsoft Store](https://apps.microsoft.com/detail/9N53V6RRJK95)** — the easy path. Signed by Microsoft, so no SmartScreen warning; installs and auto-updates through the Store. This is the **sealed-core build**: full mod management — intake, reversible toggles, load order, saves, config editor, profiles, themes — but *without* the optional Nexus integration and the anti-cheat toggle, which live on the GitHub build below.
 
-Want to look first? The launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
+[![Get it from Microsoft Store](https://get.microsoft.com/images/en-us%20dark.svg)](https://apps.microsoft.com/detail/9N53V6RRJK95)
+
+**[Setup.exe on GitHub Releases](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)** — the full build, everything including the Nexus integration. Windows will warn you the first time (SmartScreen — no code-signing cert on this channel); click **More info → Run anyway**. Installs to your user profile, lands in the Start Menu, and auto-updates from GitHub. Uninstall via the normal Add/Remove Programs.
+
+Either way, the launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
 
 ## What's new in v0.5.0
 
