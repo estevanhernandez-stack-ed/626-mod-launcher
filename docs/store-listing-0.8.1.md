@@ -13,7 +13,7 @@
 - **Subcategory:** (none / leave default)
 - **Copyright and trademark info:** © 626Labs LLC
 - **Support contact info:** `<your support email or https://github.com/estevanhernandez-stack-ed/626-mod-launcher/issues>`
-- **Privacy policy URL:** `<URL where you host the privacy policy below>`
+- **Privacy policy URL:** the existing **626Labs hub website privacy policy** URL. The Store SKU collects no personal data, so the company-wide policy satisfies the requirement — no app-specific page needed. (The drafted policy at the bottom is optional reference only, in case you ever want launcher-specific language on the hub page.)
 
 ---
 
@@ -99,7 +99,7 @@ To exercise it: launch the app, add a game (or let Steam detection find one), dr
 
 ---
 
-## Privacy policy  *(host this at a public URL — e.g. GitHub Pages or the repo — and put that URL in Properties)*
+## Privacy policy  *(OPTIONAL reference — the 626Labs hub website policy is what goes in Properties. Use this only if you want launcher-specific language added to the hub page.)*
 
 ### 626 Mod Launcher — Privacy Policy
 
