@@ -13,7 +13,7 @@
 - **Subcategory:** (none / leave default)
 - **Copyright and trademark info:** © 626Labs LLC
 - **Support contact info:** `<your support email or https://github.com/estevanhernandez-stack-ed/626-mod-launcher/issues>`
-- **Privacy policy URL:** the existing **626Labs hub website privacy policy** URL. The Store SKU collects no personal data, so the company-wide policy satisfies the requirement — no app-specific page needed. (The drafted policy at the bottom is optional reference only, in case you ever want launcher-specific language on the hub page.)
+- **Privacy policy URL:** `https://626labs.dev/privacy.html` (live, verified). Its "no telemetry, no data collection, runs locally" stance accurately covers the sealed Store SKU. Optional belt-and-suspenders: add "626 Mod Launcher" to the named-products line on that page so the app is explicitly listed — not required (the general policy + "other tools" already covers it). The drafted policy at the bottom is optional reference only.
 
 ---
 
