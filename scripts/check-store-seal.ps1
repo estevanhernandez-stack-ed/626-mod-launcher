@@ -17,14 +17,19 @@
 #>
 param(
     [string]$Configuration = "Store",
-    [string]$Platform = "x64"
+    [string]$Platform = "x64",
+    # CI builds the versioned bundle first, then runs the seal with -SkipBuild to scan that exact output
+    # (no redundant rebuild at a different version). Local runs omit it and build fresh.
+    [switch]$SkipBuild
 )
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 
-Write-Host "Building STORE flavor ($Configuration/$Platform)..."
-dotnet build "$repo/src/ModManager.App/ModManager.App.csproj" -c $Configuration -p:Platform=$Platform --nologo | Out-Null
-if ($LASTEXITCODE -ne 0) { Write-Error "STORE build failed."; exit 1 }
+if (-not $SkipBuild) {
+    Write-Host "Building STORE flavor ($Configuration/$Platform)..."
+    dotnet build "$repo/src/ModManager.App/ModManager.App.csproj" -c $Configuration -p:Platform=$Platform --nologo | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Error "STORE build failed."; exit 1 }
+}
 
 $appDll = Get-ChildItem -Path "$repo/src/ModManager.App/bin/$Platform/$Configuration" -Recurse -Filter "ModManager.App.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $appDll) { Write-Error "Couldn't find the STORE build output (ModManager.App.dll)."; exit 1 }

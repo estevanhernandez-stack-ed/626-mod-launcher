@@ -5,6 +5,13 @@ obj/
 [Rr]elease/
 *.user
 
+# MSIX packaging output (artifacts only, like dist/ — never committed; the Store SKU is built in CI)
+**/AppPackages/
+**/BundleArtifacts/
+*.msix
+*.msixbundle
+*.appxsym
+
 # Visual Studio / Rider
 .vs/
 .idea/

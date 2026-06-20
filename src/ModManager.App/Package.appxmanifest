@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  Microsoft Store SKU (sealed core) package manifest. Used only for the Store flavor build
+  (Configuration=Store, EnableMsixTooling). The FULL/GitHub SKU ships unpackaged via Velopack and
+  ignores this file.
+
+  Identity is the reserved Partner Center product identity (publisher 626Labs LLC). runFullTrust is
+  the ONLY declared capability: a full-trust desktop MSIX writes to user-writable game folders via
+  ordinary Win32 I/O under NTFS, so broadFileSystemAccess (a UWP/sandbox concept) is NOT declared -
+  declaring it would invite restricted-capability review friction the app does not need.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="626LabsLLC.626ModLauncher"
+    Publisher="CN=177BCE59-0966-4975-9962-10E36652141F"
+    Version="0.8.1.0" />
+
+  <Properties>
+    <DisplayName>626 Mod Launcher</DisplayName>
+    <PublisherDisplayName>626Labs LLC</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="ModManager.App.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="626 Mod Launcher"
+        Description="A native mod manager for your own installed PC games - load order, reversible enable/disable, save-safe."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
