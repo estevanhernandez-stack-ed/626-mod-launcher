@@ -1,0 +1,60 @@
+name: Build Store MSIX (manual)
+
+# Manual-dispatch only. Builds the sealed Store SKU as an unsigned MSIX bundle, proves the seal
+# (no plugin loader / no EAC-disable mechanism), and uploads the bundle as an artifact for a human
+# to submit to Partner Center. Submission is NEVER automated here — the cert round-trip + listing
+# stay human-gated. The FULL/GitHub SKU ships from release.yml; this is the independent Store channel.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g. 0.8.1 — Partner Center increments per submission)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-msix:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate version (digits + dots only)
+        shell: pwsh
+        run: |
+          $v = "${{ github.event.inputs.version }}"
+          if ($v -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$') { Write-Error "Invalid version: $v"; exit 1 }
+
+      - name: Restore
+        run: dotnet restore src/ModManager.App/ModManager.App.csproj
+
+      - name: Test (Core)
+        # Explicit project — bare `dotnet test` at the root hangs building WinUI.
+        run: dotnet test tests/ModManager.Tests/ModManager.Tests.csproj -c Release --logger "console;verbosity=minimal"
+
+      - name: Build Store MSIX bundle
+        # Configuration=Store -> sealed core (FULL undefined) + single-project MSIX. Unsigned: the Store
+        # re-signs at submission, so no cert ever lives in CI. x64 bundle (ARM64 is a later decision).
+        run: dotnet build src/ModManager.App/ModManager.App.csproj -c Store -p:Platform=x64 -p:Version=${{ github.event.inputs.version }}
+
+      - name: Verify Store seal
+        # Fail the build if the plugin loader or the EAC-disable mechanism leaked into the Store binaries.
+        # -SkipBuild scans the bundle we just built (no redundant rebuild at a different version).
+        shell: pwsh
+        run: ./scripts/check-store-seal.ps1 -SkipBuild
+
+      - name: Upload msixbundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-msixbundle-${{ github.event.inputs.version }}
+          path: src/ModManager.App/AppPackages/**/*.msixbundle
+          if-no-files-found: error
