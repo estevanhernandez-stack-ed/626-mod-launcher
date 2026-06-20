@@ -29,7 +29,19 @@ public sealed record LaunchOption(string Title, string Detail, LaunchOptionKind 
 /// </summary>
 public static class LaunchOptions
 {
-    public static IReadOnlyList<LaunchOption> For(string? appId) => appId switch
+    public static IReadOnlyList<LaunchOption> For(string? appId)
+    {
+        var options = Catalog(appId);
+#if !FULL
+        // STORE SKU (sealed core): the anti-cheat toggle is stripped — never surface it, even if the
+        // catalog lists one. Pairs with AntiCheat.cs being absent from the Store binary entirely.
+        return options.Where(o => o.Kind != LaunchOptionKind.AntiCheatToggle).ToArray();
+#else
+        return options;
+#endif
+    }
+
+    static IReadOnlyList<LaunchOption> Catalog(string? appId) => appId switch
     {
         // Elden Ring — verified on disk: Game\eldenring.exe behind start_protected_game.exe (EAC).
         // EAC blocks mods, and launching eldenring.exe directly does NOT bypass it — the proven
