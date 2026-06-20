@@ -9,8 +9,9 @@
 
 ## Properties
 
-- **Category:** Utilities & tools  *(not Games — keeps it out of the gaming-specific policy rules)*
-- **Subcategory:** (none / leave default)
+- **Category:** **Utilities + tools** *(verified against MS's category table. NEVER pick Games — it locks the app into Games permanently, forces a genre + Xbox Live requirements, and triggers gaming-specific policies. The Utility framing is deliberate cover for the runFullTrust + writes-into-game-folders combo.)*
+- **Subcategory:** **File managers** *(best fit — it manages/organizes mod files in game folders. Alternative: "Backup + manage" if leading with the save-snapshot/restore-point angle.)*
+- **Secondary category:** (none — optional, no strong second fit)
 - **Copyright and trademark info:** © 626Labs LLC
 - **Support contact info:** `<your support email or https://github.com/estevanhernandez-stack-ed/626-mod-launcher/issues>`
 - **Privacy policy URL:** `https://626labs.dev/privacy.html` (live, verified). Its "no telemetry, no data collection, runs locally" stance accurately covers the sealed Store SKU. Optional belt-and-suspenders: add "626 Mod Launcher" to the named-products line on that page so the app is explicitly listed — not required (the general policy + "other tools" already covers it). The drafted policy at the bottom is optional reference only.
