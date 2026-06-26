@@ -2,7 +2,9 @@
 
 > Update submission for the v0.9.0 cut (ban-safe loaders + loaders-in-the-bar, Mod Engine 2 engine-wide, request-a-game). The listing fields (description, category **Utilities & tools / File managers**, screenshots, privacy URL) are **unchanged from 0.8.1** — see [`store-listing-0.8.1.md`](store-listing-0.8.1.md). For this update you only need the two fields below.
 
-**Package to upload:** `src/ModManager.App/AppPackages/ModManager.App_0.9.0.0_Store_Test/ModManager.App_0.9.0.0_x64_Store.msixbundle` (unsigned — the Store re-signs). Partner Center → 626 Mod Launcher → Packages → upload.
+**Package to upload:** `src/ModManager.App/AppPackages/ModManager.App_0.9.1.0_Store_Test/ModManager.App_0.9.1.0_x64_Store.msixbundle` (unsigned — the Store re-signs). Partner Center → 626 Mod Launcher → Packages → upload.
+
+> **Store package is 0.9.1.0, release is v0.9.0.** The 0.9.0.0 package number was burned by an accidental standalone `.msix` upload, and Partner Center won't reuse a version (the revision octet must stay 0, so 0.9.0.1 isn't valid) — so the Store package is 0.9.1.0. Same feature set; the GitHub/Velopack release stays tagged v0.9.0 (independent channel). Remove the stray 0.9.0.0 `.msix` from the submission's Packages before uploading the bundle.
 
 ---
 
