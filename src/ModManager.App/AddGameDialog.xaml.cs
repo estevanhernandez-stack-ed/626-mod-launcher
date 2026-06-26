@@ -384,7 +384,12 @@ public sealed partial class AddGameDialog : ContentDialog
     private void OnEngineChanged(object sender, SelectionChangedEventArgs e)
     {
         if (EngineBox.SelectedItem is EngineOption opt && EnginePresets.Presets.TryGetValue(opt.Key, out var preset))
+        {
             ModPathBox.Text = preset.ModPath;
+            // The user now has an engine — manual pick counts as "resolved", so retire the request nudge.
+            // ApplyDetectedEngine still owns showing it (so it never flashes before a name/folder exists).
+            RequestGameLink.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async void OnBrowse(object sender, RoutedEventArgs e)
