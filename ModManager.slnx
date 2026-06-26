@@ -10,5 +10,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/ModManager.Tests/ModManager.Tests.csproj" />
     <Project Path="tests/ModManager.App.NexusValidate.Tests/ModManager.App.NexusValidate.Tests.csproj" />
+    <Project Path="tests/ManifestMiner.Tests/ManifestMiner.Tests.csproj" />
   </Folder>
 </Solution>
