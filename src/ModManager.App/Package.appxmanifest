@@ -19,7 +19,7 @@
   <Identity
     Name="626LabsLLC.626ModLauncher"
     Publisher="CN=177BCE59-0966-4975-9962-10E36652141F"
-    Version="0.9.0.0" />
+    Version="0.9.1.0" />
 
   <Properties>
     <DisplayName>626 Mod Launcher</DisplayName>
