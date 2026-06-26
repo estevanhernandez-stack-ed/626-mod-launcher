@@ -63,3 +63,30 @@ entry.
     Used by: launcher's framework intake catalog (Core.Frameworks.KnownFramework).
              Installs into <project>/Binaries/Win64 for ue-pak games; the user
              supplies the zip — the binary is never bundled.
+
+
+Loaders (catalog metadata only, never bundled)
+================================================================================
+
+The launcher detects a small set of mod loaders that ship their own launcher
+executable, and surfaces a one-click "Launch via X" button — and, on anti-cheat
+games, a ban-safe-path hint — when the loader is found in the game folder.
+
+NEVER BUNDLED. The launcher includes no loader's binaries or assets. We carry only:
+
+  - The launcher-exe filename(s) to detect in the game folder (Core.Loaders.KnownLoader)
+  - The canonical project URL where the user can download the loader
+  - The author's name (credited on the launch button + the ban-risk safe-path hint)
+
+If you are the author of a loader listed here and would like the launcher to stop
+surfacing it, open an issue at the launcher repo and we'll remove the catalog entry.
+
+  - Mod Engine 2 — by soulsmods
+    Source:  https://github.com/soulsmods/ModEngine2/releases
+    Used by: launcher's loader catalog (Core.Loaders.KnownLoaderCatalog); detected by
+             modengine2_launcher.exe in the game folder — the binary is never bundled.
+
+  - Seamless Co-op — by LukeYui
+    Source:  https://www.nexusmods.com/eldenring/mods/510
+    Used by: launcher's loader catalog (Core.Loaders.KnownLoaderCatalog); detected by
+             launch_elden_ring_seamlesscoop.exe — the binary is never bundled.

@@ -270,16 +270,25 @@ public sealed partial class MainWindow : Window
                 {
                     try
                     {
-                        var target = opt.LauncherPath ?? opt.GetUrl;
-                        var psi = new System.Diagnostics.ProcessStartInfo
+                        // Installed loader -> launch its exe; otherwise open the Get-it-here URL, gated
+                        // through SafeUrl.IsHttpUrl like every other URL-open site in the app.
+                        if (opt.LauncherPath is not null)
                         {
-                            FileName = target,
-                            UseShellExecute = true,
-                            WorkingDirectory = opt.LauncherPath is not null
-                                ? System.IO.Path.GetDirectoryName(opt.LauncherPath) ?? ""
-                                : "",
-                        };
-                        System.Diagnostics.Process.Start(psi);
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = opt.LauncherPath,
+                                UseShellExecute = true,
+                                WorkingDirectory = System.IO.Path.GetDirectoryName(opt.LauncherPath) ?? "",
+                            });
+                        }
+                        else if (ModManager.Core.SafeUrl.IsHttpUrl(opt.GetUrl))
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = opt.GetUrl,
+                                UseShellExecute = true,
+                            });
+                        }
                     }
                     catch { /* OS refusal — ignore silently; user sees the button did nothing */ }
                 };
