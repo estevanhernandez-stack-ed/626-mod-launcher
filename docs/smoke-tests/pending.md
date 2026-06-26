@@ -471,3 +471,22 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **(6) STORE stays sealed.** Build/run `-p:Configuration=Store`. EXPECT: no plugin loads; no startup fetch fires; the Settings row for "Install / refresh Nexus plugin" is absent or no-ops (compiled out); no `last-plugin-check.txt`; STORE dll has no `PluginFeedSource`/`PluginHost` symbols. Core fully functional (toggle/intake/save unaffected).
 
 **Why these matter:** the delivery path (startup fetch, hot-load dispatcher, manual button wiring) is App-side FULL-only — the unit tests cover the fetch outcome shape and the plugin installer math, but the actual trigger timing (startup vs. connect-time), the `RedetectActiveAsync` visual round-trip (hearts filling mid-session), and the button's feedback loop only exercise on a real connected rig with a real feed and a real Nexus account.
+
+---
+
+## feat/ban-safe-loaders Task 3 — detected loaders as launch buttons (FULL + STORE)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite 1319/0. FULL build 0 errors. STORE build 0 errors. STORE seal OK (no new forbidden symbols).
+
+**What shipped:** `LoaderScan.Detect` (Task 2, already merged) probes the active game's play folder for known launcher exes. The ToolsPanel now renders a **LOADERS** section — collapsed when no loaders are detected, visible with one button per detected loader when they are. Each button is labeled "Launch via {DisplayName}" (e.g. "Launch via Mod Engine 2") and delegates to `MainViewModel.LaunchLoaderAsync`, which runs `Process.Start` against the detected exe and updates StatusText. Read-only launch — no file changes, no snapshot needed. No `#if FULL` anywhere: STORE and FULL both render the section (on STORE, safe loaders are the primary safe path since the EAC offline toggle is absent).
+
+**Smoke steps:**
+
+- [ ] **Loader present — Elden Ring with Mod Engine 2 installed** (i.e. `modengine2_launcher.exe` exists in the game's play folder): open the launcher on Elden Ring. EXPECT: a **LOADERS** section appears in the tools bar with a "Launch via Mod Engine 2" button.
+- [ ] **Click the button.** EXPECT: status line reads "Launching Mod Engine 2…"; Mod Engine 2's launcher process starts (game launches via ME2 with its mod config). No crash, no error toast.
+- [ ] **Loader present — Elden Ring with Seamless Co-op installed** (`launch_elden_ring_seamlesscoop.exe` or `ersc_launcher.exe` in the play folder): EXPECT: a "Launch via Seamless Co-op" button also appears in the LOADERS section alongside any ME2 button.
+- [ ] **Neither loader present.** On any game without a known loader exe in the play folder: EXPECT: the LOADERS section is completely absent from the bar. No empty header visible.
+- [ ] **Non-fromsoft game.** Switch to a non-fromsoft game (e.g. Windrose / R.E.P.O.): EXPECT: no LOADERS section (the catalog is scoped by engine — none currently registered for non-fromsoft engines).
+- [ ] **STORE build smoke (if available).** Run the STORE build on an Elden Ring folder with ME2 installed: EXPECT identical behavior — LOADERS section present, "Launch via Mod Engine 2" button functional. Confirms no `#if FULL` gate accidentally strips the feature.
+
+**Why these matter:** `LoaderScan.Detect` is pure-Core and unit-tested (Task 2). The XAML binding (`ViewModel.Loaders` → `ItemsRepeater`), the `HasLoaders` visibility gate (`StackPanel.Visibility="{x:Bind ViewModel.HasLoaders}"`), and the `Process.Start` launch flow only exercise on a real WinUI instance with a real game folder containing the launcher exe.

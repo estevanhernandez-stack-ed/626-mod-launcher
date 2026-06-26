@@ -12,6 +12,7 @@ using ModManager.App.Services;
 using ModManager.App.Tools;
 using ModManager.Core;
 using ModManager.Core.Frameworks;
+using ModManager.Core.Loaders;
 using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
 using ModManager.Plugins.Abstractions;
@@ -28,6 +29,11 @@ public sealed record GameOption(string Id, string Name)
         ? null
         : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(CoverPath));
 }
+
+/// <summary>App-side view row for a detected mod loader. Wraps <see cref="DetectedLoader"/> into a
+/// bindable shape the XAML DataTemplate can address without a Core reference in the template.
+/// <see cref="BanSafe"/> drives an optional tooltip hint in the XAML.</summary>
+public sealed record DetectedLoaderRow(string DisplayName, string LauncherPath, bool BanSafe);
 
 /// <summary>
 /// Orchestrates the shell over the proven Core: loads the active game's mods, toggles them
@@ -114,6 +120,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Catalog entries that apply to the active game but aren't installed. Surfaced as
     /// "Get it here" chips on the tools row.</summary>
     public ObservableCollection<KnownTool> MissingTools { get; } = new();
+
+    /// <summary>Mod loaders detected in the active game's play folder (e.g. Mod Engine 2,
+    /// Seamless Co-op). Refreshed at every <see cref="ReloadModsAsync"/>. Surfaced as
+    /// "Launch via X" buttons in the tools bar — one-click to start the loader instead of the
+    /// base game. Ban-safe loaders are the preferred play path on games with anti-cheat.</summary>
+    public ObservableCollection<DetectedLoaderRow> Loaders { get; } = new();
+
+    public bool HasLoaders => Loaders.Count > 0;
 
     /// <summary>Frameworks installed for the active game (UE4SS, ELM, ...) read from the per-game
     /// framework registry, each wrapped with its editable-config state. Surfaced as buttons next to
@@ -370,12 +384,14 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(MissingFrameworksSummary));
             Tools.Clear();
             MissingTools.Clear();
+            Loaders.Clear();
             FrameworkRows.Clear();
             OwnedLocations.Clear();
             ReDeployedLocations.Clear();
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
+            OnPropertyChanged(nameof(HasLoaders));
             OnPropertyChanged(nameof(ToolsRowVisible));
             OnPropertyChanged(nameof(ToolsEmptyHintVisibility));
             OnPropertyChanged(nameof(HasInstalledFrameworks));
@@ -598,6 +614,15 @@ public sealed partial class MainViewModel : ObservableObject
             // buttons next to Tools. Unreadable manifests are skipped by FrameworkRegistry.List.
             FrameworkRows.Clear();
             foreach (var fw in FrameworkRegistry.List(_ctx.DataDir)) FrameworkRows.Add(new FrameworkRowViewModel(fw));
+
+            // Detect mod loaders installed in the play folder (Mod Engine 2, Seamless Co-op, …)
+            // and surface them as "Launch via X" buttons in the tools bar. LoaderScan.Detect is pure
+            // File.Exists — no I/O beyond that. On ban-risk games, these are the primary safe path.
+            Loaders.Clear();
+            var pf = DirectInjectService.PlayFolder(_ctx.Game.GameRoot);
+            foreach (var d in LoaderScan.Detect(pf, _ctx.Game.Engine, _ctx.Game.SteamAppId))
+                Loaders.Add(new DetectedLoaderRow(d.Loader.DisplayName, d.LauncherPath, d.Loader.BanSafe));
+            OnPropertyChanged(nameof(HasLoaders));
 
             // Vortex/MO2 ownership posture per active-game location — drives the "managed by Vortex"
             // banner. Normalize with Path.GetFullPath so the taken-over membership check matches how
@@ -1943,6 +1968,28 @@ public sealed partial class MainViewModel : ObservableObject
         {
             StatusText = $"Couldn't launch {entry.DisplayName}: {ex.Message}";
         }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>Launch a detected mod loader (Mod Engine 2, Seamless Co-op, …) via its own launcher
+    /// exe. Read-only Process.Start — the loader decides what to do with the game; we only start it.
+    /// No save snapshot needed: loaders don't touch save files directly (the loader itself is the
+    /// entry point, not a save editor). Status line updates on launch; any OS-level refusal surfaces
+    /// via the catch so the user knows something went wrong instead of a silent no-op.</summary>
+    public async Task LaunchLoaderAsync(DetectedLoaderRow row)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = row.LauncherPath,
+                UseShellExecute = true,
+                WorkingDirectory = System.IO.Path.GetDirectoryName(row.LauncherPath) ?? "",
+            };
+            System.Diagnostics.Process.Start(psi);
+            StatusText = $"Launching {row.DisplayName}…";
+        }
+        catch (Exception ex) { StatusText = $"Couldn't launch {row.DisplayName}: {ex.Message}"; }
         await Task.CompletedTask;
     }
 
