@@ -116,6 +116,29 @@ if (args.Contains("--with-overrides"))
     Console.WriteLine($"Overrides: {overrides.Count} loaded, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
 }
 
+// --report-gaps: classify the most-enriched manifest into engine-curated / nexus-only (engine-upgrade
+// candidates) / skeletal (no publish tag — need full curation), and write out/candidate-gaps.{json,md}.
+// A repeatable curation backlog for the growth pipeline. Read-only; emits nothing into the published manifest.
+if (args.Contains("--report-gaps"))
+{
+    var gaps = GapClassifier.Classify(current.Games);
+    File.WriteAllText(Path.Combine(outDir, "candidate-gaps.json"),
+        JsonSerializer.Serialize(gaps, ManifestJson.Options));
+
+    var gs = new StringBuilder();
+    gs.AppendLine("# Candidate gaps — curation backlog");
+    gs.AppendLine();
+    gs.AppendLine($"- engine-curated (ship via known-engines / popular-games): {gaps.EngineCurated.Count}");
+    gs.AppendLine($"- nexus-only (ship via nexus-domains; engine folder-detected at runtime — ENGINE-UPGRADE candidates): {gaps.NexusOnly.Count}");
+    gs.AppendLine($"- skeletal (no engine, no nexusDomain — NOT published; need full curation): {gaps.Skeletal.Count}");
+    gs.AppendLine();
+    gs.AppendLine("## Engine-upgrade queue (nexus-only — add engine + modPath to make these quick-pick)");
+    foreach (var g in gaps.NexusOnly.OrderBy(g => g.Name))
+        gs.AppendLine($"- {g.Id} — {g.Name} (steam {g.Stores.SteamAppId}, nexus {g.NexusDomain})");
+    File.WriteAllText(Path.Combine(outDir, "candidate-gaps.md"), gs.ToString());
+    Console.WriteLine($"Gaps: {gaps.EngineCurated.Count} engine, {gaps.NexusOnly.Count} nexus-only, {gaps.Skeletal.Count} skeletal -> out/candidate-gaps.md");
+}
+
 // --sign: the publish step. Serialize the most-processed validated manifest in scope (`current`) ONCE,
 // write out/games-manifest.json with those exact bytes, then sign THOSE SAME bytes with
 // ManifestSigner.Sign (ECDSA P-256 / SHA-256, the launcher's verify format) and write the detached
