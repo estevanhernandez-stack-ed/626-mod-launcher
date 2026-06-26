@@ -67,6 +67,16 @@ public sealed partial class ToolsPanel : UserControl
         }
     }
 
+    // Loader button click: delegate to LaunchLoaderAsync on the VM. The loader launches as a
+    // Process.Start (read-only); the VM updates StatusText and catches any OS-level refusal.
+    private async void OnLoaderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.Tag is ViewModels.DetectedLoaderRow row && ViewModel is not null)
+        {
+            await ViewModel.LaunchLoaderAsync(row);
+        }
+    }
+
     // Open a file picker for a tool archive — the drop pipeline (ToolDetector.Classify → ToolIntake)
     // carves tools out of the mod intake, so we reuse AddModsAsync just like the drag-drop path.
     private async void OnAddToolClick(object sender, RoutedEventArgs e)
