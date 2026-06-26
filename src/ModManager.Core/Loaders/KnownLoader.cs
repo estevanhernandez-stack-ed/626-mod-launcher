@@ -24,7 +24,9 @@ public static class KnownLoaderCatalog
             LoaderId: "mod-engine-2",
             DisplayName: "Mod Engine 2",
             Engine: "fromsoft",
-            SteamAppId: "1245620",                          // Elden Ring; the canonical ME2 target
+            SteamAppId: null,                               // engine-wide: ME2 is the standard FromSoft loader
+                                                            // (ER, DS3, Sekiro, AC6, Nightreign) — detection keys
+                                                            // off modengine2_launcher.exe being present
             LauncherExeNames: new[] { "modengine2_launcher.exe" },
             GetUrl: "https://github.com/soulsmods/ModEngine2/releases",
             Author: "soulsmods (ModEngine2)",

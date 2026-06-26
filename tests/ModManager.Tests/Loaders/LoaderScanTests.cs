@@ -41,6 +41,36 @@ public class LoaderScanTests
     }
 
     [Fact]
+    public void Detect_finds_modengine2_for_any_fromsoft_game_not_just_elden_ring()
+    {
+        var dir = TempPlayFolder("modengine2_launcher.exe");
+        try
+        {
+            // Dark Souls III appid — ME2 is engine-wide, so it surfaces here too.
+            var found = LoaderScan.Detect(dir, "fromsoft", "374320");
+            var d = Assert.Single(found);
+            Assert.Equal("mod-engine-2", d.Loader.LoaderId);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Seamless_stays_elden_ring_only_for_non_ER_fromsoft_games()
+    {
+        var dir = TempPlayFolder("launch_elden_ring_seamlesscoop.exe");
+        try
+        {
+            // Seamless is pinned to Elden Ring (1245620); a different fromsoft appid must not surface it.
+            Assert.Empty(LoaderScan.Detect(dir, "fromsoft", "374320"));
+            // BanSafeFor for a non-ER fromsoft game returns ME2 (engine-wide) but not Seamless.
+            var safe = LoaderScan.BanSafeFor("fromsoft", "374320");
+            Assert.Contains(safe, l => l.LoaderId == "mod-engine-2");
+            Assert.DoesNotContain(safe, l => l.LoaderId == "seamless-coop");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void BanSafeFor_lists_the_games_ban_safe_loaders_regardless_of_install()
     {
         var safe = LoaderScan.BanSafeFor("fromsoft", "1245620");
