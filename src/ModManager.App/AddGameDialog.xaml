@@ -123,6 +123,9 @@
                       SelectionChanged="OnEngineChanged" />
             <TextBlock x:Name="EngineHint" Foreground="{StaticResource ThemeAccent}" FontSize="12"
                        Visibility="Collapsed" Text="Auto-detected from the game folder — change if it's wrong." />
+            <HyperlinkButton x:Name="RequestGameLink" Visibility="Collapsed"
+                             Click="OnRequestGame" Padding="0,2,0,0"
+                             Content="Can't find the engine? Request this game" FontSize="12" />
         </StackPanel>
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
