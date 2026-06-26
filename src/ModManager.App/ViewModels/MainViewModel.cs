@@ -35,6 +35,12 @@ public sealed record GameOption(string Id, string Name)
 /// <see cref="BanSafe"/> drives an optional tooltip hint in the XAML.</summary>
 public sealed record DetectedLoaderRow(string DisplayName, string LauncherPath, bool BanSafe);
 
+/// <summary>One entry in the safe-loader list shown inside the ban-risk gate dialog.
+/// <see cref="LauncherPath"/> is non-null when the loader is already installed in the play folder —
+/// the dialog shows a "Launch {DisplayName}" button. Null means not installed — the dialog shows a
+/// "Get {DisplayName}" button that opens <see cref="GetUrl"/>.</summary>
+public sealed record BanSafeLoaderOption(string DisplayName, string? LauncherPath, string GetUrl);
+
 /// <summary>
 /// Orchestrates the shell over the proven Core: loads the active game's mods, toggles them
 /// reversibly, applies MP/SP loadouts, fetches metadata, intakes drops, and launches. All
@@ -78,8 +84,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// The view wires this (the dialog + XamlRoot live in the code-behind, not the VM). When unset
     /// the gate proceeds — the Core decision (<see cref="BanRiskRules.ShouldGateEnable"/>) only asks
     /// for it on a high-risk, un-acked game, so an unwired delegate degrades to no extra friction.
+    /// The safe-loader list is passed so the dialog can surface "Launch / Get" options — installed
+    /// loaders get a Process.Start button; catalog-only loaders get a Get-it-here link.
     /// </summary>
-    public Func<string, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
+    public Func<string, IReadOnlyList<BanSafeLoaderOption>, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
 
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
@@ -765,7 +773,21 @@ public sealed partial class MainViewModel : ObservableObject
         var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id);
         if (!BanRiskRules.ShouldGateEnable(level, acked)) return true;
         if (ConfirmBanRiskEnable is null) return true; // unwired -> no extra friction (Core decision still owns policy)
-        var (proceed, dontWarn) = await ConfirmBanRiskEnable(_ctx.Game.GameName);
+
+        // Build the safe-loader list: for each ban-safe loader that applies to this game, check if
+        // it's already installed in the play folder (LauncherPath non-null) or just in the catalog
+        // (LauncherPath null → "Get it here"). Pure File.Exists inside Detect — no extra I/O.
+        var pf = DirectInjectService.PlayFolder(_ctx.Game.GameRoot);
+        var detected = LoaderScan.Detect(pf, _ctx.Game.Engine, _ctx.Game.SteamAppId)
+            .ToDictionary(d => d.Loader.LoaderId, StringComparer.Ordinal);
+        var options = LoaderScan.BanSafeFor(_ctx.Game.Engine, _ctx.Game.SteamAppId)
+            .Select(l => new BanSafeLoaderOption(
+                l.DisplayName,
+                detected.TryGetValue(l.LoaderId, out var det) ? det.LauncherPath : null,
+                l.GetUrl))
+            .ToList();
+
+        var (proceed, dontWarn) = await ConfirmBanRiskEnable(_ctx.Game.GameName, options);
         if (!proceed) return false;
         if (dontWarn) BanRiskAckStore.Ack(_ctx.DataDir, _ctx.Game.Id);
         return true;

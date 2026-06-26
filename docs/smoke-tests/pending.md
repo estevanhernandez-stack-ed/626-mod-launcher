@@ -490,3 +490,22 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **STORE build smoke (if available).** Run the STORE build on an Elden Ring folder with ME2 installed: EXPECT identical behavior — LOADERS section present, "Launch via Mod Engine 2" button functional. Confirms no `#if FULL` gate accidentally strips the feature.
 
 **Why these matter:** `LoaderScan.Detect` is pure-Core and unit-tested (Task 2). The XAML binding (`ViewModel.Loaders` → `ItemsRepeater`), the `HasLoaders` visibility gate (`StackPanel.Visibility="{x:Bind ViewModel.HasLoaders}"`), and the `Process.Start` launch flow only exercise on a real WinUI instance with a real game folder containing the launcher exe.
+
+---
+
+## feat/ban-safe-loaders — Task 4: ban-risk gate surfaces safe loaders (2026-06-26)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite 1319/0. FULL build 0 errors. STORE build 0 errors. STORE seal OK.
+
+**What shipped:** When the ban-risk gate fires on a high-risk game (e.g. Elden Ring), `GateBanRiskEnableAsync` now resolves the game's ban-safe loaders via `LoaderScan.BanSafeFor` + `LoaderScan.Detect` and passes them to `ConfirmBanRiskEnableAsync`. The dialog now shows a "The safe way to mod this game:" section with one button per safe loader — installed loaders show "Launch {DisplayName}" (Process.Start), uninstalled loaders show "Get {DisplayName}" (opens the download URL in the browser). The "Enable anyway" / "Cancel" / "Don't warn me again" flow is **unchanged** — this only adds guidance. No `#if FULL` anywhere: on STORE, with no EAC offline toggle, the safe-loader list is the primary safe-path surface.
+
+**Smoke steps:**
+
+- [ ] **Ban-risk gate — loader installed.** With Elden Ring registered and `modengine2_launcher.exe` in its play folder: toggle a mod on. EXPECT: the ban-risk dialog appears (if not acked) with the warning text AND a "The safe way to mod this game:" section containing a "Launch Mod Engine 2" button.
+- [ ] **Click "Launch Mod Engine 2" from inside the dialog.** EXPECT: Mod Engine 2 launches (game starts via ME2). The dialog stays open — closing it still requires "Enable anyway" or "Cancel".
+- [ ] **Ban-risk gate — loader NOT installed.** Same Elden Ring setup but no ME2 exe in the play folder: EXPECT: the dialog shows "Get Mod Engine 2" and "Get Seamless Co-op" buttons (both catalog entries). Clicking either opens the respective download URL in the browser.
+- [ ] **Both installed.** ME2 + Seamless Co-op both present: EXPECT two buttons in the loaders panel — "Launch Mod Engine 2" + "Launch Seamless Co-op".
+- [ ] **Non-fromsoft game (no safe loaders in catalog).** Toggle a mod on a ban-risk non-fromsoft game: EXPECT: the dialog shows the warning text and the "Enable anyway" / "Cancel" / checkbox as before, with NO "The safe way to mod this game:" section (the section only renders when `safeLoaders.Count > 0`).
+- [ ] **STORE build smoke.** Run the STORE build (no EAC toggle visible): trigger the ban-risk gate — EXPECT: safe-loader guidance renders identically. Confirms STORE users see the safe path (their primary option since EAC offline is absent).
+
+**Why these matter:** `BanSafeLoaderOption` building + the `IReadOnlyList<BanSafeLoaderOption>` delegate signature change are in Core/VM — unit-tested indirectly through the existing ban-risk + loader tests. The dialog rendering (safe-loader section, button labels, Process.Start vs URL open) only exercises on a real WinUI instance with a real game context.
