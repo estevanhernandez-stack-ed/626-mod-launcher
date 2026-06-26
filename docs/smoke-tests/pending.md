@@ -474,6 +474,23 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 
 ---
 
+## "Request this game" affordance in AddGameDialog (feat/request-a-game)
+
+> **STATUS — NEEDS LIVE SMOKE.** `GameRequestUrl.Build` is fully unit-tested (Core, pure). The `HyperlinkButton` visibility toggle in `ApplyDetectedEngine` and the `OnRequestGame` handler are App wiring the test project can't reach — verify on the rig.
+
+**Shipped:** When a user adds a game whose engine the launcher can't detect, a "Can't find the engine? Request this game" hyperlink appears below the engine picker. Clicking it builds a prefilled `https://github.com/estevanhernandez-stack-ed/626-game-manifest/issues/new` URL — game name (title + `name` field), Steam App ID (when set), and engine defaulting to "Not sure" (the required dropdown's fallback option) — and opens it via `Windows.System.Launcher.LaunchUriAsync`. The link is hidden when engine detection succeeds. No `#if FULL` gating — both STORE and FULL flavors surface the affordance.
+
+**Smoke steps:**
+
+- [ ] **Undetected engine → link appears.** Add Game → "Or add one manually" → type a game name and paste a folder for a game the launcher can't classify. EXPECT: the "Can't find the engine? Request this game" link is visible below the engine picker (engine stays on the placeholder). Click it → the browser opens `github.com/estevanhernandez-stack-ed/626-game-manifest/issues/new` with the game name pre-filled in the title + name field, the engine dropdown set to "Not sure", and the `game-request` label applied (from the template auto-label). If a Steam App ID was entered, it appears in the `steam-app-id` field.
+- [ ] **Detected engine → link hidden.** Add Game → Browse to a folder whose engine the launcher CAN detect (e.g. an Unreal game or an Elden Ring install). EXPECT: the engine picker auto-selects and the "Request this game" link is NOT visible (detection succeeded; no request needed).
+- [ ] **Steam Setup path → link appears.** Add Game → "Set up" on an engine-undetected Steam game in the "Set up" list. EXPECT: the manual form pre-fills (name + folder + app id), engine stays on the placeholder, and the "Request this game" link is visible. Clicking it opens the prefilled issue with the Steam App ID in the `steam-app-id` field.
+- [ ] **Name required → link is a no-op without a name.** Clear the name field, then click the link. EXPECT: nothing opens (the handler returns early when name is blank).
+
+**Why these matters:** the URL builder is unit-tested (field ids, engine-key map, escaping, `SafeUrl` guard), but the link's show/hide toggle against real engine detection, the `LaunchUriAsync` call, and the prefilled form's correctness in the browser only exercise on a real Windows machine with a real browser.
+
+---
+
 ## feat/ban-safe-loaders Task 3 — detected loaders as launch buttons (FULL + STORE)
 
 > **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite 1319/0. FULL build 0 errors. STORE build 0 errors. STORE seal OK (no new forbidden symbols).

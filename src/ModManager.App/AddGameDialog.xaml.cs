@@ -358,17 +358,38 @@ public sealed partial class AddGameDialog : ContentDialog
         {
             EngineBox.SelectedItem = match;
             EngineHint.Visibility = Visibility.Visible;
+            RequestGameLink.Visibility = Visibility.Collapsed;
         }
         else
         {
             EngineHint.Visibility = Visibility.Collapsed;
+            RequestGameLink.Visibility = Visibility.Visible;
         }
+    }
+
+    // Open a prefilled GitHub issue against the 626-game-manifest feed repo.
+    // Mirrors the FrameworkUnrecognizedNudgeDialog open-URL pattern.
+    private void OnRequestGame(object sender, RoutedEventArgs e)
+    {
+        var name = NameBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;   // name is the one required field
+        var engineKey = (EngineBox.SelectedItem as EngineOption)?.Key;   // null when unselected -> "Not sure"
+        var modPath = ModPathBox.Text?.Trim();
+        var notes = string.IsNullOrWhiteSpace(modPath) ? null : $"Mod path: {modPath}";
+        var url = ModManager.Core.GameRequestUrl.Build(name, SteamBox.Text?.Trim(), engineKey, notes);
+        if (ModManager.Core.SafeUrl.IsHttpUrl(url))
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
     }
 
     private void OnEngineChanged(object sender, SelectionChangedEventArgs e)
     {
         if (EngineBox.SelectedItem is EngineOption opt && EnginePresets.Presets.TryGetValue(opt.Key, out var preset))
+        {
             ModPathBox.Text = preset.ModPath;
+            // The user now has an engine — manual pick counts as "resolved", so retire the request nudge.
+            // ApplyDetectedEngine still owns showing it (so it never flashes before a name/folder exists).
+            RequestGameLink.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async void OnBrowse(object sender, RoutedEventArgs e)
