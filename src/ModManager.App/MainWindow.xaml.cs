@@ -39,6 +39,8 @@ public sealed partial class MainWindow : Window
         };
         // Ban-risk acknowledgment is a view concern (dialog + XamlRoot). The VM owns the policy
         // decision (BanRiskRules.ShouldGateEnable) and only invokes this on a high-risk, un-acked game.
+        // The safe-loader list lets the dialog surface "Launch / Get" buttons — installed loaders can
+        // be started in one click; uninstalled loaders open the Get-it-here URL.
         ViewModel.ConfirmBanRiskEnable = ConfirmBanRiskEnableAsync;
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
@@ -228,8 +230,13 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Confirm enabling mods on an anti-cheat/ban-risk game. Returns (proceed, dontWarnAgain).
     /// Cancel is the safe default; "Enable anyway" proceeds. Distinct copy from the co-op-desync
-    /// warning — this is about getting your account banned, not a multiplayer mismatch.</summary>
-    private async Task<(bool proceed, bool dontWarnAgain)> ConfirmBanRiskEnableAsync(string gameName)
+    /// warning — this is about getting your account banned, not a multiplayer mismatch.
+    /// When ban-safe loaders are available for this game, the dialog surfaces them: installed loaders
+    /// get a "Launch {name}" button (Process.Start); uninstalled ones get a "Get {name}" link that
+    /// opens the download URL. This is guidance only — the ack gate is unchanged.</summary>
+    private async Task<(bool proceed, bool dontWarnAgain)> ConfirmBanRiskEnableAsync(
+        string gameName,
+        IReadOnlyList<ViewModels.BanSafeLoaderOption> safeLoaders)
     {
         var dontWarn = new CheckBox { Content = "Don't warn me again for this game", Margin = new Thickness(0, 12, 0, 0) };
         var body = new StackPanel { Spacing = 8 };
@@ -238,6 +245,58 @@ public sealed partial class MainWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Text = "This game uses anti-cheat. Enabling mods for online play can get your account banned. Disabling is always reversible.",
         });
+
+        // Safe-loader guidance: "The safe way to mod this game:" + one button per safe loader.
+        // Installed loaders → Launch button (Process.Start); not installed → Get button (opens URL).
+        // Renders only when the catalog has ban-safe loaders for this game.
+        if (safeLoaders.Count > 0)
+        {
+            body.Children.Add(new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = "The safe way to mod this game:",
+                Margin = new Thickness(0, 8, 0, 0),
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            });
+            var loaderPanel = new StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 8 };
+            foreach (var opt in safeLoaders)
+            {
+                var btn = new Button
+                {
+                    Content = opt.LauncherPath is not null ? $"Launch {opt.DisplayName}" : $"Get {opt.DisplayName}",
+                    Tag = opt,
+                };
+                btn.Click += (_, _) =>
+                {
+                    try
+                    {
+                        // Installed loader -> launch its exe; otherwise open the Get-it-here URL, gated
+                        // through SafeUrl.IsHttpUrl like every other URL-open site in the app.
+                        if (opt.LauncherPath is not null)
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = opt.LauncherPath,
+                                UseShellExecute = true,
+                                WorkingDirectory = System.IO.Path.GetDirectoryName(opt.LauncherPath) ?? "",
+                            });
+                        }
+                        else if (ModManager.Core.SafeUrl.IsHttpUrl(opt.GetUrl))
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = opt.GetUrl,
+                                UseShellExecute = true,
+                            });
+                        }
+                    }
+                    catch { /* OS refusal — ignore silently; user sees the button did nothing */ }
+                };
+                loaderPanel.Children.Add(btn);
+            }
+            body.Children.Add(loaderPanel);
+        }
+
         body.Children.Add(dontWarn);
         var dialog = new ContentDialog
         {
