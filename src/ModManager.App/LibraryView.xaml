@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ModManager.App.LibraryView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ModManager.App.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{StaticResource ThemeBg}">
+        <!-- Empty state: no games registered yet -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="420"
+                    Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}">
+            <TextBlock Text="Your library is empty" FontSize="20" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" Foreground="{StaticResource ThemeInk}" />
+            <TextBlock Text="Add a game to get started — 626 finds installed games below once you add one, or use + Game up top."
+                       TextWrapping="Wrap" TextAlignment="Center" Opacity="0.7" />
+        </StackPanel>
+
+        <ScrollViewer Visibility="{x:Bind ViewModel.ContentVisibility, Mode=OneWay}"
+                      VerticalScrollBarVisibility="Auto" Padding="20,16,20,20">
+            <StackPanel Spacing="20">
+
+                <!-- Recent strip: big cover cards, most-recently-played first -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="JUMP BACK IN" FontSize="11" CharacterSpacing="80"
+                               Foreground="{StaticResource ThemeInkSoft}" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                  HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.RecentRows, Mode=OneWay}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="12" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:GameLibraryRowViewModel">
+                                    <Button Padding="0" BorderThickness="0" Background="Transparent"
+                                            Click="OnRecentClick" Tag="{x:Bind}"
+                                            ToolTipService.ToolTip="{x:Bind Name}">
+                                        <StackPanel Spacing="6" Width="150">
+                                            <Grid Width="150" Height="200" CornerRadius="8">
+                                                <!-- Themed initial placeholder when no cover art -->
+                                                <Border CornerRadius="8" Background="{x:Bind Placeholder}"
+                                                        Visibility="{x:Bind PlaceholderVisibility}">
+                                                    <TextBlock Text="{x:Bind Initial}" FontSize="56" FontWeight="Bold"
+                                                               Foreground="Black" HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+                                                <Border CornerRadius="8"
+                                                        Visibility="{x:Bind CoverVisibility}">
+                                                    <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
+                                                </Border>
+                                            </Grid>
+                                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="150"
+                                                       Foreground="{StaticResource ThemeInk}" />
+                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Opacity="0.6" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <!-- Search + all-games list -->
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="ALL GAMES" FontSize="11" CharacterSpacing="80"
+                                   VerticalAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
+                        <TextBox Grid.Column="1" Width="220" PlaceholderText="Search games…"
+                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Rows, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GameLibraryRowViewModel">
+                                <Grid Padding="10,10" ColumnSpacing="14" Margin="0,0,0,6"
+                                      Background="{StaticResource ThemePanel}" CornerRadius="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Cover / placeholder thumbnail -->
+                                    <Grid Grid.Column="0" Width="60" Height="80" CornerRadius="6"
+                                          VerticalAlignment="Center">
+                                        <Border CornerRadius="6" Background="{x:Bind Placeholder}"
+                                                Visibility="{x:Bind PlaceholderVisibility}">
+                                            <TextBlock Text="{x:Bind Initial}" FontSize="26" FontWeight="Bold"
+                                                       Foreground="Black" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
+                                        <Border CornerRadius="6"
+                                                Visibility="{x:Bind CoverVisibility}">
+                                            <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Body: name + source/recency line + mod state + chips -->
+                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="15"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource ThemeInk}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{x:Bind SourceBadge}" FontSize="12" Opacity="0.7"
+                                                       Visibility="{x:Bind SourceBadgeVisibility}" />
+                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Opacity="0.6" />
+                                        </StackPanel>
+                                        <TextBlock Text="{x:Bind ModStateText}" FontSize="12" Opacity="0.7" />
+
+                                        <!-- Chips: tier · ban risk · detected loaders -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
+                                                    BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
+                                                    ToolTipService.ToolTip="{x:Bind TierTooltip}">
+                                                <TextBlock Text="{x:Bind TierChip}" FontFamily="Consolas" FontSize="11" />
+                                            </Border>
+                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
+                                                    BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
+                                                    ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
+                                                    Visibility="{x:Bind BanRiskVisibility}">
+                                                <TextBlock Text="BAN RISK" FontFamily="Consolas" FontSize="11"
+                                                           Foreground="{StaticResource ThemeDanger}" />
+                                            </Border>
+                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
+                                                    BorderThickness="1" BorderBrush="{StaticResource ThemeAccent}"
+                                                    ToolTipService.ToolTip="Mod loaders detected in this game's folder"
+                                                    Visibility="{x:Bind LoaderVisibility}">
+                                                <TextBlock Text="{x:Bind LoaderChip}" FontFamily="Consolas" FontSize="11"
+                                                           Foreground="{StaticResource ThemeAccent}" />
+                                            </Border>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Play: launch the game's current on-disk state. The vanilla/modded
+                                         toggle lives in the game view, coupled to the active context. -->
+                                    <Button Grid.Column="2" VerticalAlignment="Center"
+                                            Content="Play" Foreground="Black"
+                                            Background="{StaticResource ThemeAccent}"
+                                            Click="OnPlay" Tag="{x:Bind}"
+                                            ToolTipService.ToolTip="Launch this game" />
+
+                                    <!-- Manage: open this game's mod view -->
+                                    <Button Grid.Column="3" VerticalAlignment="Center" Content="Manage"
+                                            Margin="8,0,0,0" Click="OnManage" Tag="{x:Bind}"
+                                            ToolTipService.ToolTip="Open this game's mods" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- Discovery lane: installed games not added yet -->
+                <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Background="{StaticResource ThemePanel}">
+                    <Expander.Header>
+                        <TextBlock Text="Installed games not added yet" FontWeight="SemiBold" />
+                    </Expander.Header>
+                    <StackPanel Spacing="8" Padding="0,4,0,4">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.DiscoveryRows, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DiscoveredGameViewModel">
+                                    <Grid Padding="8" ColumnSpacing="12" Margin="0,0,0,4"
+                                          Background="{StaticResource ThemeBarBg}" CornerRadius="6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Grid.Column="0" Width="40" Height="54" CornerRadius="4"
+                                              VerticalAlignment="Center">
+                                            <Border CornerRadius="4" Background="{x:Bind Placeholder}"
+                                                    Visibility="{x:Bind PlaceholderVisibility}">
+                                                <TextBlock Text="{x:Bind Initial}" FontSize="18" FontWeight="Bold"
+                                                           Foreground="Black" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+                                            <Border CornerRadius="4"
+                                                    Visibility="{x:Bind CoverVisibility}">
+                                                <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
+                                            </Border>
+                                        </Grid>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind StoreKind}" FontSize="12" Opacity="0.6" />
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Content="+ Add" VerticalAlignment="Center"
+                                                Click="OnAddDiscovered" Tag="{x:Bind}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Nothing new — every installed game 626 can see is already in your library."
+                                   Opacity="0.5" FontSize="12"
+                                   Visibility="{x:Bind ViewModel.DiscoveryEmptyVisibility, Mode=OneWay}" />
+                    </StackPanel>
+                </Expander>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

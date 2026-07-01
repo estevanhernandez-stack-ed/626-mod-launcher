@@ -526,3 +526,52 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **STORE build smoke.** Run the STORE build (no EAC toggle visible): trigger the ban-risk gate — EXPECT: safe-loader guidance renders identically. Confirms STORE users see the safe path (their primary option since EAC offline is absent).
 
 **Why these matter:** `BanSafeLoaderOption` building + the `IReadOnlyList<BanSafeLoaderOption>` delegate signature change are in Core/VM — unit-tested indirectly through the existing ban-risk + loader tests. The dialog rendering (safe-loader section, button labels, Process.Start vs URL open) only exercises on a real WinUI instance with a real game context.
+
+---
+
+## feat/game-library-home Task 4 — own-launch log + launch-time stamping (2026-07-01)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite 1341/0. FULL build 0 errors. STORE build 0 errors. STORE seal OK.
+
+**What shipped:** After a successful launch (both the default-target path in `Launch()` and the explicit-target path in `LaunchTargetExplicit()`), the launcher now stamps `GameEntry.LastLaunchedUtc` on the registry and appends a `LaunchLogEntry(GameId, StartedUtc, EndedUtc: null)` to an append-only `%LOCALAPPDATA%\ModManagerBuilder\launch-log.json` (camelCase, via `AtomicJson`). `LauncherService.StampLaunch(gameId)` owns the write; `MainViewModel.StampLaunch()` calls it in its own try/catch so a stamping failure never blocks or surfaces on top of a launch that already happened. `OwnLaunchLastPlayedSource : ILastPlayedSource` reads the stamp + sums logged session durations (`EndedUtc - StartedUtc` where both present) for the future Library home's recency ladder — no UI surface yet, this task is plumbing only. The launch mechanism itself (`LauncherService.Launch`) is untouched.
+
+**Smoke steps:**
+
+- [ ] **Launch stamps the registry.** Note a game's current `games.json` `lastLaunchedUtc` (or its absence), then click Launch (primary button, default target). EXPECT: `games.json` now shows `lastLaunchedUtc` as a recent UTC timestamp for that game.
+- [ ] **Launch appends the log.** After the launch above, open `%LOCALAPPDATA%\ModManagerBuilder\launch-log.json`. EXPECT: a new entry `{ "gameId": "<id>", "startedUtc": "<recent UTC>", "endedUtc": null }` is appended (prior entries, if any, are preserved — not overwritten).
+- [ ] **Explicit-target launch also stamps.** Use the launch dropdown to run a specific target (e.g. a required launcher or Seamless) rather than the primary button. EXPECT: same stamping behavior — registry + log both updated.
+- [ ] **A launch that fails to resolve a target does not stamp.** On a game with no launch target configured (if reproducible) so `Launch()` returns false and "No launch target configured for this game." shows: EXPECT no new `lastLaunchedUtc` and no new log entry (the stamp only fires on a truthy launch).
+- [ ] **Stamping never blocks or corrupts on failure.** (Best-effort — hard to force live.) If `launch-log.json` is momentarily locked/unwritable, the launch itself still succeeds and no exception surfaces in `StatusText`; the try/catch in `MainViewModel.StampLaunch()` swallows it.
+- [ ] **No visible UI change.** This task ships no UI — confirm the app looks and behaves identically before/after (Library home consumes this data in a later task).
+
+**Why these matter:** `LaunchLogEntry`'s camelCase round-trip is unit-tested in Core; `LaunchLog`, `OwnLaunchLastPlayedSource`, and the two call-site stamps are App-side IO + WinUI VM wiring the test project can't reach — only a real launch on a real Windows machine confirms the registry write, the append-not-overwrite log behavior, and the non-fatal failure path.
+
+---
+
+## feat/game-library-home Task 7 — Library home view + landing navigation (2026-07-01)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** FULL build 0 errors. STORE build 0 errors. STORE seal OK. FULL build launched clean (no startup crash, overlay mounts).
+
+**What shipped:** A new `LibraryView` (UserControl) is the app's landing surface, mounted as an overlay (`LibraryHost`, rowspan over the content area) in `MainWindow`. It renders a recent cover strip ("JUMP BACK IN", top-6 by recency), a searchable all-games list (mod-state rows with cover/placeholder + source badge + recency + "N mods · M on" + tier / ban-risk / detected-loader chips + a single Play button + Manage), and a collapsed discovery `Expander` ("Installed games not added yet") with one-click + Add. Navigation: the app lands on the Library; Open (recent card or Manage) sets the active game and collapses the overlay onto the existing mod view; a Home button in the title bar returns (reloading the home so recency + counts refresh). The title-bar ComboBox switcher stays as a quick in-context switch inside a game. The home's Play launches the game's **current on-disk state** (modded if mods are on, vanilla if they aren't) — there is no Play-vanilla on the home; the persistent vanilla/modded step-aside toggle lives in the game view, coupled to the active context. Play reuses the exact existing launch path (`LibraryViewModel.Play` → `LauncherService.Launch` + `StampLaunch`); Add reuses `SteamGameImport.Plan` + `MainViewModel.AddGameAsync` (auto-detectable engines) or falls back to the existing + Game dialog. Cover placeholder is a themed initial when no cover art (mirrors `GameOption.Cover` null-degrade). **Active-profile display is deferred (row shows mods count only) — Phase 2:** profiles are named on-demand snapshots with no persisted "active" marker, so there's no read-only lookup that could name a game's active profile without inventing new state.
+
+**Smoke steps:**
+
+- [ ] **Lands on Library home.** Open 626. EXPECT: the app opens on the Library landing view (not straight into a game's mod list), even if a game is active.
+- [ ] **Recent strip shows cover cards.** With ≥1 previously-played game. EXPECT: the "JUMP BACK IN" strip shows big cover cards, most-recently-played first (top 6). Cards with no cover art show a themed-initial placeholder.
+- [ ] **Row content.** Each all-games row shows: cover/placeholder, name, source badge (Steam) + recency, "N mods · M on", and tier (Curated / Nexus / Unknown) + ban-risk + detected-loader chips as applicable.
+- [ ] **Unknown recency never fakes a time.** A game 626 has never seen launched shows "Unknown" in its recency line, not a fabricated timestamp.
+- [ ] **Play launches current state + updates recency.** Click Play on a row. EXPECT: the game launches in its current on-disk state (modded if mods are on); there is no "Play vanilla" on the home — the vanilla/modded toggle lives in the game view. Return to Home and reload — that game's recency updates and it moves toward the top of the recent strip.
+- [ ] **Manage / recent card opens the game view.** Click Manage (or a recent card). EXPECT: the overlay collapses to that game's mod view, the title-bar switcher selection syncs to it, and the mod list is that game's.
+- [ ] **Home returns.** Click the Home button in the title bar from inside a game. EXPECT: the Library overlay reappears with fresh rows.
+- [ ] **Search filters.** Type in the "Search games…" box. EXPECT: the all-games list narrows by name (case-insensitive); the recent strip is unaffected (it's "jump back in," not a filtered view).
+- [ ] **Discovery lane lists + adds.** Expand "Installed games not added yet". EXPECT: installed-but-unregistered games are listed; clicking + Add registers one (auto-detectable engine) and it leaves the lane / appears in the all-games list on reload. Undetectable-engine games open the full + Game dialog instead.
+- [ ] **Empty state.** With no games registered. EXPECT: "Your library is empty" message instead of the strip/list.
+- [ ] **STORE build renders identically.** Run the STORE build. EXPECT: the Library home, navigation, and all chips render identically (no FULL-only surface leaks into this view).
+
+**Why these matter:** WinUI views aren't unit-testable (`CorePurityTests` guards Core; the view + navigation live entirely in the App layer). The recency ladder, row builder, and command wiring are covered by Core/VM tests (T2–T6), but the overlay mount, the land-on-Library behavior, the Home ↔ game-view swap, the single-Play launch routing, the discovery + Add flow, and the themed-placeholder rendering only exercise on a real WinUI instance with real game contexts.
+
+**Smoke results (2026-07-01, real rig):** CONFIRMED live — lands on Library home; recent strip renders cover cards recency-first; row content (source badge + recency + `N mods · M on` + Curated/Nexus + BAN RISK + loader chips) correct; **Play launches + stamps** (verified `games.json.lastLaunchedUtc` + `launch-log.json` append, camelCase, append-not-overwrite, two launches recorded); **Home reload surfaces the own-launch recency floor** (played game jumps to the front of the strip, its 626-launch time overriding Steam's). Note the strip refreshes on Home navigation (the reload point) — a game played mid-session surfaces on return, by design.
+
+Still to confirm (low risk): Manage/recent-card opens the game view + switcher sync; search filters; discovery lane lists + adds; empty state; STORE build renders identically.
+
+**Cover-art finding + fix (2026-07-01):** Live smoke exposed that Steam only caches a **32×32 icon** locally for most installed games (only long-installed titles like Elden Ring have `library_600x900.jpg`), and the old `SteamArt.PickCover` fell back to "any jpg" → it upscaled the 32px icon into the 150×200 card = blur. Fixed: `SteamArt` is now **shape-aware** (portrait cards prefer `library_600x900.jpg`; the landscape switcher prefers `header.jpg`) and **never dresses a hashed icon as a cover** (→ themed placeholder instead). Added a `CoverCache` service that fetches the portrait from Steam's **public CDN** (`SteamCdn.PortraitCoverUrl`) once and caches it under `%LOCALAPPDATA%\ModManagerBuilder\covers\{appId}.jpg`, resolved async (placeholder → cover swap on the UI thread). Result on the rig: Elden Ring (local) + Cyberpunk/Windrose/Witchfire (CDN-fetched) show real covers; Death Stranding 2 (CDN 404, brand-new) shows a clean placeholder. Smoke this: covers are sharp portrait art, no upscaled-icon blur; a game whose art the CDN lacks shows a placeholder, never a blur; second launch loads covers from the local cache (no re-fetch).
