@@ -526,3 +526,22 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **STORE build smoke.** Run the STORE build (no EAC toggle visible): trigger the ban-risk gate — EXPECT: safe-loader guidance renders identically. Confirms STORE users see the safe path (their primary option since EAC offline is absent).
 
 **Why these matter:** `BanSafeLoaderOption` building + the `IReadOnlyList<BanSafeLoaderOption>` delegate signature change are in Core/VM — unit-tested indirectly through the existing ban-risk + loader tests. The dialog rendering (safe-loader section, button labels, Process.Start vs URL open) only exercises on a real WinUI instance with a real game context.
+
+---
+
+## feat/game-library-home Task 4 — own-launch log + launch-time stamping (2026-07-01)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite 1341/0. FULL build 0 errors. STORE build 0 errors. STORE seal OK.
+
+**What shipped:** After a successful launch (both the default-target path in `Launch()` and the explicit-target path in `LaunchTargetExplicit()`), the launcher now stamps `GameEntry.LastLaunchedUtc` on the registry and appends a `LaunchLogEntry(GameId, StartedUtc, EndedUtc: null)` to an append-only `%LOCALAPPDATA%\ModManagerBuilder\launch-log.json` (camelCase, via `AtomicJson`). `LauncherService.StampLaunch(gameId)` owns the write; `MainViewModel.StampLaunch()` calls it in its own try/catch so a stamping failure never blocks or surfaces on top of a launch that already happened. `OwnLaunchLastPlayedSource : ILastPlayedSource` reads the stamp + sums logged session durations (`EndedUtc - StartedUtc` where both present) for the future Library home's recency ladder — no UI surface yet, this task is plumbing only. The launch mechanism itself (`LauncherService.Launch`) is untouched.
+
+**Smoke steps:**
+
+- [ ] **Launch stamps the registry.** Note a game's current `games.json` `lastLaunchedUtc` (or its absence), then click Launch (primary button, default target). EXPECT: `games.json` now shows `lastLaunchedUtc` as a recent UTC timestamp for that game.
+- [ ] **Launch appends the log.** After the launch above, open `%LOCALAPPDATA%\ModManagerBuilder\launch-log.json`. EXPECT: a new entry `{ "gameId": "<id>", "startedUtc": "<recent UTC>", "endedUtc": null }` is appended (prior entries, if any, are preserved — not overwritten).
+- [ ] **Explicit-target launch also stamps.** Use the launch dropdown to run a specific target (e.g. a required launcher or Seamless) rather than the primary button. EXPECT: same stamping behavior — registry + log both updated.
+- [ ] **A launch that fails to resolve a target does not stamp.** On a game with no launch target configured (if reproducible) so `Launch()` returns false and "No launch target configured for this game." shows: EXPECT no new `lastLaunchedUtc` and no new log entry (the stamp only fires on a truthy launch).
+- [ ] **Stamping never blocks or corrupts on failure.** (Best-effort — hard to force live.) If `launch-log.json` is momentarily locked/unwritable, the launch itself still succeeds and no exception surfaces in `StatusText`; the try/catch in `MainViewModel.StampLaunch()` swallows it.
+- [ ] **No visible UI change.** This task ships no UI — confirm the app looks and behaves identically before/after (Library home consumes this data in a later task).
+
+**Why these matter:** `LaunchLogEntry`'s camelCase round-trip is unit-tested in Core; `LaunchLog`, `OwnLaunchLastPlayedSource`, and the two call-site stamps are App-side IO + WinUI VM wiring the test project can't reach — only a real launch on a real Windows machine confirms the registry write, the append-not-overwrite log behavior, and the non-fatal failure path.
