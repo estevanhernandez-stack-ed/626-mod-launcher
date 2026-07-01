@@ -22,13 +22,18 @@ namespace ModManager.App.ViewModels;
 public sealed partial class GameLibraryRowViewModel : ObservableObject
 {
     public GameLibraryRow Row { get; }
+    private string? _resolvedCover;
 
-    public GameLibraryRowViewModel(GameLibraryRow row) => Row = row;
+    public GameLibraryRowViewModel(GameLibraryRow row)
+    {
+        Row = row;
+        _resolvedCover = row.CoverPath;
+    }
 
     public string Id => Row.Id;
     public string Name => Row.Name;
     public string? StoreSource => Row.StoreSource;
-    public string? CoverPath => Row.CoverPath;
+    public string? CoverPath => _resolvedCover;
     public LastPlayed Recency => Row.Recency;
     public int ModCount => Row.ModCount;
     public int EnabledCount => Row.EnabledCount;
@@ -50,6 +55,18 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     /// <summary>Visibility helpers so the view binds directly (no converters — matches the app pattern).</summary>
     public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;
     public Visibility PlaceholderVisibility => HasCover ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Swap in a cover resolved asynchronously (e.g. fetched from the Steam CDN). Call on the UI
+    /// thread — it raises the cover bindings so the card replaces its placeholder with the image.</summary>
+    public void SetCover(string coverPath)
+    {
+        _resolvedCover = coverPath;
+        OnPropertyChanged(nameof(CoverPath));
+        OnPropertyChanged(nameof(Cover));
+        OnPropertyChanged(nameof(HasCover));
+        OnPropertyChanged(nameof(CoverVisibility));
+        OnPropertyChanged(nameof(PlaceholderVisibility));
+    }
 
     /// <summary>The single-letter initial shown on the placeholder swatch when no cover art exists.</summary>
     public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
@@ -165,9 +182,14 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     private readonly LauncherService _svc;
     private readonly IStoreLibrary _store;
+    private readonly CoverCache _covers;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcher;
 
     // The full, unfiltered row set — the source the search/filter views project from.
     private readonly List<GameLibraryRowViewModel> _allRows = new();
+
+    // Row id -> Steam app id, captured on Load so the async cover pass can fetch missing art by app id.
+    private readonly Dictionary<string, string?> _appIdByRow = new();
 
     /// <summary>All library rows, most-recently-played first, after search + filters.</summary>
     public ObservableCollection<GameLibraryRowViewModel> Rows { get; } = new();
@@ -205,6 +227,8 @@ public sealed partial class LibraryViewModel : ObservableObject
     {
         _svc = svc;
         _store = store;
+        _covers = new CoverCache(store);
+        _dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     }
 
     /// <summary>Read the registry, build every row via the Core builder wired to the real lookups,
@@ -233,12 +257,33 @@ public sealed partial class LibraryViewModel : ObservableObject
         _allRows.Clear();
         foreach (var r in rows) _allRows.Add(new GameLibraryRowViewModel(r));
 
+        _appIdByRow.Clear();
+        foreach (var g in games) _appIdByRow[g.Id] = g.SteamAppId;
+
         ApplyFilter();
         RebuildDiscovery(games);
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(EmptyVisibility));
         OnPropertyChanged(nameof(ContentVisibility));
         OnPropertyChanged(nameof(DiscoveryEmptyVisibility));
+
+        _ = ResolveCoversAsync(); // fill covers Steam didn't cache locally from its public CDN (once)
+    }
+
+    // Fetch portrait covers for rows that had no local art, then swap them in on the UI thread. Most
+    // installed games only have a 32px icon cached locally, so their real cover comes from Steam's public
+    // CDN, fetched once and cached. Failures (404 / offline) leave the row's themed placeholder.
+    private async Task ResolveCoversAsync()
+    {
+        foreach (var row in _allRows.ToList())
+        {
+            if (row.HasCover) continue;
+            if (!_appIdByRow.TryGetValue(row.Id, out var appId) || string.IsNullOrEmpty(appId)) continue;
+            var path = await _covers.FetchPortraitAsync(appId);
+            if (path is null) continue;
+            if (_dispatcher is null) row.SetCover(path);
+            else _dispatcher.TryEnqueue(() => row.SetCover(path));
+        }
     }
 
     // --- Builder delegates (App-side lookups over the existing services) -----------------------------
@@ -291,8 +336,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         catch { return Array.Empty<string>(); }
     }
 
-    private string? CoverFor(GameEntry g)
-        => string.IsNullOrEmpty(g.SteamAppId) ? null : _store.ResolveCoverArtPath(g.SteamAppId);
+    private string? CoverFor(GameEntry g) => _covers.LocalPortrait(g.SteamAppId);
 
     // --- Search + filter ---------------------------------------------------------------------------
 
@@ -343,7 +387,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         foreach (var ig in installed)
         {
             if (registeredAppIds.Contains(ig.AppId)) continue;
-            DiscoveryRows.Add(new DiscoveredGameViewModel(ig, _store.ResolveCoverArtPath));
+            DiscoveryRows.Add(new DiscoveredGameViewModel(ig, id => _covers.LocalPortrait(id)));
         }
     }
 
