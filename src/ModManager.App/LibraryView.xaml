@@ -141,19 +141,13 @@
                                         </StackPanel>
                                     </StackPanel>
 
-                                    <!-- Play split-button (modded default; vanilla in the flyout) -->
-                                    <SplitButton Grid.Column="2" VerticalAlignment="Center"
-                                                 Content="Play" Foreground="Black"
-                                                 Background="{StaticResource ThemeAccent}"
-                                                 Click="OnPlaySplit" Tag="{x:Bind}"
-                                                 ToolTipService.ToolTip="Play modded — open the menu for vanilla">
-                                        <SplitButton.Flyout>
-                                            <MenuFlyout Placement="Bottom">
-                                                <MenuFlyoutItem Text="Play modded" Click="OnPlayModded" Tag="{x:Bind}" />
-                                                <MenuFlyoutItem Text="Play vanilla" Click="OnPlayVanilla" Tag="{x:Bind}" />
-                                            </MenuFlyout>
-                                        </SplitButton.Flyout>
-                                    </SplitButton>
+                                    <!-- Play: launch the game's current on-disk state. The vanilla/modded
+                                         toggle lives in the game view, coupled to the active context. -->
+                                    <Button Grid.Column="2" VerticalAlignment="Center"
+                                            Content="Play" Foreground="Black"
+                                            Background="{StaticResource ThemeAccent}"
+                                            Click="OnPlay" Tag="{x:Bind}"
+                                            ToolTipService.ToolTip="Launch this game" />
 
                                     <!-- Manage: open this game's mod view -->
                                     <Button Grid.Column="3" VerticalAlignment="Center" Content="Manage"

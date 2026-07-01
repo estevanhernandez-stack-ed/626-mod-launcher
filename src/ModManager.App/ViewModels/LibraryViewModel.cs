@@ -155,8 +155,9 @@ public sealed partial class DiscoveredGameViewModel : ObservableObject
 /// The Game Library home view-model. Builds the per-game rows via the pure
 /// <see cref="GameLibraryBuilder"/> (recency ladder + mod state + tier + ban risk + loaders + cover),
 /// exposes the recent strip / all-games list / discovery lane, and wires the home commands (open,
-/// play modded/vanilla, add discovered) onto the existing App services. The launch commands reuse the
-/// exact same reversible launch path the game view uses — no new mechanism, no scope creep.
+/// play, add discovered) onto the existing App services. Play launches the game's current on-disk
+/// state; the vanilla/modded toggle lives in the game view. The launch command reuses the exact same
+/// reversible launch path the game view uses — no new mechanism, no scope creep.
 /// </summary>
 public sealed partial class LibraryViewModel : ObservableObject
 {
@@ -245,6 +246,10 @@ public sealed partial class LibraryViewModel : ObservableObject
     private static GameModState ModStateFor(GameEntry g)
     {
         // Same read-only listing path the mod list uses — no active-game switch, no disk write.
+        // ActiveProfile stays null by design: profiles are named on-demand snapshots (Scanner
+        // Save/Load/ListProfiles) with no persisted "active" marker, so there's no read-only lookup
+        // that could name the active profile for a game. The row shows the mods count only — an
+        // active-profile display is deferred to Phase 2 (see docs/smoke-tests/pending.md).
         try
         {
             var mods = ModListing.Resolve(g);
@@ -353,16 +358,12 @@ public sealed partial class LibraryViewModel : ObservableObject
         GameOpened?.Invoke(row.Id);
     }
 
-    /// <summary>Play modded: reuse the existing reversible launch path, then stamp recency. No new
-    /// launch mechanism — this is exactly what the game view's Play button drives.</summary>
+    /// <summary>Play: launch the game in its current on-disk state (modded if mods are on, vanilla if
+    /// they aren't), then stamp recency. The home never toggles mode — the vanilla/modded step-aside
+    /// toggle lives in the game view, coupled to the active context. Reuses the existing reversible
+    /// launch path — no new launch mechanism, exactly what the game view's Play button drives.</summary>
     [RelayCommand]
-    private void PlayModded(GameLibraryRowViewModel? row) => LaunchAndStamp(row);
-
-    /// <summary>Play vanilla for a game from the home. Phase 1 launches the game's default target and
-    /// stamps recency; the step-aside/restore flow stays in the game view (it needs the active
-    /// context). Reuses the same launch path — reversibility intact.</summary>
-    [RelayCommand]
-    private void PlayVanilla(GameLibraryRowViewModel? row) => LaunchAndStamp(row);
+    private void Play(GameLibraryRowViewModel? row) => LaunchAndStamp(row);
 
     private void LaunchAndStamp(GameLibraryRowViewModel? row)
     {

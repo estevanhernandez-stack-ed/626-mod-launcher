@@ -35,26 +35,12 @@ public sealed partial class LibraryView : UserControl
             ViewModel.OpenGameCommand.Execute(row);
     }
 
-    // The Play split-button's primary action (modded). Its Click uses the SplitButton event args, so
-    // it needs its own signature distinct from the RoutedEventArgs flyout handlers below.
-    private void OnPlaySplit(SplitButton sender, SplitButtonClickEventArgs args)
-    {
-        if (sender.Tag is GameLibraryRowViewModel row)
-            ViewModel.PlayModdedCommand.Execute(row);
-    }
-
-    // Play modded (the "Play modded" flyout item).
-    private void OnPlayModded(object sender, RoutedEventArgs e)
+    // Play launches the game's current on-disk state (modded if mods are on, vanilla if they aren't).
+    // The vanilla/modded toggle lives in the game view, not the home.
+    private void OnPlay(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: GameLibraryRowViewModel row })
-            ViewModel.PlayModdedCommand.Execute(row);
-    }
-
-    // Play vanilla (the flyout item).
-    private void OnPlayVanilla(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: GameLibraryRowViewModel row })
-            ViewModel.PlayVanillaCommand.Execute(row);
+            ViewModel.PlayCommand.Execute(row);
     }
 
     // + Add a store-discovered game — the VM raises AddGameRequested; the shell runs the Add flow.
