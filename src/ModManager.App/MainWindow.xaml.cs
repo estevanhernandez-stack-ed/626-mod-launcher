@@ -171,6 +171,9 @@ public sealed partial class MainWindow : Window
     {
         _libraryVm.Load();
         LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+        // On the home there's no current game — hide the game-context title-bar controls.
+        GameTitleControls.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        LaunchSplitButton.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
     }
 
     // Collapse the Library overlay onto the game's mod view. The active game is already set in the
@@ -179,6 +182,9 @@ public sealed partial class MainWindow : Window
     private async void HideLibraryForGame()
     {
         LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        // In a game's mod view — surface the game-context title-bar controls (name, More, Play).
+        GameTitleControls.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+        LaunchSplitButton.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         await ViewModel.LoadAsync();
     }
 
