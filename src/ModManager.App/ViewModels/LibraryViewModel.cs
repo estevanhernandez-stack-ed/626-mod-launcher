@@ -47,6 +47,10 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     /// <summary>True when there's no cover art — the view shows the placeholder instead.</summary>
     public bool HasCover => !string.IsNullOrEmpty(CoverPath);
 
+    /// <summary>Visibility helpers so the view binds directly (no converters — matches the app pattern).</summary>
+    public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PlaceholderVisibility => HasCover ? Visibility.Collapsed : Visibility.Visible;
+
     /// <summary>The single-letter initial shown on the placeholder swatch when no cover art exists.</summary>
     public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
 
@@ -82,6 +86,40 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     public string SourceBadge => string.IsNullOrEmpty(StoreSource)
         ? ""
         : char.ToUpperInvariant(StoreSource[0]) + StoreSource[1..];
+
+    // --- Chip presentation (view-thread helpers so the XAML can bind Visibility directly, matching
+    // the app's VM-drives-Visibility convention — no converters in this codebase) ------------------
+
+    /// <summary>The source badge only renders when there's a store source to name.</summary>
+    public Visibility SourceBadgeVisibility =>
+        string.IsNullOrEmpty(SourceBadge) ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Short tier chip text ("Curated" / "Nexus" / "Unknown").</summary>
+    public string TierChip => Tier switch
+    {
+        EngineTier.EngineCurated => "Curated",
+        EngineTier.NexusOnly => "Nexus",
+        _ => "Unknown",
+    };
+
+    /// <summary>Tooltip explaining what the tier chip means for this game's tooling.</summary>
+    public string TierTooltip => Tier switch
+    {
+        EngineTier.EngineCurated => "626 has a curated engine profile for this game — full per-engine mod tooling.",
+        EngineTier.NexusOnly => "No curated engine profile, but Nexus knows this game — Nexus-only tooling applies.",
+        _ => "No curated engine and no Nexus domain — basic file-drop management only.",
+    };
+
+    /// <summary>The ban-risk chip only renders on a game the ban catalog flags.</summary>
+    public Visibility BanRiskVisibility =>
+        BanRisk is null ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Whether this game has any detected mod loaders to chip.</summary>
+    public bool HasLoaders => DetectedLoaders.Count > 0;
+    public Visibility LoaderVisibility => HasLoaders ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Comma-joined detected-loader names for the loader chip.</summary>
+    public string LoaderChip => HasLoaders ? string.Join(", ", DetectedLoaders) : "";
 }
 
 /// <summary>A store-discovered game that isn't in the registry yet — the discovery lane's row.</summary>
@@ -107,6 +145,10 @@ public sealed partial class DiscoveredGameViewModel : ObservableObject
 
     public Brush Placeholder =>
         Application.Current?.Resources["ThemeAccent"] as Brush ?? new SolidColorBrush(Colors.SlateGray);
+
+    /// <summary>Visibility helpers so the view binds directly (no converters — matches the app pattern).</summary>
+    public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PlaceholderVisibility => HasCover ? Visibility.Collapsed : Visibility.Visible;
 }
 
 /// <summary>
@@ -142,6 +184,14 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     /// <summary>True when the registry has no games — the view shows an empty state.</summary>
     public bool IsEmpty => _allRows.Count == 0;
+
+    /// <summary>Visibility helpers so the view binds directly (the app's VM-drives-Visibility pattern).</summary>
+    public Visibility EmptyVisibility => IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ContentVisibility => IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>The "nothing new to add" line shows only when the discovery lane found no candidates.</summary>
+    public Visibility DiscoveryEmptyVisibility =>
+        DiscoveryRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Raised when a row is opened — the shell (MainWindow) swaps to that game's mod view.
     /// The VM only sets the active game + fires this; the view swap is the shell's job (Task 7).</summary>
@@ -185,6 +235,9 @@ public sealed partial class LibraryViewModel : ObservableObject
         ApplyFilter();
         RebuildDiscovery(games);
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(EmptyVisibility));
+        OnPropertyChanged(nameof(ContentVisibility));
+        OnPropertyChanged(nameof(DiscoveryEmptyVisibility));
     }
 
     // --- Builder delegates (App-side lookups over the existing services) -----------------------------

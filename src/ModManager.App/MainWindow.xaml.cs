@@ -13,6 +13,11 @@ public sealed partial class MainWindow : Window
 {
     public MainViewModel ViewModel { get; }
 
+    // The Library home surface + its VM. The app lands here; navigating into a game collapses it,
+    // Home shows it again (reloading so recency / mod counts refresh). Built once, reused.
+    private readonly LibraryViewModel _libraryVm;
+    private readonly LibraryView _libraryView;
+
     private bool _loaded;
     // Session-level opt-out for the "managed by another tool" toggle warning (set from the dialog).
     private bool _suppressOwnedToggleWarning;
@@ -24,6 +29,15 @@ public sealed partial class MainWindow : Window
         // Hand the same VM instance to the tools row. The control reads installed tools + catalog
         // gaps off MainViewModel directly — no separate data context for this slim strip.
         ToolsRow.ViewModel = ViewModel;
+
+        // Library home: build the VM + view, mount into the overlay host, wire its navigation events.
+        // Open (card/Manage) collapses the overlay onto the game's mod view; Add routes the discovered
+        // game through the existing + Game flow, then reloads the home.
+        _libraryVm = App.AppHost.Services.GetRequiredService<LibraryViewModel>();
+        _libraryVm.GameOpened += OnLibraryGameOpened;
+        _libraryVm.AddGameRequested += OnLibraryAddGameRequested;
+        _libraryView = new LibraryView(_libraryVm);
+        LibraryHost.Children.Add(_libraryView);
 #if FULL
         // Off-Store: let the live VM light up the Nexus surfaces the instant the feed hot-loads the
         // plugin on a first-ever connect (no rescan needed). FULL-only — the Store SKU has no feed.
@@ -95,6 +109,10 @@ public sealed partial class MainWindow : Window
 
         await ViewModel.LoadAsync();
 
+        // Land on the Library home. LoadAsync above already resolved the active game + mods behind the
+        // overlay, so tapping into a game is instant. Load() reads the registry + builds the rows.
+        ShowLibrary();
+
 #if FULL
         // Startup fetch for already-connected users: if Nexus credentials are persisted from a
         // previous session, the user never triggers a ConnectAsync (so MaybeFetchOnConnectAsync
@@ -143,6 +161,59 @@ public sealed partial class MainWindow : Window
             if (await d.ShowAsync() == ContentDialogResult.Primary)
                 rp.DiscardPartial(ic.Timestamp);
         }
+    }
+
+    // ---------- Library home navigation ----------
+
+    // Show the Library overlay (the landing view). Reloads its rows so recency + mod counts are fresh
+    // every time the user returns — cheap read-only registry build, idempotent by design.
+    private void ShowLibrary()
+    {
+        _libraryVm.Load();
+        LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+    }
+
+    // Collapse the Library overlay onto the game's mod view. The active game is already set in the
+    // registry by the VM's OpenGame command before GameOpened fires; LoadAsync re-syncs the title-bar
+    // switcher's selection to it and repaints the mod list for that game.
+    private async void HideLibraryForGame()
+    {
+        LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        await ViewModel.LoadAsync();
+    }
+
+    // Home button in the title bar — return to the Library landing view.
+    private void OnGoHome(object sender, RoutedEventArgs e) => ShowLibrary();
+
+    // VM raised GameOpened after SetActiveGame — swap to that game's mod view.
+    private void OnLibraryGameOpened(string gameId) => HideLibraryForGame();
+
+    // VM raised AddGameRequested for a store-discovered game — add it, then reload the home so the
+    // newly-added game leaves the discovery lane and appears in the all-games list.
+    private async void OnLibraryAddGameRequested(ModManager.Core.InstalledGame game)
+    {
+        await AddDiscoveredGameAsync(game);
+        ShowLibrary();
+    }
+
+    // Add a store-discovered game. When the engine is auto-detectable, register it in one step through
+    // the same GameInput path the Steam quick-add uses (no guessing — Plan.Addable gates it). When it
+    // isn't, hand off to the full + Game dialog so the user sets the engine — reusing the existing flow,
+    // no new mechanism. Reversible: registration is additive; the launch mechanism is untouched.
+    private async Task AddDiscoveredGameAsync(ModManager.Core.InstalledGame game)
+    {
+        var plan = ModManager.Core.SteamGameImport.Plan(
+            new ModManager.Core.SteamImportCandidate(game.AppId, game.Name, game.InstallDir),
+            Services.EngineScan.Detect(game.InstallDir));
+
+        if (plan.Addable && plan.Input is not null)
+        {
+            await ViewModel.AddGameAsync(plan.Input);
+            return;
+        }
+
+        // Undetectable engine — the full dialog lets the user pick it. Same handler the + Game button uses.
+        OnAddGame(this, new RoutedEventArgs());
     }
 
     // OneWay IsOn + this handler: ignore the programmatic set during reload (when the switch

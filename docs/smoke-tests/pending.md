@@ -545,3 +545,28 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **No visible UI change.** This task ships no UI — confirm the app looks and behaves identically before/after (Library home consumes this data in a later task).
 
 **Why these matter:** `LaunchLogEntry`'s camelCase round-trip is unit-tested in Core; `LaunchLog`, `OwnLaunchLastPlayedSource`, and the two call-site stamps are App-side IO + WinUI VM wiring the test project can't reach — only a real launch on a real Windows machine confirms the registry write, the append-not-overwrite log behavior, and the non-fatal failure path.
+
+---
+
+## feat/game-library-home Task 7 — Library home view + landing navigation (2026-07-01)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** FULL build 0 errors. STORE build 0 errors. STORE seal OK. FULL build launched clean (no startup crash, overlay mounts).
+
+**What shipped:** A new `LibraryView` (UserControl) is the app's landing surface, mounted as an overlay (`LibraryHost`, rowspan over the content area) in `MainWindow`. It renders a recent cover strip ("JUMP BACK IN", top-6 by recency), a searchable all-games list (mod-state rows with cover/placeholder + source badge + recency + "N mods · M on" + tier / ban-risk / detected-loader chips + a Play split-button (modded default, vanilla in the flyout) + Manage), and a collapsed discovery `Expander` ("Installed games not added yet") with one-click + Add. Navigation: the app lands on the Library; Open (recent card or Manage) sets the active game and collapses the overlay onto the existing mod view; a Home button in the title bar returns (reloading the home so recency + counts refresh). The title-bar ComboBox switcher stays as a quick in-context switch inside a game. Play reuses the exact existing launch path (`LibraryViewModel.PlayModded/PlayVanilla` → `LauncherService.Launch` + `StampLaunch`); Add reuses `SteamGameImport.Plan` + `MainViewModel.AddGameAsync` (auto-detectable engines) or falls back to the existing + Game dialog. Cover placeholder is a themed initial when no cover art (mirrors `GameOption.Cover` null-degrade).
+
+**Smoke steps:**
+
+- [ ] **Lands on Library home.** Open 626. EXPECT: the app opens on the Library landing view (not straight into a game's mod list), even if a game is active.
+- [ ] **Recent strip shows cover cards.** With ≥1 previously-played game. EXPECT: the "JUMP BACK IN" strip shows big cover cards, most-recently-played first (top 6). Cards with no cover art show a themed-initial placeholder.
+- [ ] **Row content.** Each all-games row shows: cover/placeholder, name, source badge (Steam) + recency, "N mods · M on", and tier (Curated / Nexus / Unknown) + ban-risk + detected-loader chips as applicable.
+- [ ] **Unknown recency never fakes a time.** A game 626 has never seen launched shows "Unknown" in its recency line, not a fabricated timestamp.
+- [ ] **Play modded launches + updates recency.** Click Play (primary) on a row. EXPECT: the game launches modded; return to Home and reload — that game's recency updates and it moves toward the top of the recent strip.
+- [ ] **Play vanilla launches.** Open the Play split-button flyout → "Play vanilla". EXPECT: the game launches via the same launch path.
+- [ ] **Manage / recent card opens the game view.** Click Manage (or a recent card). EXPECT: the overlay collapses to that game's mod view, the title-bar switcher selection syncs to it, and the mod list is that game's.
+- [ ] **Home returns.** Click the Home button in the title bar from inside a game. EXPECT: the Library overlay reappears with fresh rows.
+- [ ] **Search filters.** Type in the "Search games…" box. EXPECT: the all-games list narrows by name (case-insensitive); the recent strip is unaffected (it's "jump back in," not a filtered view).
+- [ ] **Discovery lane lists + adds.** Expand "Installed games not added yet". EXPECT: installed-but-unregistered games are listed; clicking + Add registers one (auto-detectable engine) and it leaves the lane / appears in the all-games list on reload. Undetectable-engine games open the full + Game dialog instead.
+- [ ] **Empty state.** With no games registered. EXPECT: "Your library is empty" message instead of the strip/list.
+- [ ] **STORE build renders identically.** Run the STORE build. EXPECT: the Library home, navigation, and all chips render identically (no FULL-only surface leaks into this view).
+
+**Why these matter:** WinUI views aren't unit-testable (`CorePurityTests` guards Core; the view + navigation live entirely in the App layer). The recency ladder, row builder, and command wiring are covered by Core/VM tests (T2–T6), but the overlay mount, the land-on-Library behavior, the Home ↔ game-view swap, the split-button launch routing, the discovery + Add flow, and the themed-placeholder rendering only exercise on a real WinUI instance with real game contexts.

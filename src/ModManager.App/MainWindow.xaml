@@ -38,6 +38,12 @@
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
                         Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
+                <!-- Home: return to the Library landing view. The ComboBox switcher stays alongside as a
+                     quick in-context game switch (it doesn't leave the game view). -->
+                <Button x:Name="HomeButton" Click="OnGoHome" Background="Transparent" BorderThickness="0"
+                        VerticalAlignment="Center" ToolTipService.ToolTip="Back to your library">
+                    <FontIcon Glyph="&#xE80F;" FontSize="15" />
+                </Button>
                 <ComboBox MinWidth="180"
                           ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}">
@@ -617,5 +623,11 @@
             <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Opacity="0.8" FontSize="12"
                        VerticalAlignment="Center" />
         </Grid>
+
+        <!-- Library home overlay. Sits above the game view and spans the whole content area below the
+             title bar (row 1..4). The app lands here; Open/Manage swaps to the game view (collapse),
+             Home returns (show + reload). The title-bar switcher stays live behind it for quick
+             in-context switching once inside a game. -->
+        <Grid x:Name="LibraryHost" Grid.Row="1" Grid.RowSpan="4" Background="{StaticResource ThemeBg}" />
     </Grid>
 </Window>
