@@ -76,6 +76,12 @@ public sealed class GameEntry
     // live Steam build later differs, the launcher warns that an update may have broken installed mods.
     // Null = no baseline yet (e.g. an old registry) = no warning.
     public string? LastKnownSteamBuildId { get; set; }
+
+    // Where this game came from ("steam"|"gog"|"epic"|"xbox"|"manual"); null for older registries.
+    public string? StoreSource { get; set; }
+
+    // The last time 626 (or a recency source) recorded this game being launched; null = unknown.
+    public DateTime? LastLaunchedUtc { get; set; }
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>

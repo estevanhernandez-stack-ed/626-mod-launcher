@@ -98,14 +98,16 @@ public sealed class SteamService : IStoreLibrary
         return InstalledGameSort.RecentlyPlayedFirst(games);
     }
 
-    public string? ResolveCoverArtPath(string appId)
+    public string? ResolveCoverArtPath(string appId) => ResolveCoverArtPath(appId, CoverShape.Landscape);
+
+    public string? ResolveCoverArtPath(string appId, CoverShape shape)
     {
         if (string.IsNullOrEmpty(appId)) return null;
         var steam = FindSteamPath();
         if (steam is null) return null;
         var dir = Path.Combine(steam, "appcache", "librarycache", appId);
         if (!Directory.Exists(dir)) return null;
-        try { return SteamArt.PickCover(Directory.GetFiles(dir)); }
+        try { return SteamArt.PickCover(Directory.GetFiles(dir), shape); }
         catch { return null; }
     }
 

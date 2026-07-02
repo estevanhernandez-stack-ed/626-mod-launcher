@@ -67,6 +67,7 @@ public partial class App : Application
                 });
 #endif
                 services.AddTransient<MainViewModel>();
+                services.AddTransient<LibraryViewModel>();
             })
             .Build();
 
