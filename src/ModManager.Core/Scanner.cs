@@ -45,7 +45,12 @@ public static class Scanner
         var dataDir = DataDirForGame(game);
         var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" }).Select(e => e.ToLowerInvariant()).ToList();
         var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
-        var defaultForm = game.GroupingRule == "by_folder" ? "folders" : "files";
+        // Decima games are loose-root: mods land as loose files in the game root, listed + toggled by
+        // LooseRootListing (catalog + by-nature), not the pak-file scanner. The engine decides the form
+        // so any decima game gets it however it was registered; an explicit loc.Form still wins.
+        var defaultForm = game.Engine == "decima" ? "loose-root"
+            : game.GroupingRule == "by_folder" ? "folders"
+            : "files";
         var locations = game.ModLocations.Select((loc, idx) => new ModLocationCtx(
             string.IsNullOrEmpty(loc.Name) ? "loc" + idx : loc.Name,
             string.IsNullOrEmpty(loc.Label) ? (string.IsNullOrEmpty(loc.Name) ? "Location " + idx : loc.Name) : loc.Label,
@@ -1039,6 +1044,13 @@ public static class Scanner
             return new IntakePlan(add, collisions, unsafeItems);
         }
 
+        // Loose-root (decima) games: the primary location IS the game root, and recognition is by
+        // mod nature (LooseModScan + the DirectInject catalog), not file extension. Route the drop
+        // through the DirectInject root-placement machinery behind the recognition gate — an
+        // unrecognized drop is refused for the root, never silently placed among game files.
+        if (primaryLoc is not null && primaryLoc.Form == "loose-root")
+            return LooseMods.LooseRootIntake.Plan(Path.GetFullPath(primaryLoc.Abs), paths);
+
         foreach (var p in ExpandPaths(paths, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
@@ -1096,6 +1108,12 @@ public static class Scanner
                 result.Skipped.Add(new SkippedItem(col.Name, "location is managed by another tool"));
             return result;
         }
+
+        // Loose-root (decima) games execute through the DirectInject machinery the plan came from —
+        // same no-clobber + back-up-then-replace contract; replaced originals land under the game's
+        // data dir like every other intake backup. (It re-adds plan.Unsafe to its own result.)
+        if (primary.Form == "loose-root")
+            return DirectInject.Execute(Path.GetFullPath(primary.Abs), Path.Combine(c.DataDir, "replaced"), plan, replaceRelPaths);
 
         Directory.CreateDirectory(primary.Abs);
         string? batch = null;

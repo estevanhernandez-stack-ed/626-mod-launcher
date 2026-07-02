@@ -526,3 +526,25 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 - [ ] **STORE build smoke.** Run the STORE build (no EAC toggle visible): trigger the ban-risk gate — EXPECT: safe-loader guidance renders identically. Confirms STORE users see the safe path (their primary option since EAC offline is absent).
 
 **Why these matter:** `BanSafeLoaderOption` building + the `IReadOnlyList<BanSafeLoaderOption>` delegate signature change are in Core/VM — unit-tested indirectly through the existing ban-risk + loader tests. The dialog rendering (safe-loader section, button labels, Process.Start vs URL open) only exercises on a real WinUI instance with a real game context.
+
+---
+
+## feat/loose-root-mods — organize loose root mods (DS2/Decima)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** Tasks 1-3 (Core: detector, listing + reversible toggle, intake) are unit-tested; Task 4 wired the App surface (LooseRootBacked routing, category sections, loader-disable warning, vanilla step-aside). The row rendering, dialog, and real-root file moves only exercise on the rig against the actual Death Stranding 2 install.
+
+**What shipped:** decima games are loose-root: mods list from the GAME ROOT via `LooseRootListing` (DirectInject catalog + by-nature ASI/addon/proxy detection), toggle through the proven `DirectInject.Disable/Enable` reversible move with `<dataDir>/loose-disabled` as the holding root, group category-then-name (PLUGINS / SHADERS / LOADERS sections), warn before disabling the ASI loader (warn-and-proceed, never a hard block), and participate in Play-vanilla step-aside/restore. No `#if FULL` anywhere.
+
+**Setup:** re-add DS2 (or edit its `games.json` entry to `"engine": "decima"`) — pre-existing registrations keep their old engine/location config, so a stale entry will NOT pick up the loose-root form.
+
+**Smoke steps:**
+
+- [ ] **Categorized listing.** Open DS2. EXPECT: ReShade under SHADERS (catalog hit, kind "graphics"); Zipliner_v1.1 / DollmanMute / DeathStranding2Fix under PLUGINS with their same-stem `.ini` configs grouped into the row (not separate rows); ShaderToggler + DeathStranding2UI addons under SHADERS; dinput8 under LOADERS. Rows name-sorted within each section.
+- [ ] **Game files invisible.** EXPECT NOT listed: `OptiScaler.ini`, `Chiral Clarity.ini`, `NaturalDS2.ini`, `SDR+.ini`, `DS2.exe`, `DeathStranding2Core.dll` — standalone INIs and generic DLLs are never claimed.
+- [ ] **Toggle off = reversible move.** Toggle a plugin off. EXPECT: its files leave the game root into `<dataDir>\loose-disabled\<slug>\` (with a `__626mod.json` sidecar) and the game stops loading the mod. Nothing deleted.
+- [ ] **Toggle on = byte-identical restore.** Toggle it back on. EXPECT: files return to the game root byte-identical (hash a file before/after if in doubt); holding folder cleared.
+- [ ] **Loader warning.** Toggle dinput8 (LOADERS) off. EXPECT: "This mod is a loader" dialog — "…disabling it disables every ASI plugin." with Disable anyway / Cancel. Cancel leaves the file in place and the switch returns to on. Disable anyway moves it to holding. Never a hard block.
+- [ ] **Drop install.** Drop a new `.asi` (or a zip containing one) onto the window. EXPECT: it installs to the game root through the recognition gate and lists under PLUGINS. A random readme/text drop is refused with "not a recognized loose mod" — nothing placed among game files.
+- [ ] **Vanilla step-aside.** Launch dropdown → "Play vanilla (no mods)". EXPECT: every enabled loose mod (loader included) steps aside to `loose-disabled`, the game launches clean, and "Play modded (restore mods)" restores exactly the stepped-aside set afterward.
+
+**Why these matter:** the Core detector/toggle/intake are unit-tested, but the App routing (a decima toggle used to fall through to the scanner world and silently no-op), the section headers, the loader dialog, and the vanilla stash round-trip against a real root only prove out on the rig.
