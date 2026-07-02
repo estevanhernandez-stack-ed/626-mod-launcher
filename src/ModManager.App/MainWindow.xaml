@@ -36,27 +36,18 @@
                 <Image Width="20" Height="20" Source="{x:Bind ViewModel.AppIconSource, Mode=OneWay}" />
                 <TextBlock Text="626 Mod Launcher" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
-                        Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
-                <ComboBox MinWidth="180"
-                          ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
-                          SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Width="40" Height="19" CornerRadius="3"
-                                        Background="{ThemeResource ControlElevationBorderBrush}">
-                                    <Image Source="{Binding Cover}" Stretch="UniformToFill" />
-                                </Border>
-                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
-                            </Grid>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+            <StackPanel x:Name="GameTitleControls" Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                        VerticalAlignment="Center" Visibility="Collapsed">
+                <!-- Game-context title controls — shown only in a game's mod view, hidden on the Library
+                     home (MainWindow toggles this in ShowLibrary / HideLibraryForGame). Home returns to
+                     the library (which IS the game switcher); the label shows the game you're managing. -->
+                <Button x:Name="HomeButton" Click="OnGoHome" Background="Transparent" BorderThickness="0"
+                        VerticalAlignment="Center" ToolTipService.ToolTip="Back to your library">
+                    <FontIcon Glyph="&#xE80F;" FontSize="15" />
+                </Button>
+                <TextBlock Text="{x:Bind ViewModel.ActiveGame.Name, Mode=OneWay}" VerticalAlignment="Center"
+                           FontWeight="SemiBold" Margin="4,0,8,0" TextTrimming="CharacterEllipsis"
+                           MaxWidth="320" ToolTipService.ToolTip="{x:Bind ViewModel.ActiveGame.Name, Mode=OneWay}" />
                 <Button ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
                         Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -65,14 +56,9 @@
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Settings…" Click="OnSettings"
-                                            ToolTipService.ToolTip="App settings — avatar / derived theme / window transparency / Nexus account.">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE77B;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutSeparator />
-                            <!-- Find mods on Nexus / CurseForge moved out of this menu into the MODS
+                            <!-- Settings moved out to an always-visible title-bar gear (app-level, not
+                                 game-scoped) so it's reachable from the Library home too.
+                                 Find mods on Nexus / CurseForge moved out of this menu into the MODS
                                  toolbar section (Find mods dropdown) — they're discovery actions, not
                                  game-options. The handler OnFindMods reads Tag and is reused there. -->
                             <MenuFlyoutItem Text="Backfill metadata from Nexus archives…" Click="OnNexusBackfill"
@@ -119,8 +105,17 @@
                     </Button.Flyout>
                 </Button>
             </StackPanel>
-            <Button Grid.Column="3" Content="+ Game" VerticalAlignment="Center" Click="OnAddGame" />
-            <SplitButton Grid.Column="4" Content="{x:Bind ViewModel.LaunchButtonLabel, Mode=OneWay}" VerticalAlignment="Center"
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <!-- App-level Settings — always visible (home + game view), since it's app-global, not
+                     game-scoped. Pulled out of the game "More" flyout so the home can reach it too. -->
+                <Button Click="OnSettings" Background="Transparent" BorderThickness="0"
+                        ToolTipService.ToolTip="App settings — avatar / theme / window transparency / Nexus account">
+                    <FontIcon Glyph="&#xE713;" FontSize="15" />
+                </Button>
+                <Button Content="+ Game" Click="OnAddGame" />
+            </StackPanel>
+            <SplitButton x:Name="LaunchSplitButton" Grid.Column="4" Visibility="Collapsed"
+                         Content="{x:Bind ViewModel.LaunchButtonLabel, Mode=OneWay}" VerticalAlignment="Center"
                          Command="{x:Bind ViewModel.LaunchCommand}"
                          ToolTipService.ToolTip="Click to run the target shown — open the menu to switch between modded / vanilla / alt launchers"
                          Foreground="Black" Background="{StaticResource ThemeAccent}">
@@ -624,5 +619,11 @@
             <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Opacity="0.8" FontSize="12"
                        VerticalAlignment="Center" />
         </Grid>
+
+        <!-- Library home overlay. Sits above the game view and spans the whole content area below the
+             title bar (row 1..4). The app lands here; Open/Manage swaps to the game view (collapse),
+             Home returns (show + reload). The title-bar switcher stays live behind it for quick
+             in-context switching once inside a game. -->
+        <Grid x:Name="LibraryHost" Grid.Row="1" Grid.RowSpan="4" Background="{StaticResource ThemeBg}" />
     </Grid>
 </Window>
