@@ -1344,7 +1344,11 @@ public sealed partial class MainViewModel : ObservableObject
         var target = EffectiveLaunchTarget;
         if (target is not null) { await LaunchTargetExplicit(target); return; }
         AutoBackupBeforeLaunch();
-        try { if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game."; }
+        try
+        {
+            if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game.";
+            else StampLaunch();
+        }
         catch (Exception e) { StatusText = e.Message; }
     }
 
@@ -1365,7 +1369,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (!up) { StatusText = "Couldn't start Steam — open Steam, then launch again."; return; }
         }
         AutoBackupBeforeLaunch();
-        try { _svc.Launch(target, _ctx.Game.GameRoot); }
+        try { _svc.Launch(target, _ctx.Game.GameRoot); StampLaunch(); }
         catch (Exception e) { StatusText = e.Message; }
     }
 
@@ -1418,6 +1422,16 @@ public sealed partial class MainViewModel : ObservableObject
             SaveManager.Prune(_ctx.SavesDir, _ctx.Game.SaveAutoKeep ?? int.MaxValue);
         }
         catch (Exception e) { StatusText = "Auto-backup before launch failed: " + e.Message; }
+    }
+
+    // Stamp the recency signal after a successful launch: GameEntry.LastLaunchedUtc + an append to the
+    // own-launch log (LauncherService.StampLaunch). Never touches the launch mechanism itself, and a
+    // stamping failure is non-fatal — recency just degrades to the Steam source next load.
+    private void StampLaunch()
+    {
+        if (_ctx is null) return;
+        try { _svc.StampLaunch(_ctx.Game.Id); }
+        catch { /* recency degrades to Steam; never block or report on a launch that already happened */ }
     }
 
     /// <summary>The verified launch options for the active game (internal + external), for the dialog.</summary>

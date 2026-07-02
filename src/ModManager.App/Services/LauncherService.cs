@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using ModManager.Core;
 using ModManager.Core.Persistence;
+using ModManager.Core.Recency;
 
 namespace ModManager.App.Services;
 
@@ -142,4 +143,19 @@ public sealed class LauncherService
     }
 
     private static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+
+    /// <summary>Record that 626 just launched this game: stamp <see cref="GameEntry.LastLaunchedUtc"/>
+    /// on the registry and append a <see cref="LaunchLogEntry"/> to the own-launch log. Called after a
+    /// successful launch — never touches the launch mechanism itself. Callers should wrap this in
+    /// try/catch: a stamping failure is non-fatal (recency degrades to the Steam source).</summary>
+    public void StampLaunch(string gameId)
+    {
+        var reg = LoadRegistry();
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        var now = DateTime.UtcNow;
+        g.LastLaunchedUtc = now;
+        SaveRegistry(reg);
+        LaunchLog.Append(new LaunchLogEntry(gameId, now, null));
+    }
 }
