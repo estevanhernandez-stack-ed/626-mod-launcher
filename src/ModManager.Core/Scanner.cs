@@ -1044,6 +1044,13 @@ public static class Scanner
             return new IntakePlan(add, collisions, unsafeItems);
         }
 
+        // Loose-root (decima) games: the primary location IS the game root, and recognition is by
+        // mod nature (LooseModScan + the DirectInject catalog), not file extension. Route the drop
+        // through the DirectInject root-placement machinery behind the recognition gate — an
+        // unrecognized drop is refused for the root, never silently placed among game files.
+        if (primaryLoc is not null && primaryLoc.Form == "loose-root")
+            return LooseMods.LooseRootIntake.Plan(Path.GetFullPath(primaryLoc.Abs), paths);
+
         foreach (var p in ExpandPaths(paths, c))
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
@@ -1101,6 +1108,12 @@ public static class Scanner
                 result.Skipped.Add(new SkippedItem(col.Name, "location is managed by another tool"));
             return result;
         }
+
+        // Loose-root (decima) games execute through the DirectInject machinery the plan came from —
+        // same no-clobber + back-up-then-replace contract; replaced originals land under the game's
+        // data dir like every other intake backup. (It re-adds plan.Unsafe to its own result.)
+        if (primary.Form == "loose-root")
+            return DirectInject.Execute(Path.GetFullPath(primary.Abs), Path.Combine(c.DataDir, "replaced"), plan, replaceRelPaths);
 
         Directory.CreateDirectory(primary.Abs);
         string? batch = null;
