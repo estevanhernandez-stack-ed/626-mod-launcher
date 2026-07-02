@@ -21,8 +21,9 @@ public static class LooseRootListing
     /// <summary>The chip/location tag for the sentinel unrestorable row (corrupt/missing sidecar).</summary>
     public const string UnrestorableLocation = "loose-root-unrestorable";
 
-    /// <summary>The location tag for a normal loose-root mod row.</summary>
-    private const string LooseRootLocation = "loose-root";
+    /// <summary>The location tag for a normal loose-root mod row. Public so the App routes by the
+    /// canonical tag (toggle lane, vanilla step-aside, section grouping) instead of a second copy.</summary>
+    public const string LooseRootLocation = "loose-root";
 
     private const string MetaFile = "__626mod.json";
 

@@ -230,6 +230,11 @@ public sealed partial class ModRowViewModel : ObservableObject
         "BOTH" => "This mod is active in both your SP and MP loadouts.",
         "SP"   => "This mod is active only in your single-player loadout.",
         "MP"   => "This mod is active only in your multiplayer loadout.",
+        // Loose-root / direct-inject rows carry the detector's KIND in Class — nature, not loadout.
+        "PLUGIN"   => "ASI plugin — a loose mod in the game root that loads through the ASI loader.",
+        "SHADERS"  => "Shader/addon package (ReShade addons, presets, shader toggles).",
+        "LOADER"   => "The proxy DLL other mods inject through — disabling it disables every ASI plugin.",
+        "GRAPHICS" => "Graphics/post-processing mod (ReShade and friends).",
         _      => $"Mod class: {ClassChip}",
     };
 

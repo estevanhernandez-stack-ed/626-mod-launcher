@@ -42,6 +42,10 @@ public sealed partial class MainWindow : Window
         // The safe-loader list lets the dialog surface "Launch / Get" buttons — installed loaders can
         // be started in one click; uninstalled loaders open the Get-it-here URL.
         ViewModel.ConfirmBanRiskEnable = ConfirmBanRiskEnableAsync;
+        // Loose-root loader-disable warning is a view concern too. The VM owns the policy trigger
+        // (disabling a loader-kind loose-root row); the window owns the dialog. Warn-and-proceed,
+        // never a hard block — Cancel leaves the mod exactly as it was.
+        ViewModel.ConfirmLooseLoaderDisable = ConfirmLooseLoaderDisableAsync;
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
         ViewModel.PropertyChanged += (_, args) =>
@@ -226,6 +230,24 @@ public sealed partial class MainWindow : Window
         var ok = await dialog.ShowAsync() == ContentDialogResult.Primary;
         if (ok && dontAsk.IsChecked == true) _suppressOwnedToggleWarning = true;
         return ok;
+    }
+
+    /// <summary>Warn before disabling a loose-root loader (the proxy DLL — dinput8 et al. — every
+    /// ASI plugin loads through). Proceed-or-cancel only, NEVER a hard block: "Disable anyway"
+    /// returns true and the reversible disable runs; Cancel returns false and nothing changes on
+    /// disk. Mirrors the ConfirmBanRiskEnable wiring — the VM owns the policy, this owns the dialog.</summary>
+    private async Task<bool> ConfirmLooseLoaderDisableAsync(string modName)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "This mod is a loader",
+            Content = $"\"{modName}\" is the loader other mods inject through — disabling it disables every ASI plugin.",
+            PrimaryButtonText = "Disable anyway",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     /// <summary>Confirm enabling mods on an anti-cheat/ban-risk game. Returns (proceed, dontWarnAgain).
@@ -556,6 +578,9 @@ public sealed partial class MainWindow : Window
         Add("MP?",      "No MP stance claimed. Right-click the badge to set one.");
         Add("[N]x",     "Active level of a variant family (the number is the level — e.g. 5x, 10x, 20x). Click another in the family to switch.");
         Add("VARIANT",  "One of several variants of the same mod — pick whichever fits.");
+        Add("PLUGIN",   "Loose ASI plugin in the game root — loads through the ASI loader.");
+        Add("SHADERS",  "Shader/addon package (ReShade addons and presets).");
+        Add("LOADER",   "The DLL other mods load through — turning it off turns off every mod that injects through it.");
         Add("📄 readme",   "Open the mod's bundled readme.");
         Add("⚙ config",    "Open the config cockpit (UE4SS keybinds + settings).");
         Add("🗑 uninstall", "Permanently remove the mod from disk.");
