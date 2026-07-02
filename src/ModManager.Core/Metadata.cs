@@ -53,7 +53,10 @@ public static partial class Metadata
             var baseTitle = !string.IsNullOrEmpty(e?.Title) ? e!.Title! : Prettify(baseSource);
             m.BaseTitle = baseTitle;
             m.DisplayName = !string.IsNullOrEmpty(m.Variant) ? $"{baseTitle} ({m.Variant})" : baseTitle;
-            m.Description = e?.Description;
+            // Curated description wins, but never wipe an existing one — LooseRootListing rows carry
+            // load-bearing text (the unrestorable sentinel's "move back by hand from <dir>" guidance,
+            // the "Detected: <evidence>" line) that must survive the merge when no meta entry exists.
+            m.Description = e?.Description ?? m.Description;
             m.Author = e?.Author;
             m.AuthorUrl = e?.AuthorUrl;
             m.ModUrl = e?.Url;

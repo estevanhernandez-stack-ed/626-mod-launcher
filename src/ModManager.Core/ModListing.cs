@@ -1,3 +1,5 @@
+using ModManager.Core.LooseMods;
+
 namespace ModManager.Core;
 
 /// <summary>
@@ -13,9 +15,14 @@ public static class ModListing
     {
         var ctx = Scanner.GameContext(game);
         // Order is load-bearing: ME2 config wins over loose direct-inject files (mirrors MainViewModel).
+        // A loose-root game lists through LooseRootListing (catalog + by-nature), not the pak-file
+        // scanner — decided by the ONE predicate (LooseRootListing.Applies, form-derived), the same
+        // one the App's toggle lane consults, so listing and toggling can never route differently.
+        var looseRoot = LooseRootListing.Applies(ctx);
         IReadOnlyList<Mod> raw =
             ModEngine2Listing.IsConfigBacked(game) ? ModEngine2Listing.List(game)
             : DirectInjectListing.Applies(game)    ? DirectInjectListing.List(game)
+            : looseRoot                            ? LooseRootListing.List(game)
             : Scanner.ListClassified(ctx);
         return Metadata.MergeMetadata(raw, Scanner.LoadMetadata(ctx));
     }

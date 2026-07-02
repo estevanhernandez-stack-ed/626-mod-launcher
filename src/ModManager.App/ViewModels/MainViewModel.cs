@@ -13,6 +13,7 @@ using ModManager.App.Tools;
 using ModManager.Core;
 using ModManager.Core.Frameworks;
 using ModManager.Core.Loaders;
+using ModManager.Core.LooseMods;
 using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
 using ModManager.Plugins.Abstractions;
@@ -89,11 +90,28 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     public Func<string, IReadOnlyList<BanSafeLoaderOption>, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
 
+    /// <summary>
+    /// Shows the loader-disable warning for a loose-root loader row (a proxy like dinput8.dll — the
+    /// DLL every ASI plugin loads through) and returns true to proceed with the disable. The view
+    /// wires this (the dialog + XamlRoot live in the code-behind, not the VM). Warn-and-proceed,
+    /// never a hard block; when unset the disable proceeds without extra friction. Mirrors the
+    /// <see cref="ConfirmBanRiskEnable"/> delegate pattern.
+    /// </summary>
+    public Func<string, Task<bool>>? ConfirmLooseLoaderDisable { get; set; }
+
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
 
     // FromSoft games without ME2: mods are direct-inject loose files (recognized + toggled by name).
     private bool DirectInjectBacked => _ctx is not null && !ConfigBacked && _direct.Applies(_ctx.Game);
+
+    // Loose-root (decima) games: mods sit as loose files in the GAME ROOT (catalog + by-nature
+    // detection), toggled by name through the same reversible DirectInject move machinery with
+    // <dataDir>/loose-disabled as the holding root. Never scanner-world — without this lane a
+    // toggle falls through to Scanner.SetLoaderModEnabledAsync and silently no-ops. Routes on the
+    // resolved context's form via the ONE predicate (LooseRootListing.Applies) — the same dispatch
+    // ModListing.Resolve consults, so the toggle lane and the listing can never disagree.
+    private bool LooseRootBacked => _ctx is not null && !ConfigBacked && LooseRootService.Applies(_ctx);
 
     [ObservableProperty] private IReadOnlyList<Theme> themeOptions = Array.Empty<Theme>();
     [ObservableProperty] private Theme? selectedTheme;
@@ -412,21 +430,25 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            // Three worlds: Mod Engine 2 games read their mods from the config; FromSoft games
+            // Four worlds: Mod Engine 2 games read their mods from the config; FromSoft games
             // without ME2 are direct-inject (loose files next to the exe) — toggled by name, never
-            // deleted; everything else is a filesystem scan via the proven Scanner pipeline.
+            // deleted; loose-root (decima) games list from the game root via LooseRootListing;
+            // everything else is a filesystem scan via the proven Scanner pipeline.
             var directInject = DirectInjectBacked;
+            var looseRoot = LooseRootBacked;
             // Scanner-world only: migrate the data dir, then list, then persist the auto-seeded
             // classification — exactly the two writes the old scanner branch did. The shared
-            // read-only resolver (used by the agent-access MCP too) performs neither.
-            if (!ConfigBacked && !directInject)
+            // read-only resolver (used by the agent-access MCP too) performs neither. Loose-root
+            // rows aren't scanner rows — persisting a classification for them would seed garbage
+            // entries keyed by detector names.
+            if (!ConfigBacked && !directInject && !looseRoot)
                 await Scanner.MigrateDataDirAsync(_ctx);
             // One read-only listing path shared with the MCP: dispatch by engine (ME2 / direct-inject /
             // scanner) + merge metadata.json. See ModManager.Core.ModListing.Resolve. The metadata
             // merge is load-bearing: without it, Nexus / CurseForge entries written by
             // Md5IdentifyArchivesAsync / RefreshMetadataByNameAsync never reach the displayed fromsoft rows.
             IReadOnlyList<Mod> list = ModListing.Resolve(_ctx.Game);
-            if (!ConfigBacked && !directInject)
+            if (!ConfigBacked && !directInject && !looseRoot)
                 Scanner.PersistClassification(_ctx, list);
 
             // Direct-inject mods can be toggled (reversible move) but not uninstalled here.
@@ -529,7 +551,20 @@ public sealed partial class MainViewModel : ObservableObject
                 var selfProvidesProxy = primaryMissing?.Name == "Elden Mod Loader"
                     && ModManager.Core.Catalog.KnownDirectInjectMod.Catalog.Any(
                         k => k.SelfProvidesProxy && (k.DisplayName == rep.Name || k.DisplayName == rep.Base));
-                rows.Add(new ModRowViewModel(rep, canToggle: rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex", canUninstall: !directInject && !rep.ReadOnly)
+                // Loose-root rows: never uninstallable here (we never delete loose files in the
+                // game root — same law as direct-inject), and the disabled-but-unrestorable
+                // sentinel (corrupt/missing __626mod.json sidecar) can't be toggled — there's
+                // nothing safe to restore, so its switch renders disabled. A loose-root row honors
+                // ReadOnly strictly (a Vortex/MO2-owned root stays read-only until takeover — the
+                // scanner world's semantics; loose rows have no loader-manifest escape), with NO
+                // IsLoader bypass: that escape stays only for the fromsoft direct-inject lane.
+                var unrestorable = LooseRootListing.IsUnrestorable(rep);
+                var looseRow = rep.Location == LooseRootListing.LooseRootLocation;
+                rows.Add(new ModRowViewModel(rep,
+                    canToggle: !unrestorable && (looseRow
+                        ? !rep.ReadOnly
+                        : rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex"),
+                    canUninstall: !directInject && !looseRoot && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
@@ -716,10 +751,29 @@ public sealed partial class MainViewModel : ObservableObject
         if (Mods.Count > 0) OrderAndStampSections(Mods.ToList()); // re-group in place, no rescan
     }
 
+    // Loose-root rows group by mod NATURE (their Class carries the detector's kind), not by the
+    // scanner taxonomies — fixed category order: plugins, then shader/addon packages, then the
+    // loader proxies the plugins depend on. ReShade's catalog kind is "graphics"; it belongs with
+    // shaders. The disabled-but-unrestorable sentinel sinks to its own bottom section so a
+    // held-but-orphaned mod stays visible, never mixed in as a healthy row. Applies in every
+    // GroupMode — the scanner groupings (source / MP class / CF category) are meaningless here.
+    private static (int Rank, string Label)? LooseRootSectionOf(Mod m)
+    {
+        if (LooseRootListing.IsUnrestorable(m)) return (3, "UNRESTORABLE");
+        if (m.Location != LooseRootListing.LooseRootLocation) return null;
+        return (m.Class ?? "").ToLowerInvariant() switch
+        {
+            "loader" => (2, "LOADERS"),
+            "shaders" or "graphics" => (1, "SHADERS"),
+            _ => (0, "PLUGINS"),
+        };
+    }
+
     // Section key for a mod under the active GroupMode. Rank drives top-to-bottom order; Label is the
     // divider text. "By class" uses the MP-safety class (both/sp/mp) we track, not a content category.
     private (int Rank, string Label) SectionOf(Mod m)
     {
+        if (LooseRootSectionOf(m) is { } loose) return loose;
         if (GroupMode == "By category")
         {
             // UE4SS framework mods aren't on CF/Nexus (no category to fetch) — give them their own
@@ -746,7 +800,14 @@ public sealed partial class MainViewModel : ObservableObject
     // and stamp a divider on the first row of each block. Used by reload and the group-by toggle.
     private void OrderAndStampSections(IEnumerable<ModRowViewModel> rows)
     {
-        var ordered = rows.OrderBy(r => SectionOf(r.Mod).Rank).ToList();
+        // Stable OrderBy preserves variant adjacency within a section. The ThenBy keys every
+        // non-loose row to "" (equal keys keep original order, so scanner rows are untouched) and
+        // sorts loose-root rows by display name within their category — category-then-name.
+        var ordered = rows
+            .OrderBy(r => SectionOf(r.Mod).Rank)
+            .ThenBy(r => LooseRootSectionOf(r.Mod) is null ? "" : r.DisplayName,
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
         string? prev = null;
         foreach (var r in ordered)
         {
@@ -793,6 +854,17 @@ public sealed partial class MainViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>The loose-root loader-disable gate. The VM owns the policy trigger (disabling a
+    /// loose-root row whose kind flagged it a loader — <see cref="Mod.IsLoader"/>); the view owns
+    /// the dialog via <see cref="ConfirmLooseLoaderDisable"/>. Returns true to proceed with the
+    /// disable, false to abort (caller reverts the visual, nothing touched disk). Unwired ->
+    /// proceed (no extra friction). Warn-and-proceed, never a hard block.</summary>
+    private async Task<bool> GateLooseLoaderDisableAsync(ModRowViewModel row)
+    {
+        if (ConfirmLooseLoaderDisable is null) return true;
+        return await ConfirmLooseLoaderDisable(row.DisplayName);
+    }
+
     /// <summary>Toggle one mod. The reversible disable/enable lives in Scanner; on failure the
     /// switch reverts and the error surfaces (never a silent half-disable).</summary>
     public async Task ToggleAsync(ModRowViewModel row)
@@ -801,6 +873,12 @@ public sealed partial class MainViewModel : ObservableObject
         // Ban-risk gate: only when this toggle is turning a row ON. Disabling is never gated
         // (getting safer needs no friction). On cancel, revert the visual exactly like the catch.
         if (row.Enabled && !await GateBanRiskEnableAsync()) { row.Enabled = false; return; }
+        // Loader-disable gate: turning OFF a loose-root loader row (the proxy DLL every ASI plugin
+        // loads through) warns first — disabling it disables every plugin that injects through it.
+        // Warn-and-proceed, never a hard block. On cancel, nothing touched disk; reload so the
+        // switch rebuilds from actual state (mirrors the variant-family cancel path).
+        if (!row.Enabled && LooseRootBacked && row.Mod.IsLoader && !await GateLooseLoaderDisableAsync(row))
+        { row.Enabled = true; await ReloadModsAsync(); return; }
         // A manual toggle leaves "clean vanilla" — clear the stash so CurrentMode reverts to Modded and
         // the launch button stops claiming "Play vanilla" while a mod is live again.
         VanillaStashStore.Clear(_ctx.DataDir);
@@ -809,6 +887,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (DirectInjectBacked) _direct.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
+            else if (LooseRootBacked) LooseRootService.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else await Scanner.SetLoaderModEnabledAsync(row.Mod.Name, row.Enabled, _ctx);
             // Warn when toggling an owned UE4SS mod — manifest flip succeeded, but the managing
             // tool may overwrite it on its next deploy (mirrors the config edit-with-warning rule).
@@ -930,6 +1009,18 @@ public sealed partial class MainViewModel : ObservableObject
                 foreach (var m in Mods.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
                 return Task.CompletedTask;
             }
+            if (LooseRootBacked)
+            {
+                // Same per-row lane as direct-inject. CanToggle filters out the unrestorable
+                // sentinel (nothing safe to restore); the explicit ReadOnly skip keeps a
+                // Vortex/MO2-owned root untouched by bulk ops (read-only until takeover — the
+                // scanner world's bulk guard, made explicit here). A bulk disable includes the
+                // loader row WITHOUT the per-row loader warning: the user asked for everything
+                // off, so "disabling the loader disables the plugins" is the requested outcome.
+                foreach (var m in Mods.Where(m => m.CanToggle && !m.Mod.ReadOnly && m.Enabled != on))
+                    LooseRootService.SetEnabled(_ctx!.Game, m.Mod.Name, on);
+                return Task.CompletedTask;
+            }
             return Scanner.SetAllModsAsync(on, _ctx!);
         });
     }
@@ -937,8 +1028,9 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SetMode(string mode)
     {
-        // No MP/SP split for Mod Engine 2 or direct-inject mods — the mode buttons are a no-op there.
-        if (ConfigBacked || DirectInjectBacked) { ActiveMode = mode; return; }
+        // No MP/SP split for Mod Engine 2, direct-inject, or loose-root mods — the mode buttons are
+        // a no-op there (Scanner.ApplyModeAsync must never run against a non-scanner world).
+        if (ConfigBacked || DirectInjectBacked || LooseRootBacked) { ActiveMode = mode; return; }
         // Applying a mode enables the mods that match it — gate ONCE before the bulk apply. On cancel,
         // abort without changing the active mode (nothing was enabled).
         if (_ctx is not null && !await GateBanRiskEnableAsync()) return;
@@ -1022,9 +1114,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task EnterLoadOrderAsync()
     {
         if (_ctx is null || IsLoadOrderMode) return;
-        if (DirectInjectBacked)
+        if (DirectInjectBacked || LooseRootBacked)
         {
-            // Direct-inject mods load independently — there's no priority order to arrange.
+            // Direct-inject and loose-root mods load independently — no priority order to arrange.
             StatusText = "Load order doesn't apply to these mods — they load independently.";
             return;
         }
@@ -1202,8 +1294,24 @@ public sealed partial class MainViewModel : ObservableObject
                 .Where(f => !FrameworkRegistry.IsDisabled(ctx.DataDir, f.FrameworkId))
                 .Select(f => f.FrameworkId).ToList(),
             ActiveDirectInjectProxies = () => _direct.ActiveProxyDlls(ctx.Game),
-            DisableModRow = (name, _) => Scanner.DisableModAsync(name, ctx),
-            EnableModRow = (name, _) => Scanner.EnableModAsync(name, ctx),
+            // Loose-root rows step aside through their own reversible lane (the DirectInject move
+            // to <dataDir>/loose-disabled) — Scanner has no idea these rows exist, so routing them
+            // to Scanner.Disable/EnableModAsync would silently no-op and the "vanilla" launch would
+            // still load every loose mod. Routed by the row's Location, which the stash records, so
+            // Restore replays through the same lane the step-aside used. The loose-root loader row
+            // (dinput8) is an ActiveModRow like any other — decima needs no separate proxy lane.
+            DisableModRow = (name, location) =>
+            {
+                if (location == LooseRootListing.LooseRootLocation)
+                { LooseRootService.SetEnabled(ctx.Game, name, false); return Task.CompletedTask; }
+                return Scanner.DisableModAsync(name, ctx);
+            },
+            EnableModRow = (name, location) =>
+            {
+                if (location == LooseRootListing.LooseRootLocation)
+                { LooseRootService.SetEnabled(ctx.Game, name, true); return Task.CompletedTask; }
+                return Scanner.EnableModAsync(name, ctx);
+            },
             DisableFramework = id => FrameworkRegistry.Disable(ctx.DataDir, id),
             EnableFramework = id => FrameworkRegistry.Enable(ctx.DataDir, id),
             DisableDirectInjectProxy = p => _direct.DisableProxy(ctx.Game, p),
