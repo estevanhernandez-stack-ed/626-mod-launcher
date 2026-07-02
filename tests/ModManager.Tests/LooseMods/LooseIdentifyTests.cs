@@ -134,6 +134,39 @@ public class LooseIdentifyTests
     }
 
     [Fact]
+    public void Apply_merges_ToMeta_over_existing_entry_keeping_unrelated_fields_and_manual_locks()
+    {
+        // The App's apply path is Scanner.MergeMeta(existing, ToMeta(hit)) — hit wins per field,
+        // existing fills the gaps. ToMeta returns a FRESH ModMeta, so a raw overwrite would wipe
+        // unrelated enrichment (InstalledUtc, description, image, downloads). Pin the merge.
+        var installed = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var existing = new ModMeta
+        {
+            Description = "Detected: ASI plugin at game root",
+            Image = "cover.png",
+            Downloads = 5,
+            InstalledUtc = installed,
+        };
+
+        var merged = Scanner.MergeMeta(existing, LooseIdentify.ToMeta(Hit("Dollman Mute", 999)));
+
+        // The approved hit's identity lands…
+        Assert.Equal("Dollman Mute", merged.Title);
+        Assert.Equal(999, merged.NexusModId);
+        Assert.Equal("nameSearch", merged.SourceConfidence);
+        Assert.Equal(42, merged.EndorsementCount);
+        // …and the unrelated existing fields survive.
+        Assert.Equal("Detected: ASI plugin at game root", merged.Description);
+        Assert.Equal("cover.png", merged.Image);
+        Assert.Equal(5, merged.Downloads);
+        Assert.Equal(installed, merged.InstalledUtc);
+
+        // A manual match locks the row — the merge returns it untouched.
+        var manual = new ModMeta { IsManual = true, Title = "Hand matched" };
+        Assert.Same(manual, Scanner.MergeMeta(manual, LooseIdentify.ToMeta(Hit("Something Else", 2))));
+    }
+
+    [Fact]
     public void ToMeta_maps_fields_sets_nameSearch_confidence_and_leaves_IsManual_false()
     {
         var hit = Hit("Dollman Mute", 999);

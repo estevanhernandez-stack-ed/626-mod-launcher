@@ -425,6 +425,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasReDeployedLocations));
             OnPropertyChanged(nameof(OwnedBannerVisibility));
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
+            OnPropertyChanged(nameof(LooseIdentifyAvailable));
+            OnPropertyChanged(nameof(LooseIdentifyVisibility));
             return;
         }
         IsBusy = true;
@@ -694,6 +696,10 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(EffectiveLaunchTarget));
             OnPropertyChanged(nameof(LaunchButtonLabel));
             OnPropertyChanged(nameof(CurrentLaunchMode));
+            // Loose-identify availability depends on the row set (any loose-root rows?) as well as
+            // the Nexus connection — recompute after every row rebuild / game switch.
+            OnPropertyChanged(nameof(LooseIdentifyAvailable));
+            OnPropertyChanged(nameof(LooseIdentifyVisibility));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1517,6 +1523,23 @@ public sealed partial class MainViewModel : ObservableObject
     public bool NexusActionsAvailable => NexusSource is not null && _nexus.IsConnected;
     public Visibility NexusActionsVisibility => NexusActionsAvailable ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>True when "Identify loose mods on Nexus…" should be shown: the Nexus surfaces are
+    /// live (source loaded + account connected), the loaded source can text-search (an older plugin
+    /// without <see cref="IModTextSearch"/> keeps loading — this action just stays hidden), and the
+    /// active game actually has loose-root rows to identify. The capability check IS the flavor
+    /// gate — no <c>#if FULL</c>: on STORE / zero-plugins the registry is empty, so this is false
+    /// and the menu item is absent.</summary>
+    public bool LooseIdentifyAvailable => NexusActionsAvailable
+        && NexusSource is IModTextSearch
+        && Mods.Any(r => r.Mod.Location == LooseRootListing.LooseRootLocation);
+    public Visibility LooseIdentifyVisibility => LooseIdentifyAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Whether the active game resolves a Nexus domain (stored, or by Steam app id). The
+    /// window consults this before running loose-identify so the no-domain case gets a clear
+    /// message dialog instead of a silent no-op.</summary>
+    public bool ActiveGameHasNexusDomain =>
+        _ctx is not null && !string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game));
+
 #if FULL
     /// <summary>Subscribe to the off-Store feed's hot-load signal so the first-ever Nexus connect lights
     /// up the Nexus surfaces immediately. Without this, <see cref="NexusActionsAvailable"/> was evaluated
@@ -1535,6 +1558,8 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     OnPropertyChanged(nameof(NexusActionsAvailable));
                     OnPropertyChanged(nameof(NexusActionsVisibility));
+                    OnPropertyChanged(nameof(LooseIdentifyAvailable));
+                    OnPropertyChanged(nameof(LooseIdentifyVisibility));
                     // Re-detect + reload rows so per-row Nexus state reflects the now-loaded plugin.
                     // RedetectActiveAsync re-runs the scan with the registered source; it calls
                     // ReloadModsAsync internally (which fires the auto-check poll).
@@ -1665,6 +1690,72 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = result.RateLimited
                 ? "Nexus rate limit reached — try again later."
                 : $"Refreshed {result.Refreshed} mod{(result.Refreshed == 1 ? "" : "s")}, {result.UpdatesAvailable} update{(result.UpdatesAvailable == 1 ? "" : "s")} available.";
+        }
+        catch (Exception e) { StatusText = e.Message; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Loose-root name-search identify, step 1 of 2 (review-first): gather the unidentified
+    /// loose-root rows (<see cref="LooseIdentify.Candidates"/> — loaders, manual matches, and
+    /// already-identified rows are excluded), name-search Nexus per row via the loaded
+    /// <see cref="IModTextSearch"/> source, and return the proposals for the window's review dialog.
+    /// Null = gated out (the status line explains, including "no loose mods need identifying").
+    /// NOTHING is written here — the only write path is <see cref="ApplyLooseIdentifyAsync"/> with
+    /// the rows the user checked.</summary>
+    public async Task<IReadOnlyList<LooseIdentifyProposal>?> ProposeLooseIdentifyAsync()
+    {
+        if (_ctx is null) return null;
+        if (NexusSource is not IModTextSearch search) { StatusText = "Nexus isn't available — no text-search source loaded."; return null; }
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return null; }
+        var domain = NexusDomains.Effective(_ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return null; }
+
+        var candidates = LooseIdentify.Candidates(Mods.Select(r => r.Mod).ToList(), Scanner.LoadMetadata(_ctx));
+        if (candidates.Count == 0) { StatusText = "No loose mods need identifying."; return null; }
+
+        IsBusy = true;
+        try
+        {
+            // LooseIdentify.ProposeAsync has NO cancellation, so the search delegate self-timeouts
+            // per call: a hung Nexus request yields "no hits" for that row after ~10s instead of
+            // blocking the whole batch forever. The abandoned call gets its fault observed on
+            // completion so a late failure never surfaces as an unobserved-task exception. Core's
+            // CleanQuery passes through untouched — it may carry trailing digits ("Zipliner 1" from
+            // CleanModName); that's NameMatch's contract, not noise for the App to re-clean.
+            return await LooseIdentify.ProposeAsync(candidates, async query =>
+            {
+                var call = search.SearchAsync(domain!, query);
+                if (await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))) == call)
+                    return await call;
+                _ = call.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                return Array.Empty<SourceSearchHit>();
+            });
+        }
+        catch (Exception e) { StatusText = e.Message; return null; }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Loose-root name-search identify, step 2 of 2: persist ONLY the user-approved pairs.
+    /// Each approved hit merges over the row's existing metadata entry via
+    /// <see cref="Scanner.MergeMeta"/> — hit wins per field, existing enrichment (InstalledUtc,
+    /// description, image, downloads) survives, and a manual match locks and comes back untouched —
+    /// then the whole batch lands in one atomic <see cref="Scanner.WriteManyMeta"/> write. Never a
+    /// raw overwrite: <see cref="LooseIdentify.ToMeta"/> returns a fresh ModMeta, so replacing the
+    /// entry would wipe unrelated fields.</summary>
+    public async Task ApplyLooseIdentifyAsync(IReadOnlyList<(string ModKey, SourceSearchHit Hit)> approved, int proposalCount)
+    {
+        if (_ctx is null) return;
+        if (approved.Count == 0) { StatusText = "No matches approved — nothing written."; return; }
+        IsBusy = true;
+        try
+        {
+            var existing = Scanner.LoadMetadata(_ctx);
+            var writes = approved
+                .Select(a => (a.ModKey, Scanner.MergeMeta(existing.GetValueOrDefault(a.ModKey) ?? new ModMeta(), LooseIdentify.ToMeta(a.Hit))))
+                .ToList();
+            Scanner.WriteManyMeta(_ctx, writes);
+            await ReloadModsAsync();
+            StatusText = $"Identified {approved.Count} of {proposalCount} loose mod{(proposalCount == 1 ? "" : "s")}.";
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1821,6 +1912,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(NexusStatusBrush));
             OnPropertyChanged(nameof(NexusActionsAvailable));
             OnPropertyChanged(nameof(NexusActionsVisibility));
+            OnPropertyChanged(nameof(LooseIdentifyAvailable));
+            OnPropertyChanged(nameof(LooseIdentifyVisibility));
             return user is not null;
         }
         catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
@@ -1834,6 +1927,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusStatusBrush));
         OnPropertyChanged(nameof(NexusActionsAvailable));
         OnPropertyChanged(nameof(NexusActionsVisibility));
+        OnPropertyChanged(nameof(LooseIdentifyAvailable));
+        OnPropertyChanged(nameof(LooseIdentifyVisibility));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>

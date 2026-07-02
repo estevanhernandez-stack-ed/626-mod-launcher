@@ -1158,7 +1158,12 @@ public static class Scanner
 
     // ---------- metadata refresh (network client injected) ----------
 
-    private static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)
+    /// <summary>Field-level metadata merge: <paramref name="curated"/> wins per field,
+    /// <paramref name="cf"/> fills the gaps. Public so App-side identify paths (loose-root
+    /// name-search apply) can merge an approved hit over the row's existing entry the same way the
+    /// md5/CF identify paths do — <c>MergeMeta(existing, hit)</c>, hit wins, existing enrichment
+    /// (InstalledUtc, description, image, downloads…) survives — instead of replacing the entry.</summary>
+    public static ModMeta MergeMeta(ModMeta cf, ModMeta? curated)
     {
         // Manual entries lock the row. Auto-identify (Nexus md5 / CF fingerprint / name search) never
         // overrides what the user pasted via "Match to a mod…". Covers both parameter directions —

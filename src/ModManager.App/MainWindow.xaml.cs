@@ -777,6 +777,34 @@ public sealed partial class MainWindow : Window
         await ViewModel.RefreshNexusStatsAsync();
     }
 
+    // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline
+    // (candidates -> propose -> apply); the window owns the dialogs. Apply is the ONLY write path —
+    // Cancel (or unchecking every row) writes nothing.
+    private async void OnLooseIdentify(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.ActiveGameHasNexusDomain)
+        {
+            var msg = new ContentDialog
+            {
+                Title = "No Nexus domain",
+                Content = "This game has no Nexus domain configured, so its mods can't be searched on "
+                          + "Nexus. Set the game's Nexus domain (its nexusmods.com URL slug) in the "
+                          + "game's registry entry, then try again.",
+                CloseButtonText = "OK",
+                XamlRoot = Content.XamlRoot,
+            };
+            await msg.ShowAsync();
+            return;
+        }
+
+        var proposals = await ViewModel.ProposeLooseIdentifyAsync();
+        if (proposals is null) return; // gated out — the status line explains (incl. zero candidates)
+
+        var dialog = new LooseIdentifyDialog(proposals) { XamlRoot = Content.XamlRoot };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        await ViewModel.ApplyLooseIdentifyAsync(dialog.Approved(), proposals.Count);
+    }
+
     // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.
     private async void OnCoopHint(object sender, RoutedEventArgs e)
     {

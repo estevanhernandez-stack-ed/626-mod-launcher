@@ -1,18 +1,13 @@
 using ModManager.Core;
-using System.Reflection;
 
 namespace ModManager.Tests;
 
 public class ManualMatchMergeTests
 {
-    // Use reflection to call the private MergeMeta — it's internal-by-design, but these tests pin
-    // the manual-wins semantic against silent regressions in future refactors.
-    private static ModMeta CallMergeMeta(ModMeta cf, ModMeta? curated)
-    {
-        var m = typeof(Scanner).GetMethod("MergeMeta",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-        return (ModMeta)m.Invoke(null, new object?[] { cf, curated })!;
-    }
+    // MergeMeta went public with the loose-identify work (the App's apply path merges an approved
+    // name-search hit over the existing entry through it), so these tests call it directly — still
+    // pinning the manual-wins semantic against silent regressions in future refactors.
+    private static ModMeta CallMergeMeta(ModMeta cf, ModMeta? curated) => Scanner.MergeMeta(cf, curated);
 
     [Fact]
     public void Manual_curated_locks_the_row_against_incoming_cf()
