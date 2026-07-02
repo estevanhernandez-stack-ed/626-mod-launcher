@@ -108,8 +108,10 @@ public sealed partial class MainViewModel : ObservableObject
     // Loose-root (decima) games: mods sit as loose files in the GAME ROOT (catalog + by-nature
     // detection), toggled by name through the same reversible DirectInject move machinery with
     // <dataDir>/loose-disabled as the holding root. Never scanner-world — without this lane a
-    // toggle falls through to Scanner.SetLoaderModEnabledAsync and silently no-ops.
-    private bool LooseRootBacked => _ctx is not null && !ConfigBacked && LooseRootService.Applies(_ctx.Game);
+    // toggle falls through to Scanner.SetLoaderModEnabledAsync and silently no-ops. Routes on the
+    // resolved context's form via the ONE predicate (LooseRootListing.Applies) — the same dispatch
+    // ModListing.Resolve consults, so the toggle lane and the listing can never disagree.
+    private bool LooseRootBacked => _ctx is not null && !ConfigBacked && LooseRootService.Applies(_ctx);
 
     [ObservableProperty] private IReadOnlyList<Theme> themeOptions = Array.Empty<Theme>();
     [ObservableProperty] private Theme? selectedTheme;
@@ -552,10 +554,16 @@ public sealed partial class MainViewModel : ObservableObject
                 // Loose-root rows: never uninstallable here (we never delete loose files in the
                 // game root — same law as direct-inject), and the disabled-but-unrestorable
                 // sentinel (corrupt/missing __626mod.json sidecar) can't be toggled — there's
-                // nothing safe to restore, so its switch renders disabled.
+                // nothing safe to restore, so its switch renders disabled. A loose-root row honors
+                // ReadOnly strictly (a Vortex/MO2-owned root stays read-only until takeover — the
+                // scanner world's semantics; loose rows have no loader-manifest escape), with NO
+                // IsLoader bypass: that escape stays only for the fromsoft direct-inject lane.
                 var unrestorable = LooseRootListing.IsUnrestorable(rep);
+                var looseRow = rep.Location == LooseRootListing.LooseRootLocation;
                 rows.Add(new ModRowViewModel(rep,
-                    canToggle: !unrestorable && (rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex"),
+                    canToggle: !unrestorable && (looseRow
+                        ? !rep.ReadOnly
+                        : rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex"),
                     canUninstall: !directInject && !looseRoot && !rep.ReadOnly)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
@@ -1004,10 +1012,12 @@ public sealed partial class MainViewModel : ObservableObject
             if (LooseRootBacked)
             {
                 // Same per-row lane as direct-inject. CanToggle filters out the unrestorable
-                // sentinel (nothing safe to restore). A bulk disable includes the loader row
-                // WITHOUT the per-row loader warning: the user asked for everything off, so
-                // "disabling the loader disables the plugins" is the requested outcome.
-                foreach (var m in Mods.Where(m => m.CanToggle && m.Enabled != on))
+                // sentinel (nothing safe to restore); the explicit ReadOnly skip keeps a
+                // Vortex/MO2-owned root untouched by bulk ops (read-only until takeover — the
+                // scanner world's bulk guard, made explicit here). A bulk disable includes the
+                // loader row WITHOUT the per-row loader warning: the user asked for everything
+                // off, so "disabling the loader disables the plugins" is the requested outcome.
+                foreach (var m in Mods.Where(m => m.CanToggle && !m.Mod.ReadOnly && m.Enabled != on))
                     LooseRootService.SetEnabled(_ctx!.Game, m.Mod.Name, on);
                 return Task.CompletedTask;
             }

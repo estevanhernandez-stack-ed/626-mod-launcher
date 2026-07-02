@@ -9,6 +9,10 @@ namespace ModManager.Core.LooseMods;
 /// signature catalog, then <see cref="LooseModScan"/> by-nature). Anything unrecognized (a readme,
 /// a generic DLL that isn't a proxy name) is refused for the root with a clear reason — routed to
 /// the existing skip flow, never silently placed among the game's own files.
+///
+/// The gate is per-SOURCE, not per-file: an archive that contains at least one recognized
+/// loose-mod file is accepted whole, so unrelated rider files inside it (a readme, a license)
+/// install too — deliberate, mirroring the fromsoft DirectInject intake.
 /// </summary>
 public static class LooseRootIntake
 {

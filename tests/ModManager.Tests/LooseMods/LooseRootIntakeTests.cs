@@ -100,6 +100,27 @@ public class LooseRootIntakeTests : IDisposable
         Assert.Contains("DollmanMute.ini", row.Files);
     }
 
+    // The recognition gate is per-SOURCE, not per-file: one recognized loose-mod file admits the
+    // whole archive, so unrelated rider files inside it install too — deliberate, mirroring the
+    // fromsoft DirectInject intake (see the LooseRootIntake class doc).
+    [Fact]
+    public void Archive_with_recognized_asi_and_unrelated_rider_is_accepted_whole()
+    {
+        var ctx = Ctx();
+        var zip = MakeZip("Zipliner.zip", ("Zipliner.asi", "ZIP"), ("unrelated-readme.txt", "docs"));
+
+        var plan = Scanner.PlanIntake(new[] { zip }, ctx);
+        Assert.Equal(2, plan.ToAdd.Count);
+        Assert.Contains(plan.ToAdd, i => i.RelPath == "Zipliner.asi");
+        Assert.Contains(plan.ToAdd, i => i.RelPath == "unrelated-readme.txt");
+        Assert.Empty(plan.Unsafe);
+
+        var r = Scanner.ExecuteIntake(plan, NoReplacements, ctx);
+        Assert.Equal(2, r.Added.Count);
+        Assert.Equal("ZIP", File.ReadAllText(Path.Combine(GameRoot, "Zipliner.asi")));
+        Assert.Equal("docs", File.ReadAllText(Path.Combine(GameRoot, "unrelated-readme.txt"))); // rider placed
+    }
+
     // A wrapped archive flattens its single top folder — contents land at the root, not nested.
     [Fact]
     public void Wrapped_archive_flattens_into_the_game_root()

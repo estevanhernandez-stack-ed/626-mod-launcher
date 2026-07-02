@@ -30,8 +30,16 @@ public static class LooseRootListing
     /// <summary>The sidecar carries camelCase keys on disk (written by AtomicJson); read case-tolerant.</summary>
     private static readonly JsonSerializerOptions MetaJson = new() { PropertyNameCaseInsensitive = true };
 
-    /// <summary>True for loose-root games (mods drop as loose files into the game root).</summary>
-    public static bool Applies(GameEntry game) => game.Engine == "decima";
+    /// <summary>True for loose-root games (mods drop as loose files into the game root). THE single
+    /// routing predicate — derived from the resolved <see cref="GameContext"/> form, so an engine
+    /// "decima" game arrives here through the context's default form and a game with no engine tag
+    /// but an explicit loose-root ModLocation routes identically. Every dispatch site
+    /// (<c>ModListing.Resolve</c>, the App's LooseRootService lane) consults this — never a second
+    /// engine-string check.</summary>
+    public static bool Applies(GameEntry game) => Applies(Scanner.GameContext(game));
+
+    /// <summary>Overload for callers that already hold the resolved context.</summary>
+    public static bool Applies(GameContext ctx) => ctx.Locations.Any(l => l.Form == "loose-root");
 
     /// <summary>True when a row is the disabled-but-unrestorable sentinel (corrupt/missing sidecar).</summary>
     public static bool IsUnrestorable(Mod row) => row.Location == UnrestorableLocation;
@@ -39,8 +47,18 @@ public static class LooseRootListing
     public static IReadOnlyList<Mod> List(GameEntry game)
     {
         var folder = PlayFolder(game.GameRoot);
-        return Enabled(folder).Select(d => Row(d, enabled: true))
-            .Concat(ListDisabled(Holding(game)))
+        // Ownership: a Vortex/MO2-owned game root stays read-only until takeover — resolved the same
+        // way the scanner world resolves a location (marker read layered over the persisted
+        // taken-over set). Owned stamps every row ReadOnly + Managed; a taken-over root reads as
+        // ours again (NotOwned/ReDeployed), so nothing here blocks the takeover flow.
+        var ownership = folder is null
+            ? new OwnershipResolution(OwnershipState.NotOwned, null)
+            : ToolOwnership.Resolve(Path.GetFullPath(folder), TakenOverStore.Load(Scanner.DataDirForGame(game)));
+        var owner = ownership.State == OwnershipState.Owned ? ownership.Owner : null;
+        var readOnly = owner is not null;
+        var managed = owner?.ToString().ToLowerInvariant();
+        return Enabled(folder).Select(d => Row(d, enabled: true, readOnly, managed))
+            .Concat(ListDisabled(Holding(game), readOnly, managed))
             .ToList();
     }
 
@@ -70,7 +88,9 @@ public static class LooseRootListing
     // Disabled rows read from the holding folder's sidecars. Unlike DirectInject.ListDisabled — which
     // silently drops an unreadable sidecar — we surface it as an unrestorable row so a held-but-orphaned
     // mod is visible, never guessing what entries it owned.
-    private static IReadOnlyList<Mod> ListDisabled(string holdingRoot)
+    // Disabled rows carry the root's ownership stamp too: enabling one moves files INTO the owned
+    // root, which is the same write the read-only law forbids until takeover.
+    private static IReadOnlyList<Mod> ListDisabled(string holdingRoot, bool readOnly, string? managed)
     {
         var rows = new List<Mod>();
         if (!Directory.Exists(holdingRoot)) return rows;
@@ -81,7 +101,7 @@ public static class LooseRootListing
             {
                 rows.Add(Row(
                     new DirectInjectMod(meta.Name, meta.Kind, meta.Entries.FirstOrDefault() ?? meta.Name, meta.Entries),
-                    enabled: false));
+                    enabled: false, readOnly, managed));
             }
             else
             {
@@ -103,7 +123,7 @@ public static class LooseRootListing
         return rows;
     }
 
-    private static Mod Row(DirectInjectMod d, bool enabled) => new()
+    private static Mod Row(DirectInjectMod d, bool enabled, bool readOnly, string? managed) => new()
     {
         Name = d.Name,
         Base = d.Name,
@@ -114,6 +134,10 @@ public static class LooseRootListing
         Files = d.Entries.ToList(),
         // ASI-loader proxies (dinput8 et al.) are flagged loader by the by-nature detector; render distinguished.
         IsLoader = d.Kind == "loader",
+        // Owned root (Vortex/MO2 marker, not taken over): read-only until takeover — same fields
+        // the scanner world stamps on rows from an owned location.
+        ReadOnly = readOnly,
+        Managed = managed,
     };
 
     private sealed class DisabledMeta

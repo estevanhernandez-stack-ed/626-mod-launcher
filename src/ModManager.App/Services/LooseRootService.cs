@@ -15,8 +15,13 @@ namespace ModManager.App.Services;
 /// </summary>
 public static class LooseRootService
 {
-    /// <summary>True for loose-root games (mods drop as loose files into the game root).</summary>
+    /// <summary>True for loose-root games (mods drop as loose files into the game root). Delegates
+    /// to the ONE predicate (<see cref="LooseRootListing.Applies(GameContext)"/>, form-derived) so
+    /// the App lane and <c>ModListing.Resolve</c> can never route the same game differently.</summary>
     public static bool Applies(GameEntry game) => LooseRootListing.Applies(game);
+
+    /// <summary>Overload for callers already holding the resolved context (the VM's game context).</summary>
+    public static bool Applies(GameContext ctx) => LooseRootListing.Applies(ctx);
 
     /// <summary>Toggle one loose-root mod by name — a reversible move to/from the holding root.
     /// Enabling an unrestorable holding entry (corrupt/missing sidecar) is a safe no-op inside

@@ -158,4 +158,70 @@ public class LooseRootListingTests : IDisposable
         Assert.False(broken.Enabled);
         Assert.Empty(broken.Files); // never guessed
     }
+
+    // The sentinel's description is load-bearing (it tells the user where to move files back from
+    // by hand) — it must survive the metadata merge in the shared listing path, not just the raw
+    // LooseRootListing read.
+    [Fact]
+    public void Sentinel_description_survives_metadata_merge_through_ModListing_Resolve()
+    {
+        var game = Game();
+        var corruptDir = Path.Combine(LooseRootListing.Holding(game), "brokenmod");
+        Directory.CreateDirectory(corruptDir);
+        File.WriteAllText(Path.Combine(corruptDir, "brokenmod.asi"), "held");
+        File.WriteAllText(Path.Combine(corruptDir, "__626mod.json"), "{ this is not valid json");
+
+        var rows = ModListing.Resolve(game); // the merged path the App actually renders
+        var broken = rows.Single(r => LooseRootListing.IsUnrestorable(r));
+        Assert.False(string.IsNullOrEmpty(broken.Description));
+        Assert.Contains("__626mod.json", broken.Description);
+        Assert.Contains(corruptDir, broken.Description); // the move-back-by-hand dir survives
+    }
+
+    // ---- (6) ownership: a Vortex/MO2-owned root is read-only until takeover ---------------------
+
+    [Fact]
+    public void Vortex_marker_at_game_root_stamps_rows_read_only_until_takeover()
+    {
+        var game = Game();
+
+        // Without a marker: rows are ours to manage.
+        var before = LooseRootListing.List(game);
+        Assert.NotEmpty(before);
+        Assert.All(before, r => { Assert.False(r.ReadOnly); Assert.Null(r.Managed); });
+
+        // Vortex marker at the root -> every row (enabled AND disabled) reads ReadOnly + Managed,
+        // same stamp the scanner world puts on rows from an owned location.
+        var holdingDir = Path.Combine(LooseRootListing.Holding(game), "HeldMod");
+        Directory.CreateDirectory(holdingDir);
+        File.WriteAllText(Path.Combine(holdingDir, "HeldMod.asi"), "held");
+        File.WriteAllText(Path.Combine(holdingDir, "__626mod.json"),
+            """{ "name": "HeldMod", "kind": "plugin", "entries": ["HeldMod.asi"] }""");
+        File.WriteAllText(Path.Combine(GameRoot, "__folder_managed_by_vortex"), "");
+
+        var rows = LooseRootListing.List(game);
+        Assert.Contains(rows, r => r.Enabled);
+        Assert.Contains(rows, r => !r.Enabled); // the held row carries the stamp too
+        Assert.All(rows, r => { Assert.True(r.ReadOnly); Assert.Equal("vortex", r.Managed); });
+    }
+
+    // ---- (7) ONE loose-root predicate: form-derived, no second engine-string check --------------
+
+    [Fact]
+    public void Explicit_loose_root_form_routes_to_loose_root_listing_without_engine_tag()
+    {
+        var game = new GameEntry
+        {
+            Id = "mystery-loose", GameName = "Mystery Loose Game",   // Engine deliberately null
+            GameRoot = GameRoot,
+            ModLocations = new[] { new ModLocation("mods", "mods", ".") { Form = "loose-root" } },
+            DataDir = Path.Combine(_root, "data-mystery"),
+        };
+
+        // The single predicate is form-derived — engine tag not required.
+        Assert.True(LooseRootListing.Applies(game));
+        // And the shared listing dispatch consults the same predicate: loose-root rows, not scanner.
+        var rows = ModListing.Resolve(game);
+        Assert.Contains(rows, r => r.Name == "ReShade" && r.Location == LooseRootListing.LooseRootLocation);
+    }
 }
