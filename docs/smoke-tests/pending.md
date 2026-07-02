@@ -551,6 +551,28 @@ Before this, a successful Safe Clear closed the dialog instantly — no confirma
 
 ---
 
+## nexus-loose-identify — review-first Nexus identify for loose rows (App)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite green (incl. the MergeMeta apply-path pin). FULL build 0 errors. STORE build 0 errors. STORE seal OK. No `#if FULL` — the `IModTextSearch` capability check + `NexusActionsVisibility` gate IS the flavor gate.
+
+**What shipped:** "Identify loose mods on Nexus…" in the game More menu, visible only when Nexus is connected AND the loaded Nexus plugin implements `IModTextSearch` AND the active game has loose-root rows. The command runs `LooseIdentify.Candidates` → `ProposeAsync` (search delegate self-timeouts at ~10s per call so a hung Nexus request can't stall the batch) → a review dialog: one row per proposal ("query → Title · Author · N endorsements" + trimmed summary, checkbox checked by default; unmatched rows greyed "no confident match", no checkbox). "Apply N matches" (live count, disabled at zero) is the ONLY write path — each approved hit merges over the existing metadata entry via `Scanner.MergeMeta` (existing enrichment survives; manual matches lock) and lands in one atomic `WriteManyMeta`, then rows reload with "Identified N of M loose mods."
+
+**Smoke steps:**
+
+- [ ] **Action visible on DS2.** Nexus connected + updated Nexus plugin (with text search) + DS2 active (loose-root rows present): EXPECT "Identify loose mods on Nexus…" in the More menu next to the other Nexus items.
+- [ ] **Run it.** EXPECT: proposals for the plugin/shader stems (Zipliner, DollmanMute, ShaderToggler, …) — note a stem like "Zipliner 1" is expected (CleanModName keeps the trailing digit); NO rows for dxgi / version (loader proxies are never proposed).
+- [ ] **Approve a subset.** Uncheck one matched row, hit Apply. EXPECT: button text tracked the count; approved rows gain title / author / endorsement hearts after reload; the unchecked row stays unidentified; status reads "Identified N of M loose mods."
+- [ ] **Unrelated fields survive.** A row that had prior enrichment (e.g. detected description / installed date in metadata.json) keeps those fields after an approved name match lands — only identity fields change.
+- [ ] **Manual match survives a re-run.** "Match to a mod…" one loose row to a URL, run identify again. EXPECT: that row is not proposed (IsManual excluded), and its entry is untouched after any Apply.
+- [ ] **Re-run after identifying.** Run the action again after applying. EXPECT: previously identified rows are gone from the proposal list (NexusModId / sourceConfidence set); "No loose mods need identifying" when everything is matched.
+- [ ] **Without the updated plugin.** With an older Nexus plugin (no `IModTextSearch`): EXPECT the menu item absent; every other Nexus action still works.
+- [ ] **No Nexus domain.** On a loose-root game with no resolvable Nexus domain: EXPECT a clear "This game has no Nexus domain configured…" dialog, no search, nothing written.
+- [ ] **Cancel writes nothing.** Open the dialog, then Cancel. EXPECT: metadata.json unchanged (checksum/timestamp if in doubt).
+
+**Why these matter:** the Core pass (candidates / propose / ToMeta / merge) is unit-tested; the capability-gated visibility, the dialog checkbox flow, the self-timeout under a real slow Nexus call, and the merged write against a real DS2 metadata.json only prove out on the rig.
+
+---
+
 ## feat/game-library-home Task 4 — own-launch log + launch-time stamping (2026-07-01)
 
 > **STATUS — BUILT + GATE-PASSED; needs live smoke.** Core suite 1341/0. FULL build 0 errors. STORE build 0 errors. STORE seal OK.

@@ -74,6 +74,13 @@
                                     <FontIcon Glyph="&#xE72C;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Identify loose mods on Nexus…" Click="OnLooseIdentify"
+                                            Visibility="{x:Bind ViewModel.LooseIdentifyVisibility, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Name-search Nexus for unidentified loose files — you review every match before anything is saved">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE721;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;" />
