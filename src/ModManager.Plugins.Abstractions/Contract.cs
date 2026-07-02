@@ -64,3 +64,16 @@ public sealed class SourceRateLimitException : Exception
 {
     public SourceRateLimitException(string? message = null) : base(message ?? "Mod source rate limit reached.") { }
 }
+
+/// <summary>Optional text-search capability. A source that can search its catalog by name for a game
+/// domain implements this ALONGSIDE IModSource; the host feature-detects with a type check, so
+/// plugins built before this interface keep loading and working unchanged.</summary>
+public interface IModTextSearch
+{
+    Task<IReadOnlyList<SourceSearchHit>> SearchAsync(string gameDomain, string query);
+}
+
+/// <summary>One text-search hit — enough for a review dialog row + a follow-up FetchMetadataAsync.</summary>
+public sealed record SourceSearchHit(
+    string GameDomain, int ModId, string Name, string? Author,
+    string? Summary, int? EndorsementCount, string? Url);
