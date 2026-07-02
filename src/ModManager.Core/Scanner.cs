@@ -45,7 +45,12 @@ public static class Scanner
         var dataDir = DataDirForGame(game);
         var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" }).Select(e => e.ToLowerInvariant()).ToList();
         var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
-        var defaultForm = game.GroupingRule == "by_folder" ? "folders" : "files";
+        // Decima games are loose-root: mods land as loose files in the game root, listed + toggled by
+        // LooseRootListing (catalog + by-nature), not the pak-file scanner. The engine decides the form
+        // so any decima game gets it however it was registered; an explicit loc.Form still wins.
+        var defaultForm = game.Engine == "decima" ? "loose-root"
+            : game.GroupingRule == "by_folder" ? "folders"
+            : "files";
         var locations = game.ModLocations.Select((loc, idx) => new ModLocationCtx(
             string.IsNullOrEmpty(loc.Name) ? "loc" + idx : loc.Name,
             string.IsNullOrEmpty(loc.Label) ? (string.IsNullOrEmpty(loc.Name) ? "Location " + idx : loc.Name) : loc.Label,

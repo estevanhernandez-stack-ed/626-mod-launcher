@@ -27,6 +27,8 @@ public static partial class EnginePresets
             "DLL mods in the Mods folder."),
         ["fromsoft"] = new("FromSoftware (Mod Engine 2)", Array.Empty<string>(), "by_folder", "mod",
             "Elden Ring / Dark Souls / Sekiro / Armored Core. Each mod is a folder under 'mod', loaded by Mod Engine 2."),
+        ["decima"] = new("Decima (loose-root)", Array.Empty<string>(), "filename_no_ext", ".",
+            "Death Stranding etc. — mods drop as loose files into the game root (ASI plugins, ReShade, addons). Nothing to group; each recognized file/addon is its own mod."),
         ["custom"] = new("Custom (set manually)", new[] { "pak" }, "filename_no_ext", "mods",
             "Set the extensions, grouping, and mod folder yourself."),
     };
