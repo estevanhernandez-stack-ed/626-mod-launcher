@@ -122,6 +122,27 @@ public sealed partial class MainWindow : Window
         // overlay, so tapping into a game is instant. Load() reads the registry + builds the rows.
         ShowLibrary();
 
+        // One-time reconnect notice: an upgrade from a pre-OAuth build discarded the stored API key on
+        // load (keys are non-compliant now). Nudge the user to reconnect via secure sign-in. Only fires
+        // the launch where the key was discarded — once reconnected, the legacy file is gone for good.
+        if (ViewModel.NexusLegacyKeyDiscarded)
+        {
+            var legacy = new ContentDialog
+            {
+                Title = "Reconnect your Nexus account",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = "Nexus now uses secure sign-in. Your old API key was removed — open Settings and "
+                           + "click Connect Nexus account to reconnect.",
+                },
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            await legacy.ShowAsync();
+        }
+
 #if FULL
         // Startup fetch for already-connected users: if Nexus credentials are persisted from a
         // previous session, the user never triggers a ConnectAsync (so MaybeFetchOnConnectAsync
@@ -786,6 +807,11 @@ public sealed partial class MainWindow : Window
         // action that needs its own dialog (Reset, Restore, Delete), SettingsDialog sets a flag
         // and calls Hide() — ShowAsync() returns here with SettingsDialog fully closed, so we can
         // open the follow-up without conflict. At most one flag fires per Settings session.
+
+        // Nexus OAuth connect: runs here (Settings closed) so the browser round-trip and the first-install
+        // consent dialog never nest under the Settings ContentDialog.
+        if (dialog.ConnectNexusRequested)
+            await ViewModel.ConnectNexusAsync();
 
         var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
 

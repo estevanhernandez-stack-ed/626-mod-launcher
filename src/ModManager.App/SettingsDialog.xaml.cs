@@ -81,6 +81,11 @@ public sealed partial class SettingsDialog : ContentDialog
     /// reads this after ShowAsync() returns and shows the confirm + deletes — same pattern.</summary>
     public string? DeleteRequestedTimestamp { get; private set; }
 
+    /// <summary>Set when the user clicks "Connect Nexus account". The OAuth flow opens a browser and (on a
+    /// first-ever connect) shows the consent dialog — neither can be nested under this ContentDialog, so we
+    /// hand off: MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> after this dialog closes.</summary>
+    public bool ConnectNexusRequested { get; private set; }
+
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
@@ -355,50 +360,45 @@ public sealed partial class SettingsDialog : ContentDialog
         RefreshNexusUi();
     }
 
-    /// <summary>Render the Nexus section based on the current connection state. Called on dialog
-    /// open and after every Connect/Disconnect action.</summary>
+    /// <summary>Render the Nexus section based on the current connection + configuration state. Called on
+    /// dialog open and after every Connect/Disconnect action. Secure OAuth sign-in — no key to paste. In
+    /// the dark window (client_id not delivered yet) the Connect button is disabled with a "finalizing" note.</summary>
     private void RefreshNexusUi()
     {
         if (_vm.NexusConnected)
         {
             NexusConnectedBanner.Visibility = Visibility.Visible;
             NexusConnectedText.Text = $"Connected as {_vm.NexusAccountLine}";
-            NexusExplainer.Text = "Your saved API key is being used for metadata + mod ID lookups. " +
-                                  "Disconnect to remove the saved key, or paste a different key to switch accounts.";
-            NexusKeyBox.PlaceholderText = "Paste a new key only if switching accounts";
+            NexusExplainer.Text = "Your Nexus account is signed in with secure OAuth — used for endorsements, " +
+                                  "mod ID lookups, and update checks. Disconnect to remove the saved sign-in, " +
+                                  "or connect again to switch accounts.";
             NexusConnectButton.Content = "Switch account";
             NexusDisconnectButton.Visibility = Visibility.Visible;
         }
         else
         {
             NexusConnectedBanner.Visibility = Visibility.Collapsed;
-            NexusExplainer.Text = "Get your personal API key from nexusmods.com → account settings → API access, " +
-                                  "then paste it here. The key stays on your machine — it's never sent anywhere except Nexus's own API.";
-            NexusKeyBox.PlaceholderText = "Nexus personal API key";
-            NexusConnectButton.Content = "Connect";
+            NexusExplainer.Text = "Sign in to Nexus with secure OAuth — it opens in your browser, no API key to " +
+                                  "paste. Your sign-in stays on this machine and is only sent to Nexus's own API.";
+            NexusConnectButton.Content = "Connect Nexus account";
             NexusDisconnectButton.Visibility = Visibility.Collapsed;
         }
+
+        // Dark window: the OAuth client_id hasn't been delivered yet — connecting isn't possible, so disable
+        // the button and explain instead of letting the user hit a dead end.
+        var configured = _vm.NexusSignInConfigured;
+        NexusConnectButton.IsEnabled = configured;
+        NexusConnectSublabel.Text = "Secure sign-in is being finalized with Nexus.";
+        NexusConnectSublabel.Visibility = configured ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private async void OnNexusConnect(object sender, RoutedEventArgs e)
+    /// <summary>"Connect Nexus account" — hands off to the shell. The OAuth flow opens a browser and (on a
+    /// first-ever connect) shows the consent dialog; neither can nest under this ContentDialog, so we flag +
+    /// close and MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> once this dialog is closed.</summary>
+    private void OnNexusConnect(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(NexusKeyBox.Password))
-        {
-            StatusText.Text = "Paste your Nexus API key first.";
-            return;
-        }
-        NexusConnectButton.IsEnabled = false;
-        try
-        {
-            var ok = await _vm.ConnectNexusAsync(NexusKeyBox.Password);
-            StatusText.Text = ok ? $"Connected as {_vm.NexusAccountLine}." : "Nexus key rejected — check it on your account's API access page.";
-            if (ok) NexusKeyBox.Password = "";
-            RefreshNexusUi();
-#if FULL
-            if (ok) _ = App.AppHost.Services.GetRequiredService<PluginFeedSource>().MaybeFetchOnConnectAsync(); // off-Store: pull/refresh the Nexus plugin
-#endif
-        }
-        finally { NexusConnectButton.IsEnabled = true; }
+        ConnectNexusRequested = true;
+        Hide();
     }
 
     private void OnNexusDisconnect(object sender, RoutedEventArgs e)

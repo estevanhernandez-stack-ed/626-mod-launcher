@@ -61,9 +61,9 @@ public sealed class NexusOAuthService(HttpClient http, NexusService nexus, strin
             var tokens = await ExchangeAsync(code!, redirectUri, verifier, ct).ConfigureAwait(false);
             if (tokens is null) return new(false, null, "Could not complete sign-in with Nexus.");
 
-            var user = await FetchIdentityAsync(tokens.AccessToken, ct).ConfigureAwait(false);
-            nexus.SaveTokens(tokens, user);
-            return new(true, user, null);
+            var identity = await FetchIdentityAsync(tokens.AccessToken, ct).ConfigureAwait(false);
+            nexus.SaveTokens(tokens, identity?.user, identity?.premium ?? false);
+            return new(true, identity?.user, null);
         }
         catch (OperationCanceledException) { return new(false, null, "Sign-in timed out."); }
         catch (Exception ex) { return new(false, null, ex.Message); }
@@ -100,7 +100,23 @@ public sealed class NexusOAuthService(HttpClient http, NexusService nexus, strin
         return NexusTokenResponse.Parse(body, DateTimeOffset.UtcNow);
     }
 
-    private async Task<string?> FetchIdentityAsync(string accessToken, CancellationToken ct)
+    /// <summary>Re-fetch the connected account's identity (display name + premium) under the current OAuth
+    /// bearer and push it into <see cref="NexusService"/>. Offline-safe: any failure leaves the last-known
+    /// identity untouched. Used by the "refresh account" path (Settings open) — NOT the token refresh.</summary>
+    public async Task RefreshIdentityAsync()
+    {
+        try
+        {
+            var bearer = await nexus.ValidBearerAsync().ConfigureAwait(false);
+            if (bearer is null) return; // disconnected / refresh rejected — nothing to refresh
+            var identity = await FetchIdentityAsync(bearer, CancellationToken.None).ConfigureAwait(false);
+            if (identity is not { } id) return; // transient miss — keep the last-known name/premium
+            if (nexus.CurrentTokens is { } tokens) nexus.SaveTokens(tokens, id.user, id.premium);
+        }
+        catch { /* offline / transient — keep last-known identity */ }
+    }
+
+    private async Task<(string? user, bool premium)?> FetchIdentityAsync(string accessToken, CancellationToken ct)
     {
         // CONFIRM at build: validate.json-under-bearer vs a userinfo endpoint
         using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.nexusmods.com/v1/users/validate.json");
@@ -108,7 +124,10 @@ public sealed class NexusOAuthService(HttpClient http, NexusService nexus, strin
         using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode) return null;
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
-        return doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() : null;
+        var root = doc.RootElement;
+        var user = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+        var premium = root.TryGetProperty("is_premium", out var p) && p.ValueKind == JsonValueKind.True;
+        return (user, premium);
     }
 
     private static (HttpListener listener, string redirectUri) StartListener()

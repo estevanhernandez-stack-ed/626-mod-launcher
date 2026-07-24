@@ -14,6 +14,7 @@ using ModManager.Core;
 using ModManager.Core.Frameworks;
 using ModManager.Core.Loaders;
 using ModManager.Core.LooseMods;
+using ModManager.Core.Nexus;
 using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
 using ModManager.Plugins.Abstractions;
@@ -55,6 +56,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ThemeService _themes;
     private readonly LudusaviService _ludu;
     private readonly NexusService _nexus;
+    private readonly NexusOAuthService _oauth;
     private readonly AvatarService _avatars;
     private readonly SteamService _steam;
     private readonly AppSettingsService _appSettings;
@@ -255,7 +257,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources)
     {
         _svc = svc;
         _me2 = me2;
@@ -263,6 +265,7 @@ public sealed partial class MainViewModel : ObservableObject
         _themes = themes;
         _ludu = ludu;
         _nexus = nexus;
+        _oauth = oauth;
         _avatars = avatars;
         _steam = steam;
         _appSettings = appSettings;
@@ -1537,6 +1540,29 @@ public sealed partial class MainViewModel : ObservableObject
     public bool NexusActionsAvailable => NexusSource is not null && _nexus.IsConnected;
     public Visibility NexusActionsVisibility => NexusActionsAvailable ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>The dark-window gate for USER-SCOPED Nexus features (endorse, md5 identify/backfill,
+    /// refresh-stats, loose-identify apply). False when the OAuth client_id hasn't been delivered yet
+    /// (secure sign-in not finalized) or the account isn't connected. The unauthenticated GraphQL
+    /// search (loose-identify propose) is never routed through this — it stays available regardless.</summary>
+    public bool NexusUserFeaturesAvailable =>
+        NexusAuthGate.CanUseUserScopedFeatures(_oauth.Config.IsConfigured, _nexus.IsConnected);
+
+    /// <summary>True once the OAuth client_id has been delivered (secure sign-in configured). False = the
+    /// dark window — the Settings "Connect Nexus account" button is disabled with a "finalizing" note.</summary>
+    public bool NexusSignInConfigured => _oauth.Config.IsConfigured;
+
+    /// <summary>Status message for a gated user-scoped action — distinguishes the dark window
+    /// ("finalizing sign-in") from a plain disconnected state so the copy never tells the user to
+    /// "connect" when connecting isn't yet possible.</summary>
+    private string NexusUnavailableMessage =>
+        !_oauth.Config.IsConfigured
+            ? "Secure sign-in is being finalized with Nexus."
+            : "Connect your Nexus account first (Settings → Nexus Mods).";
+
+    /// <summary>True when the launcher discarded a pre-OAuth API key on load — the shell shows a one-time
+    /// reconnect notice on startup.</summary>
+    public bool NexusLegacyKeyDiscarded => _nexus.LegacyKeyWasDiscarded;
+
     /// <summary>True when "Identify loose mods on Nexus…" should be shown: the Nexus surfaces are
     /// live (source loaded + account connected), the loaded source can text-search (an older plugin
     /// without <see cref="IModTextSearch"/> keeps loading — this action just stays hidden), and the
@@ -1555,6 +1581,11 @@ public sealed partial class MainViewModel : ObservableObject
         _ctx is not null && !string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game));
 
 #if FULL
+    /// <summary>The off-Store plugin feed, stashed on wire-up so <see cref="ConnectNexusAsync"/> can trigger
+    /// the consented first-install fetch after an OAuth connect without reaching back into the DI container.
+    /// FULL-only — the type itself is absent from the STORE build.</summary>
+    private PluginFeedSource? _feed;
+
     /// <summary>Subscribe to the off-Store feed's hot-load signal so the first-ever Nexus connect lights
     /// up the Nexus surfaces immediately. Without this, <see cref="NexusActionsAvailable"/> was evaluated
     /// while the registry was still empty (no plugin) and stayed false until the next rescan / game switch.
@@ -1563,6 +1594,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// from the MainWindow ctor — keeps the shared ctor untouched and absent from the STORE build.</summary>
     public void WirePluginFeed(PluginFeedSource feed)
     {
+        _feed = feed;
         feed.PluginLoaded += (_, _) =>
         {
             async void Apply()
@@ -1618,8 +1650,10 @@ public sealed partial class MainViewModel : ObservableObject
     public string? NexusAccountLine =>
         !_nexus.IsConnected ? null : $"{_nexus.ConnectedUser}{(_nexus.ConnectedPremium ? " (Premium)" : " (Free)")}";
 
-    /// <summary>Re-validate the stored key to refresh the account name + premium flag (offline-safe).</summary>
-    public Task RefreshNexusAsync() => _nexus.RefreshAsync();
+    /// <summary>Re-fetch the connected account's identity (name + premium) under the current OAuth bearer,
+    /// offline-safe. NOT the token-refresh delegate (<see cref="NexusService.RefreshAsync"/>, which takes a
+    /// refresh token) — this re-hits validate.json to refresh the display name + premium tag.</summary>
+    public Task RefreshNexusAsync() => _oauth.RefreshIdentityAsync();
 
     /// <summary>Backfill metadata for already-installed mods by md5-matching the user's downloaded
     /// Nexus ARCHIVES (the only thing with the hash Nexus indexes). Each archive's match fills the
@@ -1628,7 +1662,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
-        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         if (string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game))) { StatusText = "This game has no Nexus domain set."; return; }
         if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
         IsBusy = true;
@@ -1663,7 +1697,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
-        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
 
@@ -1759,6 +1793,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ApplyLooseIdentifyAsync(IReadOnlyList<(string ModKey, SourceSearchHit Hit)> approved, int proposalCount)
     {
         if (_ctx is null) return;
+        // Search/propose stays open (unauthenticated GraphQL), but WRITING the identification is a
+        // user-scoped action — gate the apply so the dark window never commits a match.
+        if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         if (approved.Count == 0) { StatusText = "No matches approved — nothing written."; return; }
         IsBusy = true;
         try
@@ -1793,7 +1830,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
-        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
 
@@ -1913,36 +1950,53 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception e) { StatusText = e.Message; return false; }
     }
 
-    /// <summary>Validate + store a pasted personal Nexus key (the user's own — never baked). Result via StatusText.</summary>
-    public async Task<bool> ConnectNexusAsync(string apiKey)
+    /// <summary>Connect the user's Nexus account via the loopback PKCE OAuth flow (system browser). No key
+    /// is ever pasted or baked — <see cref="NexusOAuthService.ConnectAsync"/> owns the browser round-trip and
+    /// hands the tokens to <see cref="NexusService"/> (DPAPI) on success. On success, re-notify the Nexus
+    /// surfaces and kick off the consented first-install plugin fetch (FULL only). On failure/dark-window,
+    /// the reason lands in the status line.</summary>
+    public async Task ConnectNexusAsync()
     {
         try
         {
-            var user = await _nexus.ConnectAsync(apiKey);
-            StatusText = user is null
-                ? "Nexus key rejected — check it on your account's API access page."
-                : $"Connected to Nexus as {NexusAccountLine}.";
-            OnPropertyChanged(nameof(NexusConnected));
-            OnPropertyChanged(nameof(NexusStatusBrush));
-            OnPropertyChanged(nameof(NexusActionsAvailable));
-            OnPropertyChanged(nameof(NexusActionsVisibility));
-            OnPropertyChanged(nameof(LooseIdentifyAvailable));
-            OnPropertyChanged(nameof(LooseIdentifyVisibility));
-            return user is not null;
+            var r = await _oauth.ConnectAsync(CancellationToken.None);
+            if (r.Ok)
+            {
+                StatusText = $"Connected to Nexus as {NexusAccountLine}.";
+                RaiseNexusStateChanged();
+#if FULL
+                // First-ever install is consent-gated inside MaybeFetchOnConnectAsync (the shell's dialog);
+                // a switch-account (plugin already installed) is a silent debounced re-check. Fire-and-forget.
+                if (_feed is { } feed) _ = feed.MaybeFetchOnConnectAsync();
+#endif
+            }
+            else StatusText = r.Error ?? "Nexus sign-in didn't complete.";
         }
-        catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; return false; }
+        catch (Exception e) { StatusText = "Nexus connect failed: " + e.Message; }
     }
 
     public void DisconnectNexus()
     {
         _nexus.Disconnect();
         StatusText = "Disconnected from Nexus.";
+        RaiseNexusStateChanged();
+    }
+
+    /// <summary>Re-notify every Nexus-derived surface after a connect/disconnect: the toolbar dot, the
+    /// action availability (hearts / refresh / identify), the account line + premium tag, and the
+    /// dark-window user-features gate. One place so connect and disconnect can't drift apart.</summary>
+    private void RaiseNexusStateChanged()
+    {
         OnPropertyChanged(nameof(NexusConnected));
         OnPropertyChanged(nameof(NexusStatusBrush));
         OnPropertyChanged(nameof(NexusActionsAvailable));
         OnPropertyChanged(nameof(NexusActionsVisibility));
+        OnPropertyChanged(nameof(NexusUserFeaturesAvailable));
         OnPropertyChanged(nameof(LooseIdentifyAvailable));
         OnPropertyChanged(nameof(LooseIdentifyVisibility));
+        OnPropertyChanged(nameof(NexusUser));
+        OnPropertyChanged(nameof(NexusPremium));
+        OnPropertyChanged(nameof(NexusAccountLine));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>

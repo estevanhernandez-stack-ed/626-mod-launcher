@@ -32,6 +32,11 @@ public sealed class NexusService
     public bool IsConnected => _tokens is not null;
     public string? ConnectedUser { get; private set; }
 
+    /// <summary>Whether the connected account is Nexus Premium — surfaced in the account line's Premium/Free
+    /// tag. Set from validate.json at connect + identity-refresh time (see <see cref="SaveTokens"/>). Not
+    /// persisted in the token store: a cold start reads Free until the next identity refresh re-fetches it.</summary>
+    public bool ConnectedPremium { get; private set; }
+
     /// <summary>True when load found and discarded a pre-OAuth api-key file — surfaced so the UI can nudge
     /// the user to reconnect via OAuth (the old key is gone; keys are non-compliant now).</summary>
     public bool LegacyKeyWasDiscarded { get; private set; }
@@ -47,11 +52,14 @@ public sealed class NexusService
     public string? GetCredential(string key) => null;
 #pragma warning restore CS0618
 
-    /// <summary>Store a freshly-obtained token set (+ display name) and persist it, DPAPI-encrypted.</summary>
-    public void SaveTokens(NexusTokenSet tokens, string? user)
+    /// <summary>Store a freshly-obtained token set (+ display name + premium flag) and persist it,
+    /// DPAPI-encrypted. A null <paramref name="user"/> preserves the last-known display name (a transient
+    /// identity-fetch miss shouldn't blank it); <paramref name="premium"/> is always applied.</summary>
+    public void SaveTokens(NexusTokenSet tokens, string? user, bool premium = false)
     {
         _tokens = tokens;
         if (user is not null) ConnectedUser = user;
+        ConnectedPremium = premium;
         LegacyKeyWasDiscarded = false;
         Save();
     }
@@ -78,6 +86,7 @@ public sealed class NexusService
     {
         _tokens = null;
         ConnectedUser = null;
+        ConnectedPremium = false;
         try { if (File.Exists(StorePath)) File.Delete(StorePath); } catch { /* best effort */ }
     }
 

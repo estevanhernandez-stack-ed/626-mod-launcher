@@ -72,12 +72,13 @@
 
             <TextBlock x:Name="NexusExplainer" TextWrapping="Wrap" Opacity="0.75" FontSize="12" />
 
-            <PasswordBox x:Name="NexusKeyBox" />
-
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="NexusConnectButton" Content="Connect" Click="OnNexusConnect" />
+                <Button x:Name="NexusConnectButton" Content="Connect Nexus account" Click="OnNexusConnect" />
                 <Button x:Name="NexusDisconnectButton" Content="Disconnect" Click="OnNexusDisconnect" Visibility="Collapsed" />
             </StackPanel>
+
+            <!-- Dark-window note: shown (button disabled) until Nexus delivers the OAuth client_id. -->
+            <TextBlock x:Name="NexusConnectSublabel" TextWrapping="Wrap" Opacity="0.6" FontSize="12" Visibility="Collapsed" />
 
             <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
 
