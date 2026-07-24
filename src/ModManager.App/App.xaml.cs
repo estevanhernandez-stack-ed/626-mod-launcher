@@ -70,7 +70,8 @@ public partial class App : Application
                     return new PluginFeedSource(
                         sp.GetRequiredService<HttpClient>(),
                         sp.GetRequiredService<ModSourceRegistry>(),
-                        nexus.GetCredential,
+                        nexus,
+                        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0",
                         () => nexus.IsConnected,
                         sp.GetRequiredService<AppSettingsService>());
                 });
@@ -103,8 +104,9 @@ public partial class App : Application
         // missing plugins dir is a clean no-op, leaving the app on the zero-plugins path.
         PluginHost.LoadAll(
             AppHost.Services.GetRequiredService<ModSourceRegistry>(),
-            AppHost.Services.GetRequiredService<NexusService>().GetCredential,
-            AppHost.Services.GetRequiredService<HttpClient>());
+            AppHost.Services.GetRequiredService<HttpClient>(),
+            AppHost.Services.GetRequiredService<NexusService>(),
+            Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
 #endif
     }
 

@@ -60,7 +60,8 @@ public sealed class PluginFeedSource
 
     private readonly HttpClient _http;
     private readonly ModSourceRegistry _registry;
-    private readonly Func<string, string?> _getCredential;
+    private readonly NexusService _nexus;
+    private readonly string _appVersion;
     private readonly Func<bool> _isConnected;
     private readonly AppSettingsService _settings;
 
@@ -77,9 +78,9 @@ public sealed class PluginFeedSource
     public event EventHandler? PluginLoaded;
 
     public PluginFeedSource(HttpClient http, ModSourceRegistry registry,
-        Func<string, string?> getCredential, Func<bool> isConnected, AppSettingsService settings)
+        NexusService nexus, string appVersion, Func<bool> isConnected, AppSettingsService settings)
     {
-        _http = http; _registry = registry; _getCredential = getCredential;
+        _http = http; _registry = registry; _nexus = nexus; _appVersion = appVersion;
         _isConnected = isConnected; _settings = settings;
     }
 
@@ -141,7 +142,7 @@ public sealed class PluginFeedSource
                 string? version = null;
                 foreach (var p in run.Installed)
                 {
-                    anyLoaded |= PluginHost.LoadOne(p.DllPath, _registry, _getCredential, _http);
+                    anyLoaded |= PluginHost.LoadOne(p.DllPath, _registry, _http, _nexus, _appVersion);
                     version ??= p.Version;
                 }
 

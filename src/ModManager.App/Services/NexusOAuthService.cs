@@ -73,9 +73,15 @@ public sealed class NexusOAuthService(HttpClient http, NexusService nexus, strin
     public async Task<NexusTokenSet?> RefreshAsync(string refreshToken)
     {
         if (!Config.IsConfigured) return null;
-        using var body = NexusTokenRequest.BuildRefreshBody(Config, refreshToken);
-        using var resp = await http.PostAsync(Config.TokenUrl, body).ConfigureAwait(false);
-        return await ParseTokenAsync(resp).ConfigureAwait(false);
+        // Harden: any network/parse failure returns null so ValidBearerAsync's null-path fires (drop the
+        // connection, graceful reconnect) instead of throwing up through IAuthorizedSend.SendAuthorizedAsync.
+        try
+        {
+            using var body = NexusTokenRequest.BuildRefreshBody(Config, refreshToken);
+            using var resp = await http.PostAsync(Config.TokenUrl, body).ConfigureAwait(false);
+            return await ParseTokenAsync(resp).ConfigureAwait(false);
+        }
+        catch { return null; }
     }
 
     private async Task<NexusTokenSet?> ExchangeAsync(string code, string redirectUri, string verifier, CancellationToken ct)
