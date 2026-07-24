@@ -66,10 +66,24 @@ public sealed class NexusService
 
     /// <summary>Returns a currently-valid access token, refreshing once if within the skew of expiry. Null
     /// when disconnected, when no refresh delegate is wired, or when the refresh is rejected — in which case
-    /// the connection is dropped (the stale tokens are useless).</summary>
-    public async Task<string?> ValidBearerAsync()
+    /// the connection is dropped (the stale tokens are useless).
+    ///
+    /// <paramref name="forceRefresh"/> bypasses the skew check and refreshes UNCONDITIONALLY (when a refresh
+    /// delegate + tokens are present). The 401-retry path uses this: a server 401 means the current token is
+    /// bad regardless of what local expiry math believes, so re-issuing the same token would just 401 again.</summary>
+    public async Task<string?> ValidBearerAsync(bool forceRefresh = false)
     {
         if (_tokens is null) return null;
+
+        if (forceRefresh && RefreshAsync is not null)
+        {
+            var forced = await RefreshAsync(_tokens.RefreshToken).ConfigureAwait(false);
+            if (forced is null) { Disconnect(); return null; }
+            _tokens = forced;
+            Save();
+            return _tokens.AccessToken;
+        }
+
         if (_tokens.NeedsRefresh(DateTimeOffset.UtcNow, RefreshSkew))
         {
             if (RefreshAsync is null) return null;

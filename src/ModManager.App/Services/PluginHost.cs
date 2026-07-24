@@ -123,44 +123,34 @@ public static class PluginHost
         public string? GetCredential(string key) => null;
 #pragma warning restore CS0618
 
-        /// <summary>Send an authorized request on the plugin's behalf. For the "nexus" credential key the
-        /// host resolves a currently-valid OAuth bearer (refreshing internally if needed) and stamps it
-        /// plus the ToS identity headers; any other key sends unauthenticated (identity headers only). On a
-        /// 401 with a bearer, re-resolve the bearer once, clone the request, and retry a single time —
-        /// covers a token that expired between the validity check and the send.</summary>
+        /// <summary>Send an authorized request on the plugin's behalf WITHOUT ever mutating the plugin's
+        /// <paramref name="request"/>. For the "nexus" credential key the host resolves a currently-valid
+        /// OAuth bearer and stamps it — plus the ToS identity headers — onto a HOST-OWNED clone
+        /// (<see cref="NexusAuthHeaders.CloneWithAuthAsync"/>); any other key clones with identity headers
+        /// only. The plugin's own request is only ever READ, so it never carries the bearer and the plugin
+        /// can't read the token back off it. On a 401 with a bearer, force a token refresh (a server 401
+        /// means the token is bad regardless of local expiry belief), re-clone from the untouched request,
+        /// and retry once. Finally <c>resp.RequestMessage</c> is nulled so the returned response can't hand
+        /// the plugin a handle to the bearer-stamped host request either.</summary>
         public async Task<HttpResponseMessage> SendAuthorizedAsync(
             HttpRequestMessage request, string credentialKey, CancellationToken ct = default)
         {
             string? bearer = credentialKey.Equals("nexus", StringComparison.OrdinalIgnoreCase)
                 ? await nexus.ValidBearerAsync().ConfigureAwait(false)
                 : null;
-            NexusAuthHeaders.Apply(request, bearer, "626-mod-launcher", appVersion);
-            var resp = await httpClient.SendAsync(request, ct).ConfigureAwait(false);
+            var send = await NexusAuthHeaders.CloneWithAuthAsync(request, bearer, "626-mod-launcher", appVersion, ct).ConfigureAwait(false);
+            var resp = await httpClient.SendAsync(send, ct).ConfigureAwait(false);
 
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized && bearer is not null)
             {
                 resp.Dispose();
-                var retryBearer = await nexus.ValidBearerAsync().ConfigureAwait(false); // ValidBearer refreshes internally
-                var retry = await CloneAsync(request).ConfigureAwait(false);
-                NexusAuthHeaders.Apply(retry, retryBearer, "626-mod-launcher", appVersion);
-                return await httpClient.SendAsync(retry, ct).ConfigureAwait(false);
+                var fresh = await nexus.ValidBearerAsync(forceRefresh: true).ConfigureAwait(false);
+                var retry = await NexusAuthHeaders.CloneWithAuthAsync(request, fresh, "626-mod-launcher", appVersion, ct).ConfigureAwait(false);
+                resp = await httpClient.SendAsync(retry, ct).ConfigureAwait(false);
             }
-            return resp;
-        }
 
-        // Clone method + uri + content (+ content headers) so the 401 retry re-sends the same request
-        // on a fresh HttpRequestMessage (a sent message can't be reused). Request-level headers are
-        // re-applied by NexusAuthHeaders.Apply on the clone, so only the content headers copy here.
-        private static async Task<HttpRequestMessage> CloneAsync(HttpRequestMessage r)
-        {
-            var c = new HttpRequestMessage(r.Method, r.RequestUri);
-            if (r.Content is not null)
-            {
-                var bytes = await r.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-                c.Content = new ByteArrayContent(bytes);
-                foreach (var h in r.Content.Headers) c.Content.Headers.TryAddWithoutValidation(h.Key, h.Value);
-            }
-            return c;
+            resp.RequestMessage = null;   // don't hand the plugin a handle to the bearer-stamped host request
+            return resp;
         }
     }
 }
