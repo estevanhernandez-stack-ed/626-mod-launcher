@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Reflection;
 using ModManager.Core;
+using ModManager.Core.Nexus;
 using ModManager.Core.Plugins;
 
 namespace ModManager.App.Services;
@@ -186,11 +187,30 @@ public sealed class PluginFeedSource
         finally { Interlocked.Exchange(ref _running, 0); }
     }
 
-    /// <summary>Called after a successful Nexus connect. Installs the plugin immediately if none is
-    /// installed yet (bypassing the debounce — the user wants Nexus now); otherwise it's a debounced
-    /// update check gated on the "keep plugins updated" setting. Never throws (fire-and-forget).</summary>
-    public Task MaybeFetchOnConnectAsync()
-        => FetchAsync(force: InstalledPluginsStore.Read(RecordPath).Count == 0);
+    /// <summary>True when the FIRST plugin install is about to happen (nothing installed yet) — the only
+    /// time explicit user consent is required before connecting + downloading the signed add-on. Delegates
+    /// to the Core <see cref="PluginConsent"/> predicate so the App honors the unit-tested rule.</summary>
+    public bool NeedsFirstInstallConsent()
+        => PluginConsent.NeedsFirstInstallConsent(InstalledPluginsStore.Read(RecordPath).Count);
+
+    /// <summary>Set by the shell (MainWindow): shows the combined connect + first-install consent dialog and
+    /// returns true to proceed, false to decline. Only consulted on the first-ever install; already-installed
+    /// updates never call it. Null = no confirm wired, treated as "declined" (nothing installs).</summary>
+    public Func<Task<bool>>? ConfirmFirstInstallAsync { get; set; }
+
+    /// <summary>Called after a successful Nexus connect. On the first-ever install, gates on
+    /// <see cref="ConfirmFirstInstallAsync"/> — a decline (or no confirm wired) installs nothing. Otherwise
+    /// it's a debounced update check gated on the "keep plugins updated" setting. The first install bypasses
+    /// the debounce (force) once consented. Never throws (fire-and-forget).</summary>
+    public async Task MaybeFetchOnConnectAsync()
+    {
+        if (NeedsFirstInstallConsent())
+        {
+            if (ConfirmFirstInstallAsync is null || !await ConfirmFirstInstallAsync().ConfigureAwait(false))
+                return; // user declined the first plugin download — nothing is installed
+        }
+        await FetchAsync(force: NeedsFirstInstallConsent()).ConfigureAwait(false);
+    }
 
     private async Task<byte[]?> Download(string url, CancellationToken ct)
     {
