@@ -13,6 +13,7 @@ public interface IModManagerPlugin
 public interface IPluginHostServices
 {
     void AddModSource(IModSource source);
+    [System.Obsolete("The host owns credentials. Use IAuthorizedSend.SendAuthorizedAsync; the host returns null here under OAuth.")]
     string? GetCredential(string key);                 // host-owned, on-machine per-user key store
     System.Net.Http.HttpClient HttpClient { get; }
     /// <summary>The launcher version, for any ToS / telemetry-identity header a source must send
@@ -77,3 +78,15 @@ public interface IModTextSearch
 public sealed record SourceSearchHit(
     string GameDomain, int ModId, string Name, string? Author,
     string? Summary, int? EndorsementCount, string? Url);
+
+/// <summary>
+/// Optional host capability: the host sends an authorized request on the plugin's behalf,
+/// attaching credentials (OAuth bearer) server-side. The plugin builds an UNAUTHENTICATED
+/// request and never receives a token. Plugins built before this interface keep loading;
+/// the host feature-detects with `host is IAuthorizedSend`.
+/// </summary>
+public interface IAuthorizedSend
+{
+    Task<HttpResponseMessage> SendAuthorizedAsync(
+        HttpRequestMessage request, string credentialKey, CancellationToken ct = default);
+}
