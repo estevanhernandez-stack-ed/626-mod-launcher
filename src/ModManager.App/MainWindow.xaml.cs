@@ -42,7 +42,12 @@ public sealed partial class MainWindow : Window
         // Off-Store: let the live VM light up the Nexus surfaces the instant the feed hot-loads the
         // plugin on a first-ever connect (no rescan needed). FULL-only — the Store SKU has no feed.
         if (App.AppHost.Services.GetService<Services.PluginFeedSource>() is { } feed)
+        {
             ViewModel.WirePluginFeed(feed);
+            // First-install consent: the feed asks before the first-ever plugin download. Shown from the
+            // shell (not nested under SettingsDialog — the connect action hands back via ConnectNexusRequested).
+            feed.ConfirmFirstInstallAsync = ShowFirstInstallConsentAsync;
+        }
 #endif
         // The collision prompt is a view concern (dialog + XamlRoot) — the VM builds the plan and
         // sequences intake, the window owns showing the dialog. null result = user cancelled.
@@ -117,15 +122,38 @@ public sealed partial class MainWindow : Window
         // overlay, so tapping into a game is instant. Load() reads the registry + builds the rows.
         ShowLibrary();
 
+        // One-time reconnect notice: an upgrade from a pre-OAuth build discarded the stored API key on
+        // load (keys are non-compliant now). Nudge the user to reconnect via secure sign-in. Only fires
+        // the launch where the key was discarded — once reconnected, the legacy file is gone for good.
+        if (ViewModel.NexusLegacyKeyDiscarded)
+        {
+            var legacy = new ContentDialog
+            {
+                Title = "Reconnect your Nexus account",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = "Nexus now uses secure sign-in. Your old API key was removed — open Settings and "
+                           + "click Connect Nexus account to reconnect.",
+                },
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            await legacy.ShowAsync();
+        }
+
 #if FULL
         // Startup fetch for already-connected users: if Nexus credentials are persisted from a
         // previous session, the user never triggers a ConnectAsync (so MaybeFetchOnConnectAsync
-        // never fires). Kick off a debounced update check here — force:false lets FetchAsync
-        // decide whether to first-install or honour the 24h debounce. Fire-and-forget; LoadAsync
-        // already completed so the app is fully usable. The PluginLoaded event (wired in the
-        // constructor via WirePluginFeed) carries the UI refresh when a new plugin is installed.
+        // never fires). Kick off a debounced UPDATE check here — but only when a plugin is already
+        // installed. If none is installed yet (NeedsFirstInstallConsent), do NOT auto-fetch on
+        // startup: the first-ever install only happens through the consented connect path, never
+        // silently at launch. Fire-and-forget; LoadAsync already completed so the app is fully
+        // usable. The PluginLoaded event (wired via WirePluginFeed) carries the UI refresh.
         if (App.AppHost.Services.GetService<Services.PluginFeedSource>() is { } feedOnStart
-            && App.AppHost.Services.GetRequiredService<Services.NexusService>().IsConnected)
+            && App.AppHost.Services.GetRequiredService<Services.NexusService>().IsConnected
+            && !feedOnStart.NeedsFirstInstallConsent())
             _ = feedOnStart.FetchAsync(force: false);
 #endif
 
@@ -409,6 +437,33 @@ public sealed partial class MainWindow : Window
         var proceed = await dialog.ShowAsync() == ContentDialogResult.Primary;
         return (proceed, proceed && dontWarn.IsChecked == true);
     }
+
+#if FULL
+    /// <summary>First-plugin-download consent (first-ever connect only). The combined "connect + install the
+    /// signed Nexus add-on" agreement — nothing is installed until the user agrees. Wired onto the feed's
+    /// <see cref="Services.PluginFeedSource.ConfirmFirstInstallAsync"/> delegate; returns true to proceed.
+    /// Shown from the shell so it's never nested under SettingsDialog (which hands the connect action back
+    /// here via <c>ConnectNexusRequested</c>). FULL only — the Store SKU has no plugin feed.</summary>
+    private async Task<bool> ShowFirstInstallConsentAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Connect Nexus and install the Nexus add-on?",
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = "To use Nexus features, 626 needs to (1) sign you in to Nexus in your browser, and "
+                       + "(2) download a small signed add-on (the Nexus plugin) from the 626 plugin feed. "
+                       + "Nothing is installed until you agree.",
+            },
+            PrimaryButtonText = "Connect and install",
+            CloseButtonText = "Not now",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Content.XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+#endif
 
     private async void OnAddMods(object sender, RoutedEventArgs e)
     {
@@ -752,6 +807,11 @@ public sealed partial class MainWindow : Window
         // action that needs its own dialog (Reset, Restore, Delete), SettingsDialog sets a flag
         // and calls Hide() — ShowAsync() returns here with SettingsDialog fully closed, so we can
         // open the follow-up without conflict. At most one flag fires per Settings session.
+
+        // Nexus OAuth connect: runs here (Settings closed) so the browser round-trip and the first-install
+        // consent dialog never nest under the Settings ContentDialog.
+        if (dialog.ConnectNexusRequested)
+            await ViewModel.ConnectNexusAsync();
 
         var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
 

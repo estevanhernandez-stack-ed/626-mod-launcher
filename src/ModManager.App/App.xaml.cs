@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Xaml;
@@ -42,6 +43,14 @@ public partial class App : Application
                 services.AddSingleton<LudusaviService>();
                 services.AddSingleton<GameProfileResolver>();
                 services.AddSingleton<NexusService>();
+                // The loopback PKCE OAuth flow. Config defaults to the baked public endpoints here; Task 10
+                // overlays the signed remote client_id at startup. RefreshAsync is wired into NexusService
+                // after Build() so the token store can refresh without knowing any App/HTTP types.
+                services.AddSingleton<NexusOAuthService>(sp =>
+                    new NexusOAuthService(
+                        sp.GetRequiredService<HttpClient>(),
+                        sp.GetRequiredService<NexusService>(),
+                        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0"));
                 services.AddSingleton<SaveEditorService>();
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
@@ -61,7 +70,8 @@ public partial class App : Application
                     return new PluginFeedSource(
                         sp.GetRequiredService<HttpClient>(),
                         sp.GetRequiredService<ModSourceRegistry>(),
-                        nexus.GetCredential,
+                        nexus,
+                        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0",
                         () => nexus.IsConnected,
                         sp.GetRequiredService<AppSettingsService>());
                 });
@@ -71,6 +81,22 @@ public partial class App : Application
             })
             .Build();
 
+        // Wire the OAuth flow into the token store: given a refresh token, NexusService can obtain a fresh
+        // token set without knowing any App/HTTP types (it holds only this injected delegate). Harmless in
+        // the Store SKU — the delegate is just parked on the store until a connect happens.
+        {
+            var nexus = AppHost.Services.GetRequiredService<NexusService>();
+            var oauth = AppHost.Services.GetRequiredService<NexusOAuthService>();
+            nexus.RefreshAsync = oauth.RefreshAsync;
+
+            // Task 10: apply the cached signed client_id synchronously — instant, no network — so it's
+            // already present the moment the user could click Connect. Independent of connect/plugin
+            // consent (the client_id has to exist BEFORE connect can work at all); any failure falls
+            // back to the baked config, which is always the floor.
+            oauth.Config = new NexusOAuthConfigSource(AppHost.Services.GetRequiredService<HttpClient>())
+                .LoadCachedEffective();
+        }
+
 #if FULL
         // Discover + verify + load signed plugins (FULL flavor only — the Store SKU compiles this out).
         // Each plugin's mod sources land in the shared registry; the credential lookup + shared HttpClient
@@ -78,8 +104,9 @@ public partial class App : Application
         // missing plugins dir is a clean no-op, leaving the app on the zero-plugins path.
         PluginHost.LoadAll(
             AppHost.Services.GetRequiredService<ModSourceRegistry>(),
-            AppHost.Services.GetRequiredService<NexusService>().GetCredential,
-            AppHost.Services.GetRequiredService<HttpClient>());
+            AppHost.Services.GetRequiredService<HttpClient>(),
+            AppHost.Services.GetRequiredService<NexusService>(),
+            Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
 #endif
     }
 
@@ -109,5 +136,22 @@ public partial class App : Application
         // Refresh the remote game-definition cache for the next launch (debounced, dark until a
         // feed URL is set). Fire-and-forget; failures are swallowed.
         _ = AppHost.Services.GetRequiredService<RemoteManifestSource>().RefreshAsync();
+
+        // Background: fetch + verify a freshly-delivered OAuth client_id (same signed manifest rail,
+        // Task 10). On success, hot-apply it to the live NexusOAuthService.Config so THIS session can
+        // pick it up without a restart — deliberately independent of connect/plugin consent, since the
+        // client_id must exist BEFORE the user connects. Fire-and-forget; failures are swallowed.
+        _ = RefreshNexusOAuthConfigAsync();
+    }
+
+    // Task 10 background refresh glue: NexusOAuthConfigSource.RefreshAsync doesn't know about
+    // NexusOAuthService (App services stay decoupled); this is the one place that connects "freshly
+    // verified config" to "the live service the rest of the app reads Config from."
+    private static async Task RefreshNexusOAuthConfigAsync()
+    {
+        var source = new NexusOAuthConfigSource(AppHost.Services.GetRequiredService<HttpClient>());
+        var fresh = await source.RefreshAsync().ConfigureAwait(false);
+        if (fresh is not null)
+            AppHost.Services.GetRequiredService<NexusOAuthService>().Config = fresh;
     }
 }

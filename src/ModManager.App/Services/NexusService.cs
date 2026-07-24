@@ -1,115 +1,107 @@
 using System.IO;
-using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using ModManager.Core;
+using ModManager.Core.Nexus;
 
 namespace ModManager.App.Services;
 
 /// <summary>
-/// Holds the user's Nexus connection: their own personal API key + the connection state.
-/// The key is stored per-user at %APPDATA%\ModManagerBuilder\nexus.json (sibling to games.json) — it is
-/// the USER's key, obtained at runtime, and is NEVER baked into the binary (operating law #2). At rest it
-/// is **DPAPI-encrypted** (<see cref="DataProtectionScope.CurrentUser"/>), so the ciphertext is bound to
-/// this Windows account — another user or machine can't read it. A pre-encryption plaintext file is
-/// adopted once and immediately re-saved encrypted. When the SSO app slug is registered later, the SSO
-/// handshake writes the same key sink; today the user pastes a personal key (account settings -> API
-/// access). Headers are per-request, so sharing the singleton HttpClient with CurseForge is safe.
+/// Holds the user's Nexus OAuth connection — the token set + connection state. Tokens are stored per-user
+/// at %APPDATA%\ModManagerBuilder\nexus.json, DPAPI-encrypted (<see cref="DataProtectionScope.CurrentUser"/>)
+/// so the ciphertext is bound to this Windows account. No secret is ever baked into the binary (operating
+/// law #2), and no token is handed to plugin code (<see cref="GetCredential"/> returns null under OAuth).
+///
+/// The pure on-disk shape + legacy-key migration live in <see cref="NexusTokenStore"/> (Core, unit-tested);
+/// this App-side wrapper injects DPAPI protect/unprotect + file IO. A pre-OAuth api-key file found on load
+/// is DISCARDED (keys are non-compliant) and its file deleted — the user reconnects via the OAuth flow
+/// (wired in later tasks, which set <see cref="RefreshAsync"/> and call <see cref="SaveTokens"/>).
 /// </summary>
 public sealed class NexusService
 {
-    private static readonly string StorePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder", "nexus.json");
+    private static readonly string Dir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder");
+    private static readonly string StorePath = Path.Combine(Dir, "nexus.json");
+    private static readonly TimeSpan RefreshSkew = TimeSpan.FromMinutes(5);
 
-    private static readonly JsonSerializerOptions Json =
-        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
+    private NexusTokenSet? _tokens;
 
-    private readonly HttpClient _http;
-    private string? _key;
+    public NexusService() => Load();
 
-    /// <summary>The launcher version reported to Nexus via the ToS <c>Application-Version</c> header
-    /// (mirrors <see cref="RemoteManifestSource"/>'s manifest-feed identity). Resolved once from the
-    /// entry-assembly version, falling back to a fixed placeholder when the version is unavailable.</summary>
-    private static readonly string AppVersionString =
-        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
-
-    public NexusService(HttpClient http)
-    {
-        _http = http;
-        Load();
-    }
-
-    public bool IsConnected => !string.IsNullOrEmpty(_key);
+    public NexusTokenSet? CurrentTokens => _tokens;
+    public bool IsConnected => _tokens is not null;
     public string? ConnectedUser { get; private set; }
+
+    /// <summary>Whether the connected account is Nexus Premium — surfaced in the account line's Premium/Free
+    /// tag. Set from validate.json at connect + identity-refresh time (see <see cref="SaveTokens"/>). Not
+    /// persisted in the token store: a cold start reads Free until the next identity refresh re-fetches it.</summary>
     public bool ConnectedPremium { get; private set; }
 
-    /// <summary>The host-owned credential lookup the <c>PluginHost</c> hands a plugin via
-    /// <c>IPluginHostServices.GetCredential</c>. Returns the on-machine Nexus key (decrypted in memory,
-    /// never persisted by the plugin) for the <c>"nexus"</c> key; null for anything else or when not
-    /// connected. The plugin receives the value per call and gets no handle it could exfiltrate.</summary>
-    public string? GetCredential(string key)
-        => string.Equals(key, "nexus", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_key) ? _key : null;
+    /// <summary>True when load found and discarded a pre-OAuth api-key file — surfaced so the UI can nudge
+    /// the user to reconnect via OAuth (the old key is gone; keys are non-compliant now).</summary>
+    public bool LegacyKeyWasDiscarded { get; private set; }
 
-    /// <summary>Validate a pasted personal key against Nexus; on success store it (+ the account name)
-    /// and connect. Returns the account name, or null if the key was rejected (401).</summary>
-    public async Task<string?> ConnectAsync(string apiKey)
+    /// <summary>The OAuth service wires this in (later task): given a refresh token it returns a fresh token
+    /// set, or null if the refresh was rejected. An injected delegate keeps Core + this store free of HTTP.</summary>
+    public Func<string, Task<NexusTokenSet?>>? RefreshAsync { get; set; }
+
+    /// <summary>The host-owned credential lookup a plugin receives via <c>IPluginHostServices.GetCredential</c>.
+    /// Under OAuth the host no longer hands raw secrets to plugin code — this always returns null. Kept for
+    /// ABI: existing call sites (PluginHost / the plugin feed) pass this method group and tolerate null.</summary>
+#pragma warning disable CS0618
+    public string? GetCredential(string key) => null;
+#pragma warning restore CS0618
+
+    /// <summary>Store a freshly-obtained token set (+ display name + premium flag) and persist it,
+    /// DPAPI-encrypted. A null <paramref name="user"/> preserves the last-known display name (a transient
+    /// identity-fetch miss shouldn't blank it); <paramref name="premium"/> is always applied.</summary>
+    public void SaveTokens(NexusTokenSet tokens, string? user, bool premium = false)
     {
-        apiKey = (apiKey ?? "").Trim();
-        if (apiKey.Length == 0) return null;
-        var user = await ValidateKeyAsync(apiKey); // null on bad key
-        if (user is null) return null;
-        _key = apiKey;
-        ConnectedUser = user.Value.Name;
-        ConnectedPremium = user.Value.IsPremium;
+        _tokens = tokens;
+        if (user is not null) ConnectedUser = user;
+        ConnectedPremium = premium;
+        LegacyKeyWasDiscarded = false;
         Save();
-        return user.Value.Name;
     }
 
-    /// <summary>Re-validate the stored key to refresh the account name + premium flag (e.g. after an
-    /// upgrade, or to populate premium for a connection stored before it was tracked). Offline-safe:
-    /// a network/transient failure leaves the cached values intact.</summary>
-    public async Task RefreshAsync()
+    /// <summary>Returns a currently-valid access token, refreshing once if within the skew of expiry. Null
+    /// when disconnected, when no refresh delegate is wired, or when the refresh is rejected — in which case
+    /// the connection is dropped (the stale tokens are useless).
+    ///
+    /// <paramref name="forceRefresh"/> bypasses the skew check and refreshes UNCONDITIONALLY (when a refresh
+    /// delegate + tokens are present). The 401-retry path uses this: a server 401 means the current token is
+    /// bad regardless of what local expiry math believes, so re-issuing the same token would just 401 again.</summary>
+    public async Task<string?> ValidBearerAsync(bool forceRefresh = false)
     {
-        if (string.IsNullOrEmpty(_key)) return;
-        try
+        if (_tokens is null) return null;
+
+        if (forceRefresh && RefreshAsync is not null)
         {
-            var user = await ValidateKeyAsync(_key);
-            if (user is null) return; // key now rejected — leave it to the connect flow to handle
-            ConnectedUser = user.Value.Name;
-            ConnectedPremium = user.Value.IsPremium;
+            var forced = await RefreshAsync(_tokens.RefreshToken).ConfigureAwait(false);
+            if (forced is null) { Disconnect(); return null; }
+            _tokens = forced;
+            Save();
+            return _tokens.AccessToken;
+        }
+
+        if (_tokens.NeedsRefresh(DateTimeOffset.UtcNow, RefreshSkew))
+        {
+            if (RefreshAsync is null) return null;
+            var refreshed = await RefreshAsync(_tokens.RefreshToken).ConfigureAwait(false);
+            if (refreshed is null) { Disconnect(); return null; }
+            _tokens = refreshed;
             Save();
         }
-        catch { /* offline / transient — keep the cached name + premium */ }
+        return _tokens.AccessToken;
     }
 
-    /// <summary>
-    /// Verify a Nexus personal key and read the account identity. Delegates to the pure, WinUI-free
-    /// <see cref="NexusKeyValidator.ValidateAsync"/> over the shared <see cref="HttpClient"/> — kept as a
-    /// separate helper so the validate behavior (ToS headers + the snake_case <c>name</c>/<c>is_premium</c>
-    /// parse + the 401-&gt;null / non-2xx-&gt;throw contract) is unit-testable without referencing the WinUI
-    /// App. Returns the account name + premium flag, or null on a rejected key (401).
-    /// </summary>
-    private Task<(string? Name, bool IsPremium)?> ValidateKeyAsync(string key)
-        => NexusKeyValidator.ValidateAsync(_http, key, AppVersionString);
-
-    /// <summary>Clear the stored key — Nexus features go inert; everything else is unaffected.</summary>
+    /// <summary>Clear the stored tokens — Nexus features go inert; everything else is unaffected.</summary>
     public void Disconnect()
     {
-        _key = null;
+        _tokens = null;
         ConnectedUser = null;
         ConnectedPremium = false;
         try { if (File.Exists(StorePath)) File.Delete(StorePath); } catch { /* best effort */ }
-    }
-
-    // ApiKey = legacy plaintext (read-only fallback, migrated on first save); ApiKeyProtected = the
-    // DPAPI-encrypted key (base64) we write going forward. UserName is not secret.
-    private sealed class Stored
-    {
-        public string? ApiKey { get; set; }
-        public string? ApiKeyProtected { get; set; }
-        public string? UserName { get; set; }
-        public bool Premium { get; set; }
     }
 
     private void Load()
@@ -117,38 +109,29 @@ public sealed class NexusService
         try
         {
             if (!File.Exists(StorePath)) return;
-            var s = JsonSerializer.Deserialize<Stored>(File.ReadAllText(StorePath), Json);
-            if (s is null) return;
-            ConnectedUser = s.UserName;
-            ConnectedPremium = s.Premium;
+            var raw = File.ReadAllText(StorePath);
+            var result = NexusTokenStore.Load(raw, Unprotect);
 
-            if (!string.IsNullOrEmpty(s.ApiKeyProtected))
+            if (result.LegacyKeyDiscarded)
             {
-                _key = Unprotect(s.ApiKeyProtected);          // null if it can't be decrypted (other user/machine, corrupt)
-                if (_key is null) ConnectedUser = null;       // can't use it -> not connected
+                LegacyKeyWasDiscarded = true;
+                try { if (File.Exists(StorePath)) File.Delete(StorePath); } catch { /* best effort */ }
+                return; // no tokens — the user must reconnect via OAuth
             }
-            else if (!string.IsNullOrEmpty(s.ApiKey))
-            {
-                _key = s.ApiKey;                              // legacy plaintext from before encryption
-                Save();                                       // migrate: re-write encrypted, drop the plaintext
-            }
+
+            _tokens = result.Tokens;
+            ConnectedUser = result.ConnectedUser;
         }
-        catch { _key = null; ConnectedUser = null; /* unreadable -> not connected */ }
+        catch { _tokens = null; ConnectedUser = null; /* unreadable -> not connected */ }
     }
 
-    // Writes only the encrypted key (the plaintext ApiKey field is never written again).
     private void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
-        AtomicJson.WriteJsonAtomic(StorePath, new Stored
-        {
-            ApiKeyProtected = string.IsNullOrEmpty(_key) ? null : Protect(_key),
-            UserName = ConnectedUser,
-            Premium = ConnectedPremium,
-        });
+        var json = NexusTokenStore.Serialize(_tokens, ConnectedUser, Protect);
+        AtomicJson.WriteTextAtomic(StorePath, json); // creates the parent dir; atomic temp-then-rename
     }
 
-    // DPAPI, CurrentUser scope — ciphertext is bound to this Windows account.
+    // DPAPI, CurrentUser scope — ciphertext is bound to this Windows account. base64 for JSON transport.
     private static string Protect(string plain)
         => Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(plain), null, DataProtectionScope.CurrentUser));
 

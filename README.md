@@ -21,6 +21,7 @@ Either way, the launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\`
 
 ## What's new
 
+- **Nexus sign-in is OAuth now.** The personal-API-key flow is gone — you sign in with your Nexus account, and the token stays with the app; plugin code never sees a credential (the host makes authorized requests on the plugin's behalf). Secure sign-in goes fully live once Nexus finishes registering the app; until then it's the same integration, one step from lighting up.
 - **On the Microsoft Store.** The launcher now ships as a signed Microsoft Store app — install with no SmartScreen warning, auto-updated through the Store. It's the sealed-core build (full mod management; the Nexus integration and anti-cheat toggle stay on the GitHub build).
 - **Nexus integration is an off-Store plugin.** On the GitHub build, Nexus support (mod identification, endorsements, update checks) loads as a signed plugin fetched from the [626-mod-plugins](https://github.com/estevanhernandez-stack-ed/626-mod-plugins) repo — verified against a key pinned in the binary, and absent entirely from the sealed Store build. New mod sources can ship without an app release.
 - **Signed game-definition feed.** Game definitions stay current from the signed [626-game-manifest](https://github.com/estevanhernandez-stack-ed/626-game-manifest) feed — a new game on an engine the launcher already knows arrives without an app update.
@@ -51,7 +52,7 @@ The slightly longer version:
 ## What it doesn't do
 
 - **Pirate, crack, or modify game code.** It moves mod files around. Your game is your game.
-- **Phone home.** No analytics, no telemetry, no "thanks for using" pings. The CurseForge metadata proxy is the only outbound network call by default; the Nexus integration is opt-in and uses YOUR personal API key (never bundled, never shared).
+- **Phone home.** No analytics, no telemetry, no "thanks for using" pings. The CurseForge metadata proxy is the only outbound network call by default; the Nexus integration is opt-in and signs in with your Nexus account over OAuth — the token is kept on your machine, held by the app, and never exposed to plugin code.
 - **Auto-install mods for you.** You drop the file, the launcher places it where the game expects. Discovery — finding new mods on Nexus or CurseForge — is one click, but the actual download stays in your browser.
 - **Touch your game's executable.** Mods modify mods. The launcher doesn't patch, inject into, or rewrite game binaries.
 
@@ -87,7 +88,7 @@ That split is the operating discipline that lets the launcher ship features fast
 These outrank convenience. Every change in the repo rests on them:
 
 1. **Honor the builders.** Surface attribution, source, donation links, downloads counts. The mod row links straight to the author's page.
-2. **Never embed an API key.** CurseForge access goes through a proxy that holds the key server-side. Nexus uses the user's personal key, supplied at runtime, kept on-machine.
+2. **Never embed an API key, never expose a credential.** CurseForge access goes through a proxy that holds the key server-side. Nexus signs in over OAuth — the app holds the token and plugin code never sees it; the host sends authorized requests on the plugin's behalf, so a credential can't leak to plugin code.
 3. **File ops stay reversible and atomic.** Temp-write + rename, no clobber on intake, disable rolls back on failure. Snapshot-first on save-tree writes.
 4. **Pure-core, thin-shell.** Core stays UI-free and test-first (guarded by `CorePurityTests`). The app shell is allowed to be the messy edges.
 5. **Never auto-force mods onto a ban-risk game.** Detecting a game's engine and mod path is fine. Enabling a mod on an anti-cheat/ban-risk title (GameGuard, online EAC, BattlEye) warns you and waits for an explicit acknowledgment — the launcher never enables behind your back, and never refuses your call (disable is always one click away).
@@ -100,7 +101,7 @@ Tag-triggered GitHub Releases ship the Setup.exe + auto-update payload. See [doc
 
 - **Agent access — write tools.** The read surface shipped in v0.4.0 (list games + mods over a local MCP server). Next: guarded writes — local-only, per-session token, audit log of every write, consent on first connect. Sketch at [docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md](docs/superpowers/specs/2026-05-26-agent-access-design-sketch.md).
 - **Microsoft Store.** MSIX channel parallel to GitHub Releases. Signed by Microsoft, bypasses SmartScreen, auto-updates through Store. Mod manager apps are a 10.2.2 gray area — the GitHub channel is the load-bearing one regardless.
-- **Nexus SSO.** OAuth-style sign-in next to the existing personal-API-key flow. Pending Nexus application approval, which wants a public binary to evaluate against — hence the GitHub Release path coming first.
+- **Nexus OAuth sign-in — landed in v0.11.0, going live soon.** OAuth replaced the personal-API-key flow entirely; the app holds the token and plugin code never sees it. It lights up the moment Nexus issues the client_id, which arrives through the signed feed — no app update needed.
 - **Save-mod browser.** Today you drop a world zip and it installs; next is browsing + installing from Nexus's save-mod listings directly.
 - **Unified catalog phases 2 + 3.** Phase 1 shipped in v0.3.0 — kind-tagged catalog schema (`directInjectMod` today). Next: third-party tools (Phase 2) and frameworks (Phase 3) fold into the same shape so detection, attribution, and intake stay consistent across types.
 
@@ -115,6 +116,10 @@ Free, open, licensed per [LICENSE](LICENSE). If you want to contribute, [CONTRIB
 ## Honor the builders
 
 If you used a mod from one of the modding communities (Nexus, CurseForge, modding Discords) and it made your game more fun, **say thanks where it counts**. The mod row's source link goes straight to the author's page. Tip them, leave a comment, endorse on Nexus. The launcher exists to make their work easier to live with — they're the reason any of us are here.
+
+## Special thanks to the Nexus Mods team
+
+The Nexus Mods API team took the time to look at how this app talked to their service, flagged a real problem — an earlier build let the Nexus plugin reach the user's credential — and pointed us toward OAuth. That direction is exactly what led to the v0.11.0 credential migration: the API-key flow is gone, sign-in is OAuth, and the token is held by the app and never exposed to plugin code. Honest calls, freely given, that made the integration better. Thank you.
 
 ---
 
