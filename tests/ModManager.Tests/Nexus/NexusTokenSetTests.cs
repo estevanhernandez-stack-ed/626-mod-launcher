@@ -35,4 +35,15 @@ public class NexusTokenSetTests
         var back = JsonSerializer.Deserialize<NexusTokenSet>(json, NexusTokenSet.JsonOpts)!;
         Assert.Equal(t, back);
     }
+
+    [Fact]
+    public void ToString_redacts_secret_tokens()
+    {
+        var t = NexusTokenSet.FromTokenResponse("SUPER_SECRET_ACCESS", "SUPER_SECRET_REFRESH", 3600, "public", T0);
+        var s = t.ToString();
+        Assert.DoesNotContain("SUPER_SECRET_ACCESS", s);
+        Assert.DoesNotContain("SUPER_SECRET_REFRESH", s);
+        Assert.Contains("<redacted>", s);
+        Assert.Contains("public", s);   // non-secret fields still shown
+    }
 }

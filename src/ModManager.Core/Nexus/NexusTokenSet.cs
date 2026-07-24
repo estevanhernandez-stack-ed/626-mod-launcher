@@ -17,4 +17,7 @@ public sealed record NexusTokenSet(string AccessToken, string RefreshToken, Date
 
     /// <summary>True if the access token is expired or within <paramref name="skew"/> of expiring.</summary>
     public bool NeedsRefresh(DateTimeOffset now, TimeSpan skew) => now + skew >= ExpiresAtUtc;
+
+    public override string ToString() =>
+        $"NexusTokenSet {{ AccessToken = <redacted>, RefreshToken = <redacted>, ExpiresAtUtc = {ExpiresAtUtc:o}, Scope = {Scope} }}";
 }
