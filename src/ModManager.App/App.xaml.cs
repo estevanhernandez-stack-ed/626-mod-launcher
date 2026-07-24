@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Xaml;
@@ -42,6 +43,14 @@ public partial class App : Application
                 services.AddSingleton<LudusaviService>();
                 services.AddSingleton<GameProfileResolver>();
                 services.AddSingleton<NexusService>();
+                // The loopback PKCE OAuth flow. Config defaults to the baked public endpoints here; Task 10
+                // overlays the signed remote client_id at startup. RefreshAsync is wired into NexusService
+                // after Build() so the token store can refresh without knowing any App/HTTP types.
+                services.AddSingleton<NexusOAuthService>(sp =>
+                    new NexusOAuthService(
+                        sp.GetRequiredService<HttpClient>(),
+                        sp.GetRequiredService<NexusService>(),
+                        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0"));
                 services.AddSingleton<SaveEditorService>();
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
@@ -70,6 +79,15 @@ public partial class App : Application
                 services.AddTransient<LibraryViewModel>();
             })
             .Build();
+
+        // Wire the OAuth flow into the token store: given a refresh token, NexusService can obtain a fresh
+        // token set without knowing any App/HTTP types (it holds only this injected delegate). Harmless in
+        // the Store SKU — the delegate is just parked on the store until a connect happens.
+        {
+            var nexus = AppHost.Services.GetRequiredService<NexusService>();
+            var oauth = AppHost.Services.GetRequiredService<NexusOAuthService>();
+            nexus.RefreshAsync = oauth.RefreshAsync;
+        }
 
 #if FULL
         // Discover + verify + load signed plugins (FULL flavor only — the Store SKU compiles this out).
