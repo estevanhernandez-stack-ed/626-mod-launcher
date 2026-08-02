@@ -18,9 +18,10 @@ public sealed record NexusConnectResult(bool Ok, string? User, string? Error);
 /// <see cref="NexusService"/> (DPAPI); no token is exposed to plugin code, logged, or shown to the browser
 /// (only the authorize URL — which is public-by-design in a PKCE public client — reaches the browser).
 /// The security-relevant token-body parse lives in Core (<see cref="NexusTokenResponse"/>), unit-tested.
-/// BUILD-TIME: confirm the identity call (validate.json under bearer vs userinfo) against Nexus's guide.
+/// Identity (name + premium) comes from the OAuth token's own JWT claims (<see cref="NexusJwtClaims"/>) —
+/// no extra HTTP call, no signature verify needed to display who's signed in.
 /// </summary>
-public sealed class NexusOAuthService(HttpClient http, NexusService nexus, string appVersion)
+public sealed class NexusOAuthService(HttpClient http, NexusService nexus)
 {
     // A fixed loopback port we register with Nexus; if busy we fall back to an ephemeral one
     // (only usable if Nexus permits loopback-any-port — CONFIRM at registration).

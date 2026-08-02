@@ -49,8 +49,7 @@ public partial class App : Application
                 services.AddSingleton<NexusOAuthService>(sp =>
                     new NexusOAuthService(
                         sp.GetRequiredService<HttpClient>(),
-                        sp.GetRequiredService<NexusService>(),
-                        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0"));
+                        sp.GetRequiredService<NexusService>()));
                 services.AddSingleton<SaveEditorService>();
                 services.AddSingleton<AvatarService>();
                 services.AddSingleton<AppSettingsService>();
