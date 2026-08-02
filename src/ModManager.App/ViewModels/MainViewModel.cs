@@ -1641,6 +1641,8 @@ public sealed partial class MainViewModel : ObservableObject
                     OnPropertyChanged(nameof(NexusActionsVisibility));
                     OnPropertyChanged(nameof(LooseIdentifyAvailable));
                     OnPropertyChanged(nameof(LooseIdentifyVisibility));
+                    OnPropertyChanged(nameof(CatalogAvailable));
+                    OnPropertyChanged(nameof(CatalogVisibility));
                     // Re-detect + reload rows so per-row Nexus state reflects the now-loaded plugin.
                     // RedetectActiveAsync re-runs the scan with the registered source; it calls
                     // ReloadModsAsync internally (which fires the auto-check poll).
