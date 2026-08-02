@@ -430,6 +430,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
             OnPropertyChanged(nameof(LooseIdentifyAvailable));
             OnPropertyChanged(nameof(LooseIdentifyVisibility));
+            OnPropertyChanged(nameof(CatalogAvailable));
+            OnPropertyChanged(nameof(CatalogVisibility));
             return;
         }
         IsBusy = true;
@@ -703,6 +705,10 @@ public sealed partial class MainViewModel : ObservableObject
             // the Nexus connection — recompute after every row rebuild / game switch.
             OnPropertyChanged(nameof(LooseIdentifyAvailable));
             OnPropertyChanged(nameof(LooseIdentifyVisibility));
+            // Catalog browse shares loose-identify's inputs (Nexus connection + active game domain);
+            // recompute it on every row rebuild / game switch too, or the button never appears on switch.
+            OnPropertyChanged(nameof(CatalogAvailable));
+            OnPropertyChanged(nameof(CatalogVisibility));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1604,7 +1610,9 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null || NexusSource is not IModCatalog catalog) return System.Array.Empty<SourceSearchHit>();
         var domain = NexusDomains.Effective(_ctx.Game);
-        if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(query))
+        // A blank query is intentional: it's the default catalog view (the plugin returns the game's
+        // most-endorsed listing). Only a missing domain short-circuits to empty.
+        if (string.IsNullOrWhiteSpace(domain))
             return System.Array.Empty<SourceSearchHit>();
         try
         {
@@ -2031,6 +2039,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusUserFeaturesAvailable));
         OnPropertyChanged(nameof(LooseIdentifyAvailable));
         OnPropertyChanged(nameof(LooseIdentifyVisibility));
+        OnPropertyChanged(nameof(CatalogAvailable));
+        OnPropertyChanged(nameof(CatalogVisibility));
         OnPropertyChanged(nameof(NexusUser));
         OnPropertyChanged(nameof(NexusPremium));
         OnPropertyChanged(nameof(NexusAccountLine));
