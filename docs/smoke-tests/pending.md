@@ -638,3 +638,13 @@ Still to confirm (low risk): Manage/recent-card opens the game view + switcher s
 - [ ] **401 retry path (best-effort, hard to force).** If a bearer expires mid-session, an authorized plugin call that 401s re-resolves the bearer, clones the request, and retries once — the action succeeds without the user re-connecting. (Exercised indirectly by any endorse/refresh after a long idle.)
 
 **Why these matter:** the OAuth flow, the browser round-trip, the loopback listener, the consent-dialog nesting avoidance (flag-then-hide out of Settings), and the dark-window disable all live in the WinUI App layer — Core/VM tests cover the pure predicate (`PluginConsent`) and the auth gate (`NexusAuthGate`), but the browser + dialog sequencing only exercises on a real instance. The end-to-end connect is additionally blocked on Nexus registering the app (client_id); until then the app is correctly dark.
+
+---
+
+## feat/home-titlebar-refresh-ux — home/title-bar/refresh UX pass (2026-08-02)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** FULL+STORE 0 errors, seal OK, Core 1429/0. Pure App-side UI over existing commands; no Core/plugin/flavor impact.
+
+- [ ] **(a) Clickable home row.** On the Library home all-games list, click a game ROW (not a button) → opens that game's mod view. The **Manage button is gone**; **Play still launches** the game without opening it. Row shows a hover/pressed affordance.
+- [ ] **(b) Title-bar switcher.** In a game's view, the title bar shows a **game dropdown** (not a static label). Open it → all games listed → pick another → switches straight to it (mods reload) with **no Home round-trip**. The **Home button still** returns to the full library. Switcher is hidden on the home screen.
+- [ ] **(c) Consolidated refresh.** The toolbar button reads **"↻ Refresh"** (was "↻ Rescan"); one click rescans the mod list AND refreshes Nexus stats when connected (endorsements/downloads/update flags). The old **"Refresh Nexus stats…"** item is **gone** from the game-options More menu. On Store / when disconnected, Refresh just rescans (no misleading "Nexus unavailable" status).

@@ -1047,8 +1047,17 @@ public sealed partial class MainViewModel : ObservableObject
         await BulkAsync(() => Scanner.ApplyModeAsync(mode, _ctx!));
     }
 
+    // The one toolbar "Refresh": re-scan the mod list, then — when Nexus is connected — refresh Nexus
+    // stats (endorsements / downloads / update flags). The Nexus step is skipped silently on Store or
+    // when disconnected (guarded here so it doesn't surface a misleading "Nexus unavailable" status),
+    // so Refresh is always useful on every flavor.
     [RelayCommand]
-    private Task Refresh() => ReloadModsAsync();
+    private async Task Refresh()
+    {
+        await ReloadModsAsync();
+        if (NexusUserFeaturesAvailable)
+            await RefreshNexusStatsAsync();
+    }
 
     [RelayCommand]
     private void DismissBuildWarning()

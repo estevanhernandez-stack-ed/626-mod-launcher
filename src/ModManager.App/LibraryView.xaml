@@ -81,12 +81,18 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Rows, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:GameLibraryRowViewModel">
-                                <Grid Padding="10,10" ColumnSpacing="14" Margin="0,0,0,6"
-                                      Background="{StaticResource ThemePanel}" CornerRadius="8">
+                                <!-- The whole row opens the game (OnManage -> OpenGameCommand). A panel-styled
+                                     Button gives hover/pressed/keyboard for free; the inner Play button
+                                     handles its own click so it won't also open the game. -->
+                                <Button Click="OnManage" Tag="{x:Bind}" Margin="0,0,0,6"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                        Background="{StaticResource ThemePanel}" BorderThickness="0"
+                                        Padding="0" CornerRadius="8"
+                                        ToolTipService.ToolTip="Open this game's mods">
+                                <Grid Padding="10,10" ColumnSpacing="14">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
@@ -149,11 +155,8 @@
                                             Click="OnPlay" Tag="{x:Bind}"
                                             ToolTipService.ToolTip="Launch this game" />
 
-                                    <!-- Manage: open this game's mod view -->
-                                    <Button Grid.Column="3" VerticalAlignment="Center" Content="Manage"
-                                            Margin="8,0,0,0" Click="OnManage" Tag="{x:Bind}"
-                                            ToolTipService.ToolTip="Open this game's mods" />
                                 </Grid>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
