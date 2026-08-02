@@ -75,7 +75,7 @@ public interface IModTextSearch
 }
 
 /// <summary>One text-search hit — enough for a review dialog row + a follow-up FetchMetadataAsync.</summary>
-public record SourceSearchHit(
+public sealed record SourceSearchHit(
     string GameDomain, int ModId, string Name, string? Author,
     string? Summary, int? EndorsementCount, string? Url)
 {
