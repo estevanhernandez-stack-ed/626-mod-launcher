@@ -1589,6 +1589,32 @@ public sealed partial class MainViewModel : ObservableObject
     public bool ActiveGameHasNexusDomain =>
         _ctx is not null && !string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game));
 
+    /// <summary>Catalog browse is available on the FULL build when the loaded Nexus source supports
+    /// IModCatalog and the active game resolves a Nexus domain. On STORE / no-plugin / older plugin the
+    /// source isn't IModCatalog, so this is false and the menu item is absent. The capability check IS the
+    /// flavor gate — no #if FULL.</summary>
+    public bool CatalogAvailable =>
+        NexusActionsAvailable && NexusSource is IModCatalog && ActiveGameHasNexusDomain;
+    public Visibility CatalogVisibility => CatalogAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Adult-excluded Nexus catalog search for the active game. Self-timeouts (~10s) so a hung
+    /// request can't wedge the dialog; never throws (empty list on any failure). Adult exclusion is
+    /// server-side in the plugin — the launcher receives only clean hits.</summary>
+    public async Task<IReadOnlyList<SourceSearchHit>> SearchCatalogAsync(string query)
+    {
+        if (_ctx is null || NexusSource is not IModCatalog catalog) return System.Array.Empty<SourceSearchHit>();
+        var domain = NexusDomains.Effective(_ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(query))
+            return System.Array.Empty<SourceSearchHit>();
+        try
+        {
+            var search = catalog.SearchCatalogAsync(domain, query);
+            var done = await Task.WhenAny(search, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+            return done == search ? await search.ConfigureAwait(false) : System.Array.Empty<SourceSearchHit>();
+        }
+        catch { return System.Array.Empty<SourceSearchHit>(); }
+    }
+
 #if FULL
     /// <summary>The off-Store plugin feed, stashed on wire-up so <see cref="ConnectNexusAsync"/> can trigger
     /// the consented first-install fetch after an OAuth connect without reaching back into the DI container.
