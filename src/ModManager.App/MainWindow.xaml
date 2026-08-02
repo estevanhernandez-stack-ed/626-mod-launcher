@@ -45,9 +45,13 @@
                         VerticalAlignment="Center" ToolTipService.ToolTip="Back to your library">
                     <FontIcon Glyph="&#xE80F;" FontSize="15" />
                 </Button>
-                <TextBlock Text="{x:Bind ViewModel.ActiveGame.Name, Mode=OneWay}" VerticalAlignment="Center"
-                           FontWeight="SemiBold" Margin="4,0,8,0" TextTrimming="CharacterEllipsis"
-                           MaxWidth="320" ToolTipService.ToolTip="{x:Bind ViewModel.ActiveGame.Name, Mode=OneWay}" />
+                <!-- Game switcher: pick another game without a Home round-trip. Selecting sets ActiveGame
+                     (TwoWay) -> OnActiveGameChanged -> reload; the Home button still opens the full library. -->
+                <ComboBox ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
+                          SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}"
+                          DisplayMemberPath="Name"
+                          VerticalAlignment="Center" Margin="4,0,8,0" MinWidth="180" MaxWidth="320"
+                          ToolTipService.ToolTip="Switch game" />
                 <Button ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
                         Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -65,13 +69,6 @@
                                             ToolTipService.ToolTip="Point at your folder of downloaded Nexus .zip archives to fill metadata for installed mods">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE896;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Refresh Nexus stats…" Click="OnNexusRefresh"
-                                            Visibility="{x:Bind ViewModel.NexusActionsVisibility, Mode=OneWay}"
-                                            ToolTipService.ToolTip="Poll Nexus by mod id (no archive needed) to refresh endorsements / downloads and flag mods with a newer version available">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE72C;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Identify loose mods on Nexus…" Click="OnLooseIdentify"
@@ -203,8 +200,8 @@
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="LIBRARY" Foreground="{StaticResource ThemeInkSoft}" FontSize="10" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="↻ Rescan" Command="{x:Bind ViewModel.RefreshCommand}"
-                                ToolTipService.ToolTip="Re-scan the game folder for new or removed mods" />
+                        <Button Content="↻ Refresh" Command="{x:Bind ViewModel.RefreshCommand}"
+                                ToolTipService.ToolTip="Re-scan the game folder for mod changes, and refresh Nexus stats (endorsements, downloads, update flags) when connected" />
                         <Button Content="Reorder" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Drag rows to set the load order" />
                         <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
                         <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />

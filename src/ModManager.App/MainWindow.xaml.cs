@@ -908,12 +908,6 @@ public sealed partial class MainWindow : Window
         await ViewModel.BackfillNexusAsync(archives);
     }
 
-    // Refresh Nexus stats for the installed library by polling by mod id — no archive needed.
-    private async void OnNexusRefresh(object sender, RoutedEventArgs e)
-    {
-        await ViewModel.RefreshNexusStatsAsync();
-    }
-
     // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline
     // (candidates -> propose -> apply); the window owns the dialogs. Apply is the ONLY write path —
     // Cancel (or unchecking every row) writes nothing.
