@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.NexusCatalogDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Browse Nexus"
+    CloseButtonText="Close" DefaultButton="Close">
+    <StackPanel Spacing="10" MinWidth="480">
+        <!-- Search row: TextBox (Enter submits) + Search button. Adult content is excluded
+             server-side by the plugin, so this dialog does NO client-side filtering — it just
+             renders what SearchCatalogAsync returns. -->
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBox x:Name="QueryBox" PlaceholderText="Search mods…" Width="380"
+                     KeyDown="OnQueryKeyDown" />
+            <Button x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
+        </StackPanel>
+
+        <!-- Status line for the Initial / Loading / Empty states. Only one is visible at a time. -->
+        <TextBlock x:Name="StatusLabel" TextWrapping="Wrap" Opacity="0.7" />
+
+        <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="ResultsList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,4" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="{Binding Author}" Opacity="0.7" FontSize="12"
+                                               Visibility="{Binding AuthorVisibility}" />
+                                    <TextBlock Text="{Binding Endorsements}" Opacity="0.7" FontSize="12"
+                                               Visibility="{Binding EndorsementsVisibility}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Summary}" Opacity="0.6" FontSize="12" TextWrapping="Wrap"
+                                           Visibility="{Binding SummaryVisibility}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Get" VerticalAlignment="Center"
+                                    Click="OnGetClick"
+                                    ToolTipService.ToolTip="Open this mod's page on Nexus to download" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </StackPanel>
+</ContentDialog>

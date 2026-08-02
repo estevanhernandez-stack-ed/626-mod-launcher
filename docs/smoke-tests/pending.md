@@ -648,3 +648,17 @@ Still to confirm (low risk): Manage/recent-card opens the game view + switcher s
 - [ ] **(a) Clickable home row.** On the Library home all-games list, click a game ROW (not a button) → opens that game's mod view. The **Manage button is gone**; **Play still launches** the game without opening it. Row shows a hover/pressed affordance.
 - [ ] **(b) Title-bar switcher.** In a game's view, the title bar shows a **game dropdown** (not a static label). Open it → all games listed → pick another → switches straight to it (mods reload) with **no Home round-trip**. The **Home button still** returns to the full library. Switcher is hidden on the home screen.
 - [ ] **(c) Consolidated refresh.** The toolbar button reads **"↻ Refresh"** (was "↻ Rescan"); one click rescans the mod list AND refreshes Nexus stats when connected (endorsements/downloads/update flags). The old **"Refresh Nexus stats…"** item is **gone** from the game-options More menu. On Store / when disconnected, Refresh just rescans (no misleading "Nexus unavailable" status).
+
+---
+
+## feat/nexus-catalog — in-app Nexus browse dialog (2026-08-02)
+
+> **STATUS — BUILT + GATE-PASSED; needs live smoke.** FULL+STORE 0 errors, seal OK, Core suite green (incl. `ModCatalogContract` + the LegacyPluginAbi test proving the 0.11.0 plugin still loads on the 0.12.0 host). App-side dialog + menu entry over Task 3's `CatalogVisibility` / `SearchCatalogAsync`; no Core change, no new persisted shape, no `#if FULL` (capability-gated on `IModCatalog`).
+
+- [ ] **(a) Browse opens for a domain-backed game.** With the nexus-v0.12.0 plugin loaded + Nexus connected + a game that resolves a Nexus domain: MODS → **Find mods → Browse Nexus (in app)** is present (first flyout item) and opens the dialog titled for the active game. Initial state reads "Search Nexus for {game} mods."
+- [ ] **(b) Search returns adult-free results.** Type a query + Enter (or Search). EXPECT: "searching…" then a result list — each row shows name (bold), author, a ♥ endorsement count, and a trimmed summary. **No adult/mature listings appear** (excluded server-side; the dialog does zero client-side filtering). A query with no hits shows "No results for '{query}'."
+- [ ] **(c) Get hands off to the browser.** Click **Get** on a row → the mod's Nexus page opens in the system browser (same open-URL path as the "Find mods on Nexus Mods" item). Downloading the file and dropping it into intake works unchanged (intake untouched by this feature).
+- [ ] **(d) Item ABSENT when it should be.** Verify the "Browse Nexus (in app)" item is **absent** on: the **Store build**; a game with **no Nexus domain**; when **disconnected** from Nexus; and with the **older 0.11.0 plugin** loaded (no `IModCatalog`). The two browser-search items stay present in all those cases.
+- [ ] **(e) Hot-load lights it up.** With no plugin, connect Nexus and let the nexus-v0.12.0 plugin hot-load → the "Browse Nexus (in app)" item appears **without a rescan or game-switch** (WirePluginFeed now re-raises `CatalogAvailable` / `CatalogVisibility`).
+
+**Why these matter:** the dialog, the flyout gating, the browser handoff, and the hot-load notification all live in the WinUI App layer — Core/VM tests cover the search predicate + adult filter (`ModCatalogContract`) and the ABI (`LegacyPluginAbi`), but the ContentDialog wiring and the capability-gated menu visibility only exercise on a real WinUI instance with a loaded plugin.

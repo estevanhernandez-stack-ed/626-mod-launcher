@@ -153,6 +153,9 @@
                             </DropDownButton.Content>
                             <DropDownButton.Flyout>
                                 <MenuFlyout>
+                                    <MenuFlyoutItem Text="Browse Nexus (in app)" Click="OnBrowseNexusInApp"
+                                                    Visibility="{x:Bind ViewModel.CatalogVisibility, Mode=OneWay}"
+                                                    ToolTipService.ToolTip="Search Nexus for this game's mods without leaving the launcher — Get opens the mod page to download" />
                                     <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE721;" />

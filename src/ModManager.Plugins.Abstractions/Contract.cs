@@ -80,6 +80,18 @@ public sealed record SourceSearchHit(
     string? Summary, int? EndorsementCount, string? Url);
 
 /// <summary>
+/// Optional catalog-browse capability: search a game's mods for in-app discovery, with adult/mature
+/// content EXCLUDED server-side (so the launcher never surfaces it and needs no age-gating). Distinct
+/// from <see cref="IModTextSearch.SearchAsync"/>, which stays unfiltered for identifying the user's own
+/// files. The host feature-detects with `source is IModCatalog`; plugins without it simply don't offer
+/// the catalog.
+/// </summary>
+public interface IModCatalog
+{
+    Task<IReadOnlyList<SourceSearchHit>> SearchCatalogAsync(string gameDomain, string query);
+}
+
+/// <summary>
 /// Optional host capability: the host sends an authorized request on the plugin's behalf,
 /// attaching credentials (OAuth bearer) server-side. The plugin builds an UNAUTHENTICATED
 /// request and never receives a token. Plugins built before this interface keep loading;

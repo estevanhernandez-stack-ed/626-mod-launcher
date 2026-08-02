@@ -889,6 +889,19 @@ public sealed partial class MainWindow : Window
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
     }
 
+    // Browse Nexus in-app: opens the catalog search dialog for the active game. Menu item is gated on
+    // ViewModel.CatalogVisibility (FULL + IModCatalog plugin + a game with a Nexus domain), so this only
+    // fires when a search can actually resolve a domain. Same ContentDialog show pattern as the other
+    // dialogs (XamlRoot = Content.XamlRoot, await ShowAsync).
+    private async void OnBrowseNexusInApp(object sender, RoutedEventArgs e)
+    {
+        var dlg = new NexusCatalogDialog(ViewModel, ViewModel.ActiveGame?.Name ?? "this game")
+        {
+            XamlRoot = Content.XamlRoot,
+        };
+        await dlg.ShowAsync();
+    }
+
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
 
     // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
