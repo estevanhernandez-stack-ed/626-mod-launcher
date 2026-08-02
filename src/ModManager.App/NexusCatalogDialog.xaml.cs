@@ -37,6 +37,9 @@ public sealed partial class NexusCatalogDialog : ContentDialog
         _vm = vm;
         _gameName = string.IsNullOrWhiteSpace(gameName) ? "this game" : gameName;
         ShowInitial();
+        // Auto-load the default (most-endorsed) listing on open — a catalog opens populated, not empty.
+        // QueryBox is empty at open, so RunSearchAsync fires a blank query = the listing.
+        Opened += (_, _) => _ = RunSearchAsync();
     }
 
     private void OnQueryKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
@@ -64,15 +67,18 @@ public sealed partial class NexusCatalogDialog : ContentDialog
     private async Task RunSearchAsync()
     {
         var query = (QueryBox.Text ?? "").Trim();
-        if (string.IsNullOrEmpty(query)) { ShowInitial(); return; }
 
-        ShowLoading();
-        var hits = await _vm.SearchCatalogAsync(query); // never throws; adult-excluded server-side
+        ShowLoading(query);
+        // Blank query = the default most-endorsed listing; a typed query narrows by name. Never throws;
+        // adult content is excluded server-side.
+        var hits = await _vm.SearchCatalogAsync(query);
 
         if (hits.Count == 0)
         {
             ResultsList.ItemsSource = null;
-            StatusLabel.Text = $"No results for '{query}'.";
+            StatusLabel.Text = query.Length == 0
+                ? $"No Nexus mods found for {_gameName}."
+                : $"No results for '{query}'.";
             StatusLabel.Visibility = Visibility.Visible;
             return;
         }
@@ -88,10 +94,10 @@ public sealed partial class NexusCatalogDialog : ContentDialog
         StatusLabel.Visibility = Visibility.Visible;
     }
 
-    private void ShowLoading()
+    private void ShowLoading(string query)
     {
         ResultsList.ItemsSource = null;
-        StatusLabel.Text = "searching…";
+        StatusLabel.Text = query.Length == 0 ? $"Loading {_gameName} mods…" : "searching…";
         StatusLabel.Visibility = Visibility.Visible;
     }
 
