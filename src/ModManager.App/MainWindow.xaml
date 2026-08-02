@@ -625,5 +625,12 @@
              Home returns (show + reload). The title-bar switcher stays live behind it for quick
              in-context switching once inside a game. -->
         <Grid x:Name="LibraryHost" Grid.Row="1" Grid.RowSpan="4" Background="{StaticResource ThemeBg}" />
+
+        <!-- Nexus storefront overlay. Same host pattern as LibraryHost: a full-size surface over the
+             content area, because a card grid with filters needs the room a ContentDialog can't give.
+             Populated on demand (MainWindow.ShowCatalog) and emptied on close so the page's thumbnails
+             are released. Hidden at rest. -->
+        <Grid x:Name="CatalogHost" Grid.Row="1" Grid.RowSpan="4" Background="{StaticResource ThemeBg}"
+              Visibility="Collapsed" />
     </Grid>
 </Window>

@@ -73,6 +73,10 @@ public sealed partial class MainWindow : Window
                 && (args.PropertyName == nameof(MainViewModel.OwnedBannerVisibility)
                     || args.PropertyName == nameof(MainViewModel.ReDeployedBannerVisibility)))
                 VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+            // The storefront is scoped to one game. Switching games from the title-bar switcher while it
+            // is open would leave it labelled for the game you just left, so close it instead.
+            if (args.PropertyName == nameof(MainViewModel.ActiveGame))
+                HideCatalog();
         };
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -201,6 +205,8 @@ public sealed partial class MainWindow : Window
     // every time the user returns — cheap read-only registry build, idempotent by design.
     private void ShowLibrary()
     {
+        // The storefront is scoped to one game — going home leaves it behind.
+        HideCatalog();
         _libraryVm.Load();
         LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         // On the home there's no current game — hide the game-context title-bar controls.
@@ -889,17 +895,41 @@ public sealed partial class MainWindow : Window
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    // Browse Nexus in-app: opens the catalog search dialog for the active game. Menu item is gated on
-    // ViewModel.CatalogVisibility (FULL + IModCatalog plugin + a game with a Nexus domain), so this only
-    // fires when a search can actually resolve a domain. Same ContentDialog show pattern as the other
-    // dialogs (XamlRoot = Content.XamlRoot, await ShowAsync).
+    // Browse Nexus in-app. The menu item stays bound to ViewModel.CatalogVisibility (true for BOTH the
+    // rich and the simple path) rather than CatalogBrowseVisibility, and the SURFACE is chosen here: a
+    // 0.12.x plugin only implements IModCatalog, so binding the item to the richer gate would make the
+    // menu entry vanish for those users instead of degrading. Rich plugin -> the full-size storefront;
+    // anything older -> the original simple-list dialog, unchanged.
     private async void OnBrowseNexusInApp(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.CatalogBrowseAvailable)
+        {
+            ShowCatalog();
+            return;
+        }
+
         var dlg = new NexusCatalogDialog(ViewModel, ViewModel.ActiveGame?.Name ?? "this game")
         {
             XamlRoot = Content.XamlRoot,
         };
         await dlg.ShowAsync();
+    }
+
+    // Show the storefront overlay. Built fresh per open so filters, paging and the loaded page never
+    // carry over from a previous game or session; Back empties the host again, releasing the thumbnails.
+    private void ShowCatalog()
+    {
+        var view = new NexusCatalogView(ViewModel, ViewModel.ActiveGame?.Name ?? "this game");
+        view.BackRequested += (_, _) => HideCatalog();
+        CatalogHost.Children.Clear();
+        CatalogHost.Children.Add(view);
+        CatalogHost.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+    }
+
+    private void HideCatalog()
+    {
+        CatalogHost.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        CatalogHost.Children.Clear();
     }
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();

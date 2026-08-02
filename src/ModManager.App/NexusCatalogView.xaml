@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ModManager.App.NexusCatalogView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ModManager.App"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{StaticResource ThemeBg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: back affordance + the game this catalog is scoped to + the loaded/total count. -->
+        <Grid Grid.Row="0" Padding="20,14,20,6" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Click="OnBack" Background="Transparent" BorderThickness="0"
+                    Padding="6,4" VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Back to this game's mods">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE72B;" FontSize="13" />
+                    <TextBlock Text="Back" />
+                </StackPanel>
+            </Button>
+            <TextBlock x:Name="TitleLabel" Grid.Column="1" VerticalAlignment="Center"
+                       FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource ThemeInk}" />
+            <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
+                       FontSize="12" Opacity="0.6" />
+        </Grid>
+
+        <!-- Filter bar. Search submits on Enter or the button; sort and category reload from the first
+             page. Adult content is excluded server-side in the plugin — there is no client-side filter
+             here and no age gate anywhere. -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Padding="20,0,20,10">
+            <TextBox x:Name="QueryBox" PlaceholderText="Search mods…" Width="260"
+                     KeyDown="OnQueryKeyDown" />
+            <Button x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
+            <ComboBox x:Name="SortBox" MinWidth="180" SelectedIndex="0"
+                      SelectionChanged="OnFilterChanged"
+                      ToolTipService.ToolTip="Change how the listing is ordered">
+                <ComboBoxItem Content="Most endorsed" />
+                <ComboBoxItem Content="Most downloaded" />
+                <ComboBoxItem Content="Recently updated" />
+                <ComboBoxItem Content="Recently added" />
+            </ComboBox>
+            <ComboBox x:Name="CategoryBox" MinWidth="200"
+                      SelectionChanged="OnFilterChanged"
+                      ToolTipService.ToolTip="Narrow the listing to one mod category" />
+        </StackPanel>
+
+        <!-- Status line: loading / empty. Only shown when there are no cards to show. -->
+        <TextBlock x:Name="StatusLabel" Grid.Row="2" Margin="20,8,20,0" TextWrapping="Wrap"
+                   Opacity="0.7" VerticalAlignment="Top" />
+
+        <!-- Card grid. GridView owns its own scrolling, so there is no outer ScrollViewer. Selection is
+             off — a card is a display surface with its own Get button, not a pick list. -->
+        <GridView x:Name="ResultsGrid" Grid.Row="2" Padding="20,4,12,8"
+                  ItemsSource="{x:Bind Cards}"
+                  SelectionMode="None" IsItemClickEnabled="False"
+                  ScrollViewer.HorizontalScrollMode="Disabled"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem">
+                    <Setter Property="Margin" Value="0,0,12,12" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinWidth" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="local:NexusCatalogCard">
+                    <!-- Wide enough that all three badges plus Get sit on one line without clipping. -->
+                    <Border Width="360" Height="212" CornerRadius="8" Padding="10"
+                            Background="{StaticResource ThemePanel}"
+                            BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}">
+                        <!-- Fixed-size card so the wrap grid stays on a clean lattice. The summary row
+                             takes the slack, which pins the badge/Get row to the bottom edge whether or
+                             not the mod has a summary. -->
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Thumbnail + title. The placeholder sits UNDER the image, so a null or
+                                 broken thumbnail leaves the neutral monogram showing instead of a hole. -->
+                            <Grid Grid.Row="0" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0" Width="96" Height="54" CornerRadius="4">
+                                    <Border CornerRadius="4" Background="{StaticResource ThemeBarBg}">
+                                        <TextBlock Text="{x:Bind Initial}" FontSize="20" FontWeight="Bold"
+                                                   Opacity="0.5" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border CornerRadius="4">
+                                        <Image Source="{x:Bind Thumbnail}" Stretch="UniformToFill"
+                                               ImageFailed="OnThumbnailFailed" />
+                                    </Border>
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Top">
+                                    <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="14"
+                                               TextWrapping="Wrap" MaxLines="2"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource ThemeInk}" />
+                                    <TextBlock Text="{x:Bind Author}" FontSize="12" Opacity="0.7"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="{x:Bind AuthorVisibility}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Grid.Row="1" Text="{x:Bind Summary}" FontSize="12" Opacity="0.6"
+                                       TextWrapping="Wrap" MaxLines="2" VerticalAlignment="Top"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="{x:Bind SummaryVisibility}" />
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="{x:Bind Endorsements}" FontSize="12" Opacity="0.75"
+                                           Visibility="{x:Bind EndorsementsVisibility}" />
+                                <TextBlock Text="{x:Bind Downloads}" FontSize="12" Opacity="0.75"
+                                           Visibility="{x:Bind DownloadsVisibility}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="3" Text="{x:Bind MetaLine}" FontSize="11" Opacity="0.55"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="{x:Bind MetaVisibility}" />
+
+                            <!-- Badges + Get. A badge shows ONLY when the plugin reported the value as
+                                 explicitly true; null (disconnected / older plugin) and false both show
+                                 nothing, so an unknown never reads as a "no". -->
+                            <Grid Grid.Row="4" ColumnSpacing="8" VerticalAlignment="Bottom">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                                            VerticalAlignment="Center">
+                                    <!-- The standout: no browser tab can tell you this. Filled accent so
+                                         it outweighs everything else on the card. -->
+                                    <Border CornerRadius="3" Padding="7,2"
+                                            Background="{StaticResource ThemeAccent}"
+                                            Visibility="{x:Bind UpdateAvailableVisibility}"
+                                            ToolTipService.ToolTip="You have this mod and the author has published a newer version">
+                                        <TextBlock Text="Update available" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="Black" />
+                                    </Border>
+                                    <Border CornerRadius="3" Padding="6,2"
+                                            BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
+                                            Visibility="{x:Bind InstalledVisibility}"
+                                            ToolTipService.ToolTip="You have already downloaded this mod on Nexus">
+                                        <TextBlock Text="Installed" FontSize="11" Opacity="0.8" />
+                                    </Border>
+                                    <Border CornerRadius="3" Padding="6,2"
+                                            BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
+                                            Visibility="{x:Bind EndorsedVisibility}"
+                                            ToolTipService.ToolTip="You have endorsed this mod">
+                                        <TextBlock Text="♥ Endorsed" FontSize="11"
+                                                   Foreground="{StaticResource ThemeAccent}" />
+                                    </Border>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Get" Click="OnGetClick"
+                                        VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="Open this mod's page on Nexus to download" />
+                            </Grid>
+
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <!-- Load more: user-driven paging only (no auto-crawl). Hidden once every hit is loaded. -->
+        <Button x:Name="LoadMoreButton" Grid.Row="3" Content="Load more"
+                HorizontalAlignment="Center" Margin="0,0,0,14"
+                Visibility="Collapsed" Click="OnLoadMoreClick"
+                ToolTipService.ToolTip="Fetch the next page of results" />
+    </Grid>
+</UserControl>
