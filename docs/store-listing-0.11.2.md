@@ -18,12 +18,10 @@ Same reversible, atomic, no-telemetry mod management underneath — this pass is
 
 ## Notes for certification  *(to the Store testing team — not public)*
 
-626 Mod Launcher is a load-order and file-management utility for PC games the user already has installed on their own machine. It does not download, distribute, or bundle any third-party mods or game content — the user supplies their own mod files, and the app organizes and toggles them in place.
+The full formal reviewer letter — paste-ready, with a defenses-by-clause cheat sheet and a
+pre-submission sanity check — is in **[`store/reviewer-letter-0.11.2.0.md`](store/reviewer-letter-0.11.2.0.md)**.
+Paste the fenced block from that file into Partner Center → **Notes for certification**.
 
-There is no in-app mod browser, mod search, or mod download anywhere in the app — it is not connected to any mod storefront or marketplace and cannot fetch mods. The user obtains their mods themselves, entirely outside this app, and the app only manages files that are already on the user's disk.
-
-It writes into the user's own game folders to enable/disable mods, and it does this reversibly (disabling moves files to a holding folder rather than deleting; replacing a file snapshots the original first). It requests the runFullTrust capability for this ordinary file management — it does not modify Windows system files or other applications.
-
-New in this version — all presentation/UI, with **no new capabilities, no new permissions, and no new network calls** versus the previously certified 0.10.0.0: (1) the whole game row on the library home is now clickable to open a game, rather than only a button; (2) a dropdown in the title bar switches between the user's own added games without returning to the library; (3) the previous "Rescan" and "Refresh stats" controls were merged into a single "Refresh" button that re-scans the user's own game folder for mod changes.
-
-To exercise it: launch the app — it opens on the library; add a game (or let Steam detection find one), click a game's row to open it, use the title-bar dropdown to switch games, and click Refresh. Drag a mod archive or folder onto the window and toggle it on/off. No account or sign-in is required.
+(Single source of truth: the reviewer letter, following the RoRoRo `docs/store/reviewer-letter-*.md`
+format. It leads with the compiled-out-Nexus/marketplace posture — the 10.1.6/11.12/11.13 defense —
+and states the UI-only delta versus the certified 0.10.0.0.)
