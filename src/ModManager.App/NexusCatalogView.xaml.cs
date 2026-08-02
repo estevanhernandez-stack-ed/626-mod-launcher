@@ -152,7 +152,16 @@ public sealed partial class NexusCatalogView : UserControl
     private int _generation;
 
     private bool _suppressFilterEvents;
+
+    // PENDING box state — what the user has typed but may not have submitted yet.
     private string _query = "";
+
+    // The query the on-screen results were actually loaded with. Appends MUST use this, never _query:
+    // emptying the box clears _query immediately (so a later sort change drops the filter, as the user
+    // expects), but the rows on screen are still the search results. Paging off _query would then request
+    // the UNFILTERED listing at the search's offset and graft unrelated mods onto the search results.
+    private string _activeQuery = "";
+
     private int _total;
 
     // The SERVER cursor — how far into the listing we have requested, in server rows. It must NOT be
@@ -264,10 +273,15 @@ public sealed partial class NexusCatalogView : UserControl
         var offset = append ? _offset : 0;
         var category = SelectedCategory();
 
+        // A fresh load adopts whatever is in the box right now; an append reuses the query the visible
+        // rows were fetched with, so page 2 can never be a different search than page 1.
+        if (!append) _activeQuery = _query;
+        var query = _activeQuery;
+
         ShowBusy(append);
 
         var page = await _vm.BrowseCatalogAsync(
-            string.IsNullOrWhiteSpace(_query) ? null : _query,
+            string.IsNullOrWhiteSpace(query) ? null : query,
             SelectedSort(),
             category,
             offset,
@@ -286,13 +300,21 @@ public sealed partial class NexusCatalogView : UserControl
         // clamp the cursor to the total and stop offering more.
         if (append && page.Hits.Count == 0)
         {
-            if (page.TotalCount > 0)
+            // Transient: change nothing, so clicking again retries.
+            if (page.TotalCount == 0) { ShowResults(); return; }
+
+            // Genuinely past the end — we asked from at-or-beyond the total. Clamp so Load more retires.
+            if (page.TotalCount <= offset)
             {
                 _total = page.TotalCount;
                 _offset = page.TotalCount;
+                ShowResults();
+                return;
             }
-            ShowResults();
-            return;
+
+            // In-range but empty: the listing shifted under us (rows removed between pages). Retiring here
+            // would hide rows the server still reports, so fall through — the cursor advances a page and
+            // the user can keep going instead of the button dying mid-list.
         }
 
         if (!append)
