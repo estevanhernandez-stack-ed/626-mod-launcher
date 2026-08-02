@@ -432,6 +432,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(LooseIdentifyVisibility));
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
+            OnPropertyChanged(nameof(CatalogBrowseAvailable));
+            OnPropertyChanged(nameof(CatalogBrowseVisibility));
             return;
         }
         IsBusy = true;
@@ -709,6 +711,8 @@ public sealed partial class MainViewModel : ObservableObject
             // recompute it on every row rebuild / game switch too, or the button never appears on switch.
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
+            OnPropertyChanged(nameof(CatalogBrowseAvailable));
+            OnPropertyChanged(nameof(CatalogBrowseVisibility));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1623,6 +1627,30 @@ public sealed partial class MainViewModel : ObservableObject
         catch { return System.Array.Empty<SourceSearchHit>(); }
     }
 
+    /// <summary>Rich catalog browse (cards, sort views, category filter, paging, per-user badges) —
+    /// available when the loaded plugin implements the Phase 1 capability. Older plugins fall back to the
+    /// simpler <see cref="CatalogAvailable"/> path, and STORE/no-plugin leaves both false.</summary>
+    public bool CatalogBrowseAvailable =>
+        NexusActionsAvailable && NexusSource is IModCatalogBrowse && ActiveGameHasNexusDomain;
+    public Visibility CatalogBrowseVisibility => CatalogBrowseAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Fetch one catalog page for the active game. Self-timeouts (~10s) so a hung request can't
+    /// wedge the view; never throws (empty page on any failure).</summary>
+    public async Task<CatalogPage> BrowseCatalogAsync(
+        string? text, CatalogSort sort, string? category, int offset, int count = 20)
+    {
+        if (_ctx is null || NexusSource is not IModCatalogBrowse browse) return CatalogPage.Empty;
+        var domain = NexusDomains.Effective(_ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) return CatalogPage.Empty;
+        try
+        {
+            var call = browse.BrowseCatalogAsync(new CatalogQuery(domain!, text, sort, category, offset, count));
+            var done = await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+            return done == call ? await call.ConfigureAwait(false) : CatalogPage.Empty;
+        }
+        catch { return CatalogPage.Empty; }
+    }
+
 #if FULL
     /// <summary>The off-Store plugin feed, stashed on wire-up so <see cref="ConnectNexusAsync"/> can trigger
     /// the consented first-install fetch after an OAuth connect without reaching back into the DI container.
@@ -1651,6 +1679,8 @@ public sealed partial class MainViewModel : ObservableObject
                     OnPropertyChanged(nameof(LooseIdentifyVisibility));
                     OnPropertyChanged(nameof(CatalogAvailable));
                     OnPropertyChanged(nameof(CatalogVisibility));
+                    OnPropertyChanged(nameof(CatalogBrowseAvailable));
+                    OnPropertyChanged(nameof(CatalogBrowseVisibility));
                     // Re-detect + reload rows so per-row Nexus state reflects the now-loaded plugin.
                     // RedetectActiveAsync re-runs the scan with the registered source; it calls
                     // ReloadModsAsync internally (which fires the auto-check poll).
@@ -2041,6 +2071,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(LooseIdentifyVisibility));
         OnPropertyChanged(nameof(CatalogAvailable));
         OnPropertyChanged(nameof(CatalogVisibility));
+        OnPropertyChanged(nameof(CatalogBrowseAvailable));
+        OnPropertyChanged(nameof(CatalogBrowseVisibility));
         OnPropertyChanged(nameof(NexusUser));
         OnPropertyChanged(nameof(NexusPremium));
         OnPropertyChanged(nameof(NexusAccountLine));

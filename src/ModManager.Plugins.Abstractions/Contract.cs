@@ -77,7 +77,62 @@ public interface IModTextSearch
 /// <summary>One text-search hit — enough for a review dialog row + a follow-up FetchMetadataAsync.</summary>
 public sealed record SourceSearchHit(
     string GameDomain, int ModId, string Name, string? Author,
-    string? Summary, int? EndorsementCount, string? Url);
+    string? Summary, int? EndorsementCount, string? Url)
+{
+    /// <summary>Small mod thumbnail (Nexus <c>thumbnailUrl</c>), or null. Old plugins leave it null.</summary>
+    public string? ThumbnailUrl { get; init; }
+    /// <summary>Mod category name (Nexus <c>modCategory.name</c>), e.g. "Gameplay".</summary>
+    public string? Category { get; init; }
+    /// <summary>Author-published version string.</summary>
+    public string? Version { get; init; }
+    /// <summary>Total downloads.</summary>
+    public int? DownloadCount { get; init; }
+    /// <summary>Last update timestamp.</summary>
+    public DateTimeOffset? UpdatedAt { get; init; }
+
+    // Per-user state. Null = unknown (disconnected, or an older plugin that never sets it) — the UI
+    // shows a badge only when the value is explicitly true, so null/false both mean "no badge".
+    public bool? ViewerDownloaded { get; init; }
+    public bool? ViewerEndorsed { get; init; }
+    public bool? ViewerUpdateAvailable { get; init; }
+    public bool? ViewerTracked { get; init; }
+}
+
+/// <summary>Catalog sort views. Each maps to a live-verified <c>ModsSort</c> field; there is deliberately
+/// no Trending — the schema has no trending sort.</summary>
+public enum CatalogSort { MostEndorsed, MostDownloaded, RecentlyUpdated, RecentlyAdded }
+
+/// <summary>A catalog browse request. A record envelope so later phases add options without changing
+/// the interface signature. <paramref name="Text"/> null/blank = the default listing (no name filter).</summary>
+public sealed record CatalogQuery(
+    string GameDomain,
+    string? Text = null,
+    CatalogSort Sort = CatalogSort.MostEndorsed,
+    string? Category = null,
+    int Offset = 0,
+    int Count = 20);
+
+/// <summary>One category bucket with its mod count, from the browse response's facet data.</summary>
+public sealed record CatalogCategory(string Name, int Count);
+
+/// <summary>One page of catalog results. <paramref name="Categories"/> rides along on the same response
+/// (facets), so the launcher needs no second round-trip to populate the category filter.</summary>
+public sealed record CatalogPage(
+    IReadOnlyList<SourceSearchHit> Hits,
+    int TotalCount,
+    IReadOnlyList<CatalogCategory> Categories)
+{
+    public static CatalogPage Empty { get; } =
+        new(Array.Empty<SourceSearchHit>(), 0, Array.Empty<CatalogCategory>());
+}
+
+/// <summary>Optional capability: rich catalog browse (sort views, category filter, paging, per-user
+/// state). Distinct from <see cref="IModCatalog"/>, which stays for back-compat — a host feature-detects
+/// with <c>source is IModCatalogBrowse</c> and falls back to the simpler interface when absent.</summary>
+public interface IModCatalogBrowse
+{
+    Task<CatalogPage> BrowseCatalogAsync(CatalogQuery query);
+}
 
 /// <summary>
 /// Optional catalog-browse capability: search a game's mods for in-app discovery, with adult/mature
