@@ -62,22 +62,43 @@ public sealed class NexusCatalogCard
     /// <summary>Lazily built remote thumbnail. Decode is capped at the on-screen width so a page of cards
     /// costs a couple of MB rather than tens; a non-http (or absent) URL yields null and the card's
     /// placeholder shows through. WinUI fetches and decodes off the UI thread, and a failed fetch raises
-    /// ImageFailed rather than throwing.</summary>
+    /// ImageFailed rather than throwing.
+    ///
+    /// <para><c>DecodePixelWidth</c> MUST be set before the source: the <c>BitmapImage(Uri)</c> constructor
+    /// kicks the decode off immediately, so a hint applied afterwards is not reliably honored and the card
+    /// keeps a full-size bitmap alive for the life of the view.</para></summary>
     private ImageSource? _thumbnail;
     private bool _thumbnailResolved;
+    private bool _thumbnailFailed;
     public ImageSource? Thumbnail
     {
         get
         {
+            // A thumbnail that already failed stays null — no repeat fetch when the card scrolls back in.
+            if (_thumbnailFailed) return null;
             if (!_thumbnailResolved)
             {
                 _thumbnailResolved = true;
                 if (ModManager.Core.SafeUrl.IsHttpUrl(Hit.ThumbnailUrl)
                     && Uri.TryCreate(Hit.ThumbnailUrl, UriKind.Absolute, out var uri))
-                    _thumbnail = new BitmapImage(uri) { DecodePixelWidth = 192 };
+                {
+                    var bitmap = new BitmapImage { DecodePixelWidth = 192 };
+                    bitmap.UriSource = uri; // hint first, source second — see the remarks above
+                    _thumbnail = bitmap;
+                }
             }
             return _thumbnail;
         }
+    }
+
+    /// <summary>Record that this card's thumbnail failed to load, so the placeholder stands in from here
+    /// on. Per-CARD state, never per-container: the GridView recycles containers, so anything imperative
+    /// left on a template element would bleed onto the next mod that lands in it.</summary>
+    internal void MarkThumbnailFailed()
+    {
+        _thumbnailFailed = true;
+        _thumbnailResolved = true;
+        _thumbnail = null;
     }
 
     private static Visibility Vis(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
@@ -134,6 +155,12 @@ public sealed partial class NexusCatalogView : UserControl
     private string _query = "";
     private int _total;
 
+    // The SERVER cursor — how far into the listing we have requested, in server rows. It must NOT be
+    // derived from Cards.Count: dedupe drops shifted repeats and the plugin skips malformed nodes, so the
+    // rendered count drifts behind the cursor. Advancing by the page size we ASKED for is what guarantees
+    // monotonic forward progress (and it is also the honest end-of-list test: _offset >= _total).
+    private int _offset;
+
     /// <summary>Raised by the Back affordance — the shell collapses the host and returns to the game view.</summary>
     public event EventHandler? BackRequested;
 
@@ -147,18 +174,43 @@ public sealed partial class NexusCatalogView : UserControl
         ResetCategories();
 
         // A storefront opens populated, not empty: the first load is the default most-endorsed listing.
-        Loaded += (_, _) => _ = LoadAsync(append: false);
+        // Focus lands in the search box so typing works immediately — and so Escape has somewhere inside
+        // the view to tunnel from.
+        Loaded += (_, _) =>
+        {
+            QueryBox.Focus(FocusState.Programmatic);
+            _ = LoadAsync(append: false);
+        };
     }
 
     // ---------- input ----------
 
     private void OnBack(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
 
+    // Escape leaves the storefront, matching the Back affordance. Tunnels from the root, so it works
+    // whichever child holds focus. An open ComboBox flyout lives in its own popup root, so Escape still
+    // closes the dropdown first rather than the whole view.
+    private void OnViewPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Escape) return;
+        e.Handled = true;
+        BackRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     private void OnQueryKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (e.Key != Windows.System.VirtualKey.Enter) return;
         e.Handled = true;
         Submit();
+    }
+
+    // Emptying the box clears the filter immediately. Without this, clearing the text and then changing
+    // sort would silently re-apply the search the user thought they had removed (the query only used to
+    // update on submit). Typing does NOT auto-search — a non-empty box still takes effect on Enter/Search
+    // only, which keeps paging user-driven.
+    private void OnQueryTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if ((QueryBox.Text ?? "").Trim().Length == 0) _query = "";
     }
 
     private void OnSearchClick(object sender, RoutedEventArgs e) => Submit();
@@ -189,11 +241,19 @@ public sealed partial class NexusCatalogView : UserControl
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    // A CDN thumbnail that 404s / times out / decodes badly: collapse the Image so the card's neutral
-    // placeholder shows through. Never throws, never blanks the card.
+    // A CDN thumbnail that 404s / times out / decodes badly: drop the source so the card's neutral
+    // placeholder (which sits underneath, always) shows through. Never throws, never blanks the card.
+    //
+    // Source is the BOUND property, and Visibility is not touched — that is deliberate. GridView recycles
+    // containers, so imperatively collapsing the Image would make the NEXT mod to land in that container
+    // render as a placeholder even with a perfectly good thumbnail. Clearing a bound property is safe: the
+    // binding re-runs against the new card on recycle. The per-card flag keeps the failure sticky for THIS
+    // mod without touching the container.
     private void OnThumbnailFailed(object sender, ExceptionRoutedEventArgs e)
     {
-        if (sender is Image img) img.Visibility = Visibility.Collapsed;
+        if (sender is not Image img) return;
+        (img.DataContext as NexusCatalogCard)?.MarkThumbnailFailed();
+        img.Source = null;
     }
 
     // ---------- loading ----------
@@ -201,7 +261,7 @@ public sealed partial class NexusCatalogView : UserControl
     private async Task LoadAsync(bool append)
     {
         var gen = ++_generation;
-        var offset = append ? Cards.Count : 0;
+        var offset = append ? _offset : 0;
         var category = SelectedCategory();
 
         ShowBusy(append);
@@ -216,6 +276,25 @@ public sealed partial class NexusCatalogView : UserControl
         // Superseded mid-flight — the newer load owns the list and the busy state. Drop this page.
         if (gen != _generation) return;
 
+        // An append that brought back nothing must NEVER reset the list state. BrowseCatalogAsync swallows
+        // offline / timeout / malformed into CatalogPage.Empty by design, so blindly applying it would zero
+        // _total, print "20 of 0", and hide Load more permanently — one network blip killing paging.
+        //
+        // The two empty cases are distinguishable by TotalCount: CatalogPage.Empty carries 0, while a real
+        // response that simply had no more rows carries the live total. So: total 0 = transient, leave
+        // everything untouched and let the user click again; total > 0 = we genuinely ran off the end, so
+        // clamp the cursor to the total and stop offering more.
+        if (append && page.Hits.Count == 0)
+        {
+            if (page.TotalCount > 0)
+            {
+                _total = page.TotalCount;
+                _offset = page.TotalCount;
+            }
+            ShowResults();
+            return;
+        }
+
         if (!append)
         {
             Cards.Clear();
@@ -226,6 +305,10 @@ public sealed partial class NexusCatalogView : UserControl
             if (_seen.Add(hit.ModId))
                 Cards.Add(new NexusCatalogCard(hit));
 
+        // Advance by what we ASKED for, not by what survived. Hits.Count can be short of PageSize because
+        // the plugin skipped a malformed node or the dedupe dropped a shifted repeat — advancing by that
+        // would leave the cursor behind the server's and re-request rows we already have, forever.
+        _offset = offset + PageSize;
         _total = page.TotalCount;
 
         // Facets are scoped to the current filter, so refreshing the dropdown while a category is applied
@@ -245,8 +328,11 @@ public sealed partial class NexusCatalogView : UserControl
             return;
         }
 
+        // Every non-append load is a fresh listing: the cursor goes back to the top with the cards.
         Cards.Clear();
         _seen.Clear();
+        _offset = 0;
+        _total = 0;
         LoadMoreButton.Visibility = Visibility.Collapsed;
         CountLabel.Text = "";
         StatusLabel.Text = _query.Length == 0 ? $"Loading {_gameName} mods…" : "Searching…";
@@ -257,7 +343,10 @@ public sealed partial class NexusCatalogView : UserControl
     {
         LoadMoreButton.IsEnabled = true;
         LoadMoreButton.Content = "Load more";
-        LoadMoreButton.Visibility = Cards.Count > 0 && Cards.Count < _total
+        // Offer more only while the SERVER cursor is short of the total. Cards.Count would be the wrong
+        // test — it lags the cursor whenever a node is skipped or deduped, so the button would never
+        // disappear at the true end of the list.
+        LoadMoreButton.Visibility = Cards.Count > 0 && _offset < _total
             ? Visibility.Visible
             : Visibility.Collapsed;
 

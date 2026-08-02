@@ -6,7 +6,8 @@
     xmlns:local="using:ModManager.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    PreviewKeyDown="OnViewPreviewKeyDown">
 
     <Grid Background="{StaticResource ThemeBg}">
         <Grid.RowDefinitions>
@@ -43,7 +44,7 @@
              here and no age gate anywhere. -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Padding="20,0,20,10">
             <TextBox x:Name="QueryBox" PlaceholderText="Search mods…" Width="260"
-                     KeyDown="OnQueryKeyDown" />
+                     KeyDown="OnQueryKeyDown" TextChanged="OnQueryTextChanged" />
             <Button x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
             <ComboBox x:Name="SortBox" MinWidth="180" SelectedIndex="0"
                       SelectionChanged="OnFilterChanged"
@@ -154,13 +155,18 @@
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
                                             VerticalAlignment="Center">
                                     <!-- The standout: no browser tab can tell you this. Filled accent so
-                                         it outweighs everything else on the card. -->
+                                         it outweighs everything else on the card.
+                                         Foreground is ThemeBg, not a hardcoded black: ThemeAccent is
+                                         user-swappable per theme (ThemeService.Apply), and a dark accent
+                                         would put black on dark. Accent-on-bg legibility is a guarantee
+                                         the whole app already leans on, and contrast is symmetric — so
+                                         bg-on-accent inherits it for free, whatever the theme. -->
                                     <Border CornerRadius="3" Padding="7,2"
                                             Background="{StaticResource ThemeAccent}"
                                             Visibility="{x:Bind UpdateAvailableVisibility}"
                                             ToolTipService.ToolTip="You have this mod and the author has published a newer version">
                                         <TextBlock Text="Update available" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="Black" />
+                                                   Foreground="{StaticResource ThemeBg}" />
                                     </Border>
                                     <Border CornerRadius="3" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
