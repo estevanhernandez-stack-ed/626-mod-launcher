@@ -5,6 +5,32 @@ using ManifestMiner;
 using ModManager.Core;
 using ModManager.Core.Manifest;
 
+// --sign-file <path>: standalone action — sign an arbitrary already-written file (e.g. the static
+// nexus-oauth.json OAuth config) with the SAME key + ECDSA P-256/SHA-256 format as --sign, writing
+// <path>.sig beside it. Signs the LITERAL file bytes so the launcher verifies the exact published
+// content. Needs no mining; hard-fails on a missing key (never emit an unsigned-but-named artifact).
+if (GetArg(args, "--sign-file") is { } signFilePath)
+{
+    if (!File.Exists(signFilePath))
+    {
+        Console.Error.WriteLine($"--sign-file: file not found: {signFilePath}");
+        Environment.Exit(1);
+        return;
+    }
+    var signKeyPem = Environment.GetEnvironmentVariable("MANIFEST_SIGNING_KEY");
+    if (string.IsNullOrWhiteSpace(signKeyPem))
+    {
+        Console.Error.WriteLine("--sign-file requires MANIFEST_SIGNING_KEY (PKCS#8 PEM) in the environment.");
+        Environment.Exit(1);
+        return;
+    }
+    var fileBytes = File.ReadAllBytes(signFilePath);
+    var fileSig = ManifestSigner.Sign(fileBytes, signKeyPem);
+    File.WriteAllBytes(signFilePath + ".sig", fileSig);
+    Console.WriteLine($"Signed {signFilePath} -> {signFilePath}.sig ({fileSig.Length} bytes)");
+    return;
+}
+
 const string LudusaviUrl = "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml";
 
 var fileArg = GetArg(args, "--file");
