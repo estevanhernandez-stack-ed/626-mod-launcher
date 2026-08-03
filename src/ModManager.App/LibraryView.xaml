@@ -71,10 +71,20 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="ALL GAMES" FontSize="11" CharacterSpacing="80"
                                    VerticalAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
-                        <TextBox Grid.Column="1" Width="220" PlaceholderText="Search games…"
+                        <!-- Cross-game Updates entry point. Present ONLY when something is actually
+                             pending — an empty or never-checked library keeps the home clean rather
+                             than advertising a zero. -->
+                        <Button Grid.Column="1" Click="OnOpenUpdates" VerticalAlignment="Center"
+                                Background="{StaticResource ThemeAccent}"
+                                Foreground="{StaticResource ThemeBg}"
+                                Content="{x:Bind ViewModel.UpdatesEntryText, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.UpdatesEntryVisibility, Mode=OneWay}"
+                                ToolTipService.ToolTip="{x:Bind ViewModel.UpdatesEntryTooltip, Mode=OneWay}" />
+                        <TextBox Grid.Column="2" Width="220" PlaceholderText="Search games…"
                                  Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </Grid>
 

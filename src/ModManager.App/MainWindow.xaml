@@ -649,5 +649,11 @@
              are released. Hidden at rest. -->
         <Grid x:Name="CatalogHost" Grid.Row="1" Grid.RowSpan="4" Background="{StaticResource ThemeBg}"
               Visibility="Collapsed" />
+
+        <!-- Cross-game Updates overlay. Same host pattern again: opened from the Library home, emptied
+             on Back so the snapshot it was built from can't go stale behind a hidden view. Renders from
+             persisted metadata only — nothing in here makes a network call. -->
+        <Grid x:Name="UpdatesHost" Grid.Row="1" Grid.RowSpan="4" Background="{StaticResource ThemeBg}"
+              Visibility="Collapsed" />
     </Grid>
 </Window>

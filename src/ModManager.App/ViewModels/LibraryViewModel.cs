@@ -236,12 +236,60 @@ public sealed partial class LibraryViewModel : ObservableObject
     public Visibility DiscoveryEmptyVisibility =>
         DiscoveryRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
+    // --- Cross-game updates -------------------------------------------------------------------------
+    //
+    // Computed ONCE per Load, in the same pass that feeds the per-game badges, and cached here. The
+    // Updates view consumes this snapshot rather than re-reading every metadata.json for itself, so
+    // opening the directory costs nothing and the badges and the list can never disagree. Load() runs
+    // on every return to the home, so the snapshot refreshes exactly when the home does.
+
+    private IReadOnlyList<GameUpdateSummary> _updateSummaries = Array.Empty<GameUpdateSummary>();
+
+    /// <summary>Last-built per-game update snapshot — what the Updates view renders from. Includes
+    /// unchecked games (Checked = false) so the view can tell "checked, none pending" apart from
+    /// "never checked"; collapsing them here would destroy the distinction.</summary>
+    public IReadOnlyList<GameUpdateSummary> UpdateSummaries => _updateSummaries;
+
+    /// <summary>Total pending updates across every game. Unchecked games contribute nothing (their
+    /// pending list is empty by construction) — this is never inflated by a guess.</summary>
+    public int TotalPendingUpdates { get; private set; }
+
+    /// <summary>The Updates entry point shows only when something is actually pending — a home with
+    /// nothing to update stays uncluttered, and an unchecked library never advertises a "0".</summary>
+    public Visibility UpdatesEntryVisibility =>
+        TotalPendingUpdates > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Entry-point label — "1 update" / "N updates".</summary>
+    public string UpdatesEntryText => TotalPendingUpdates == 1 ? "1 update" : $"{TotalPendingUpdates} updates";
+
+    /// <summary>Sentence-case tooltip, singular-correct.</summary>
+    public string UpdatesEntryTooltip => TotalPendingUpdates == 1
+        ? "1 mod across your library has a newer version. Open the list to see which."
+        : $"{TotalPendingUpdates} mods across your library have newer versions. Open the list to see which.";
+
+    /// <summary>Open the cross-game Updates directory. The VM only raises the event; the shell owns the
+    /// view swap, exactly as it does for <see cref="GameOpened"/>.</summary>
+    public void RequestUpdatesView() => UpdatesRequested?.Invoke();
+
+    /// <summary>Open a game by id — the Updates directory's Open game button. Routes through the same
+    /// <see cref="OpenGame"/> path a library row uses (set active, then raise GameOpened); an id that
+    /// isn't in the library is simply ignored.</summary>
+    public void OpenGameById(string? gameId)
+    {
+        if (string.IsNullOrEmpty(gameId)) return;
+        var row = _allRows.FirstOrDefault(r => r.Id == gameId);
+        if (row is not null) OpenGame(row);
+    }
+
     /// <summary>Raised when a row is opened — the shell (MainWindow) swaps to that game's mod view.
     /// The VM only sets the active game + fires this; the view swap is the shell's job (Task 7).</summary>
     public event Action<string>? GameOpened;
 
     /// <summary>Raised when the user asks to add a discovered game — the shell runs the Add flow.</summary>
     public event Action<InstalledGame>? AddGameRequested;
+
+    /// <summary>Raised when the user opens the cross-game Updates directory — the shell swaps it in.</summary>
+    public event Action? UpdatesRequested;
 
     public LibraryViewModel(LauncherService svc, IStoreLibrary store)
     {
@@ -278,7 +326,11 @@ public sealed partial class LibraryViewModel : ObservableObject
         // no scan (ModUpdateSummary never throws). A game that's never been refreshed (Checked = false)
         // folds to 0 here, same as "checked, nothing pending" — both render as no badge, and the row
         // VM doesn't need to know which case it was (see GameLibraryRowViewModel.PendingUpdateCount).
-        var updateByGameId = ModUpdateSummary.ForGames(games).ToDictionary(s => s.GameId, s => s);
+        // ONE pass, two consumers: the per-game badge below and the cross-game Updates directory (which
+        // reads the cached snapshot). Never computed twice per render.
+        _updateSummaries = ModUpdateSummary.ForGames(games);
+        var updateByGameId = _updateSummaries.ToDictionary(s => s.GameId, s => s);
+        TotalPendingUpdates = _updateSummaries.Sum(s => s.Count);
 
         _allRows.Clear();
         foreach (var r in rows)
@@ -296,6 +348,10 @@ public sealed partial class LibraryViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyVisibility));
         OnPropertyChanged(nameof(ContentVisibility));
         OnPropertyChanged(nameof(DiscoveryEmptyVisibility));
+        OnPropertyChanged(nameof(TotalPendingUpdates));
+        OnPropertyChanged(nameof(UpdatesEntryVisibility));
+        OnPropertyChanged(nameof(UpdatesEntryText));
+        OnPropertyChanged(nameof(UpdatesEntryTooltip));
 
         _ = ResolveCoversAsync(); // fill covers Steam didn't cache locally from its public CDN (once)
     }
