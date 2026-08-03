@@ -96,6 +96,15 @@ public sealed record SourceSearchHit(
     public bool? ViewerEndorsed { get; init; }
     public bool? ViewerUpdateAvailable { get; init; }
     public bool? ViewerTracked { get; init; }
+
+    // Phase 2: a card needs both of these to open detail and to act on the mod.
+    /// <summary>Nexus's distinct large numeric uid (NOT the ModId) — e.g. modId 4733 has uid
+    /// "26040386720381". Endorse/track mutations key off this, never off ModId. Old plugins leave it
+    /// null, so a card without it must gate detail/action affordances off.</summary>
+    public string? Uid { get; init; }
+    /// <summary>Numeric Nexus game id (not the domain slug) — the detail query takes an id, not a
+    /// domain. Old plugins leave it null.</summary>
+    public int? GameId { get; init; }
 }
 
 /// <summary>Catalog sort views. Each maps to a live-verified <c>ModsSort</c> field; there is deliberately
@@ -156,4 +165,39 @@ public interface IAuthorizedSend
 {
     Task<HttpResponseMessage> SendAuthorizedAsync(
         HttpRequestMessage request, string credentialKey, CancellationToken ct = default);
+}
+
+/// <summary>One prerequisite for a mod. A requirement may be EXTERNAL (not a Nexus mod) — live data
+/// returns modId "0" with externalRequirement true and an off-site Url — so ModId is nullable and the
+/// UI must fall back to Url.</summary>
+public sealed record CatalogRequirement(string Name, int? ModId, string? Url, string? Notes, bool External);
+
+/// <summary>Full detail for one mod. Description is the RAW Nexus body (BBCode + HTML mixed) — the
+/// launcher converts it for display (see ModManager.Core.Nexus.ModDescriptionText); the plugin does
+/// not guess at formatting.</summary>
+public sealed record CatalogDetail(
+    int ModId, string Uid, string Name, string? Author, string? Uploader, string? Version,
+    string? Summary, string? DescriptionRaw, string? ImageUrl, string? Category,
+    int? EndorsementCount, int? DownloadCount, DateTimeOffset? UpdatedAt, string? Url,
+    bool? ViewerEndorsed, bool? ViewerTracked, bool? ViewerDownloaded,
+    IReadOnlyList<CatalogRequirement> Requirements);
+
+/// <summary>Optional catalog-browse capability: fetch full detail for one mod. Distinct from the
+/// browse/search hits, which carry only list-view fields.</summary>
+public interface IModCatalogDetail
+{
+    /// <param name="gameId">NUMERIC Nexus game id (the detail query takes an id, not a domain slug).</param>
+    /// <param name="modId">The mod's Nexus ModId.</param>
+    Task<CatalogDetail?> GetModDetailAsync(int gameId, int modId);
+}
+
+/// <summary>Optional capability: endorse / track a mod on the user's real Nexus account. Both methods
+/// key off the mod's UID (NOT its ModId) — see <see cref="SourceSearchHit.Uid"/> / <see
+/// cref="CatalogDetail.Uid"/>. Only ever call these in response to an explicit user click; never from
+/// a background sweep. Read paths never throw and return null on failure — these write paths never
+/// throw either, returning false so the UI can revert optimistic state.</summary>
+public interface IModCatalogActions
+{
+    Task<bool> SetEndorsedAsync(string modUid, bool endorsed);
+    Task<bool> SetTrackedAsync(string modUid, bool tracked);
 }
