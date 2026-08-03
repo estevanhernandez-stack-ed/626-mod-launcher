@@ -43,6 +43,9 @@ public sealed partial class LibraryView : UserControl
             ViewModel.PlayCommand.Execute(row);
     }
 
+    // The cross-game Updates directory. The VM raises UpdatesRequested; the shell swaps the view in.
+    private void OnOpenUpdates(object sender, RoutedEventArgs e) => ViewModel.RequestUpdatesView();
+
     // + Add a store-discovered game — the VM raises AddGameRequested; the shell runs the Add flow.
     private void OnAddDiscovered(object sender, RoutedEventArgs e)
     {

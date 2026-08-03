@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ModManager.App.UpdatesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ModManager.App"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    PreviewKeyDown="OnViewPreviewKeyDown">
+
+    <Grid Background="{StaticResource ThemeBg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: Back affordance + title + total. Mirrors NexusCatalogView's header so the two
+             full-size surfaces read as the same kind of place. -->
+        <Grid Grid.Row="0" Padding="20,14,20,6" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Click="OnBack" Background="Transparent" BorderThickness="0"
+                    Padding="6,4" VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Back to your library">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE72B;" FontSize="13" />
+                    <TextBlock Text="Back" />
+                </StackPanel>
+            </Button>
+            <TextBlock Grid.Column="1" Text="Updates" VerticalAlignment="Center"
+                       FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource ThemeInk}" />
+            <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
+                       FontSize="12" Opacity="0.6" />
+        </Grid>
+
+        <!-- Empty state. Two distinct messages, set from code — "nothing has ever been checked" must
+             never read as "you're up to date." Only one of this panel and the list is ever visible. -->
+        <StackPanel x:Name="EmptyPanel" Grid.Row="1" Spacing="8" MaxWidth="480"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="Collapsed">
+            <TextBlock x:Name="EmptyTitle" FontSize="20" FontWeight="SemiBold"
+                       TextAlignment="Center" TextWrapping="Wrap"
+                       Foreground="{StaticResource ThemeInk}" />
+            <TextBlock x:Name="EmptyBody" TextWrapping="Wrap" TextAlignment="Center" Opacity="0.7" />
+        </StackPanel>
+
+        <!-- The directory itself: one block per game, one line per mod. No apply-update mechanism here
+             on purpose — Open game lands the user where the UPDATE chips and Refresh already live. -->
+        <ScrollViewer x:Name="ListScroller" Grid.Row="1" Padding="20,4,20,20"
+                      VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+            <StackPanel Spacing="18">
+                <ItemsControl ItemsSource="{x:Bind Groups}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:UpdateGameGroup">
+                            <StackPanel Spacing="8" Margin="0,0,0,4">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10"
+                                                VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind GameName}" FontSize="15" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource ThemeInk}" />
+                                        <Border CornerRadius="3" Padding="6,2"
+                                                Background="{StaticResource ThemeAccent}"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind CountText}" FontFamily="Consolas" FontSize="11"
+                                                       Foreground="{StaticResource ThemeBg}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Open game" Click="OnOpenGame" Tag="{x:Bind}"
+                                            VerticalAlignment="Center"
+                                            ToolTipService.ToolTip="Open this game's mods, where the update chips and Refresh live" />
+                                </Grid>
+
+                                <ItemsControl ItemsSource="{x:Bind Rows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:UpdateRow">
+                                            <Grid Padding="10,8" Margin="0,0,0,4" CornerRadius="6"
+                                                  Background="{StaticResource ThemePanel}" ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{x:Bind ModName}"
+                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource ThemeInk}" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind VersionText}"
+                                                           FontFamily="Consolas" FontSize="12" Opacity="0.8"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Honesty footer: games that have never been refreshed are absent from the list above,
+                     and silence about them would read as "they're fine." Say it instead. -->
+                <TextBlock x:Name="UncheckedNote" TextWrapping="Wrap" FontSize="12" Opacity="0.6"
+                           Visibility="Collapsed" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

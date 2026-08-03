@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
         _libraryVm = App.AppHost.Services.GetRequiredService<LibraryViewModel>();
         _libraryVm.GameOpened += OnLibraryGameOpened;
         _libraryVm.AddGameRequested += OnLibraryAddGameRequested;
+        _libraryVm.UpdatesRequested += ShowUpdates;
         _libraryView = new LibraryView(_libraryVm);
         LibraryHost.Children.Add(_libraryView);
 #if FULL
@@ -207,6 +208,8 @@ public sealed partial class MainWindow : Window
     {
         // The storefront is scoped to one game — going home leaves it behind.
         HideCatalog();
+        // Home is the Updates view's parent surface; showing home means we are behind it, not under it.
+        HideUpdates();
         _libraryVm.Load();
         LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         // On the home there's no current game — hide the game-context title-bar controls.
@@ -219,6 +222,7 @@ public sealed partial class MainWindow : Window
     // switcher's selection to it and repaints the mod list for that game.
     private async void HideLibraryForGame()
     {
+        HideUpdates();
         LibraryHost.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
         // In a game's mod view — surface the game-context title-bar controls (name, More, Play).
         GameTitleControls.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
@@ -231,6 +235,31 @@ public sealed partial class MainWindow : Window
 
     // VM raised GameOpened after SetActiveGame — swap to that game's mod view.
     private void OnLibraryGameOpened(string gameId) => HideLibraryForGame();
+
+    // Show the cross-game Updates overlay. Built fresh per open from the snapshot the Library VM's last
+    // Load() already produced — no second pass over the metadata files, and no network call anywhere in
+    // the surface. Back empties the host so a stale snapshot can never linger behind a hidden view.
+    private void ShowUpdates()
+    {
+        var view = new UpdatesView(_libraryVm.UpdateSummaries);
+        view.BackRequested += (_, _) => HideUpdates();
+        // Open game routes back through the Library VM's normal open path (set active, raise GameOpened),
+        // which the shell already handles — the Updates view never navigates or touches the registry.
+        view.OpenGameRequested += (_, gameId) =>
+        {
+            HideUpdates();
+            _libraryVm.OpenGameById(gameId);
+        };
+        UpdatesHost.Children.Clear();
+        UpdatesHost.Children.Add(view);
+        UpdatesHost.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+    }
+
+    private void HideUpdates()
+    {
+        UpdatesHost.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        UpdatesHost.Children.Clear();
+    }
 
     // VM raised AddGameRequested for a store-discovered game — add it, then reload the home so the
     // newly-added game leaves the discovery lane and appears in the all-games list.
