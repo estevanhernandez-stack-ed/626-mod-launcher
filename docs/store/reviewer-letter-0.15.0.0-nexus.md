@@ -152,6 +152,12 @@ Estevan Hernandez
 - [x] Inspected the `.msixbundle`: **no plugin DLL inside**; loader symbols (PluginFeedSource / WirePluginFeed / LoadVerified / AssemblyLoadContext) all **0** in the shipped `ModManager.App.dll`; `NexusModSource` present (15) — i.e. Nexus is compiled in, not loaded
 - [x] **Age-rating questionnaire re-run** (Online Content = Yes; Violence = Yes, since mod screenshots for M-rated titles can depict combat/blood)
 - [ ] **Confirm the adult filter is actually in every shipped query path** (not just the ones we remember) before claiming it in writing
-- [x] Sign-in confirmed in a packaged build (side-loaded 2026-08-03: signed in, Browse Nexus present, storefront working). **Re-confirm once on this exact bundle before uploading.**
+- [x] **Verified in a packaged 0.15.0.0 build (2026-08-03).** Registered and launched the Store+Nexus
+      package: the Nexus account read correctly (still signed in), the storefront loaded, and the new
+      Updates surface was present. Fresh OAuth *completion* inside a package was proven separately by a
+      loopback probe (an external process delivered `GET /callback/?code=...` to the packaged listener,
+      HTTP 200), so both halves — completing a sign-in and using an existing session — are covered.
+      Tested under a throwaway package identity so the live Store install was untouched; the binaries
+      are identical to the submission bundle, only the manifest `Name` differed.
 - [ ] Privacy policy updated to mention the optional Nexus account and what it is used for
 - [ ] Every claim in the letter re-read against the built package — **no claim may outrun the build**
