@@ -130,6 +130,12 @@
                                                     ToolTipService.ToolTip="{x:Bind TierTooltip}">
                                                 <TextBlock Text="{x:Bind TierChip}" FontFamily="Consolas" FontSize="11" />
                                             </Border>
+                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                                    ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
+                                                    Visibility="{x:Bind UpdateBadgeVisibility}">
+                                                <TextBlock Text="{x:Bind UpdateBadgeText}" FontFamily="Consolas" FontSize="11"
+                                                           Foreground="Black" />
+                                            </Border>
                                             <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
                                                     ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"

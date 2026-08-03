@@ -24,10 +24,17 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     public GameLibraryRow Row { get; }
     private string? _resolvedCover;
 
-    public GameLibraryRowViewModel(GameLibraryRow row)
+    /// <summary>Pending Nexus update count for this game, already collapsed to 0 by the caller when the
+    /// game is unchecked (<see cref="ModUpdateSummary.GameUpdateSummary.Checked"/> false) — this VM
+    /// never has to know the difference between "unchecked" and "checked, none pending," because both
+    /// render identically (no badge). See <see cref="UpdateBadgeVisibility"/>.</summary>
+    public int PendingUpdateCount { get; }
+
+    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0)
     {
         Row = row;
         _resolvedCover = row.CoverPath;
+        PendingUpdateCount = pendingUpdateCount;
     }
 
     public string Id => Row.Id;
@@ -137,6 +144,19 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
 
     /// <summary>Comma-joined detected-loader names for the loader chip.</summary>
     public string LoaderChip => HasLoaders ? string.Join(", ", DetectedLoaders) : "";
+
+    /// <summary>The update badge only renders when there's something known AND pending — never "0" and
+    /// never for a game that's never had a Nexus refresh. An absent badge honestly means "nothing
+    /// known"; the caller (LibraryViewModel.Load) already folded "unchecked" down to 0 for us.</summary>
+    public Visibility UpdateBadgeVisibility => PendingUpdateCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Short badge text — "1 UPDATE" / "N UPDATES", matching the Consolas all-caps chip style.</summary>
+    public string UpdateBadgeText => PendingUpdateCount == 1 ? "1 UPDATE" : $"{PendingUpdateCount} UPDATES";
+
+    /// <summary>Sentence-case tooltip, singular-correct.</summary>
+    public string UpdateBadgeTooltip => PendingUpdateCount == 1
+        ? "1 mod has an update available. Open the game to review it."
+        : $"{PendingUpdateCount} mods have updates available. Open the game to review them.";
 }
 
 /// <summary>A store-discovered game that isn't in the registry yet — the discovery lane's row.</summary>
@@ -254,8 +274,18 @@ public sealed partial class LibraryViewModel : ObservableObject
             loaders: LoadersFor,
             cover: CoverFor);
 
+        // Pending-update counts, read from each game's already-persisted metadata.json — no network,
+        // no scan (ModUpdateSummary never throws). A game that's never been refreshed (Checked = false)
+        // folds to 0 here, same as "checked, nothing pending" — both render as no badge, and the row
+        // VM doesn't need to know which case it was (see GameLibraryRowViewModel.PendingUpdateCount).
+        var updateByGameId = ModUpdateSummary.ForGames(games).ToDictionary(s => s.GameId, s => s);
+
         _allRows.Clear();
-        foreach (var r in rows) _allRows.Add(new GameLibraryRowViewModel(r));
+        foreach (var r in rows)
+        {
+            var pending = updateByGameId.TryGetValue(r.Id, out var summary) && summary.Checked ? summary.Count : 0;
+            _allRows.Add(new GameLibraryRowViewModel(r, pending));
+        }
 
         _appIdByRow.Clear();
         foreach (var g in games) _appIdByRow[g.Id] = g.SteamAppId;
