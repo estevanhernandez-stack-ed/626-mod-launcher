@@ -434,6 +434,10 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogVisibility));
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
             OnPropertyChanged(nameof(CatalogBrowseVisibility));
+            OnPropertyChanged(nameof(CatalogDetailAvailable));
+            OnPropertyChanged(nameof(CatalogDetailVisibility));
+            OnPropertyChanged(nameof(CatalogActionsAvailable));
+            OnPropertyChanged(nameof(CatalogActionsVisibility));
             return;
         }
         IsBusy = true;
@@ -713,6 +717,10 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogVisibility));
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
             OnPropertyChanged(nameof(CatalogBrowseVisibility));
+            OnPropertyChanged(nameof(CatalogDetailAvailable));
+            OnPropertyChanged(nameof(CatalogDetailVisibility));
+            OnPropertyChanged(nameof(CatalogActionsAvailable));
+            OnPropertyChanged(nameof(CatalogActionsVisibility));
         }
         catch (Exception e) { StatusText = e.Message; }
         finally { IsBusy = false; }
@@ -1651,6 +1659,53 @@ public sealed partial class MainViewModel : ObservableObject
         catch { return CatalogPage.Empty; }
     }
 
+    /// <summary>Mod detail (description, art, stats, requirements, viewer state) is available when the
+    /// loaded plugin implements the Phase 2 capability. Older plugins (Phase 1 browse-only, or none) leave
+    /// this false, so a card click on those builds simply doesn't try to open a dead dialog.</summary>
+    public bool CatalogDetailAvailable => NexusActionsAvailable && NexusSource is IModCatalogDetail;
+    public Visibility CatalogDetailVisibility => CatalogDetailAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Endorse/track are available when the loaded plugin implements the Phase 2 actions
+    /// capability. Both mutate the user's real Nexus account — <see cref="SetEndorsedAsync"/> and
+    /// <see cref="SetTrackedAsync"/> below are plain pass-throughs meant to fire only from an explicit UI
+    /// click, never from an init/refresh/reload path.</summary>
+    public bool CatalogActionsAvailable => NexusActionsAvailable && NexusSource is IModCatalogActions;
+    public Visibility CatalogActionsVisibility => CatalogActionsAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Fetch one mod's detail for the active game. Self-timeouts (~10s) so a hung request can't
+    /// wedge the dialog; never throws (null on any failure).</summary>
+    public async Task<CatalogDetail?> GetModDetailAsync(int gameId, int modId)
+    {
+        if (NexusSource is not IModCatalogDetail detail) return null;
+        try
+        {
+            var call = detail.GetModDetailAsync(gameId, modId);
+            var done = await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+            return done == call ? await call.ConfigureAwait(false) : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Endorse/un-endorse a mod on the user's real Nexus account. A plain pass-through to the
+    /// plugin — call only in direct response to an explicit UI click, never from an init/refresh/reload
+    /// path. Never throws (false on any failure, so the UI can revert its optimistic toggle).</summary>
+    public async Task<bool> SetEndorsedAsync(string uid, bool endorsed)
+    {
+        if (NexusSource is not IModCatalogActions actions) return false;
+        try { return await actions.SetEndorsedAsync(uid, endorsed).ConfigureAwait(false); }
+        catch { return false; }
+    }
+
+    /// <summary>Track/untrack a mod on the user's real Nexus account. A plain pass-through to the plugin —
+    /// call only in direct response to an explicit UI click, never from an init/refresh/reload path. Never
+    /// throws (false on any failure, so the UI can revert its optimistic toggle).</summary>
+    public async Task<bool> SetTrackedAsync(string uid, bool tracked)
+    {
+        if (NexusSource is not IModCatalogActions actions) return false;
+        try { return await actions.SetTrackedAsync(uid, tracked).ConfigureAwait(false); }
+        catch { return false; }
+    }
+
 #if FULL
     /// <summary>The off-Store plugin feed, stashed on wire-up so <see cref="ConnectNexusAsync"/> can trigger
     /// the consented first-install fetch after an OAuth connect without reaching back into the DI container.
@@ -1681,6 +1736,10 @@ public sealed partial class MainViewModel : ObservableObject
                     OnPropertyChanged(nameof(CatalogVisibility));
                     OnPropertyChanged(nameof(CatalogBrowseAvailable));
                     OnPropertyChanged(nameof(CatalogBrowseVisibility));
+                    OnPropertyChanged(nameof(CatalogDetailAvailable));
+                    OnPropertyChanged(nameof(CatalogDetailVisibility));
+                    OnPropertyChanged(nameof(CatalogActionsAvailable));
+                    OnPropertyChanged(nameof(CatalogActionsVisibility));
                     // Re-detect + reload rows so per-row Nexus state reflects the now-loaded plugin.
                     // RedetectActiveAsync re-runs the scan with the registered source; it calls
                     // ReloadModsAsync internally (which fires the auto-check poll).
@@ -2089,6 +2148,10 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CatalogVisibility));
         OnPropertyChanged(nameof(CatalogBrowseAvailable));
         OnPropertyChanged(nameof(CatalogBrowseVisibility));
+        OnPropertyChanged(nameof(CatalogDetailAvailable));
+        OnPropertyChanged(nameof(CatalogDetailVisibility));
+        OnPropertyChanged(nameof(CatalogActionsAvailable));
+        OnPropertyChanged(nameof(CatalogActionsVisibility));
         OnPropertyChanged(nameof(NexusUser));
         OnPropertyChanged(nameof(NexusPremium));
         OnPropertyChanged(nameof(NexusAccountLine));
