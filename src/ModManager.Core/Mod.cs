@@ -60,8 +60,13 @@ public sealed class Mod
     public string? NexusLatestVersion { get; set; }   // current version on Nexus (what's available)
 
     /// <summary>True when Nexus reports a different current version than the installed one. Computed,
-    /// never trusted from disk: false when no latest was fetched or the versions match.</summary>
-    public bool UpdateAvailable => NexusLatestVersion is { } v && v != Version;
+    /// never trusted from disk: false when no latest was fetched or the versions match.
+    ///
+    /// <para>A blank/whitespace latest counts as NOT fetched, not as a difference. A blank string is not a
+    /// version, so claiming an update for it would put an UPDATE chip on a mod with nothing to update to —
+    /// and it would disagree with <c>ModUpdateSummary</c>, which drives the library badge and the updates
+    /// view off the same persisted field. The chip and the badge must always agree.</para></summary>
+    public bool UpdateAvailable => !string.IsNullOrWhiteSpace(NexusLatestVersion) && NexusLatestVersion != Version;
 }
 
 /// <summary>A per-game metadata.json entry: the real title/credit/links for a mod base.</summary>

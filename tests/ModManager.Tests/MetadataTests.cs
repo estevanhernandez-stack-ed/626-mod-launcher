@@ -128,6 +128,9 @@ public class MetadataTests
     [InlineData("2.0", "2.1", true)]    // newer on Nexus → update available
     [InlineData("2.1", "2.1", false)]   // same version → no update
     [InlineData("2.1", null, false)]    // no latest fetched → no update
+    [InlineData("2.1", "", false)]      // blank latest is not a version → no update
+    [InlineData("2.1", "   ", false)]   // ...and neither is whitespace. Keeps the row's UPDATE chip in
+                                        // agreement with ModUpdateSummary, which drives the library badge.
     public void Mod_UpdateAvailable_compares_latest_against_installed(string? installed, string? latest, bool expected)
     {
         var m = new Mod { Name = "x", Base = "x", Version = installed, NexusLatestVersion = latest };
