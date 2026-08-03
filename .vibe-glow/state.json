@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "app": "626-mod-launcher",
+  "stage": "audit",
+  "adapter": "winui-powershell",
+  "evidenceDir": "docs/ui-evidence",
+  "designLanguagePath": "docs/superpowers/specs/2026-08-03-626-mod-launcher-design-language.md",
+  "findingsRegisterPath": "",
+  "themes": ["default", "obsidian", "matrix"],
+  "invariants": [
+    "Color belongs to the theme engine (23-token contract, Themes.cs) — surfaces must not hardcode palette values. Findings requiring token-contract breaks are refused; extensions must be optional-with-fallback per NormalizeTheme.",
+    "Reversibility and pure-core laws hold — no UI fix may move file-op logic into the App layer or delete user data. CorePurityTests stays green."
+  ],
+  "waves": []
+}

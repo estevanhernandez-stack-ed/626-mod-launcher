@@ -45,3 +45,6 @@ tools/ManifestMiner/out/
 # git history). The agent persona + project rules are local dev config, not user-facing product.
 CLAUDE.md
 .claude/
+
+# vibe-glow campaign evidence (screenshots) — findings registers are committed, evidence is not
+docs/ui-evidence/
