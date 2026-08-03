@@ -26,13 +26,45 @@ These live in `Package.appxmanifest` (Name + Publisher + PublisherDisplayName). 
 
 - **Locally:** `dotnet build src/ModManager.App/ModManager.App.csproj -c Store -p:Platform=x64 -p:Version=<v>` → `src/ModManager.App/AppPackages/.../ModManager.App_<v>_x64_Store.msixbundle`. Then `pwsh scripts/check-store-seal.ps1`.
 - **In CI:** run the **Build Store MSIX (manual)** workflow with the version → download the `store-msixbundle-<v>` artifact.
+- **With Nexus (the 0.15.0.0 line onward):** add `-p:StoreNexus=true`. Plain `-c Store` still builds the
+  sealed, Nexus-free package; the flag compiles the Nexus source in from the pinned `external/626-mod-plugins`
+  submodule (so `git submodule update --init` first on a fresh clone). Either way the seal must pass — the
+  plugin LOADER is compiled out in both.
+
+### ⚠ Never let a test build share the submission's output folder
+
+A side-load test needs a throwaway package identity (so it installs beside the real Store app instead of
+colliding with it), but a rebuild writes to the SAME `AppPackages` folder and **silently overwrites the
+submission bundle**. That happened on 0.15.0.0: the uploaded package carried
+`626LabsLLC.626ModLauncherNexusTest` and Partner Center rejected it with *"Invalid package identity name."*
+
+So:
+
+- Build test packages to a separate directory: add `-p:AppxPackageDir=<some temp dir>\` .
+- **Verify the identity by reading it OUT OF the bundle** before uploading — never from the manifest on disk,
+  which may have been edited and reverted since the bundle was produced:
+
+```powershell
+# unzip the .msixbundle, then the .msix inside it, then read AppxManifest.xml
+([xml](Get-Content "<extracted>\AppxManifest.xml")).Package.Identity | Select-Object Name,Version
+# expect: 626LabsLLC.626ModLauncher / <the submission version>
+```
+
+- Wipe `src/ModManager.App/AppPackages` before producing the real submission build.
 
 ## Submit (human-gated)
 
 1. Partner Center → the reserved app → Packages → upload the `.msixbundle` (unsigned; the Store signs).
 2. Listing: 626 voice, **Utility** category (not Game), screenshots from the themed app, accurate metadata, dependency disclosure.
-3. Privacy policy URL (required): no telemetry, Nexus key stays on-machine, no server-side collection. (Store SKU has no Nexus surface anyway.)
-4. First cert round-trip: expect a question about writing into other publishers' game dirs — answer: "load-order utility for the user's own files, never bundles third-party binaries (see NOTICE)."
+3. Privacy policy URL (required): <https://github.com/estevanhernandez-stack-ed/626-mod-launcher/blob/master/PRIVACY.md>
+   (hosted in-repo so it can be updated without waiting on the site). **Do not** point at 626labs.dev — that
+   page still carries a "626 Labs never proxies third-party data" line that the CurseForge metadata proxy
+   contradicts; see `docs/store/privacy-policy-update-for-nexus.md`.
+4. **Age rating: re-run the questionnaire, never carry it forward, for any build that ships Nexus.** The app
+   displays third-party mod listings fetched at runtime, so Online Content = Yes and Violence = Yes (mod
+   screenshots for M-rated titles can depict combat and blood; the adult filter does not make the remainder
+   violence-free). Expect a higher rating than the sealed SKU — that is correct, not a failure.
+5. First cert round-trip: expect a question about writing into other publishers' game dirs — answer: "load-order utility for the user's own files, never bundles third-party binaries (see NOTICE)."
 
 ## Open / before-launch
 
