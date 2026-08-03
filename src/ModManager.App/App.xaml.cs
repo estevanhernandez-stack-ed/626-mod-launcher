@@ -107,6 +107,16 @@ public partial class App : Application
             AppHost.Services.GetRequiredService<NexusService>(),
             Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
 #endif
+
+#if STORE_NEXUS
+        // Packaged (Store) SKU with Nexus compiled in: register the compiled-in sources directly. Same
+        // Register() entry point and same host services the off-Store loader uses — only the delivery
+        // differs, so nothing is downloaded or executed that did not ship in the reviewed package.
+        BuiltInModSources.RegisterAll(
+            AppHost.Services.GetRequiredService<ModSourceRegistry>(),
+            AppHost.Services.GetRequiredService<HttpClient>(),
+            AppHost.Services.GetRequiredService<NexusService>());
+#endif
     }
 
     // Wire app-wide exception logging as early as possible. WinUI can swallow exceptions thrown from

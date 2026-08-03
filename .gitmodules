@@ -1,0 +1,3 @@
+[submodule "external/626-mod-plugins"]
+	path = external/626-mod-plugins
+	url = https://github.com/estevanhernandez-stack-ed/626-mod-plugins.git
