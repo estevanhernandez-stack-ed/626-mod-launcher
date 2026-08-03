@@ -35,21 +35,42 @@ $appDll = Get-ChildItem -Path "$repo/src/ModManager.App/bin/$Platform/$Configura
 if (-not $appDll) { Write-Error "Couldn't find the STORE build output (ModManager.App.dll)."; exit 1 }
 $outDir = $appDll.DirectoryName
 
-function Test-SymbolPresent([string]$dllPath, [string]$term) {
-    # ISO-8859-1 (28591) is a 1:1 byte<->char mapping available on both Windows PowerShell 5.1 and
-    # pwsh 7 (unlike ::Latin1, which is .NET 5+ only), so Contains becomes a fast exact byte search.
-    $latin1 = [System.Text.Encoding]::GetEncoding(28591)
-    $bytes = [System.IO.File]::ReadAllBytes($dllPath)
-    $hay = $latin1.GetString($bytes)
+function Count-Symbol([string]$hay, [string]$term, [System.Text.Encoding]$latin1) {
+    $n = 0
     foreach ($enc in @([System.Text.Encoding]::UTF8, [System.Text.Encoding]::Unicode)) {
         $needle = $latin1.GetString($enc.GetBytes($term))
-        if ($hay.Contains($needle)) { return $true }
+        $n += ([regex]::Matches($hay, [regex]::Escape($needle))).Count
     }
-    return $false
+    return $n
+}
+
+# A term leaks if it appears MORE often than the legitimate names that merely contain it as a substring.
+#
+# Why the subtraction exists: "PluginHost" is a substring of the CONTRACT interface IPluginHostServices,
+# which the Store build legitimately ships — the host services that hand a mod source its HttpClient and
+# perform authorized sends are shared by both SKUs. A plain substring match flagged that interface as if
+# the loader itself had leaked. Subtracting the known-benign container keeps the original intent (the
+# loader TYPE must not ship) without the false positive.
+#
+# This deliberately does NOT weaken the check: the loader is independently pinned by markers that cannot
+# appear without it — its own private method (LoadVerified), the feed that downloads plugins
+# (PluginFeedSource), the hot-load hook (WirePluginFeed), and AssemblyLoadContext, which IS the capability
+# that makes runtime code loading possible at all. Any one of them appearing fails the seal.
+function Test-SymbolPresent([string]$dllPath, [string]$term, [string[]]$benignContainers) {
+    # ISO-8859-1 (28591) is a 1:1 byte<->char mapping available on both Windows PowerShell 5.1 and
+    # pwsh 7 (unlike ::Latin1, which is .NET 5+ only), so matching becomes a fast exact byte search.
+    $latin1 = [System.Text.Encoding]::GetEncoding(28591)
+    $hay = $latin1.GetString([System.IO.File]::ReadAllBytes($dllPath))
+
+    $hits = Count-Symbol $hay $term $latin1
+    foreach ($b in $benignContainers) { $hits -= (Count-Symbol $hay $b $latin1) }
+    return ($hits -gt 0)
 }
 
 $checks = @(
-    @{ Dll = "ModManager.App.dll";  Terms = @("PluginFeedSource", "PluginHost", "WirePluginFeed") },
+    @{ Dll = "ModManager.App.dll"
+       Terms = @("PluginFeedSource", "PluginHost", "WirePluginFeed", "LoadVerified", "AssemblyLoadContext")
+       Benign = @{ "PluginHost" = @("IPluginHostServices") } },
     @{ Dll = "ModManager.Core.dll"; Terms = @(".626off", "AntiCheatState") }
 )
 
@@ -58,7 +79,9 @@ foreach ($c in $checks) {
     $dll = Join-Path $outDir $c.Dll
     if (-not (Test-Path $dll)) { Write-Error "Missing $($c.Dll) in $outDir"; exit 1 }
     foreach ($t in $c.Terms) {
-        if (Test-SymbolPresent $dll $t) { $leaks += "$($c.Dll): '$t'" }
+        $benign = @()
+        if ($c.ContainsKey("Benign") -and $c.Benign.ContainsKey($t)) { $benign = $c.Benign[$t] }
+        if (Test-SymbolPresent $dll $t $benign) { $leaks += "$($c.Dll): '$t'" }
     }
 }
 

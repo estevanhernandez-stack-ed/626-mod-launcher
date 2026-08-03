@@ -40,6 +40,46 @@
     via Velopack - only the Store build packages. AppxPackageSigningEnabled=false: the Store re-signs, so
     no cert is ever embedded. x64 first; ARM64 is a later bundle decision.
   -->
+  <!--
+    Nexus-in-package (Microsoft Store) build: `-p:Configuration=Store -p:StoreNexus=true`.
+
+    Opt-in ON TOP of Store rather than a new configuration, so plain `-p:Configuration=Store` keeps
+    producing exactly today's sealed, Nexus-free package — the SKU that is already certified. Nothing about
+    the existing submission path changes unless this flag is passed.
+
+    The Nexus source is compiled in from the pinned submodule (external/626-mod-plugins) instead of being
+    downloaded and loaded at runtime, so a Store package contains no dynamically-acquired code. The plugin
+    project is told to resolve Abstractions from OUR project rather than the published package: two
+    same-named assemblies in one build would give `IModCatalog` two distinct identities and every
+    `source is IModCatalog` capability check would silently fail.
+
+    The plugin LOADER is still compiled out either way — check-store-seal.ps1 must keep passing for both.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Store' AND '$(StoreNexus)' == 'true'">
+    <DefineConstants>$(DefineConstants);STORE_NEXUS</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    The Nexus sources are COMPILED IN rather than project-referenced, and that is deliberate.
+
+    Referencing the plugin PROJECT fails: NuGet restore runs before the build and does not see a
+    ProjectReference's AdditionalProperties, so the plugin's assets file still resolves the Abstractions
+    PACKAGE; the build then adds our Abstractions PROJECT on top and the compiler rejects it —
+    "CS1704: An assembly with the same simple name 'ModManager.Plugins.Abstractions' has already been
+    imported." Pushing the property globally would work but has to be threaded through restore AND build on
+    every invocation, which a release script will eventually get wrong.
+
+    Compiling the sources keeps exactly ONE Abstractions in the build (ours, the project), so
+    `source is IModCatalog` capability checks resolve against the same type the host uses. It also means
+    the Store binary genuinely contains the Nexus code rather than loading it — which is the property we
+    want to be able to state to a Store reviewer.
+  -->
+  <ItemGroup Condition="'$(Configuration)' == 'Store' AND '$(StoreNexus)' == 'true'">
+    <Compile Include="..\..\external\626-mod-plugins\src\ModManager.Plugin.Nexus\**\*.cs"
+             Exclude="..\..\external\626-mod-plugins\src\ModManager.Plugin.Nexus\obj\**\*.cs;..\..\external\626-mod-plugins\src\ModManager.Plugin.Nexus\bin\**\*.cs"
+             LinkBase="BuiltInNexus" />
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Store'">
     <WindowsPackageType>MSIX</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
