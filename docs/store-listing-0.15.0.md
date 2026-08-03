@@ -11,9 +11,12 @@
 >
 > Category (**Utilities & tools**) and screenshots are unchanged from prior submissions.
 >
-> **Privacy:** supplied directly with this submission as text
-> ([`store/privacy-statement-store-submission.txt`](store/privacy-statement-store-submission.txt)), not as a
-> link to the 626labs.dev page. Nothing in this submission should reference that URL.
+> **Privacy policy URL for Partner Center:**
+> `https://github.com/estevanhernandez-stack-ed/626-mod-launcher/blob/master/PRIVACY.md`
+> Hosted in this repo ([`PRIVACY.md`](../PRIVACY.md)) rather than on 626labs.dev — stable, public, and
+> editable without waiting on the site. The plain-text version
+> ([`store/privacy-statement-store-submission.txt`](store/privacy-statement-store-submission.txt)) is kept
+> for any field that wants text instead of a link. Nothing references 626labs.dev.
 
 ---
 
@@ -88,7 +91,7 @@ submission — that is the correct outcome, not a failure.
 
 ## Before you upload
 
-- [x] Privacy statement supplied with the submission (no 626labs.dev reference anywhere in the submission)
+- [ ] Privacy policy URL set in Partner Center to the GitHub-hosted `PRIVACY.md` (live once merged to master)
 - [ ] Description updated with the two sections above
 - [ ] "What's new" pasted
 - [ ] Reviewer letter block pasted into Notes for certification
