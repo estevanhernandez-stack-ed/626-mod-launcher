@@ -8,9 +8,11 @@
     CloseButtonText="Close" DefaultButton="Close">
 
     <!-- Three states share one cell: loading, failure, loaded. Collapsed panels take no space, so the
-         dialog sizes to whichever one is showing. Fixed width so the hero art and the description column
-         don't resize under the user when the content swaps in. -->
-    <Grid MinWidth="620" MaxWidth="620">
+         dialog sizes to whichever one is showing.
+         MaxWidth (not a pinned width) so the layout stays stable on a roomy window but ADAPTS down on a
+         narrow one. Pinning MinWidth = MaxWidth = 620 made the content wider than the dialog whenever the
+         host window was smaller, and the overflow clipped mid-word at the right edge instead of wrapping. -->
+    <Grid MaxWidth="620" HorizontalAlignment="Stretch">
 
         <StackPanel x:Name="LoadingPanel" Orientation="Horizontal" Spacing="10" Margin="0,18,0,18">
             <ProgressRing IsActive="True" Width="18" Height="18" VerticalAlignment="Center" />
@@ -26,8 +28,13 @@
                     ToolTipService.ToolTip="Opens this mod's page on Nexus in your browser." />
         </StackPanel>
 
+        <!-- HorizontalScrollBarVisibility="Disabled" is load-bearing, not cosmetic: without it the
+             ScrollViewer grants its content infinite width, so long description lines lay out off-screen
+             and get clipped instead of wrapping. Disabled constrains them to the visible width, which is
+             what makes TextWrapping on the children actually take effect. -->
         <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed" MaxHeight="520"
-                      VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Padding="0,0,12,0">
             <StackPanel Spacing="12">
 
                 <!-- Hero art. The neutral placeholder sits UNDER the image, so a null or broken picture
