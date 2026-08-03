@@ -92,6 +92,15 @@ public sealed partial class NexusModDetailDialog : ContentDialog
         NameLabel.Text = hit.Name;
         _openUrl = SafeUrl.IsHttpUrl(hit.Url) ? hit.Url : null;
 
+        // Don't let the dialog close out from under an in-flight endorse/track. The optimistic flip has
+        // already happened on screen, so closing mid-call would leave the user believing the action stuck
+        // while a failure quietly reverted a control nobody can see any more. These calls self-timeout in
+        // the view-model, so the block is bounded — and it only holds for a write the user just asked for.
+        Closing += (_, e) =>
+        {
+            if (_endorseBusy || _trackBusy) e.Cancel = true;
+        };
+
         // Opened fires once per ShowAsync; the flag covers the pathological re-entry anyway. LoadAsync
         // never throws, so the discarded task can't surface as an unobserved exception.
         Opened += (_, _) =>
