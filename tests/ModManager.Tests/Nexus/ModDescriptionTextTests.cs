@@ -115,14 +115,13 @@ public class ModDescriptionTextTests
     }
 
     [Fact]
-    public void Decoded_angle_brackets_that_form_a_tag_shape_are_still_stripped()
+    public void Escaped_angle_brackets_are_kept_not_treated_as_markup()
     {
-        // Known limitation, not a bug: the spec orders entity-decode BEFORE the final HTML-tag strip, so a
-        // decoded "&lt; ... &gt;" pair that happens to look like a tag gets removed like a real tag would.
-        // Nexus mod descriptions don't use encoded angle brackets as literal comparison operators in
-        // practice, so this tradeoff is accepted rather than reordering the documented pipeline.
-        var result = ModDescriptionText.ToPlainText("1 &lt; 2 &gt; 0");
-        Assert.DoesNotContain("2", result);
+        // Was a documented limitation until the pipeline was reordered: decoding entities BEFORE stripping
+        // tags turned an escaped "&lt; 2 &gt;" into a literal "< 2 >" that the tag regex then ate, so
+        // "requires version &lt; 2.0 &gt; only" silently lost its middle. Tags are now stripped first, so
+        // only genuine markup is removed and escaped text survives intact.
+        Assert.Equal("1 < 2 > 0", ModDescriptionText.ToPlainText("1 &lt; 2 &gt; 0"));
     }
 
     [Fact]
@@ -193,5 +192,22 @@ public class ModDescriptionTextTests
         Assert.True(sw.ElapsedMilliseconds < 2000, $"Took {sw.ElapsedMilliseconds}ms");
         Assert.Contains("Section 0", result);
         Assert.Contains("Section 999", result);
+    }
+
+    [Fact]
+    public void Escaped_angle_brackets_survive_tag_stripping()
+    {
+        // Regression: entities used to be decoded BEFORE tags were stripped, so an escaped comparison
+        // decoded into "< 2.0 >" and was then eaten as if it were markup — the description silently lost
+        // its middle. Real markup must still go; escaped text must stay.
+        var result = ModDescriptionText.ToPlainText("requires version &lt; 2.0 &gt; only");
+        Assert.Equal("requires version < 2.0 > only", result);
+    }
+
+    [Fact]
+    public void Real_markup_is_still_stripped_after_the_reorder()
+    {
+        // The reorder must not weaken tag stripping — genuine HTML still goes.
+        Assert.Equal("bold and plain", ModDescriptionText.ToPlainText("<b>bold</b> and <i>plain</i>"));
     }
 }

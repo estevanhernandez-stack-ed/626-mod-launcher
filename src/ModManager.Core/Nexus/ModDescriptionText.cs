@@ -50,8 +50,14 @@ public static class ModDescriptionText
             text = ListItem.Replace(text, "\n");
             text = BreakTag.Replace(text, "\n");
             text = BbCodeTag.Replace(text, string.Empty);
-            text = DecodeCommonEntities(text);
+
+            // Strip real tags BEFORE decoding entities, not after. Decoding first turns an ESCAPED
+            // "&lt; 10 &gt;" into a literal "< 10 >", which the tag regex then eats as if it were markup —
+            // so a description reading "requires version &lt; 2.0 &gt; only" silently loses its middle.
+            // Stripping first means only genuine markup is removed, and a decoded "<script>" survives as
+            // harmless literal text (this output goes to a TextBlock, which does not render HTML).
             text = HtmlTag.Replace(text, string.Empty);
+            text = DecodeCommonEntities(text);
 
             // Normalize line endings before collapsing so \r\n and \n runs both count.
             text = text.Replace("\r\n", "\n").Replace('\r', '\n');
