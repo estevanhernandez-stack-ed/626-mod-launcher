@@ -112,7 +112,7 @@ mod file already on disk, and our own update and game-definition feeds. No
 telemetry. No advertising. No personal data is collected by us; the Nexus
 account is the user's own and its token is stored encrypted on their
 machine only.
-Privacy policy: https://626labs.dev/privacy.html
+Privacy statement: https://github.com/estevanhernandez-stack-ed/626-mod-launcher/blob/master/PRIVACY.md
 
 Game names and mod content belong to their respective publishers and
 authors. 626 Mod Launcher is an independent utility, not affiliated with or
@@ -141,7 +141,7 @@ Estevan Hernandez
 | **11.12 / 11.13** UGC + moderation | Adult content is excluded **server-side in every query**, so it never reaches the app; hence no age gate and nothing to moderate client-side. Displayed fields are public catalog metadata. | Show the literal query filter and the code path proving it is unconditional. Offer to add a user-reporting affordance that deep-links to Nexus's own report flow if they want a report path. |
 | **10.2.x** downloaded/dynamic code | No plugin loader, nothing executed that did not ship in the package; the off-Store loader is compiled out and binary-verified absent by the seal check. | Seal output + MSIX inspection showing no loader symbols and no plugin DLL. |
 | **Prior-statement consistency** | We disclose the reversal in the first paragraph rather than letting a diff surface it. | — |
-| **10.5** privacy | No telemetry, no PII collected by us; optional OAuth sign-in with the token encrypted on-machine; privacy policy linked. | Privacy policy URL; note the app is fully usable signed-out. |
+| **10.5** privacy | No telemetry, no PII collected by us; optional OAuth sign-in with the token encrypted on-machine; full privacy statement published at https://github.com/estevanhernandez-stack-ed/626-mod-launcher/blob/master/PRIVACY.md. | Point to the published privacy statement; note the app is fully usable signed-out and stores the Nexus token encrypted on-machine only. |
 | **Age rating** | Re-run the age-rating questionnaire for this version: it now displays third-party UGC. Answer honestly, noting the adult exclusion. **Do not carry the old rating over unexamined.** | — |
 
 ## Pre-submission checks — MUST all be re-verified against the real package

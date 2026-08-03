@@ -1,4 +1,15 @@
-# Privacy policy update — required before the Nexus Store submission
+# Privacy policy update for the site — SUPERSEDED for the 0.15.0.0 submission
+
+> **Not needed for the Store submission.** The 0.15.0.0 submission supplies its privacy statement directly
+> as text ([`privacy-statement-store-submission.txt`](privacy-statement-store-submission.txt)) and does not
+> reference `626labs.dev/privacy.html` at all, so nothing here gates the submission.
+>
+> **Kept because change 2 is still a genuine accuracy bug on the live site**, unrelated to Nexus: the page
+> says 626 Labs "does not receive, proxy, or store" third-party data, while the launcher identifies mod
+> files through a 626 Labs-operated CurseForge proxy. Worth fixing on its own schedule. The submitted
+> statement already words this correctly.
+
+# (original) Privacy policy update — proposed site changes
 
 **Target file:** `626Labs-LLC.github.io/privacy.html` (the root one, ~26 KB — served as
 <https://626labs.dev/privacy.html>; there is also a smaller `legal/privacy.html`, confirm which is live).
