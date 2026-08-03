@@ -301,14 +301,19 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- Nexus connection status + jump-link. Clicking opens Settings (which owns the
+                <!-- Nexus ACCOUNT chip + jump-link. Clicking opens Settings (which owns the
                      connect/disconnect UI as its Nexus section). The dot is the affordance:
-                     accent-green when connected, danger-red when not. -->
+                     accent-green when connected, danger-red when not.
+
+                     The label is bound, not the literal "Nexus", so this chip never reads as a repeat of
+                     the Browse Nexus action button in the MODS group. Connected it shows the account name
+                     (this chip is about WHO you are, not the brand); disconnected it reads "Connect Nexus",
+                     and the Browse button is hidden in that state, so the two never collide. -->
                 <Button Click="OnSettings" VerticalAlignment="Bottom"
-                        ToolTipService.ToolTip="Nexus Mods connection — click to manage in Settings">
+                        ToolTipService.ToolTip="{x:Bind ViewModel.NexusChipTooltip, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
-                        <TextBlock Text="Nexus" />
+                        <TextBlock Text="{x:Bind ViewModel.NexusChipLabel, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
             </StackPanel>

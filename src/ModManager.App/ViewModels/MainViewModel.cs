@@ -1721,6 +1721,22 @@ public sealed partial class MainViewModel : ObservableObject
     public string? NexusUser => _nexus.ConnectedUser;
     public bool NexusPremium => _nexus.ConnectedPremium;
 
+    /// <summary>Label for the title-bar account chip. It deliberately does NOT say "Nexus" while
+    /// connected: the Browse Nexus action button sits in the same bar, and two controls both reading
+    /// "Nexus" (one a status jump-link, one a browse action) reads as a repeat. Connected, the chip is
+    /// about WHO you are signed in as, so it shows the account name. Disconnected, it is a call to
+    /// action — and the Browse button is hidden in that state, so nothing is duplicated either way.</summary>
+    public string NexusChipLabel =>
+        !_nexus.IsConnected ? "Connect Nexus"
+        : string.IsNullOrWhiteSpace(_nexus.ConnectedUser) ? "Nexus account"
+        : _nexus.ConnectedUser!;
+
+    /// <summary>Tooltip for the account chip — carries the Premium/Free tag the compact label drops.</summary>
+    public string NexusChipTooltip =>
+        !_nexus.IsConnected
+            ? "Connect your Nexus Mods account — click to sign in from Settings."
+            : $"Signed in to Nexus Mods as {NexusAccountLine} — click to manage in Settings.";
+
     /// <summary>The connected account line, with a Premium/Free tag — null when not connected.</summary>
     public string? NexusAccountLine =>
         !_nexus.IsConnected ? null : $"{_nexus.ConnectedUser}{(_nexus.ConnectedPremium ? " (Premium)" : " (Free)")}";
@@ -2076,6 +2092,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusUser));
         OnPropertyChanged(nameof(NexusPremium));
         OnPropertyChanged(nameof(NexusAccountLine));
+        OnPropertyChanged(nameof(NexusChipLabel));
+        OnPropertyChanged(nameof(NexusChipTooltip));
     }
 
     /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
