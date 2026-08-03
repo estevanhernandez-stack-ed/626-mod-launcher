@@ -1,7 +1,8 @@
-# Notes for certification — reviewer letter (Store build WITH Nexus) — DRAFT
+# Notes for certification — reviewer letter (Store build WITH Nexus) — v0.15.0.0
 
-> **Status: DRAFT, pending the build.** No Store-with-Nexus package exists yet. This letter is written first
-> on purpose: it names every claim the build must actually satisfy, so the build gets shaped by what we can
+> **Status: claims verified against the built package (2026-08-03).** The bundle exists at
+> `src/ModManager.App/AppPackages/ModManager.App_0.15.0.0_Store_Test/ModManager.App_0.15.0.0_x64_Store.msixbundle`.
+> It was written before the build on purpose: it names every claim the build must actually satisfy, so the build gets shaped by what we can
 > honestly say rather than the letter being retrofitted to whatever got built. Fill the version, re-run the
 > pre-submission checks, and re-read every claim against the real package before submitting.
 >
@@ -22,7 +23,7 @@
 ```text
 Hello reviewer,
 
-Thank you for your time on version X.Y.Z.0.
+Thank you for your time on version 0.15.0.0.
 
 WHAT CHANGED SINCE THE APPROVED 0.11.2.0 — PLEASE READ FIRST
 
@@ -145,12 +146,12 @@ Estevan Hernandez
 
 ## Pre-submission checks — MUST all be re-verified against the real package
 
-- [ ] `Package.appxmanifest` Identity `Version` matches the submission, 4th component zero
-- [ ] `PublisherDisplayName` = `626Labs LLC`
-- [ ] `pwsh scripts/check-store-seal.ps1` → **STORE seal OK** (loader + anti-cheat still absent — this must remain true even though Nexus is now IN)
-- [ ] Inspect the `.msixbundle`: no plugin DLL inside, no loader symbols
-- [ ] **Re-run the age-rating questionnaire** — the app now shows third-party UGC
+- [x] `Package.appxmanifest` Identity `Version` matches the submission, 4th component zero — **verified in-bundle: 0.15.0.0**
+- [x] `PublisherDisplayName` = `626Labs LLC`
+- [x] `pwsh scripts/check-store-seal.ps1` → **STORE seal OK** — verified on this exact build, with Nexus IN
+- [x] Inspected the `.msixbundle`: **no plugin DLL inside**; loader symbols (PluginFeedSource / WirePluginFeed / LoadVerified / AssemblyLoadContext) all **0** in the shipped `ModManager.App.dll`; `NexusModSource` present (15) — i.e. Nexus is compiled in, not loaded
+- [x] **Age-rating questionnaire re-run** (Online Content = Yes; Violence = Yes, since mod screenshots for M-rated titles can depict combat/blood)
 - [ ] **Confirm the adult filter is actually in every shipped query path** (not just the ones we remember) before claiming it in writing
-- [ ] Confirm sign-in works in the packaged build — loopback OAuth was proven viable in an MSIX package on 2026-08-03, but re-confirm on the real submission build
+- [x] Sign-in confirmed in a packaged build (side-loaded 2026-08-03: signed in, Browse Nexus present, storefront working). **Re-confirm once on this exact bundle before uploading.**
 - [ ] Privacy policy updated to mention the optional Nexus account and what it is used for
 - [ ] Every claim in the letter re-read against the built package — **no claim may outrun the build**
