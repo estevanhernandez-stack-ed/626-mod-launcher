@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.NexusModDetailDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
+    Title="Mod details"
+    CloseButtonText="Close" DefaultButton="Close">
+
+    <!-- Three states share one cell: loading, failure, loaded. Collapsed panels take no space, so the
+         dialog sizes to whichever one is showing. Fixed width so the hero art and the description column
+         don't resize under the user when the content swaps in. -->
+    <Grid MinWidth="620" MaxWidth="620">
+
+        <StackPanel x:Name="LoadingPanel" Orientation="Horizontal" Spacing="10" Margin="0,18,0,18">
+            <ProgressRing IsActive="True" Width="18" Height="18" VerticalAlignment="Center" />
+            <TextBlock Text="Loading this mod from Nexus…" Opacity="0.75" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Failure still offers the browser: a detail fetch that fell over must not strand the user with
+             a dead dialog when the mod page itself is one click away. -->
+        <StackPanel x:Name="FailurePanel" Spacing="10" Visibility="Collapsed" Margin="0,12,0,4">
+            <TextBlock x:Name="FailureLabel" TextWrapping="Wrap" Opacity="0.8" />
+            <Button x:Name="FailureOpenButton" Content="Open on Nexus" Click="OnOpenOnNexus"
+                    HorizontalAlignment="Left" Visibility="Collapsed"
+                    ToolTipService.ToolTip="Opens this mod's page on Nexus in your browser." />
+        </StackPanel>
+
+        <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed" MaxHeight="520"
+                      VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+            <StackPanel Spacing="12">
+
+                <!-- Hero art. The neutral placeholder sits UNDER the image, so a null or broken picture
+                     leaves the monogram showing instead of a hole. -->
+                <Grid Height="200" CornerRadius="6">
+                    <Border CornerRadius="6" Background="{StaticResource ThemeBarBg}">
+                        <TextBlock x:Name="HeroInitial" FontSize="48" FontWeight="Bold" Opacity="0.35"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border CornerRadius="6">
+                        <Image x:Name="HeroImage" Stretch="UniformToFill" ImageFailed="OnHeroImageFailed" />
+                    </Border>
+                </Grid>
+
+                <StackPanel Spacing="2">
+                    <TextBlock x:Name="NameLabel" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True"
+                               Foreground="{StaticResource ThemeInk}" />
+                    <TextBlock x:Name="ByLabel" FontSize="13" TextWrapping="Wrap"
+                               Foreground="{StaticResource ThemeInkSoft}" />
+                    <TextBlock x:Name="MetaLabel" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <TextBlock x:Name="EndorsementsLabel" FontSize="13" Opacity="0.8" />
+                    <TextBlock x:Name="DownloadsLabel" FontSize="13" Opacity="0.8" />
+                </StackPanel>
+
+                <!-- Download stays a browser handoff. Endorse and Track are the only writes on this
+                     surface, they hit the user's real Nexus account, and they fire from these clicks and
+                     nowhere else — never on open, load, or retry. -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="OpenButton" Content="Download on Nexus" Click="OnOpenOnNexus"
+                            ToolTipService.ToolTip="Opens this mod's page on Nexus in your browser. The launcher never downloads mod files itself." />
+                    <primitives:ToggleButton x:Name="EndorseToggle" Click="OnEndorseClick"
+                                             Visibility="Collapsed"
+                                             ToolTipService.ToolTip="Endorse this mod on your Nexus account." />
+                    <primitives:ToggleButton x:Name="TrackToggle" Click="OnTrackClick"
+                                             Visibility="Collapsed"
+                                             ToolTipService.ToolTip="Track this mod on your Nexus account." />
+                </StackPanel>
+
+                <TextBlock x:Name="ActionMessage" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource ThemeAccent}" />
+
+                <TextBlock x:Name="SummaryLabel" Visibility="Collapsed" FontSize="13" Opacity="0.8"
+                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+
+                <StackPanel x:Name="DescriptionSection" Spacing="4" Visibility="Collapsed">
+                    <TextBlock Text="Description" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource ThemeInk}" />
+                    <!-- Always the converted text, never the raw Nexus body: descriptions are BBCode and
+                         HTML mixed together. -->
+                    <TextBlock x:Name="DescriptionLabel" FontSize="13" Opacity="0.85"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                </StackPanel>
+
+                <StackPanel x:Name="RequirementsSection" Spacing="4" Visibility="Collapsed">
+                    <TextBlock Text="Requirements" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource ThemeInk}" />
+                    <ItemsControl x:Name="RequirementList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <!-- Two shapes per row: a link button when we can resolve somewhere to go
+                                     (a Nexus mod page, or an off-site URL for an external requirement), a
+                                     plain block when we can't. A requirement with neither link nor notes
+                                     still renders its name and keeps the list intact. -->
+                                <Grid>
+                                    <Button Visibility="{Binding LinkVisibility}" Click="OnRequirementClick"
+                                            Background="Transparent" BorderThickness="0" Padding="0,3"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            ToolTipService.ToolTip="{Binding LinkTip}">
+                                        <StackPanel Spacing="1">
+                                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource ThemeAccent}" />
+                                            <TextBlock Text="{Binding Detail}" TextWrapping="Wrap"
+                                                       FontSize="12" Opacity="0.6"
+                                                       Visibility="{Binding DetailVisibility}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel Spacing="1" Margin="0,3" Visibility="{Binding PlainVisibility}">
+                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Detail}" TextWrapping="Wrap"
+                                                   FontSize="12" Opacity="0.6"
+                                                   Visibility="{Binding DetailVisibility}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</ContentDialog>

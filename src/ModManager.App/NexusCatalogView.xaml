@@ -64,10 +64,13 @@
                    Opacity="0.7" VerticalAlignment="Top" />
 
         <!-- Card grid. GridView owns its own scrolling, so there is no outer ScrollViewer. Selection is
-             off — a card is a display surface with its own Get button, not a pick list. -->
+             off — a card is a display surface with its own Get button, not a pick list. Clicking a card
+             opens the detail dialog, but only when the loaded plugin can actually answer with detail:
+             IsItemClickEnabled is set from code in the constructor so an older (0.13.x) plugin gets no
+             click affordance at all rather than a dead one. -->
         <GridView x:Name="ResultsGrid" Grid.Row="2" Padding="20,4,12,8"
                   ItemsSource="{x:Bind Cards}"
-                  SelectionMode="None" IsItemClickEnabled="False"
+                  SelectionMode="None" IsItemClickEnabled="False" ItemClick="OnCardClick"
                   ScrollViewer.HorizontalScrollMode="Disabled"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   ScrollViewer.VerticalScrollBarVisibility="Auto">

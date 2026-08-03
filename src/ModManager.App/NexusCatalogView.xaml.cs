@@ -153,6 +153,9 @@ public sealed partial class NexusCatalogView : UserControl
 
     private bool _suppressFilterEvents;
 
+    // One detail dialog at a time — a second ShowAsync while one is open throws.
+    private bool _detailOpen;
+
     // PENDING box state — what the user has typed but may not have submitted yet.
     private string _query = "";
 
@@ -181,6 +184,11 @@ public sealed partial class NexusCatalogView : UserControl
 
         TitleLabel.Text = $"Browse Nexus — {_gameName}";
         ResetCategories();
+
+        // Cards are clickable only when the loaded plugin carries the Phase 2 detail capability. A 0.13.x
+        // plugin therefore gets no hover/pressed affordance and no dead dialog — the storefront behaves
+        // exactly as it did before.
+        ResultsGrid.IsItemClickEnabled = _vm.CatalogDetailAvailable;
 
         // A storefront opens populated, not empty: the first load is the default most-endorsed listing.
         // Focus lands in the search box so typing works immediately — and so Escape has somewhere inside
@@ -248,6 +256,40 @@ public sealed partial class NexusCatalogView : UserControl
         var url = card.Hit.Url;
         if (!string.IsNullOrWhiteSpace(url) && ModManager.Core.SafeUrl.IsHttpUrl(url))
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
+    // Card click -> the in-app detail dialog. Gated three ways: the GridView only raises ItemClick when
+    // the detail capability is present (see the constructor), the handler re-checks the gate in case the
+    // plugin changed under a long-open view, and the hit must carry the numeric GameId the detail query
+    // takes (an older plugin leaves it null). Any of those missing = the click is simply inert.
+    private void OnCardClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is NexusCatalogCard card) _ = OpenDetailAsync(card);
+    }
+
+    private async Task OpenDetailAsync(NexusCatalogCard card)
+    {
+        // ContentDialog throws if a second one is opened while the first is showing, and a fast
+        // double-click on a card would do exactly that.
+        if (_detailOpen || !_vm.CatalogDetailAvailable) return;
+        if (card.Hit.GameId is not { } gameId) return;
+        if (XamlRoot is null) return;
+
+        _detailOpen = true;
+        try
+        {
+            var dialog = new NexusModDetailDialog(_vm, card.Hit, gameId) { XamlRoot = XamlRoot };
+            await dialog.ShowAsync();
+        }
+        catch
+        {
+            // A refused open (another dialog already showing, or the root went away mid-click) must not
+            // take the storefront down.
+        }
+        finally
+        {
+            _detailOpen = false;
+        }
     }
 
     // A CDN thumbnail that 404s / times out / decodes badly: drop the source so the card's neutral
