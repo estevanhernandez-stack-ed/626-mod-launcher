@@ -10,14 +10,16 @@ namespace ModManager.App.Services;
 /// last-fetched manifest from the on-disk cache (verified against the pinned key in Core) BEFORE the
 /// UI / facades read — so a slow or offline network never blocks launch. In the background,
 /// <see cref="RefreshAsync"/> re-fetches the feed (debounced 24h) into the cache for the NEXT launch.
-/// Both are gated on the "auto-update definitions" setting. Ships dark: <see cref="FeedUrl"/> is empty
-/// until the feed repo exists, so nothing is fetched. Auto-update is comfort, not load-bearing —
+/// Both are gated on the "auto-update definitions" setting. Live since v0.6.0: <see cref="FeedUrl"/>
+/// points at the published feed. If it were ever emptied (e.g. reverting to embedded-only), RefreshAsync
+/// no-ops — that's a design guard, not the current state. Auto-update is comfort, not load-bearing —
 /// every failure is swallowed; the embedded manifest is always the floor.
 /// </summary>
 public sealed class RemoteManifestSource
 {
     // The published 626-game-manifest feed (signed, verified against the pinned key in Core).
-    // The .sig URL is derived as <FeedUrl>.sig. Empty => RefreshAsync no-ops (ships dark).
+    // The .sig URL is derived as <FeedUrl>.sig. Live since v0.6.0. Empty => RefreshAsync no-ops
+    // (guard for a reverted/emptied URL, not the current state).
     private const string FeedUrl = "https://raw.githubusercontent.com/estevanhernandez-stack-ed/626-game-manifest/main/games-manifest.json";
 
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromHours(24);
@@ -50,7 +52,7 @@ public sealed class RemoteManifestSource
     /// debounced once per 24h. No-op when the setting is off or the feed URL is empty (dark).</summary>
     public async Task RefreshAsync()
     {
-        if (string.IsNullOrEmpty(FeedUrl)) return;          // ships dark until go-live
+        if (string.IsNullOrEmpty(FeedUrl)) return;          // guard only — FeedUrl is live since v0.6.0
         if (!new AppSettingsService().AutoUpdateDefinitions) return;
         if (!ShouldFetch()) return;
 
