@@ -144,6 +144,21 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
                         <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
+                        <!-- Browse Nexus is a first-class action, not a menu entry: it is the primary way to
+                             discover mods now, so it gets its own accent button (same primary treatment as
+                             Apply order / Launch options). It was buried in the Find mods flyout, which is
+                             about opening a BROWSER — wrong home, and two clicks deep. Gated on
+                             CatalogVisibility so it is absent on Store / no plugin / no domain / disconnected;
+                             the handler picks the rich storefront or the older simple dialog by capability. -->
+                        <Button Click="OnBrowseNexusInApp"
+                                Visibility="{x:Bind ViewModel.CatalogVisibility, Mode=OneWay}"
+                                Foreground="Black" Background="{StaticResource ThemeAccent}"
+                                ToolTipService.ToolTip="Browse this game's Nexus mods in the launcher — sorted, filterable, and marked with what you already have. Get opens the mod page to download.">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE721;" FontSize="13" />
+                                <TextBlock Text="Browse Nexus" />
+                            </StackPanel>
+                        </Button>
                         <DropDownButton ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
                             <DropDownButton.Content>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -153,9 +168,6 @@
                             </DropDownButton.Content>
                             <DropDownButton.Flyout>
                                 <MenuFlyout>
-                                    <MenuFlyoutItem Text="Browse Nexus (in app)" Click="OnBrowseNexusInApp"
-                                                    Visibility="{x:Bind ViewModel.CatalogVisibility, Mode=OneWay}"
-                                                    ToolTipService.ToolTip="Search Nexus for this game's mods without leaving the launcher — Get opens the mod page to download" />
                                     <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE721;" />
@@ -289,14 +301,19 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- Nexus connection status + jump-link. Clicking opens Settings (which owns the
+                <!-- Nexus ACCOUNT chip + jump-link. Clicking opens Settings (which owns the
                      connect/disconnect UI as its Nexus section). The dot is the affordance:
-                     accent-green when connected, danger-red when not. -->
+                     accent-green when connected, danger-red when not.
+
+                     The label is bound, not the literal "Nexus", so this chip never reads as a repeat of
+                     the Browse Nexus action button in the MODS group. Connected it shows the account name
+                     (this chip is about WHO you are, not the brand); disconnected it reads "Connect Nexus",
+                     and the Browse button is hidden in that state, so the two never collide. -->
                 <Button Click="OnSettings" VerticalAlignment="Bottom"
-                        ToolTipService.ToolTip="Nexus Mods connection — click to manage in Settings">
+                        ToolTipService.ToolTip="{x:Bind ViewModel.NexusChipTooltip, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
-                        <TextBlock Text="Nexus" />
+                        <TextBlock Text="{x:Bind ViewModel.NexusChipLabel, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
             </StackPanel>
