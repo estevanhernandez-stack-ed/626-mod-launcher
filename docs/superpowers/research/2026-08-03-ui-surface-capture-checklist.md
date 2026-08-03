@@ -49,3 +49,43 @@ Some guided rows need staged conditions (updates available, a Vortex
 folder, a FromSoft save). Capture what's reachable in round 1; list the
 rows you skipped at the bottom of the round's notes and stage them for
 round 2. A skipped row is recorded, not forgotten.
+
+## Round notes — 2026-08-03 baseline (stage 0)
+
+Captured: 33 PNGs — 20 `default` (626 Labs), 8 `obsidian`, 5 `matrix`.
+Default round covered the full walk; obsidian/matrix ran the lean
+structural set (library home, game mods view, settings, saves,
+character edit; obsidian adds INI editor, new theme, readme popup).
+All 2580x1023, one monitor, one scale.
+
+**Checklist corrections (learned driving the app):**
+
+- `update-mods-dialog` does not exist — the update path routes to Nexus.
+  Row removed from scope.
+- `profiles-dialog` does not exist as a dialog surface.
+- `tool-configure-dialog` does not exist — tools install via `+` on the
+  tools bar; there is no per-tool configure surface. Este would like one
+  (needs tool-pack metadata to drive it) — QOL candidate for the stage-1
+  audit.
+- `safe-clear-dialog` is the Reset launcher dialog (restore-point +
+  return-to-vanilla flow).
+
+**Skipped rows (staged conditions not loaded — recorded, not forgotten):**
+manual-match, loose-identify, framework-install,
+framework-unrecognized-nudge, vortex-takeover.
+
+**Observations parked for the stage-1 audit (not findings yet):**
+
+- Mod-row toggle switches render blue under obsidian and matrix while
+  every other control re-themes — hardcoded accent suspect.
+- Library home under obsidian is visually near-identical to default —
+  worth checking which tokens the home view actually consumes.
+
+**Adapter friction (for the vibe-glow retro):**
+
+- Esc ends the watch session AND closes app dialogs — closing a dialog
+  with Esc silently kills capture. Drive dialog-close via app buttons.
+- F8 presses during the gap between watch sessions are lost silently;
+  the operator has no signal the watcher is down.
+- Window titles all read "WinUI Desktop" — auto-labels are useless for
+  this app; every capture needs a manual rename pass.
