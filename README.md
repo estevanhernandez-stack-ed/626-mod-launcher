@@ -52,7 +52,7 @@ The slightly longer version:
 ## What it doesn't do
 
 - **Pirate, crack, or modify game code.** It moves mod files around. Your game is your game.
-- **Phone home.** No analytics, no telemetry, no "thanks for using" pings. The CurseForge metadata proxy is the only outbound network call by default; the Nexus integration is opt-in and signs in with your Nexus account over OAuth — the token is kept on your machine, held by the app, and never exposed to plugin code.
+- **Phone home.** No analytics, no telemetry, no "thanks for using" pings. By default the launcher makes three kinds of calls: the CurseForge metadata proxy for mod lookups, the signed game-definition feed on GitHub (live since v0.6.0, debounced ~24h, gated by the auto-update-definitions setting), and a GitHub Releases update check. The Nexus integration is opt-in and signs in with your Nexus account over OAuth — the token is kept on your machine, held by the app, and never exposed to plugin code.
 - **Auto-install mods for you.** You drop the file, the launcher places it where the game expects. Discovery — finding new mods on Nexus or CurseForge — is one click, but the actual download stays in your browser.
 - **Touch your game's executable.** Mods modify mods. The launcher doesn't patch, inject into, or rewrite game binaries.
 

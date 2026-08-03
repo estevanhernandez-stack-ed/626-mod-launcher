@@ -142,8 +142,8 @@ public partial class App : Application
         // detects "not installed" (dev runs, portable zip) and exits without touching the network.
         _ = AppHost.Services.GetRequiredService<UpdateChecker>().CheckForUpdatesAsync();
 
-        // Refresh the remote game-definition cache for the next launch (debounced, dark until a
-        // feed URL is set). Fire-and-forget; failures are swallowed.
+        // Refresh the remote game-definition cache for the next launch (debounced 24h). The feed
+        // has been live since v0.6.0. Fire-and-forget; failures are swallowed.
         _ = AppHost.Services.GetRequiredService<RemoteManifestSource>().RefreshAsync();
 
         // Background: fetch + verify a freshly-delivered OAuth client_id (same signed manifest rail,
