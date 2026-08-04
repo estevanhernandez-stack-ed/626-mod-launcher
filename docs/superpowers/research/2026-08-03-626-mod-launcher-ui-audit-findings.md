@@ -257,7 +257,45 @@ Colors.Black ink outside F-009's shipped scope; (3) code-built ContentDialogs
 (~22 sites) have no rail/eyebrow shell — decide whether the shell is
 XAML-fleet-only by design or the builder pattern should grow one.
 
+## Post-campaign additions (2026-08-04 — Este's "get to 0" directive; F-ids assigned from the wave proposals, see docs/superpowers/plans/2026-08-04-road-to-zero.md)
+
+| ID | Surface | Lens | Sev | Vis | Evidence | Verification | Fix | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F-049 | accent keys outside wave-1 sweep | conformance | 2 | 2 | ProgressRing / NumberBox spin / InfoBar severity fills have no App.xaml overrides; spin buttons pixel-confirmed theme-neutral grey (wave-1 recapture) | from wave-1 close-out | Add key overrides + ThemeService.Apply lines; capture ProgressRing/InfoBar first | open |
+| F-050 | builtin theme data | consistency | 2 | 1 | Retired sub-4.5:1 danger hexes live as tag_vortex in 626-labs (#e13a5a) and ember (#ef4444); NormalizeTheme falls user themes back to fixed danger — builtin/user divergence when tag_* gets a consumer | from wave-1 close-out | Update the two builtin hexes to their theme danger values | open |
+| F-051 | non-TextBlock ink surfaces | conformance | 2 | 2 | TextBox.Header/Placeholder/string-Content/ComboBox display unreachable by TextBlock styles | Covered by F-047's system-key sweep (wave 3) | — | clean (duplicate of F-047) |
+| F-052 | x:Null ink hole | conformance | 2 | 2 | Style="{x:Null}" under non-HyperlinkButton parent renders framework white every theme (ToolsPanel.xaml:109) | from wave-2 close-out | Fix the site; rule: x:Null only under controls whose own Foreground is themed | open |
+| F-053 | design-law regression guard | consistency | 2 | 1 | No test guarded wave-2 laws at the time | Landed as DesignLawTests (waves 3–5): radius/type/mono/dimming/ink laws + detector controls | — | clean (shipped as DesignLawTests) |
+| F-054 | opacity guard .cs arm | consistency | 1 | 1 | Raw-opacity dimming law lints XAML only; 8 MainWindow.xaml.cs sites unlinted | from wave-3 close-out | Extend DesignLawTests to .cs Opacity assignments on text carriers | open |
+| F-055 | lint glob totality | correctness | 1 | 1 | *.cs design-law scans would pass vacuously on an empty glob | from wave-3 close-out | Non-empty-glob guard asserts the scan saw files | open |
+| F-056 | ink-law Style= exemption | correctness | 1 | 1 | Any Style= attribute exempts a TextBlock from ink laws — a non-ink style passes | from wave-3 close-out | Exempt only styles that actually set Foreground | open |
+| F-057 | evidence coverage | process | 1 | 1 | Six presenter/placeholder surfaces never captured (LibraryView, NexusCatalog x2, AddGame, Saves, Profiles/NewTheme) | from wave-3 close-out | Capture them (UIA-driven mode) or record why not | open |
+| F-058 | evidence protocol | process | 1 | 1 | Theme rounds captured different games — byte-diffs meaningless | from wave-3 close-out | Pin the same game across rounds; write into capture checklist | open |
+| F-059 | mods filter empty state | qol | 2 | 3 | Zero-match filter renders a blank list — reads as broken | from wave-4 close-out | "No mods match 'x'." empty state | open |
+| F-060 | mods filter scope | qol | 2 | 2 | Filter misses the on-screen FileTag key (2RingSlots etc.) | from wave-4 close-out | Match FileTag too | open |
+| F-061 | mods filter lifetime | qol | 2 | 2 | Filter text survives a game switch — next game renders pre-narrowed | from wave-4 close-out | Clear filter on game switch | open |
+| F-062 | last bare ex.Message | copy | 1 | 1 | SettingsDialog.xaml.cs:546 surfaces raw exception text | from wave-4 close-out | Route through ErrorRemedy | open |
+| F-063 | CLR type names in copy | copy | 1 | 1 | Two SavesDialog sites print CLR type names to users | from wave-4 close-out | Cause + remedy copy | open |
+| F-064 | live-region first write | a11y | 2 | 1 | WireLiveRegion uses FromElement — a missing peer at first status write drops the announcement | from wave-5 close-out | Smoke-confirm; if dropped, defer wiring to first peer availability | open |
+| F-065 | per-item names, other lists | a11y | 2 | 2 | SavesDialog rows / ToolsPanel frameworks / ProfilesDialog lack per-item UIA names | from wave-5 close-out | Name them (ProfilesDialog needs a wrapper) | open |
+| F-066 | resource-fetch idiom | consistency | 1 | 1 | Hard-cast and as+fallback coexist for Application.Current.Resources fetches | from wave-5 close-out | Pick hard-cast (fail loud); sweep | open |
+| F-067 | icon-only detector gap | correctness | 1 | 1 | Glyph-string Content buttons escape the icon-only-button law (zero instances today) | from wave-5 close-out | Extend detector; keep the zero | open |
+| F-068 | GameLabel copy | copy | 2 | 3 | Drop caption shows the folder key ("For windrose") not the display name | from wave-6 close-out | Use the game display name | open |
+| F-069 | tool rail chip affordance | qol | 1 | 2 | Chip carries no visible menu affordance (tooltip + Settings route exist) | from wave-6 close-out | Decide: accept current routes, or add a chevron | open |
+| F-070 | interaction-state capture | process | 1 | 1 | Drag/flyout/hover states not capturable single-handed | from wave-6 close-out | Two-person protocol note in capture checklist | open |
+| F-071 | dead-string detector | correctness | 1 | 1 | XAML Text on x:Name'd elements reassigned in code-behind ships dead copy (F-027's failure mode) | from wave-7 close-out | DesignLawTests detector | open |
+| F-072 | VSM-aware danger rule | conformance | 2 | 2 | Bare BasedOn danger fill loses to hover VSM (F-037's residue mechanism) | from wave-7 close-out | Rule + scoped ButtonBackgroundPointerOver pattern | open |
+| F-073 | opacity dimming carriers | conformance | 2 | 2 | HyperlinkButton/FontIcon dimmed via raw Opacity — outside the tokened-dimming law | from wave-7 close-out | Token brushes; extend the law to these carriers | open |
+| F-074 | glyph allowlist | consistency | 1 | 1 | Emoji-strip carve-out has no written codepoint list; grew silently | from wave-7 close-out | Write the allowlist; DesignLawTests reads it | open |
+| F-075 | SquaredControls SDK pin | correctness | 1 | 1 | Re-templated ToggleSwitch is a WASDK 2.1.x snapshot; csproj bump would silently drift | from wave-7 close-out | Test: csproj WASDK version == template header version | open |
+| F-076 | contrast warn-on-apply | qol | 2 | 2 | Contrast advisory fires on import only; applying a stored low-contrast theme is silent | from wave-7 close-out | Recompute at apply; status-line advisory (derive, don't persist) | open |
+| F-077 | toggle + active-nav bloom | conformance | 3 | 3 | Two sanctioned glow surfaces still not consuming accent_bloom; shell host-Border pattern doesn't fit per-control | from wave-8 close-out | Per-control composition strategy (template part or attached glow) | open |
+| F-078 | Loadout active segment | conformance | 2 | 3 | Accent fill + Colors.Black ink outside F-009's shipped scope (MainViewModel.cs Loadout brushes) | from wave-8 close-out | ThemeBg ink; align with fill discipline | open |
+| F-079 | code-built dialog shells | conformance | 2 | 2 | ~22 code-built ContentDialogs have no rail/eyebrow shell | from wave-8 close-out | DialogTheming auto-wraps string Titles into the shell (eyebrow optional per site) | open |
+| F-080 | theme persistence | qol | 3 | 5 | Theme choice is not persisted anywhere; every launch lands on Default — post-Forge this is the whole user experience | discovered at the reveal (default flip) | Persist theme id (camelCase JSON, round-trip test); restore on launch; Default only for first-run/missing | open |
+
 ## Audit notes
+
 
 - Skeptic batching: 9 refuters over 52 findings instead of one-per-finding,
   to stay inside the approved cost gate (~14 agents total). Every refuter
