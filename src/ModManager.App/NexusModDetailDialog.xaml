@@ -39,12 +39,12 @@
 
                 <!-- Hero art. The neutral placeholder sits UNDER the image, so a null or broken picture
                      leaves the monogram showing instead of a hole. -->
-                <Grid Height="200" CornerRadius="6">
-                    <Border CornerRadius="6" Background="{StaticResource ThemeBarBg}">
+                <Grid Height="200" CornerRadius="0">
+                    <Border CornerRadius="0" Background="{StaticResource ThemeBarBg}">
                         <TextBlock x:Name="HeroInitial" FontSize="48" FontWeight="Bold" Opacity="0.35"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <Border CornerRadius="6">
+                    <Border CornerRadius="0">
                         <Image x:Name="HeroImage" Stretch="UniformToFill" ImageFailed="OnHeroImageFailed" />
                     </Border>
                 </Grid>

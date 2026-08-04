@@ -25,6 +25,6 @@
             intake (extracts to your mods folder). This usually doesn't work for frameworks
             but is sometimes correct.
         </TextBlock>
-        <TextBlock x:Name="FilenameText" Opacity="0.6" FontFamily="Consolas" FontSize="11" />
+        <TextBlock x:Name="FilenameText" Opacity="0.6" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
     </StackPanel>
 </ContentDialog>

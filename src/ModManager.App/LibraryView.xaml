@@ -24,7 +24,7 @@
 
                 <!-- Recent strip: big cover cards, most-recently-played first -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="JUMP BACK IN" FontSize="11" CharacterSpacing="80"
+                    <TextBlock Text="JUMP BACK IN" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                                Foreground="{StaticResource ThemeInkSoft}" />
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
                                   HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
@@ -40,15 +40,15 @@
                                             Click="OnRecentClick" Tag="{x:Bind}"
                                             ToolTipService.ToolTip="{x:Bind Name}">
                                         <StackPanel Spacing="6" Width="150">
-                                            <Grid Width="150" Height="200" CornerRadius="8">
+                                            <Grid Width="150" Height="200" CornerRadius="0">
                                                 <!-- Themed initial placeholder when no cover art -->
-                                                <Border CornerRadius="8" Background="{x:Bind Placeholder}"
+                                                <Border CornerRadius="0" Background="{x:Bind Placeholder}"
                                                         Visibility="{x:Bind PlaceholderVisibility}">
                                                     <TextBlock Text="{x:Bind Initial}" FontSize="56" FontWeight="Bold"
                                                                Foreground="Black" HorizontalAlignment="Center"
                                                                VerticalAlignment="Center" />
                                                 </Border>
-                                                <Border CornerRadius="8"
+                                                <Border CornerRadius="0"
                                                         Visibility="{x:Bind CoverVisibility}">
                                                     <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
                                                 </Border>
@@ -73,7 +73,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="ALL GAMES" FontSize="11" CharacterSpacing="80"
+                        <TextBlock Grid.Column="0" Text="ALL GAMES" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                                    VerticalAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
                         <!-- Cross-game Updates entry point. Present ONLY when something is actually
                              pending — an empty or never-checked library keeps the home clean rather
@@ -97,7 +97,7 @@
                                 <Button Click="OnManage" Tag="{x:Bind}" Margin="0,0,0,6"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                         Background="{StaticResource ThemePanel}" BorderThickness="0"
-                                        Padding="0" CornerRadius="8"
+                                        Padding="0" CornerRadius="0"
                                         ToolTipService.ToolTip="Open this game's mods">
                                 <Grid Padding="10,10" ColumnSpacing="14">
                                     <Grid.ColumnDefinitions>
@@ -107,15 +107,15 @@
                                     </Grid.ColumnDefinitions>
 
                                     <!-- Cover / placeholder thumbnail -->
-                                    <Grid Grid.Column="0" Width="60" Height="80" CornerRadius="6"
+                                    <Grid Grid.Column="0" Width="60" Height="80" CornerRadius="0"
                                           VerticalAlignment="Center">
-                                        <Border CornerRadius="6" Background="{x:Bind Placeholder}"
+                                        <Border CornerRadius="0" Background="{x:Bind Placeholder}"
                                                 Visibility="{x:Bind PlaceholderVisibility}">
                                             <TextBlock Text="{x:Bind Initial}" FontSize="26" FontWeight="Bold"
                                                        Foreground="Black" HorizontalAlignment="Center"
                                                        VerticalAlignment="Center" />
                                         </Border>
-                                        <Border CornerRadius="6"
+                                        <Border CornerRadius="0"
                                                 Visibility="{x:Bind CoverVisibility}">
                                             <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
                                         </Border>
@@ -135,29 +135,29 @@
 
                                         <!-- Chips: tier · ban risk · detected loaders -->
                                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
+                                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                                     ToolTipService.ToolTip="{x:Bind TierTooltip}">
-                                                <TextBlock Text="{x:Bind TierChip}" FontFamily="Consolas" FontSize="11" />
+                                                <TextBlock Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
                                             </Border>
-                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                                     ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
                                                     Visibility="{x:Bind UpdateBadgeVisibility}">
-                                                <TextBlock Text="{x:Bind UpdateBadgeText}" FontFamily="Consolas" FontSize="11"
+                                                <TextBlock Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="Black" />
                                             </Border>
-                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
+                                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
                                                     ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                                                     Visibility="{x:Bind BanRiskVisibility}">
-                                                <TextBlock Text="BAN RISK" FontFamily="Consolas" FontSize="11"
+                                                <TextBlock Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="{StaticResource ThemeDanger}" />
                                             </Border>
-                                            <Border CornerRadius="3" Padding="6,2" Background="{StaticResource ThemeBarBg}"
+                                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeAccent}"
                                                     ToolTipService.ToolTip="Mod loaders detected in this game's folder"
                                                     Visibility="{x:Bind LoaderVisibility}">
-                                                <TextBlock Text="{x:Bind LoaderChip}" FontFamily="Consolas" FontSize="11"
+                                                <TextBlock Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="{StaticResource ThemeAccent}" />
                                             </Border>
                                         </StackPanel>
@@ -189,21 +189,21 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:DiscoveredGameViewModel">
                                     <Grid Padding="8" ColumnSpacing="12" Margin="0,0,0,4"
-                                          Background="{StaticResource ThemeBarBg}" CornerRadius="6">
+                                          Background="{StaticResource ThemeBarBg}" CornerRadius="0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <Grid Grid.Column="0" Width="40" Height="54" CornerRadius="4"
+                                        <Grid Grid.Column="0" Width="40" Height="54" CornerRadius="0"
                                               VerticalAlignment="Center">
-                                            <Border CornerRadius="4" Background="{x:Bind Placeholder}"
+                                            <Border CornerRadius="0" Background="{x:Bind Placeholder}"
                                                     Visibility="{x:Bind PlaceholderVisibility}">
                                                 <TextBlock Text="{x:Bind Initial}" FontSize="18" FontWeight="Bold"
                                                            Foreground="Black" HorizontalAlignment="Center"
                                                            VerticalAlignment="Center" />
                                             </Border>
-                                            <Border CornerRadius="4"
+                                            <Border CornerRadius="0"
                                                     Visibility="{x:Bind CoverVisibility}">
                                                 <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
                                             </Border>

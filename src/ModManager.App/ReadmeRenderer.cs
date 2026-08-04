@@ -16,7 +16,7 @@ namespace ModManager.App;
 /// </summary>
 public static class ReadmeRenderer
 {
-    private static readonly FontFamily Mono = new("Consolas");
+    private static readonly FontFamily Mono = new("Cascadia Mono, Consolas");
 
     public static FrameworkElement Build(string markdown)
     {

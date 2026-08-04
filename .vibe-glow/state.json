@@ -12,6 +12,7 @@
     "Reversibility and pure-core laws hold — no UI fix may move file-op logic into the App layer or delete user data. CorePurityTests stays green."
   ],
   "waves": [
-    { "id": 1, "name": "theme-engine-owns-color", "status": "shipped", "findings": ["F-003", "F-006", "F-007", "F-011", "F-012", "F-036"] }
+    { "id": 1, "name": "theme-engine-owns-color", "status": "shipped", "findings": ["F-003", "F-006", "F-007", "F-011", "F-012", "F-036"] },
+    { "id": 2, "name": "hangar-skeleton", "status": "open", "findings": ["F-001", "F-004", "F-010", "F-011", "F-014"] }
   ]
 }

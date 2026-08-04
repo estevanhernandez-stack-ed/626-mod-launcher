@@ -31,8 +31,10 @@
                     <TextBlock Text="Back" />
                 </StackPanel>
             </Button>
-            <TextBlock Grid.Column="1" Text="Updates" VerticalAlignment="Center"
-                       FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+            <TextBlock Grid.Column="1" Text="UPDATES" VerticalAlignment="Center"
+                       FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed"
+                       FontSize="{StaticResource ViewTitleFontSize}" CharacterSpacing="60"
+                       TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />
             <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
                        FontSize="12" Opacity="0.6" />
@@ -68,10 +70,10 @@
                                         <TextBlock Text="{x:Bind GameName}" FontSize="15" FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{StaticResource ThemeInk}" />
-                                        <Border CornerRadius="3" Padding="6,2"
+                                        <Border CornerRadius="0" Padding="6,2"
                                                 Background="{StaticResource ThemeAccent}"
                                                 VerticalAlignment="Center">
-                                            <TextBlock Text="{x:Bind CountText}" FontFamily="Consolas" FontSize="11"
+                                            <TextBlock Text="{x:Bind CountText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                        Foreground="{StaticResource ThemeBg}" />
                                         </Border>
                                     </StackPanel>
@@ -83,7 +85,7 @@
                                 <ItemsControl ItemsSource="{x:Bind Rows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="local:UpdateRow">
-                                            <Grid Padding="10,8" Margin="0,0,0,4" CornerRadius="6"
+                                            <Grid Padding="10,8" Margin="0,0,0,4" CornerRadius="0"
                                                   Background="{StaticResource ThemePanel}" ColumnSpacing="12">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -93,7 +95,7 @@
                                                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                            Foreground="{StaticResource ThemeInk}" />
                                                 <TextBlock Grid.Column="1" Text="{x:Bind VersionText}"
-                                                           FontFamily="Consolas" FontSize="12" Opacity="0.8"
+                                                           FontFamily="{StaticResource MonoFontFamily}" FontSize="12" Opacity="0.8"
                                                            VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>

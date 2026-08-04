@@ -14,7 +14,7 @@
         <TextBox x:Name="ContentsBox"
                  AcceptsReturn="True"
                  TextWrapping="NoWrap"
-                 FontFamily="Consolas"
+                 FontFamily="{StaticResource MonoFontFamily}"
                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                  Height="320" />

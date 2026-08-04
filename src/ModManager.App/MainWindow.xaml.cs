@@ -724,14 +724,14 @@ public sealed partial class MainWindow : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             var pill = new Border
             {
-                CornerRadius = new CornerRadius(3),
+                CornerRadius = new CornerRadius(0),
                 Padding = new Thickness(6, 2, 6, 2),
                 Background = (Brush)Application.Current.Resources["ThemePanel"],
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
                 {
                     Text = chip,
-                    FontFamily = new FontFamily("Consolas"),
+                    FontFamily = new FontFamily("Cascadia Mono, Consolas"),
                     FontSize = 11,
                     MinWidth = 56,
                     TextAlignment = TextAlignment.Center,
@@ -1102,7 +1102,7 @@ public sealed partial class MainWindow : Window
                         break;
                 }
 
-                panel.Children.Add(new Border { Padding = new Thickness(12), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = card });
+                panel.Children.Add(new Border { Padding = new Thickness(12), CornerRadius = new CornerRadius(0), Background = panelBrush, Child = card });
             }
         }
 
@@ -1318,7 +1318,7 @@ public sealed partial class MainWindow : Window
         // Owned-folder warning (shown when Mod.ReadOnly)
         if (!string.IsNullOrEmpty(row.OwnedConfigWarning))
         {
-            var warn = new Border { Padding = new Thickness(10, 6, 10, 6), CornerRadius = new CornerRadius(4), Background = panelBrush };
+            var warn = new Border { Padding = new Thickness(10, 6, 10, 6), CornerRadius = new CornerRadius(0), Background = panelBrush };
             var warnText = new TextBlock
             {
                 Text = row.OwnedConfigWarning,  // textContent — no raw mod data
@@ -1364,7 +1364,7 @@ public sealed partial class MainWindow : Window
                 {
                     Text = entry.Key,   // key from parsed config — textContent only
                     VerticalAlignment = VerticalAlignment.Center,
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                     FontSize = 12,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 };
@@ -1376,7 +1376,7 @@ public sealed partial class MainWindow : Window
                 {
                     Text = entry.Value,  // value from parsed config — text binding only
                     IsSpellCheckEnabled = false,
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                     FontSize = 12,
                 };
                 Grid.SetColumn(valueBox, 1);
@@ -1403,7 +1403,7 @@ public sealed partial class MainWindow : Window
                 // (set above) rather than a second line.
             }
 
-            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = section });
+            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(0), Background = panelBrush, Child = section });
         }
 
         // cockpitDialog declared before building keybind rows so the Set click handlers can reference it
@@ -1424,11 +1424,11 @@ public sealed partial class MainWindow : Window
                 if (bind.SourceFile is null)
                 {
                     // Dynamic/unparsed bind — render read-only as before
-                    var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(3), Background = panelBrush };
+                    var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(0), Background = panelBrush };
                     chip.Child = new TextBlock
                     {
                         Text = modText + bind.Key,   // key/modifier names from Lua regex scan — textContent
-                        FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                        FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                         FontSize = 12,
                     };
                     kbSection.Children.Add(chip);
@@ -1445,7 +1445,7 @@ public sealed partial class MainWindow : Window
                         {
                             Text = modText,   // modifier names from Lua regex — textContent
                             VerticalAlignment = VerticalAlignment.Center,
-                            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                             FontSize = 12,
                             Opacity = 0.7,
                         });
@@ -1458,7 +1458,7 @@ public sealed partial class MainWindow : Window
                         Text = bind.Key,    // key name from Lua regex scan — text property only
                         Width = 80,
                         IsSpellCheckEnabled = false,
-                        FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                        FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                         FontSize = 12,
                         VerticalAlignment = VerticalAlignment.Center,
                     };
@@ -1494,7 +1494,7 @@ public sealed partial class MainWindow : Window
                 }
             }
 
-            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = kbSection });
+            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(0), Background = panelBrush, Child = kbSection });
         }
 
         // Console commands (read-only)
@@ -1505,11 +1505,11 @@ public sealed partial class MainWindow : Window
             foreach (var cmd in commands)
             {
                 var row3 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(3), Background = panelBrush };
+                var chip = new Border { Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(0), Background = panelBrush };
                 chip.Child = new TextBlock
                 {
                     Text = cmd.Name,  // command name from Lua regex scan — textContent
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                     FontSize = 12,
                 };
                 var copyBtn = new Button { Content = "Copy", Padding = new Thickness(6, 2, 6, 2) };
@@ -1519,7 +1519,7 @@ public sealed partial class MainWindow : Window
                 row3.Children.Add(copyBtn);
                 cmdSection.Children.Add(row3);
             }
-            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = panelBrush, Child = cmdSection });
+            root.Children.Add(new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(0), Background = panelBrush, Child = cmdSection });
         }
 
         var dialog = new ContentDialog

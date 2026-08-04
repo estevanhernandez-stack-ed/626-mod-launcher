@@ -22,7 +22,7 @@
         <ListView x:Name="FilesList" MaxHeight="200" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="x:String">
-                    <TextBlock Text="{x:Bind}" FontFamily="Consolas" FontSize="11" />
+                    <TextBlock Text="{x:Bind}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>

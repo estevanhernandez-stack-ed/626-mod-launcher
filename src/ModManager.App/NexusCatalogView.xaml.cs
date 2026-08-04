@@ -182,7 +182,8 @@ public sealed partial class NexusCatalogView : UserControl
         _gameName = string.IsNullOrWhiteSpace(gameName) ? "this game" : gameName;
         InitializeComponent();
 
-        TitleLabel.Text = $"Browse Nexus — {_gameName}";
+        // View-title role is stencil caps (design language type ramp); game name rides along.
+        TitleLabel.Text = $"BROWSE NEXUS — {_gameName.ToUpperInvariant()}";
         ResetCategories();
 
         // Cards are clickable only when the loaded plugin carries the Phase 2 detail capability. A 0.13.x

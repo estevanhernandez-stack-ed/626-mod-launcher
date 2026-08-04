@@ -560,7 +560,7 @@ public sealed partial class SettingsDialog : ContentDialog
             PaletteStrip.Children.Add(new Rectangle
             {
                 Width = 48, Height = 32,
-                RadiusX = 4, RadiusY = 4,
+                RadiusX = 0, RadiusY = 0,
                 Fill = new SolidColorBrush(Color.FromArgb(255, p.R, p.G, p.B)),
             });
         }
