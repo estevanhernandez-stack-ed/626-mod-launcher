@@ -273,10 +273,16 @@ public sealed partial class MainViewModel : ObservableObject
         _sources = sources;
         ThemeOptions = themes.Themes;
         // Restore the user's saved pick (F-080); Default (the flagship) covers first-run, a
-        // cleared setting, and a saved id whose theme has since been deleted. Applying via
-        // OnSelectedThemeChanged also re-saves the id — a no-op when unchanged.
-        SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == appSettings.ThemeId) ?? themes.Default;
+        // cleared setting, and a saved id whose theme has since been deleted. The restore gate
+        // keeps this path from PERSISTING: first-run must not pin the current default as if the
+        // user chose it, and a transiently unreadable user theme must not overwrite a good saved
+        // id with the fallback (B4.5 review catch). Only real picks save.
+        _restoringTheme = true;
+        try { SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == appSettings.ThemeId) ?? themes.Default; }
+        finally { _restoringTheme = false; }
     }
+
+    private bool _restoringTheme;
 
     // Segmented Loadout control: the selected segment tints with the theme accent; the others stay
     // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.
@@ -311,7 +317,7 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnSelectedThemeChanged(Theme? value)
     {
         if (value is not null) _themes.Apply(value);
-        if (value is not null) _appSettings.SetThemeId(value.Id); // F-080: picks survive restart
+        if (value is not null && !_restoringTheme) _appSettings.SetThemeId(value.Id); // F-080: real picks survive restart
         // Inactive-segment foreground uses the resource-backed ThemeInk brush, so its color tracks
         // the theme via ThemeService.Set's in-place mutation. The ACTIVE segment's brush is
         // ThemeAccent (also resource-backed) - same story. We still re-notify so any caller that
@@ -400,7 +406,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_suppressActiveSwitch || value is null) return;
         // A filter typed for one game must not pre-narrow the next game's first render (F-061).
-        ModFilterText = "";
+        // Backing-field clear: the property setter would run FilterRows over the OUTGOING game's
+        // rows for one wasted render. The notify still empties the TwoWay-bound box.
+        modFilterText = "";
+        OnPropertyChanged(nameof(ModFilterText));
         _svc.SetActiveGame(value.Id);
         _ = ReloadModsAsync();
     }
@@ -1225,6 +1234,10 @@ public sealed partial class MainViewModel : ObservableObject
         }
         foreach (var r in ordered) { r.InLoadOrder = true; r.IsFirstSectionHeader = false; }
         Mods = new ObservableCollection<ModRowViewModel>(ordered);
+        // Direct Mods assign bypasses FilterRows — drop any zero-match overlay so it can't sit
+        // on top of the load-order list (B4.5 review catch).
+        FilterEmptyText = "";
+        FilterEmptyVisibility = Visibility.Collapsed;
         Renumber();
         IsLoadOrderMode = true;
         StatusText = "Drag to reorder, or type a position. Top loads first. Apply when done.";

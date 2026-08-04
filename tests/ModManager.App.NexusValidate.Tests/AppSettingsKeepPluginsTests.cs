@@ -3,6 +3,7 @@ using ModManager.App.Services;
 
 namespace ModManager.App.NexusValidate.Tests;
 
+[Collection("app-settings-file")] // serialize with every other real-file writer (see ThemeIdTests)
 public class AppSettingsKeepPluginsTests
 {
     [Fact]

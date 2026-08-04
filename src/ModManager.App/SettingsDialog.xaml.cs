@@ -51,7 +51,7 @@ public sealed record SettingsToolRow(ToolEntry Entry, string DataDir, string? Ga
     /// <summary>Which game owns this copy — the same tool can be installed per-game, and
     /// Configure→Uninstall must never ambiguate between copies. Display name when the
     /// registry knows the game; folder key as the fallback (F-068).</summary>
-    public string GameLabel => $"For {GameName ?? System.IO.Path.GetFileName(DataDir)}";
+    public string GameLabel => $"For {(string.IsNullOrWhiteSpace(GameName) ? System.IO.Path.GetFileName(DataDir) : GameName)}";
 }
 
 /// <summary>
