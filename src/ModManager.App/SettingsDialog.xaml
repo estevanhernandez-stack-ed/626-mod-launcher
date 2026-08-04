@@ -5,11 +5,25 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:core="using:ModManager.Core.Tools"
     xmlns:local="using:ModManager.App"
-    Title="Settings"
     PrimaryButtonText="Apply"
     CloseButtonText="Close"
     DefaultButton="Primary"
-    PrimaryButtonClick="OnApply">
+    PrimaryButtonClick="OnApply"
+    AutomationProperties.Name="Settings">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="APP // SETTINGS" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
 
     <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="14" Width="460">

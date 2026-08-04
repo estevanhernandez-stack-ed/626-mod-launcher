@@ -6,11 +6,25 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Add a game"
     PrimaryButtonText="Add"
     CloseButtonText="Cancel"
     DefaultButton="Primary"
-    PrimaryButtonClick="OnPrimary">
+    PrimaryButtonClick="OnPrimary"
+    AutomationProperties.Name="Add a game">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="LIBRARY // ADD GAME" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Add a game" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
 
     <!-- The dialog (AI + Batch expanders, Steam quick-add, the full manual form) is taller than a
          ContentDialog can show, especially under display scaling — and a ContentDialog does not scroll

@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace ModManager.App.Services;
 
@@ -65,5 +66,32 @@ internal static class DialogTheming
             if (app.TryGetValue(key, out var brush)) d[key] = brush; // same instance, stays mutable
         }
         dialog.Resources.MergedDictionaries.Add(d);
+
+        // Dialog shell (vibe-glow F-008): the stock template pins its Title ContentControl to
+        // HorizontalAlignment="Left", so title content sizes to itself and the 3px accent rail
+        // the XAML dialogs put in their Title can't span the header. Stretch it once the template
+        // exists (Opened) — a no-op for plain string titles. Re-entrant Apply calls just re-set
+        // the same values.
+        // The template parents the Title content only once the dialog's popup tree builds, and
+        // Opened races that wiring in both directions — the content's own Loaded is the reliable
+        // signal (it fires each ShowAsync, once the parent chain exists). Walk UP from our
+        // StackPanel to the template's Title ContentControl; no popup hunting.
+        if (dialog.Title is FrameworkElement titleContent)
+        {
+            titleContent.Loaded += (s, _) =>
+            {
+                DependencyObject? node = (DependencyObject)s;
+                while (node is not null)
+                {
+                    if (node is ContentControl { Name: "Title" } title)
+                    {
+                        title.HorizontalAlignment = HorizontalAlignment.Stretch;
+                        title.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                        return;
+                    }
+                    node = VisualTreeHelper.GetParent(node);
+                }
+            };
+        }
     }
 }

@@ -6,11 +6,25 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Configure tool"
     PrimaryButtonText="Save"
     SecondaryButtonText="Uninstall"
     CloseButtonText="Cancel"
-    DefaultButton="Primary">
+    DefaultButton="Primary"
+    AutomationProperties.Name="Configure tool">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="TOOL // CONFIGURE" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Configure tool" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
 
     <!-- Right-click on a tool button in the slim tools row opens this. Three knobs the user actually
          needs after install: rename the label, re-pick the runnable (in case the heuristic guessed

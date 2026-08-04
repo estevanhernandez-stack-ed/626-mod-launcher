@@ -3,8 +3,22 @@
     x:Class="ModManager.App.UpdateModsDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Update installed mods?"
-    PrimaryButtonText="Apply" CloseButtonText="Cancel" DefaultButton="Primary">
+    PrimaryButtonText="Apply" CloseButtonText="Cancel" DefaultButton="Primary"
+    AutomationProperties.Name="Update installed mods?">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="NEXUS // UPDATES" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Update installed mods?" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
     <StackPanel Spacing="8" MinWidth="420">
         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
                    Text="These files are already installed. Check the ones to replace — the old version is kept and can be reverted." />

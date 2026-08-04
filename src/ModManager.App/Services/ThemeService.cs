@@ -187,6 +187,10 @@ public sealed class ThemeService
         Set(res, "MenuFlyoutItemForegroundPointerOver", t["text"]);
         Set(res, "MenuFlyoutItemForegroundPressed", t["text"]);
         Set(res, "MenuFlyoutSeparatorBackground", t["border"]);
+
+        // Glow rule (F-002): restyle every attached bloom from this theme's accent_bloom token.
+        // A theme with alpha 0 reads flat — that's the token doing its job, not a bug.
+        Bloom.OnThemeChanged(Parse(t["accent"]), Parse(t["danger"]), t.AccentBloom.Blur, t.AccentBloom.Alpha);
     }
 
     private static void Set(ResourceDictionary res, string key, string hex)

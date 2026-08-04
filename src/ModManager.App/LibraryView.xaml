@@ -79,8 +79,8 @@
                              pending — an empty or never-checked library keeps the home clean rather
                              than advertising a zero. -->
                         <Button Grid.Column="1" Click="OnOpenUpdates" VerticalAlignment="Center"
-                                Background="{StaticResource ThemeAccent}"
-                                Foreground="{StaticResource ThemeBg}"
+                                Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
+                                Foreground="{StaticResource ThemeAccent}"
                                 Content="{x:Bind ViewModel.UpdatesEntryText, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.UpdatesEntryVisibility, Mode=OneWay}"
                                 ToolTipService.ToolTip="{x:Bind ViewModel.UpdatesEntryTooltip, Mode=OneWay}" />
@@ -141,11 +141,11 @@
                                                     ToolTipService.ToolTip="{x:Bind TierTooltip}">
                                                 <TextBlock AutomationProperties.HelpText="{x:Bind TierTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
                                             </Border>
-                                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                                            <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                                     ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
                                                     Visibility="{x:Bind UpdateBadgeVisibility}">
                                                 <TextBlock AutomationProperties.HelpText="{x:Bind UpdateBadgeTooltip}" Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
-                                                           Foreground="Black" />
+                                                           Foreground="{StaticResource ThemeAccent}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
@@ -167,7 +167,7 @@
                                     <!-- Play: launch the game's current on-disk state. The vanilla/modded
                                          toggle lives in the game view, coupled to the active context. -->
                                     <Button Grid.Column="2" VerticalAlignment="Center"
-                                            Content="Play" Foreground="Black"
+                                            Content="Play" Foreground="{StaticResource ThemeBg}"
                                             Background="{StaticResource ThemeAccent}"
                                             Click="OnPlay" Tag="{x:Bind}"
                                             ToolTipService.ToolTip="Launch this game" />
