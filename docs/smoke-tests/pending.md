@@ -1010,3 +1010,14 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
 3. Narrator: FIRST status message after a cold launch is announced (F-064
    peer-creation fix); Saves "Clone Slot 3 to another type", "Load profile
    X"/"Delete profile X", "Edit UE4SS settings" all read per-item.
+
+---
+
+## road-to-zero B9 — add-game reorder (F-026)
+
+**Smoke needed:**
+1. + Game: Quick add from Steam leads with the filter box; AI/batch sit below.
+2. Check two games, filter to hide one, Add — BOTH register (status line
+   named both while filtered).
+3. Filter, uncheck a visible game, clear filter — only the still-checked
+   game remains selected.
