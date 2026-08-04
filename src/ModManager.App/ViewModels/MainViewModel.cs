@@ -1851,7 +1851,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task BackfillNexusAsync(IReadOnlyList<string> archives)
     {
         if (_ctx is null) return;
-        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         if (string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game))) { StatusText = "This game has no Nexus domain set."; return; }
         if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
@@ -1886,7 +1886,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task RefreshNexusStatsAsync()
     {
         if (_ctx is null) return;
-        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -1943,7 +1943,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task<IReadOnlyList<LooseIdentifyProposal>?> ProposeLooseIdentifyAsync()
     {
         if (_ctx is null) return null;
-        if (NexusSource is not IModTextSearch search) { StatusText = "Nexus isn't available — no text-search source loaded."; return null; }
+        if (NexusSource is not IModTextSearch search) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return null; }
         if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return null; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return null; }
@@ -2019,7 +2019,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleEndorseAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
-        if (NexusSource is not { } source) { StatusText = "Nexus isn't available — no source loaded."; return; }
+        if (NexusSource is not { } source) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -2094,7 +2094,7 @@ public sealed partial class MainViewModel : ObservableObject
                     }
                     if (NexusSource is not { } nexusSource)
                     {
-                        StatusText = "Nexus isn't available — no source loaded.";
+                        StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods.";
                         return false;
                     }
                     // Manual match is identity-authoritative: the user told us exactly which mod this is.

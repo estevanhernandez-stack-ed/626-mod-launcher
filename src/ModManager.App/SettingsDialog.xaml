@@ -47,7 +47,7 @@
             <StackPanel Orientation="Vertical" Spacing="2" Margin="0,8,0,0">
                 <TextBlock Text="Window transparency" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
                 <ComboBox x:Name="BackdropBox" SelectionChanged="OnBackdropChanged"
-                          ToolTipService.ToolTip="Solid keeps the navy background. Mica lets a hint of the desktop tint show through. Acrylic is more translucent.">
+                          ToolTipService.ToolTip="Solid keeps your theme's background opaque. Mica lets a hint of the desktop tint show through. Acrylic is more translucent.">
                     <ComboBoxItem Content="Solid" Tag="solid" />
                     <ComboBoxItem Content="Mica (subtle)" Tag="mica" />
                     <ComboBoxItem Content="Acrylic (more translucent)" Tag="acrylic" />
@@ -135,13 +135,23 @@
                     <StackLayout Orientation="Vertical" Spacing="8" />
                 </ItemsRepeater.Layout>
                 <ItemsRepeater.ItemTemplate>
-                    <DataTemplate x:DataType="core:ToolEntry">
-                        <StackPanel>
-                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
-                            <TextBlock Text="Catalog metadata only — never bundled. See NOTICE for full attribution."
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       FontSize="12" />
-                        </StackPanel>
+                    <DataTemplate x:DataType="local:SettingsToolRow">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
+                                <TextBlock Text="Catalog metadata only — never bundled. See NOTICE for full attribution."
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           FontSize="12" />
+                            </StackPanel>
+                            <!-- Same management affordance the framework rows below have (F-032):
+                                 rename / re-pick runnable / uninstall live in the configure dialog. -->
+                            <Button Grid.Column="1" Content="Configure…" Click="OnToolConfigure" Tag="{x:Bind}"
+                                    VerticalAlignment="Center" />
+                        </Grid>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>

@@ -18,5 +18,7 @@
                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                  Height="320" />
+        <TextBlock Text="Saving snapshots this file first. Restore previous puts back the last snapshot."
+                   Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
     </StackPanel>
 </ContentDialog>

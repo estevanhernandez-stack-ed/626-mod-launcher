@@ -374,7 +374,7 @@
                                   Foreground="{StaticResource ThemeDanger}" />
                         <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SteamBuildMessage, Mode=OneWay}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Content="Mods rechecked" VerticalAlignment="Center"
+                        <Button Grid.Column="2" Content="Mark as rechecked" VerticalAlignment="Center"
                                 Command="{x:Bind ViewModel.DismissBuildWarningCommand}" />
                     </Grid>
                 </Border>

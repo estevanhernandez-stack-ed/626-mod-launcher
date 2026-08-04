@@ -38,10 +38,12 @@ public sealed partial class ToolsPanel : UserControl
         }
     }
 
-    // Right-click on an installed tool opens the configure dialog (rename / change runnable /
-    // toggle EditsSaves / uninstall). The dialog writes through ToolRegistry.Save itself; we just
-    // kick a RefreshAsync after it closes so the slim row repaints with the new shape.
-    private async void OnToolRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    // Context-flyout "Configure…" on an installed tool opens the configure dialog (rename /
+    // change runnable / toggle EditsSaves / uninstall). Keyboard-reachable via the flyout
+    // (vibe-glow F-032 — the old RightTapped hook was pointer-only and undocumented). The dialog
+    // writes through ToolRegistry.Save itself; we kick a RefreshAsync after it closes so the
+    // slim row repaints with the new shape.
+    private async void OnToolConfigureClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement el && el.Tag is ToolEntry entry && ViewModel is not null)
         {

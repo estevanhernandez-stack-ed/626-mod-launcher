@@ -43,6 +43,13 @@ public sealed record DirectInjectConfigRow(
 /// and total size so the XAML template binds a plain string, no converter needed.</summary>
 public sealed record RestorePointRow(string Timestamp, string Detail, string Id);
 
+/// <summary>One Settings tool row: the entry plus the game data dir that owns it, so
+/// Configure can write back to the right registry (vibe-glow F-032).</summary>
+public sealed record SettingsToolRow(ToolEntry Entry, string DataDir)
+{
+    public string DisplayName => Entry.DisplayName;
+}
+
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
 /// account in one place. The Apply button commits the avatar + derived theme changes (gated by
@@ -144,7 +151,7 @@ public sealed partial class SettingsDialog : ContentDialog
     /// </summary>
     private void RefreshInstalledTools()
     {
-        var all = new List<ToolEntry>();
+        var all = new List<SettingsToolRow>();
 
         // The active game's DataDir is <_626mods>/<gameId>. Its parent is the _626mods root that
         // holds every game's per-game data dir. Enumerate them all to list tools across games.
@@ -155,14 +162,14 @@ public sealed partial class SettingsDialog : ContentDialog
         {
             foreach (var gameDir in Directory.EnumerateDirectories(modsRoot))
             {
-                try { all.AddRange(ToolRegistry.Load(gameDir).Tools); }
+                try { all.AddRange(ToolRegistry.Load(gameDir).Tools.Select(t => new SettingsToolRow(t, gameDir))); }
                 catch { /* skip malformed per-game registries */ }
             }
         }
         else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
         {
             // Fallback: read only the active game's registry.
-            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools); }
+            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools.Select(t => new SettingsToolRow(t, activeDataDir))); }
             catch { /* skip */ }
         }
 
@@ -638,5 +645,14 @@ public sealed partial class SettingsDialog : ContentDialog
     {
         OpenSafeClearRequested = true;
         Hide();
+    }
+
+    private async void OnToolConfigure(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not SettingsToolRow row) return;
+        var dialog = new Tools.ToolConfigureDialog(row.Entry, row.DataDir) { XamlRoot = this.XamlRoot };
+        ModManager.App.Services.DialogTheming.Apply(dialog);
+        await dialog.ShowAsync();
+        RefreshInstalledTools();
     }
 }

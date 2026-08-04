@@ -34,8 +34,19 @@
                     <DataTemplate x:DataType="core:ToolEntry">
                         <Button Padding="10,4"
                                 Click="OnToolClick"
-                                RightTapped="OnToolRightTapped"
                                 Tag="{x:Bind}">
+                            <!-- ContextFlyout replaces the old RightTapped hook (vibe-glow F-032):
+                                 keyboard-reachable (Menu key / Shift+F10), and the tooltip now
+                                 names the path so it's discoverable, not a guess. -->
+                            <Button.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="Configure…" Click="OnToolConfigureClick" Tag="{x:Bind}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE713;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </Button.ContextFlyout>
                             <ToolTipService.ToolTip>
                                 <ToolTip>
                                     <TextBlock Foreground="{StaticResource ThemeInk}">
@@ -43,7 +54,7 @@
                                         <LineBreak/>
                                         <Run Text="Catalog metadata only — never bundled." />
                                         <LineBreak/>
-                                        <Run Text="Click to launch." />
+                                        <Run Text="Click to launch. Right-click to configure or uninstall." />
                                     </TextBlock>
                                 </ToolTip>
                             </ToolTipService.ToolTip>

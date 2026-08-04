@@ -1539,15 +1539,30 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    // Drops are game-scoped writes. On the Library home no game is on screen and the status
+    // receipt is painted over — a drop there would install into the LAST-opened game with an
+    // invisible result (vibe-glow F-033). Refuse with an instruction; in a game view, name the
+    // game in the caption so the target is explicit.
+    private bool DropTargetIsHome => LibraryHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible;
+
     private void OnDragOver(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        if (DropTargetIsHome)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            if (e.DragUIOverride is not null) e.DragUIOverride.Caption = "Open a game first to install mods";
+            return;
+        }
         e.AcceptedOperation = DataPackageOperation.Copy;
-        if (e.DragUIOverride is not null) e.DragUIOverride.Caption = "Install to active game";
+        var game = ViewModel.ActiveGame?.Name;
+        if (e.DragUIOverride is not null)
+            e.DragUIOverride.Caption = string.IsNullOrEmpty(game) ? "Install to active game" : $"Install to {game}";
     }
 
     private async void OnDrop(object sender, DragEventArgs e)
     {
+        if (DropTargetIsHome) return; // belt to OnDragOver's braces — never a silent home install
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         var items = await e.DataView.GetStorageItemsAsync();
         var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();

@@ -853,3 +853,21 @@ carry a Name (red→green TDD).
 5. Chip HelpText retrievable in Narrator scan mode (BAN RISK, MANAGED, UPDATE chips).
 6. FIRST status write after app launch is announced (WireLiveRegion uses FromElement — a
    missing peer at first write is the known risk).
+
+---
+
+## glow/wave-6 — reveal-prep (vibe-glow F-028/029/031/032/033/038/039/041)
+
+**Shipped:** tool ContextFlyout (keyboard-reachable Configure…) + tooltip naming the path +
+Configure buttons on Settings tool rows (SettingsToolRow carries the owning game dir);
+drops refused on the library home ("Open a game first to install mods") and the game-view
+drop caption names the target game; reversibility notes before the write in INI editor +
+Saves snapshots; "no source loaded" ×5 → Settings-path instruction; "Restore one type";
+"Mark as rechecked"; theme-neutral transparency tooltip.
+
+**Smoke needed:**
+1. Right-click (and Shift+F10 with keyboard focus) a tool chip → Configure… opens the dialog;
+   Settings → Installed tools → Configure… opens for a NON-active game's tool and writes back.
+2. Drag a zip over the library home → "Open a game first" caption, drop does nothing; over a
+   game view → caption names the game, install proceeds.
+3. INI editor + Saves show their snapshot-first notes before any write.
