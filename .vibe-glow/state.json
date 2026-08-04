@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "app": "626-mod-launcher",
-  "stage": "audit",
+  "stage": "waves",
   "adapter": "winui-powershell",
   "evidenceDir": "docs/ui-evidence",
   "designLanguagePath": "docs/superpowers/specs/2026-08-03-626-mod-launcher-design-language.md",
-  "findingsRegisterPath": "",
+  "findingsRegisterPath": "docs/superpowers/research/2026-08-03-626-mod-launcher-ui-audit-findings.md",
   "themes": ["default", "obsidian", "matrix"],
   "invariants": [
     "Color belongs to the theme engine (23-token contract, Themes.cs) — surfaces must not hardcode palette values. Findings requiring token-contract breaks are refused; extensions must be optional-with-fallback per NormalizeTheme.",
