@@ -71,10 +71,10 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{StaticResource ThemeInk}" />
                                         <Border CornerRadius="0" Padding="6,2"
-                                                Background="{StaticResource ThemeAccent}"
+                                                Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                                 VerticalAlignment="Center">
                                             <TextBlock Text="{x:Bind CountText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
-                                                       Foreground="{StaticResource ThemeBg}" />
+                                                       Foreground="{StaticResource ThemeAccent}" />
                                         </Border>
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Open game" Click="OnOpenGame" Tag="{x:Bind}"

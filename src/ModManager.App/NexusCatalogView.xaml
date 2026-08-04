@@ -167,11 +167,11 @@
                                          the whole app already leans on, and contrast is symmetric — so
                                          bg-on-accent inherits it for free, whatever the theme. -->
                                     <Border CornerRadius="0" Padding="7,2"
-                                            Background="{StaticResource ThemeAccent}"
+                                            Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                             Visibility="{x:Bind UpdateAvailableVisibility}"
                                             ToolTipService.ToolTip="You have this mod and the author has published a newer version">
                                         <TextBlock AutomationProperties.HelpText="You have this mod and the author has published a newer version" Text="Update available" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource ThemeBg}" />
+                                                   Foreground="{StaticResource ThemeAccent}" />
                                     </Border>
                                     <Border CornerRadius="0" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"

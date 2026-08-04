@@ -6,11 +6,23 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="New theme"
     PrimaryButtonText="Import"
     CloseButtonText="Close"
     DefaultButton="Primary"
     PrimaryButtonClick="OnImport">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4" />
+            <TextBlock Text="THEME // AI-ASSISTED" FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="New theme" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
 
     <StackPanel Spacing="10" Width="460">
         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"

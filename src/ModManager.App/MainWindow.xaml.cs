@@ -31,6 +31,12 @@ public sealed partial class MainWindow : Window
         // gaps off MainViewModel directly — no separate data context for this slim strip.
         ToolsRow.ViewModel = ViewModel;
 
+        // Glow rule (vibe-glow F-002): the two always-on sanctioned surfaces in the shell — the
+        // primary action blooms accent, the ban-risk banner blooms danger. Color + blur + alpha
+        // come from the applied theme's accent_bloom; ThemeService.Apply re-styles them live.
+        Services.Bloom.Attach(LaunchBloomHost, LaunchSplitButton, Services.BloomToken.Accent);
+        Services.Bloom.Attach(BanRiskBloomHost, BanRiskBanner, Services.BloomToken.Danger);
+
         // Library home: build the VM + view, mount into the overlay host, wire its navigation events.
         // Open (card/Manage) collapses the overlay onto the game's mod view; Add routes the discovered
         // game through the existing + Game flow, then reloads the home.

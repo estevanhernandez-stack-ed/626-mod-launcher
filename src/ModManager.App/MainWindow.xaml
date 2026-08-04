@@ -111,15 +111,20 @@
                 </Button>
                 <Button Content="+ Game" Click="OnAddGame" />
             </StackPanel>
-            <SplitButton x:Name="LaunchSplitButton" Grid.Column="4" Visibility="Collapsed"
-                         Content="{x:Bind ViewModel.LaunchButtonLabel, Mode=OneWay}" VerticalAlignment="Center"
-                         Command="{x:Bind ViewModel.LaunchCommand}"
-                         ToolTipService.ToolTip="Click to run the target shown — open the menu to switch between modded / vanilla / alt launchers"
-                         Foreground="Black" Background="{StaticResource ThemeAccent}">
-                <SplitButton.Flyout>
-                    <MenuFlyout Placement="Bottom" Opening="OnLaunchMenuOpening" />
-                </SplitButton.Flyout>
-            </SplitButton>
+            <!-- The primary action is a sanctioned glow surface (F-002): the empty Border hosts the
+                 composition bloom BEHIND the button — see Bloom.Attach in the code-behind. -->
+            <Grid Grid.Column="4" VerticalAlignment="Center">
+                <Border x:Name="LaunchBloomHost" />
+                <SplitButton x:Name="LaunchSplitButton" Visibility="Collapsed"
+                             Content="{x:Bind ViewModel.LaunchButtonLabel, Mode=OneWay}"
+                             Command="{x:Bind ViewModel.LaunchCommand}"
+                             ToolTipService.ToolTip="Click to run the target shown — open the menu to switch between modded / vanilla / alt launchers"
+                             Foreground="{StaticResource ThemeBg}" Background="{StaticResource ThemeAccent}">
+                    <SplitButton.Flyout>
+                        <MenuFlyout Placement="Bottom" Opening="OnLaunchMenuOpening" />
+                    </SplitButton.Flyout>
+                </SplitButton>
+            </Grid>
         </Grid>
 
         <!-- Command bar -->
@@ -152,11 +157,11 @@
                              the handler picks the rich storefront or the older simple dialog by capability. -->
                         <Button Click="OnBrowseNexusInApp"
                                 Visibility="{x:Bind ViewModel.CatalogVisibility, Mode=OneWay}"
-                                Foreground="Black" Background="{StaticResource ThemeAccent}"
+                                Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                 ToolTipService.ToolTip="Browse this game's Nexus mods in the launcher — sorted, filterable, and marked with what you already have. Get opens the mod page to download.">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <FontIcon Glyph="&#xE721;" FontSize="13" />
-                                <TextBlock Text="Browse Nexus" Foreground="Black" />
+                                <TextBlock Text="Browse Nexus" Foreground="{StaticResource ThemeAccent}" />
                             </StackPanel>
                         </Button>
                         <DropDownButton ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
@@ -234,7 +239,7 @@
                         Visibility="{x:Bind ViewModel.LoadOrderVisibility, Mode=OneWay}">
                 <FontIcon Glyph="&#xE8CB;" FontSize="14" Foreground="{StaticResource ThemeAccent}" />
                 <TextBlock Text="Load order — drag rows or type a position." VerticalAlignment="Center" />
-                <Button Content="Apply order" Click="OnApplyOrder" Foreground="Black" Background="{StaticResource ThemeAccent}" />
+                <Button Content="Apply order" Click="OnApplyOrder" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1" />
                 <Button Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
             <!-- Right cluster: VIEW (group-by) · SETTINGS (theme picker) · standalone Nexus indicator.
@@ -261,8 +266,12 @@
                 </Border>
                 <!-- Ban-risk banner: game-level anti-cheat exposure, distinct from the per-mod
                      co-op-desync warning above. Both can be visible at once; they must read as two
-                     separate warnings. Stays up even after the enable gate is acked. -->
-                <Border Padding="8,2" CornerRadius="0" VerticalAlignment="Bottom" Margin="6,0,0,0"
+                     separate warnings. Stays up even after the enable gate is acked.
+                     Danger alerts are a sanctioned glow surface (F-002) — the host Border carries
+                     the danger-colored bloom behind the banner. -->
+                <Grid VerticalAlignment="Bottom" Margin="6,0,0,0">
+                <Border x:Name="BanRiskBloomHost" />
+                <Border x:Name="BanRiskBanner" Padding="8,2" CornerRadius="0"
                         ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                         Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -271,13 +280,14 @@
                                    Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
-                <Button Click="OnLaunchOptions" Foreground="Black" Background="{StaticResource ThemeAccent}"
+                </Grid>
+                <Button Click="OnLaunchOptions" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                         VerticalAlignment="Bottom" Margin="6,0,0,0"
                         ToolTipService.ToolTip="This game needs a launch option for mods to load"
                         Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE7BA;" FontSize="13" />
-                        <TextBlock Text="Launch options" Foreground="Black" />
+                        <TextBlock Text="Launch options" Foreground="{StaticResource ThemeAccent}" />
                     </StackPanel>
                 </Button>
                 <!-- VIEW: how the mod list is grouped -->
@@ -408,10 +418,11 @@
                         </Button>
                     </Grid>
                     <Grid Padding="4,8" ColumnSpacing="12" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,0,0,1">
+                        <!-- Columns: toggle / art / name(*) / chips / actions / uninstall (F-005). -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -423,7 +434,7 @@
                         </Grid.ContextFlyout>
 
                         <!-- Icon cell: load-order number (editable) in reorder mode, else art/monogram -->
-                        <Grid Grid.Column="0" Width="48" Height="40" VerticalAlignment="Center">
+                        <Grid Grid.Column="1" Width="48" Height="40" VerticalAlignment="Center">
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="0"
                                     Visibility="{x:Bind MonogramVisibility, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Initial}" FontWeight="SemiBold"
@@ -438,7 +449,7 @@
                                        Visibility="{x:Bind OrderVisibility, Mode=OneWay}" />
                         </Grid>
 
-                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{x:Bind FileTag}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeInkMuted}"
@@ -483,7 +494,7 @@
                                        Visibility="{x:Bind VariantOptionsVisibility, Mode=OneWay}" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <HyperlinkButton NavigateUri="{x:Bind MissingFrameworkUri, Mode=OneWay}"
                                              Padding="0" BorderThickness="0" Background="Transparent"
                                              Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
@@ -507,20 +518,20 @@
                                     Visibility="{x:Bind BuiltinVisibility, Mode=OneWay}">
                                 <TextBlock AutomationProperties.HelpText="Ships with UE4SS — framework mod, not a downloaded mod" Text="UE4SS BUILT-IN" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
                             </Border>
-                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                            <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on"
                                     Visibility="{x:Bind LoaderChipVisibility, Mode=OneWay}">
-                                <TextBlock AutomationProperties.HelpText="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on" Text="LOADER" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="Black" />
+                                <TextBlock AutomationProperties.HelpText="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on" Text="LOADER" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
                             </Border>
-                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                            <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="{x:Bind UpdateTooltip}"
                                     Visibility="{x:Bind UpdateAvailableVisibility}">
-                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateTooltip}" Text="UPDATE" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="Black" />
+                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateTooltip}" Text="UPDATE" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
                             </Border>
-                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
+                            <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"
                                     Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">
-                                <TextBlock AutomationProperties.HelpText="One of several variants of the same mod — toggle whichever you want" Text="VARIANT" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="Black" />
+                                <TextBlock AutomationProperties.HelpText="One of several variants of the same mod — toggle whichever you want" Text="VARIANT" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
                             </Border>
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="0" Padding="6,2"
                                     ToolTipService.ToolTip="{x:Bind ClassChipTooltip}">
@@ -549,7 +560,7 @@
                             </Button>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                             <!-- Endorse heart: only on Nexus-identified rows while connected. OneWay so the
                                  heart flips in place after a toggle. Refusals/rate-limit go to the status line. -->
                             <Button AutomationProperties.Name="{x:Bind EndorseAutomationName}" Click="OnEndorse" VerticalAlignment="Center"
@@ -592,7 +603,9 @@
                             </Button>
                         </StackPanel>
 
-                        <ToggleSwitch Grid.Column="4" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
+                        <!-- Toggle leads the row (design language row anatomy; vibe-glow F-005 — Este's call:
+                             toggle first, art second). The on/off state is the row's primary affordance. -->
+                        <ToggleSwitch Grid.Column="0" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
                                       AutomationProperties.Name="{x:Bind ToggleAutomationName, Mode=OneWay}"
                                       IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""

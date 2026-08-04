@@ -6,11 +6,23 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Looks like a framework"
     PrimaryButtonText="Continue as mod"
     SecondaryButtonText="Open feedback link"
     CloseButtonText="Cancel"
     DefaultButton="Primary">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4" />
+            <TextBlock Text="FRAMEWORK // UNRECOGNIZED" FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Looks like a framework" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
     <!-- Shown when a dropped FromSoft zip has a DLL proxy at its root (dinput8/version/winhttp)
          but doesn't match any KnownFramework catalog entry. Lets the user open a feedback link
          so we can grow the catalog over time. -->

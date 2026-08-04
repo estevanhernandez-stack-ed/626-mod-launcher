@@ -889,3 +889,31 @@ Themes.ContrastReport (Core) + import readability advisory.
 3. Import a deliberately low-contrast theme JSON → warning names the pair + ratio, import still
    succeeds, dialog stays open to read it.
 4. Safe-clear: primary reads filled danger red, Enter still triggers Cancel.
+
+---
+
+## glow/wave-8 — conformance-heavies (vibe-glow F-002/005/008/009)
+
+**Shipped:** Bloom service (composition DropShadow, no toolkit dep) consuming the theme's
+accent_bloom on the two shell-sanctioned surfaces — Play modded (accent) + ban-risk banner
+(danger), restyled live by ThemeService.Apply; row anatomy re-ordered toggle → art → name →
+chips → actions → uninstall ("toggle first, art second"); dialog shell ×17 — 3px accent rail +
+mono-caps stencil eyebrow via ContentDialog.Title content, title stretch hooked on the Title
+content's Loaded in DialogTheming; fill discipline — LOADER/UPDATE/VARIANT/count chips and
+secondary CTAs (Browse Nexus / Apply order / Launch options / UpdatesEntry) demoted to 1px
+accent outline, Play keeps the only accent fill with ThemeBg ink (code-built anti-cheat toggle
+included).
+
+**Smoke needed:**
+1. Bloom: on 626 Labs (or any bloom-bearing theme) Play modded shows a soft accent halo; open a
+   ban-risk game → banner glows danger. Switch to a flat theme (bloom alpha 0, e.g. a custom
+   import) → no halo anywhere. Switch back → halo returns re-colored, no restart.
+2. Ban-risk banner appearing AFTER load (toggle a mod on an anti-cheat game) fades its glow in
+   (~160ms) rather than popping.
+3. Row: toggle is the first thing in every row; drag the toggle (not just click); name column
+   still stretches/ellipsizes on a narrow window; uninstall stays rightmost.
+4. Dialogs: open Settings, Saves, Add game, INI editor, safe-clear — each shows full-width
+   accent rail + eyebrow + title. Open the SAME dialog twice (rail must stay full-width on
+   reopen — the stretch hook re-fires on Loaded).
+5. Chips: LOADER/UPDATE/VARIANT chips read as outlines; variant chips on a multi-option mod
+   (Faster Ships) still show selected vs unselected distinctly.

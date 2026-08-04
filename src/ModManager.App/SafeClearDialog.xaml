@@ -6,11 +6,23 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Reset launcher"
     PrimaryButtonText="Reset launcher"
     CloseButtonText="Cancel"
     DefaultButton="Close"
     PrimaryButtonClick="OnPrimary">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4" />
+            <TextBlock Text="RESET // RESTORE POINT FIRST" FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Reset launcher" FontSize="20" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
 
     <!-- Destructive confirm: the primary is the ONE sanctioned filled-danger surface
          (design language button rules; vibe-glow F-037). Keyboard default stays on Cancel. -->
