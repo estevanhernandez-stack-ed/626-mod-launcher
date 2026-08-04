@@ -11,6 +11,9 @@
     CloseButtonText="Close"
     DefaultButton="Close">
 
+    <!-- Scroll wrapper: the dialog clips silently when content outgrows the window
+         (the snapshot list was cutting mid-row) — same pattern as SettingsDialog. -->
+    <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto">
     <StackPanel Spacing="12" Width="480">
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
@@ -158,4 +161,5 @@
         <TextBlock x:Name="EmptyText" Text="No snapshots yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
         <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
     </StackPanel>
+    </ScrollViewer>
 </ContentDialog>
