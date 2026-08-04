@@ -557,12 +557,17 @@ public sealed partial class SettingsDialog : ContentDialog
         PaletteStrip.Children.Clear();
         foreach (var p in _palette)
         {
-            PaletteStrip.Children.Add(new Rectangle
+            var swatch = new Rectangle
             {
                 Width = 48, Height = 32,
                 RadiusX = 0, RadiusY = 0,
                 Fill = new SolidColorBrush(Color.FromArgb(255, p.R, p.G, p.B)),
-            });
+            };
+            // Color-only information gets a text alternative: hex as UIA name + tooltip (F-045).
+            var hex = $"#{p.R:X2}{p.G:X2}{p.B:X2}";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(swatch, hex);
+            ToolTipService.SetToolTip(swatch, hex);
+            PaletteStrip.Children.Add(swatch);
         }
         PaletteEmpty.Visibility = _palette.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }

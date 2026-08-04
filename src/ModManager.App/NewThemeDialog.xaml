@@ -19,6 +19,6 @@
         <Button Content="Copy prompt" Click="OnCopyPrompt" />
         <TextBox x:Name="JsonBox" Header="Theme JSON" AcceptsReturn="True" Height="170" TextWrapping="Wrap"
                  PlaceholderText="Paste the JSON the AI returned" />
-        <TextBlock x:Name="StatusText" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
+        <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
     </StackPanel>
 </ContentDialog>

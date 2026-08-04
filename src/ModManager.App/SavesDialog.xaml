@@ -20,7 +20,7 @@
             </Grid.ColumnDefinitions>
             <TextBox x:Name="FolderBox" Grid.Column="0" Header="Save folder" IsReadOnly="True"
                      PlaceholderText="Set the game's save folder to enable snapshots" />
-            <Button x:Name="OpenFolderButton" Grid.Column="1" Click="OnOpenSaveFolder" VerticalAlignment="Bottom"
+            <Button AutomationProperties.Name="Open save folder" x:Name="OpenFolderButton" Grid.Column="1" Click="OnOpenSaveFolder" VerticalAlignment="Bottom"
                     ToolTipService.ToolTip="Open save folder in Explorer">
                 <FontIcon Glyph="&#xE838;" FontSize="12" />
             </Button>
@@ -111,7 +111,7 @@
                         </StackPanel>
                         <Button Grid.Column="1" Content="Reset" Click="OnSaveModReset" VerticalAlignment="Center"
                                 ToolTipService.ToolTip="Re-install from the kept source zip — snapshots first" />
-                        <Button Grid.Column="2" Click="OnSaveModRemove" VerticalAlignment="Center"
+                        <Button Grid.Column="2" AutomationProperties.Name="Remove save mod" Click="OnSaveModRemove" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
                                 ToolTipService.ToolTip="Remove from the save tree — snapshots first">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
@@ -145,7 +145,7 @@
                             </DropDownButton.Flyout>
                         </DropDownButton>
                         <Button Grid.Column="2" Content="Restore" Click="OnRestore" VerticalAlignment="Center" />
-                        <Button Grid.Column="3" Click="OnDelete" VerticalAlignment="Center"
+                        <Button Grid.Column="3" AutomationProperties.Name="Delete snapshot" Click="OnDelete" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Delete snapshot">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
                         </Button>
@@ -154,6 +154,6 @@
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="EmptyText" Text="No snapshots yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
-        <TextBlock x:Name="StatusText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
     </StackPanel>
 </ContentDialog>

@@ -33,7 +33,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Foreground="{StaticResource ThemeInk}" Grid.Column="0" Text="{x:Bind}" VerticalAlignment="Center" FontWeight="SemiBold" />
                         <Button Grid.Column="1" Content="Load" Click="OnLoad" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Click="OnDelete" VerticalAlignment="Center"
+                        <Button Grid.Column="2" AutomationProperties.Name="Delete profile" Click="OnDelete" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Delete profile">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
                         </Button>
@@ -42,6 +42,6 @@
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="EmptyText" Text="No profiles yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
-        <TextBlock x:Name="StatusText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
     </StackPanel>
 </ContentDialog>

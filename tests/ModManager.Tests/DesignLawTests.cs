@@ -36,6 +36,26 @@ public class DesignLawTests
             .Select(m => m.Value)
             .Where(tag => tag.Contains("Opacity=\"0.") && !tag.Contains("Foreground=") && !tag.Contains("Style="));
 
+    internal static IEnumerable<string> FindUnnamedIconOnlyButtons(string text)
+    {
+        // A Button whose visible content is icon-only (FontIcon/SymbolIcon, no TextBlock/Run and
+        // no string Content=) must carry AutomationProperties.Name — tooltips do not feed the UIA
+        // Name, so Narrator announces a bare "button" (vibe-glow F-021).
+        var clean = StripXmlComments(text);
+        // Self-closing form must match FIRST — otherwise a self-closed sibling swallows the next
+        // real Button into one block and its text content masks the icon-only one.
+        foreach (Match m in Regex.Matches(clean, "<Button\\b[^>]*?/>|<Button\\b.*?</Button>", RegexOptions.Singleline))
+        {
+            var block = m.Value;
+            var openTag = Regex.Match(block, "<Button\\b[^>]*?>", RegexOptions.Singleline).Value;
+            var hasIcon = Regex.IsMatch(block, "<(FontIcon|SymbolIcon)\\b");
+            var hasText = block.Contains("<TextBlock") || block.Contains("<Run")
+                          || Regex.IsMatch(openTag, "Content=\"[^\"{]");
+            if (hasIcon && !hasText && !block.Contains("AutomationProperties.Name"))
+                yield return openTag;
+        }
+    }
+
     internal static IEnumerable<string> FindUninkedTemplateText(string text)
     {
         var clean = StripXmlComments(text);
@@ -70,6 +90,7 @@ public class DesignLawTests
         new object[] { "mono-code", "new FontFamily(\"Consolas\")", "new FontFamily(\"Cascadia Mono, Consolas\")" },
         new object[] { "opacity-dim", "<TextBlock Text=\"x\" Opacity=\"0.6\" />", "<TextBlock Text=\"x\" Opacity=\"0.6\" Foreground=\"{StaticResource ThemeDanger}\" />" },
         new object[] { "template-ink", "<DataTemplate><TextBlock Text=\"x\" /></DataTemplate>", "<DataTemplate><TextBlock Text=\"x\" Foreground=\"{StaticResource ThemeInk}\" /></DataTemplate><DataTemplate><TextBlock Style=\"{x:Null}\" /></DataTemplate><TextBlock Text=\"outside\" />" },
+        new object[] { "icon-only-name", "<Button Click=\"X\"><FontIcon Glyph=\"&#xE713;\" /></Button>", "<Button Click=\"X\" AutomationProperties.Name=\"Settings\"><FontIcon Glyph=\"&#xE713;\" /></Button><Button Click=\"Y\"><StackPanel><FontIcon Glyph=\"&#xE721;\" /><TextBlock Text=\"Find\" /></StackPanel></Button><Button Content=\"Plain\" />" },
     };
 
     private static IEnumerable<string> RunDetector(string id, string sample) => id switch
@@ -82,6 +103,7 @@ public class DesignLawTests
         "mono-code" => FindHardcodedMonoCode(sample),
         "opacity-dim" => FindRawOpacityDimming(sample),
         "template-ink" => FindUninkedTemplateText(sample).ToList(),
+        "icon-only-name" => FindUnnamedIconOnlyButtons(sample).ToList(),
         _ => throw new ArgumentOutOfRangeException(id),
     };
 
@@ -138,4 +160,8 @@ public class DesignLawTests
     [Fact]
     public void Ink_law_data_template_text_declares_its_ink()
         => Assert.Empty(Scan("*.xaml", t => FindUninkedTemplateText(t)));
+
+    [Fact]
+    public void A11y_law_icon_only_buttons_carry_a_name()
+        => Assert.Empty(Scan("*.xaml", t => FindUnnamedIconOnlyButtons(t)));
 }

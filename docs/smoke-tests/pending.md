@@ -832,3 +832,21 @@ em-dash guard.
 4. Readme buttons: description-only mods no longer show the affordance; real-readme mods
    still open their file.
 5. Reset flow: Settings → Reset launcher… → dialog primary now reads "Reset launcher".
+
+---
+
+## glow/wave-5 — heard-not-just-seen (vibe-glow F-021/034/035/040/042/045)
+
+**Shipped:** AutomationProperties.Name on all 9 icon-only buttons (3 destructive) + the
+library game card + per-mod names on row toggle/actions ("Enable Faster Ships",
+"Uninstall Faster Ships"); LiveSetting=Polite on the status line + 3 dialog status sinks;
+MinHeight/MinWidth 24 on the MP badge + glossary "?"; HelpText mirroring tooltips on 16
+chip Borders; palette swatches announce their hex. New DesignLaw: icon-only buttons must
+carry a Name (red→green TDD).
+
+**Smoke needed (Narrator or Accessibility Insights):**
+1. Tab through a mod row: toggle announces "Enable/Disable <mod>", uninstall announces
+   "Uninstall <mod>" — not 27 identical controls.
+2. Toggle a mod: the status-line result is announced without focus moving (LiveSetting).
+3. Home/Settings/delete-profile/delete-snapshot buttons announce their names.
+4. MP badge + "?" are comfortably clickable (24px targets).
