@@ -117,7 +117,7 @@
             </StackPanel>
 
             <Button Padding="8,4"
-                    Click="OnAddToolClick"
+                    AutomationProperties.Name="Install a tool" Click="OnAddToolClick"
                     ToolTipService.ToolTip="Install a tool from a zip">
                 <SymbolIcon Symbol="Add" />
             </Button>
@@ -155,7 +155,7 @@
                                     <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" />
                                 </Button>
                                 <Button Padding="6,4"
-                                        Click="OnEditFrameworkConfigClick"
+                                        AutomationProperties.Name="Edit framework settings" Click="OnEditFrameworkConfigClick"
                                         Tag="{x:Bind Manifest}"
                                         Visibility="{x:Bind ConfigVisibility}"
                                         ToolTipService.ToolTip="Edit this framework's settings (e.g. enable the UE4SS console)">

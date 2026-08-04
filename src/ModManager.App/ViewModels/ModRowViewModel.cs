@@ -20,7 +20,17 @@ public sealed partial class ModRowViewModel : ObservableObject
     // actually move the switch (vibe-glow F-016 — previously a silent no-op).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleIsOn))]
+    [NotifyPropertyChangedFor(nameof(ToggleAutomationName))]
     private bool enabled;
+
+    // Screen-reader names carry the mod's identity — 27 rows must never announce as 27
+    // identical "toggle switch" / "uninstall" controls (vibe-glow F-034).
+    public string ToggleAutomationName => (ToggleIsOn ? "Disable " : "Enable ") + DisplayName;
+    public string EndorseAutomationName => "Endorse " + DisplayName;
+    public string ReadmeAutomationName => "Readme for " + DisplayName;
+    public string ConfigAutomationName => "Configure " + DisplayName;
+    public string IniAutomationName => "Edit INI files for " + DisplayName;
+    public string UninstallAutomationName => "Uninstall " + DisplayName;
     // Busy disables the toggle while the file move + rescan runs; WinUI's disabled visual state
     // carries the dimming (vibe-glow F-016). CanInteract folds in the static CanToggle gate.
     [ObservableProperty]

@@ -36,6 +36,46 @@ public class DesignLawTests
             .Select(m => m.Value)
             .Where(tag => tag.Contains("Opacity=\"0.") && !tag.Contains("Foreground=") && !tag.Contains("Style="));
 
+    internal static IEnumerable<string> FindUnnamedIconOnlyButtons(string text)
+    {
+        // A Button whose visible content is icon-only (FontIcon/SymbolIcon, no TextBlock/Run and
+        // no string Content=) must carry AutomationProperties.Name — tooltips do not feed the UIA
+        // Name, so Narrator announces a bare "button" (vibe-glow F-021).
+        // Depth-stack matching: a lazy <Button.*?</Button> regex is nesting-blind — an outer
+        // button swallows its inner button whole and the outer's text masks it (the library-card
+        // shape). Property elements (<Button.Flyout>) are not buttons and are skipped.
+        // Known gap: glyph-string Content ("&#xE74D;") reads as text — zero instances today.
+        var clean = StripXmlComments(text);
+        var found = new List<string>();
+        var tokens = Regex.Matches(clean,
+            "<Button(?![.\\w])[^>]*?/>|<Button(?![.\\w])[^>]*?>|</Button>", RegexOptions.Singleline);
+        var stack = new Stack<(string OpenTag, int ContentStart)>();
+        foreach (Match t in tokens)
+        {
+            if (t.Value.StartsWith("</"))
+            {
+                if (stack.Count == 0) continue;
+                var (openTag, contentStart) = stack.Pop();
+                // Evaluate the full inner block; nested buttons are judged separately when their
+                // own close token pops, and a parent containing a TextBlock anywhere legitimately
+                // derives its UIA name from that text.
+                Judge(openTag, clean.Substring(contentStart, t.Index - contentStart));
+            }
+            else if (t.Value.EndsWith("/>")) Judge(t.Value, "");
+            else stack.Push((t.Value, t.Index + t.Length));
+        }
+        return found;
+
+        void Judge(string openTag, string inner)
+        {
+            var hasIcon = Regex.IsMatch(inner, "<(FontIcon|SymbolIcon)\\b");
+            var hasText = inner.Contains("<TextBlock") || inner.Contains("<Run")
+                          || Regex.IsMatch(openTag, "Content=\"[^\"{]");
+            if (hasIcon && !hasText && !openTag.Contains("AutomationProperties.Name"))
+                found.Add(openTag);
+        }
+    }
+
     internal static IEnumerable<string> FindUninkedTemplateText(string text)
     {
         var clean = StripXmlComments(text);
@@ -70,6 +110,8 @@ public class DesignLawTests
         new object[] { "mono-code", "new FontFamily(\"Consolas\")", "new FontFamily(\"Cascadia Mono, Consolas\")" },
         new object[] { "opacity-dim", "<TextBlock Text=\"x\" Opacity=\"0.6\" />", "<TextBlock Text=\"x\" Opacity=\"0.6\" Foreground=\"{StaticResource ThemeDanger}\" />" },
         new object[] { "template-ink", "<DataTemplate><TextBlock Text=\"x\" /></DataTemplate>", "<DataTemplate><TextBlock Text=\"x\" Foreground=\"{StaticResource ThemeInk}\" /></DataTemplate><DataTemplate><TextBlock Style=\"{x:Null}\" /></DataTemplate><TextBlock Text=\"outside\" />" },
+        new object[] { "icon-only-name", "<Button Click=\"X\"><FontIcon Glyph=\"&#xE713;\" /></Button>", "<Button Click=\"X\" AutomationProperties.Name=\"Settings\"><FontIcon Glyph=\"&#xE713;\" /></Button><Button Click=\"Y\"><StackPanel><FontIcon Glyph=\"&#xE721;\" /><TextBlock Text=\"Find\" /></StackPanel></Button><Button Content=\"Plain\" /><Button.Flyout><FontIcon Glyph=\"&#xE700;\" /></Button.Flyout>" },
+        new object[] { "icon-only-name-nested", "<Button Click=\"Outer\" AutomationProperties.Name=\"Card\"><Grid><TextBlock Text=\"Game\" /><Button Click=\"Inner\"><FontIcon Glyph=\"&#xE768;\" /></Button></Grid></Button>", "<Button Click=\"Outer\" AutomationProperties.Name=\"Card\"><Grid><TextBlock Text=\"Game\" /><Button Click=\"Inner\" AutomationProperties.Name=\"Play\"><FontIcon Glyph=\"&#xE768;\" /></Button></Grid></Button>" },
     };
 
     private static IEnumerable<string> RunDetector(string id, string sample) => id switch
@@ -82,6 +124,7 @@ public class DesignLawTests
         "mono-code" => FindHardcodedMonoCode(sample),
         "opacity-dim" => FindRawOpacityDimming(sample),
         "template-ink" => FindUninkedTemplateText(sample).ToList(),
+        "icon-only-name" or "icon-only-name-nested" => FindUnnamedIconOnlyButtons(sample).ToList(),
         _ => throw new ArgumentOutOfRangeException(id),
     };
 
@@ -138,4 +181,8 @@ public class DesignLawTests
     [Fact]
     public void Ink_law_data_template_text_declares_its_ink()
         => Assert.Empty(Scan("*.xaml", t => FindUninkedTemplateText(t)));
+
+    [Fact]
+    public void A11y_law_icon_only_buttons_carry_a_name()
+        => Assert.Empty(Scan("*.xaml", t => FindUnnamedIconOnlyButtons(t)));
 }

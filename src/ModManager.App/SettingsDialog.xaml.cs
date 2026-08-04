@@ -557,12 +557,26 @@ public sealed partial class SettingsDialog : ContentDialog
         PaletteStrip.Children.Clear();
         foreach (var p in _palette)
         {
-            PaletteStrip.Children.Add(new Rectangle
+            // Color-only information gets a VISIBLE text alternative (F-045): Rectangle has no
+            // automation peer, so a UIA name on it announces nothing — the hex caption is the
+            // honest fix (readable, keyboard-independent, and picked up by OCR-based AT too).
+            var hex = $"#{p.R:X2}{p.G:X2}{p.B:X2}";
+            var swatch = new Rectangle
             {
                 Width = 48, Height = 32,
                 RadiusX = 0, RadiusY = 0,
                 Fill = new SolidColorBrush(Color.FromArgb(255, p.R, p.G, p.B)),
-            });
+            };
+            ToolTipService.SetToolTip(swatch, hex);
+            var caption = new TextBlock
+            {
+                Text = hex,
+                FontSize = 10,
+                FontFamily = (FontFamily)Application.Current.Resources["MonoFontFamily"],
+                Foreground = (SolidColorBrush)Application.Current.Resources["ThemeInkDim"],
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            PaletteStrip.Children.Add(new StackPanel { Spacing = 2, Children = { swatch, caption } });
         }
         PaletteEmpty.Visibility = _palette.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }

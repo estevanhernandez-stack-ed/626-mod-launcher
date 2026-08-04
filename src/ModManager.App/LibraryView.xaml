@@ -95,6 +95,7 @@
                                      Button gives hover/pressed/keyboard for free; the inner Play button
                                      handles its own click so it won't also open the game. -->
                                 <Button Click="OnManage" Tag="{x:Bind}" Margin="0,0,0,6"
+                                        AutomationProperties.Name="{x:Bind Name}"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                         Background="{StaticResource ThemePanel}" BorderThickness="0"
                                         Padding="0" CornerRadius="0"
@@ -138,26 +139,26 @@
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                                     ToolTipService.ToolTip="{x:Bind TierTooltip}">
-                                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                                                <TextBlock AutomationProperties.HelpText="{x:Bind TierTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                                     ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
                                                     Visibility="{x:Bind UpdateBadgeVisibility}">
-                                                <TextBlock Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateBadgeTooltip}" Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="Black" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
                                                     ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                                                     Visibility="{x:Bind BanRiskVisibility}">
-                                                <TextBlock Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="{StaticResource ThemeDanger}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeAccent}"
                                                     ToolTipService.ToolTip="Mod loaders detected in this game's folder"
                                                     Visibility="{x:Bind LoaderVisibility}">
-                                                <TextBlock Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="Mod loaders detected in this game's folder" Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="{StaticResource ThemeAccent}" />
                                             </Border>
                                         </StackPanel>
