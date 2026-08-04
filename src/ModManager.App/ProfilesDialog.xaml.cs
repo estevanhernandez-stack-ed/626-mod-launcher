@@ -5,6 +5,14 @@ using ModManager.Core;
 
 namespace ModManager.App;
 
+/// <summary>Wrapper row so each profile can carry per-item UIA names (F-065) — a bare
+/// x:String template cannot.</summary>
+public sealed record ProfileRow(string Name)
+{
+    public string LoadAutomationName => $"Load profile {Name}";
+    public string DeleteAutomationName => $"Delete profile {Name}";
+}
+
 public sealed partial class ProfilesDialog : ContentDialog
 {
     private readonly GameContext _ctx;
@@ -26,7 +34,7 @@ public sealed partial class ProfilesDialog : ContentDialog
     private async Task Refresh()
     {
         var names = (await Scanner.ListProfilesAsync(_ctx)).ToList();
-        ProfileList.ItemsSource = names;
+        ProfileList.ItemsSource = names.Select(n => new ProfileRow(n)).ToList();
         EmptyText.Visibility = names.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -46,7 +54,7 @@ public sealed partial class ProfilesDialog : ContentDialog
 
     private async void OnLoad(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement fe || fe.DataContext is not string name) return;
+        if (sender is not FrameworkElement fe || fe.DataContext is not ProfileRow { Name: var name }) return;
         try
         {
             // Route through the VM so the ban-risk gate runs once before any mod gets enabled.
@@ -60,7 +68,7 @@ public sealed partial class ProfilesDialog : ContentDialog
 
     private async void OnDelete(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement fe || fe.DataContext is not string name) return;
+        if (sender is not FrameworkElement fe || fe.DataContext is not ProfileRow { Name: var name }) return;
         try
         {
             await Scanner.DeleteProfileAsync(name, _ctx);

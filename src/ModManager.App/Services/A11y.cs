@@ -15,7 +15,10 @@ internal static class A11y
         => status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(status.Text)) return;
-            FrameworkElementAutomationPeer.FromElement(status)
+            // FromElement returns null until something ASKS for the peer — a first status write
+            // before any UIA client touched the tree would go unannounced (F-064). Create it.
+            (FrameworkElementAutomationPeer.FromElement(status)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(status))
                 ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
         });
 }

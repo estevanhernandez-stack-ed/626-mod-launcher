@@ -254,6 +254,56 @@ public sealed partial class MainWindow : Window
     // Home button in the title bar — return to the Library landing view.
     private void OnGoHome(object sender, RoutedEventArgs e) => ShowLibrary();
 
+    // Keyboard access (F-025). Each handler acts only when its surface is live and marks the
+    // accelerator handled ONLY then — otherwise the key keeps its normal meaning.
+    private void OnFilterAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!ViewModel.HasGame || GameTitleControls.Visibility != Visibility.Visible) return;
+        ModFilterBox.Focus(FocusState.Keyboard);
+        args.Handled = true;
+    }
+
+    private void OnRefreshAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!ViewModel.HasGame || GameTitleControls.Visibility != Visibility.Visible) return;
+        if (ViewModel.RefreshCommand.CanExecute(null)) { ViewModel.RefreshCommand.Execute(null); args.Handled = true; }
+    }
+
+    private void OnEscapeAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        // Esc goes home from a game view — but never while any popup/dialog is open (Esc is
+        // theirs), and never from the home itself.
+        if (GameTitleControls.Visibility != Visibility.Visible) return;
+        if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(Content.XamlRoot).Count > 0) return;
+        ShowLibrary();
+        args.Handled = true;
+    }
+
+    // Space toggles the focused mod row (F-025) — routed through the row's own ToggleSwitch so
+    // the real enable path (ban-risk gate, busy latch, revert-on-fail) runs, same as a click.
+    private void OnModListKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Space) return;
+        if (e.OriginalSource is not ListViewItem item || item.Content is not ViewModels.ModRowViewModel) return;
+        if (FindToggle(item) is { IsEnabled: true, Visibility: Visibility.Visible } toggle)
+        {
+            toggle.IsOn = !toggle.IsOn;
+            e.Handled = true;
+        }
+
+        static ToggleSwitch? FindToggle(DependencyObject root)
+        {
+            var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+                if (child is ToggleSwitch t) return t;
+                if (FindToggle(child) is { } hit) return hit;
+            }
+            return null;
+        }
+    }
+
     // VM raised GameOpened after SetActiveGame — swap to that game's mod view.
     private void OnLibraryGameOpened(string gameId) => HideLibraryForGame();
 

@@ -14,7 +14,10 @@ public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
 public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>
-public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets);
+public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets)
+{
+    public string CloneAutomationName => $"Clone {Name} to another type"; // per-item UIA name (F-065)
+}
 
 /// <summary>One installed-save-mod row: friendly title + when/source detail.</summary>
 public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail);
