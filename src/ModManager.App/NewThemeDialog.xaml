@@ -18,6 +18,7 @@
         <TextBox x:Name="VibeBox" Header="Vibe" PlaceholderText="e.g. deep ocean bioluminescence" />
         <Button Content="Copy prompt" Click="OnCopyPrompt" />
         <TextBox x:Name="JsonBox" Header="Theme JSON" AcceptsReturn="True" Height="170" TextWrapping="Wrap"
+                 TextChanged="OnJsonChanged"
                  PlaceholderText="Paste the JSON the AI returned" />
         <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
     </StackPanel>

@@ -72,7 +72,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="SaveFilesEmpty" Text="No save files here. Check the save folder above, or start the game once to create one." Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+        <TextBlock x:Name="SaveFilesEmpty" Text="No save files of this game's known types here. Check the save folder above — snapshots still cover everything in it." Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
 
         <TextBlock Text="Characters" FontWeight="SemiBold" />
         <ListView x:Name="CharacterList" MaxHeight="200" SelectionMode="None">

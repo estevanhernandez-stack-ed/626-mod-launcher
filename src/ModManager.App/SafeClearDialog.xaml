@@ -15,7 +15,7 @@
     <!-- Destructive confirm: the primary is the ONE sanctioned filled-danger surface
          (design language button rules; vibe-glow F-037). Keyboard default stays on Cancel. -->
     <ContentDialog.PrimaryButtonStyle>
-        <Style TargetType="Button">
+        <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
             <Setter Property="Background" Value="{StaticResource ThemeDanger}" />
             <Setter Property="Foreground" Value="{StaticResource ThemeBg}" />
         </Style>

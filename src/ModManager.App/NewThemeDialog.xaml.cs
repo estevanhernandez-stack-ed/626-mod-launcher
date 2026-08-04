@@ -31,6 +31,9 @@ public sealed partial class NewThemeDialog : ContentDialog
     }
 
     private bool _warned; // second Import click after a readability warning proceeds to close
+                          // (re-armed by OnJsonChanged — a corrected paste must re-import)
+
+    private void OnJsonChanged(object sender, TextChangedEventArgs e) => _warned = false;
 
     private void OnImport(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
