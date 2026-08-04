@@ -1,0 +1,1 @@
+{ "steamAppId": "39190", "id": "dungeon-siege", "name": "Dungeon Siege", "engine": "custom", "modPath": "Resources", "nexusDomain": "dungeonsiege1", "fileExtensions": ["dsres", "dsmap", "dsmod"] }
