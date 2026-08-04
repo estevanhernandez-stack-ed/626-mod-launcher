@@ -811,3 +811,24 @@ template re-work deliberately deferred (own micro-wave).
 3. Button pressed-state legibility (pressed = text_secondary) on neutral buttons.
 4. Dialog presenter text via DialogTheming (Apply/Close/Cancel labels + field headers in
    Settings/character edit) under obsidian.
+
+---
+
+## glow/wave-4 — felt-qol (vibe-glow F-015/016/017/018/019/024/030)
+
+**Shipped:** mod-list filter box (Core ModSearch predicate, name+author, live); toggle busy
+treatment (disabled + dimmed during file move, reentrancy guard); readme affordance only
+when a real readme file exists; ErrorRemedy mapper routed through all 29 raw-exception
+StatusText sites; Reset flow keeps its name; "Open on Nexus" everywhere; character-edit
+em-dash guard.
+
+**Smoke needed:**
+1. Filter box: type in a 27-mod loadout — rows narrow live by name and author; clearing
+   restores all; section headers behave sanely when their rows filter out.
+2. Toggle a mod while watching the row: switch dims + disables during the move, re-enables
+   after; hammering the switch mid-flight does nothing (guard).
+3. Toggle a mod while the game is running: status line reads the remedy copy ("close the
+   game, then try again"), not a raw IOException.
+4. Readme buttons: description-only mods no longer show the affordance; real-readme mods
+   still open their file.
+5. Reset flow: Settings → Reset launcher… → dialog primary now reads "Reset launcher".

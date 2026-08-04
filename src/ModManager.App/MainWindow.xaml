@@ -182,6 +182,9 @@
                             </DropDownButton.Flyout>
                         </DropDownButton>
                         <Button Content="+ Add mods" Click="OnAddMods" />
+                        <TextBox x:Name="ModFilterBox" Width="170" PlaceholderText="Filter mods…"
+                                 TextChanged="OnModFilterChanged" VerticalAlignment="Center"
+                                 ToolTipService.ToolTip="Narrow the list by mod name or author" />
                     </StackPanel>
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
@@ -590,7 +593,8 @@
                         </StackPanel>
 
                         <ToggleSwitch Grid.Column="4" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
-                                      IsEnabled="{x:Bind CanToggle}"
+                                      IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
+                                      Opacity="{x:Bind BusyOpacity, Mode=OneWay}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
                                       Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
 

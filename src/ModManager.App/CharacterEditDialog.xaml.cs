@@ -9,7 +9,11 @@ public sealed partial class CharacterEditDialog : ContentDialog
     {
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
-        IntroText.Text = $"Editing \"{slot.Name}\" — {slot.Class}, currently Lv {slot.Level}.";
+        // Class is empty for every ER save today (detection deferred) — never render a dangling
+        // em-dash on the dialog's first line (vibe-glow F-030).
+        IntroText.Text = string.IsNullOrWhiteSpace(slot.Class)
+            ? $"Editing \"{slot.Name}\", currently Lv {slot.Level}."
+            : $"Editing \"{slot.Name}\" — {slot.Class}, currently Lv {slot.Level}.";
         NameBox.Text = slot.Name;
         RunesBox.Value = slot.Runes;
         VigBox.Value = slot.Vig; MndBox.Value = slot.Mnd;

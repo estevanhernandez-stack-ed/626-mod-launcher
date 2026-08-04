@@ -17,7 +17,15 @@ public sealed partial class ModRowViewModel : ObservableObject
 
     // Set programmatically during reload without triggering a disk write (parent guards on this).
     [ObservableProperty] private bool enabled;
-    [ObservableProperty] private bool isBusy;
+    // Busy drives the row's pending treatment: toggle disabled + row dimmed while the file
+    // move + rescan runs (vibe-glow F-016). CanInteract folds in the static CanToggle gate.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInteract))]
+    [NotifyPropertyChangedFor(nameof(BusyOpacity))]
+    private bool isBusy;
+
+    public bool CanInteract => CanToggle && !IsBusy;
+    public double BusyOpacity => IsBusy ? 0.45 : 1.0;
 
     // Load-order mode: show the position number (editable), hide the normal row controls/art.
     [ObservableProperty]
@@ -85,7 +93,9 @@ public sealed partial class ModRowViewModel : ObservableObject
     // Captured-at-intake readme file for this mod (set by the parent, which holds the GameContext).
     // The "Readme" affordance shows when a captured readme OR a CurseForge description exists.
     public string? ReadmeFilePath { get; init; }
-    public Visibility ReadmeVisibility => (ReadmeFilePath is not null || HasDescription) ? Visibility.Visible : Visibility.Collapsed;
+    // Readme shows only when a real readme file exists — a description-only mod repeating the
+    // row text in a modal is a false promise, not a document (vibe-glow F-017).
+    public Visibility ReadmeVisibility => ReadmeFilePath is not null ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>The markdown to show: captured readme file -> CurseForge description -> empty state.</summary>
     public string GetReadmeMarkdown()

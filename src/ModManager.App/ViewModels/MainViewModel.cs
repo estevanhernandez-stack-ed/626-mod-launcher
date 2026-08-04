@@ -242,7 +242,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         try { MpCompatStore.SetOverride(_ctx.DataDir, row.Mod.Name, value); }
-        catch (Exception e) { StatusText = e.Message; return; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return; }
         row.MpOverride = value;
         NotifyMpWarning();
     }
@@ -722,7 +722,7 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogActionsAvailable));
             OnPropertyChanged(nameof(CatalogActionsVisibility));
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
 
         // Debounced Nexus auto-check (once per 24h per game, off the UI hot path). Fire-and-forget:
@@ -845,8 +845,21 @@ public sealed partial class MainViewModel : ObservableObject
         // Mark the first row carrying a SectionHeader as the legend host. Only one ? button per render.
         var firstSection = ordered.FirstOrDefault(m => !string.IsNullOrEmpty(m.SectionHeader));
         if (firstSection is not null) firstSection.IsFirstSectionHeader = true;
-        Mods = new ObservableCollection<ModRowViewModel>(ordered);
+        _allRows = ordered;
+        Mods = new ObservableCollection<ModRowViewModel>(FilterRows(ordered));
     }
+
+    // Find-by-name over the loaded rows (vibe-glow F-015). The predicate is Core (ModSearch);
+    // filtering rebuilds Mods from the master list so section grouping stays intact per render.
+    private IReadOnlyList<ModRowViewModel> _allRows = Array.Empty<ModRowViewModel>();
+
+    [ObservableProperty] private string modFilterText = "";
+
+    partial void OnModFilterTextChanged(string value)
+        => Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
+
+    private IEnumerable<ModRowViewModel> FilterRows(IEnumerable<ModRowViewModel> rows)
+        => rows.Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, ModFilterText));
 
     /// <summary>The single ban-risk enable gate every enable path consults. Resolves the active
     /// game's risk LIVE by Steam app id (so a feed raising risk protects an already-added game) and
@@ -897,6 +910,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
+        if (row.IsBusy) return; // reentrancy guard — a mid-flight toggle ignores further flips (F-016)
         // Ban-risk gate: only when this toggle is turning a row ON. Disabling is never gated
         // (getting safer needs no friction). On cancel, revert the visual exactly like the catch.
         if (row.Enabled && !await GateBanRiskEnableAsync()) { row.Enabled = false; return; }
@@ -926,7 +940,7 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception e)
         {
             row.Enabled = !row.Enabled; // revert the visual
-            StatusText = e.Message;
+            StatusText = ErrorRemedy.Describe(e);
         }
         finally { row.IsBusy = false; }
     }
@@ -954,7 +968,7 @@ public sealed partial class MainViewModel : ObservableObject
             await Scanner.SetLoaderModEnabledAsync(opt.ModName, enable, _ctx);
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
     }
 
     /// <summary>Toggle a variant family on or off. ON re-enables the LAST-active variant (remembered
@@ -988,7 +1002,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
     }
 
     /// <summary>Permanently uninstall every variant in a family. Gated by a confirm dialog in the
@@ -1010,7 +1024,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1123,7 +1137,7 @@ public sealed partial class MainViewModel : ObservableObject
                 : $"Couldn't take over the folder: {r.Error}";
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1140,7 +1154,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Took over {ok} folder{(ok == 1 ? "" : "s")} for {_ctx.Game.GameName} — you manage them here now.";
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1189,7 +1203,7 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
             StatusText = "Load order applied.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1385,7 +1399,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (!_svc.Launch(_ctx.Game)) StatusText = "No launch target configured for this game.";
             else StampLaunch();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
     }
 
     /// <summary>Run a specific launch target (primary Launch button + dropdown both route here).
@@ -1406,7 +1420,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         AutoBackupBeforeLaunch();
         try { _svc.Launch(target, _ctx.Game.GameRoot); StampLaunch(); }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
     }
 
     /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.</summary>
@@ -1423,7 +1437,7 @@ public sealed partial class MainViewModel : ObservableObject
             var target = EffectiveLaunchTarget;
             if (target is not null) await LaunchTargetExplicit(target);
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1441,7 +1455,7 @@ public sealed partial class MainViewModel : ObservableObject
             var target = EffectiveLaunchTarget;
             if (target is not null) await LaunchTargetExplicit(target);
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1499,7 +1513,7 @@ public sealed partial class MainViewModel : ObservableObject
                 ? "Switched to ONLINE mode (anti-cheat on) — official multiplayer OK, file-based mods blocked."
                 : "Switched to OFFLINE mode (anti-cheat off) — Play loads mods. Seamless Co-op online still works.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         return AntiCheatStateOf(opt);
     }
 #endif
@@ -1541,7 +1555,7 @@ public sealed partial class MainViewModel : ObservableObject
                 ? (vtx > 0 ? $"Filled {vtx} Vortex mod(s) from Nexus." : "Couldn't resolve this game on CurseForge.")
                 : $"Matched {r.Matched} of {r.Total} on CurseForge" + (vtx > 0 ? $", +{vtx} from Vortex/Nexus." : ".");
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1761,7 +1775,7 @@ public sealed partial class MainViewModel : ObservableObject
                     // live immediately, not gated behind 24h.
                     await RefreshNexusStatsAsync();
                 }
-                catch (Exception ex) { StatusText = ex.Message; }
+                catch (Exception ex) { StatusText = ErrorRemedy.Describe(ex); }
             }
             if (_dispatcherQueue is { } dq) dq.TryEnqueue(Apply);
             else Apply();
@@ -1824,7 +1838,7 @@ public sealed partial class MainViewModel : ObservableObject
                 : $"Scanned {archives.Count} archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this game).";
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1889,7 +1903,7 @@ public sealed partial class MainViewModel : ObservableObject
                 ? "Nexus rate limit reached — try again later."
                 : $"Refreshed {result.Refreshed} mod{(result.Refreshed == 1 ? "" : "s")}, {result.UpdatesAvailable} update{(result.UpdatesAvailable == 1 ? "" : "s")} available.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -1929,7 +1943,7 @@ public sealed partial class MainViewModel : ObservableObject
                 return Array.Empty<SourceSearchHit>();
             });
         }
-        catch (Exception e) { StatusText = e.Message; return null; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return null; }
         finally { IsBusy = false; }
     }
 
@@ -1958,7 +1972,7 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
             StatusText = $"Identified {approved.Count} of {proposalCount} loose mod{(proposalCount == 1 ? "" : "s")}.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2024,7 +2038,7 @@ public sealed partial class MainViewModel : ObservableObject
                 ? $"Endorsed \"{name}\" on Nexus."
                 : $"Retracted endorsement for \"{name}\".";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2097,7 +2111,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Matched \"{row.DisplayName}\" to {hit.Title ?? "the pasted URL"}.";
             return true;
         }
-        catch (Exception e) { StatusText = e.Message; return false; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return false; }
     }
 
     /// <summary>Connect the user's Nexus account via the loopback PKCE OAuth flow (system browser). No key
@@ -2225,7 +2239,7 @@ public sealed partial class MainViewModel : ObservableObject
                     + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
                     + MissingFrameworkDropSuffix();
             }
-            catch (Exception e) { StatusText = e.Message; }
+            catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
             finally { IsBusy = false; }
             return;
         }
@@ -2384,7 +2398,7 @@ public sealed partial class MainViewModel : ObservableObject
                 + MissingFrameworkDropSuffix();
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2624,7 +2638,7 @@ public sealed partial class MainViewModel : ObservableObject
             await LoadAsync();
             StatusText = $"Added {entry.GameName}.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2644,7 +2658,7 @@ public sealed partial class MainViewModel : ObservableObject
                 + (g!.ModEngineConfig is not null ? ", Mod Engine 2 config linked." : ".")
                 : "Re-scan done — no mod launchers found.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2659,7 +2673,7 @@ public sealed partial class MainViewModel : ObservableObject
             await LoadAsync();
             StatusText = "Removed game from the launcher.";
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2675,7 +2689,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"Uninstalled {row.DisplayName}.";
             await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
@@ -2736,7 +2750,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         IsBusy = true;
         try { await op(); await ReloadModsAsync(); }
-        catch (Exception e) { StatusText = e.Message; }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 }
