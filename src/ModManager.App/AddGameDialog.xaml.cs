@@ -62,6 +62,7 @@ public sealed partial class AddGameDialog : ContentDialog
     public AddGameDialog(IntPtr hwnd, IReadOnlyList<InstalledGame> steamGames)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _hwnd = hwnd;
         _installedGames = steamGames;
         // No default selection — a wrong default reads as "auto-detected" when it isn't.

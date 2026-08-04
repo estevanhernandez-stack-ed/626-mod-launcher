@@ -34,6 +34,7 @@ public sealed partial class NexusCatalogDialog : ContentDialog
     public NexusCatalogDialog(MainViewModel vm, string gameName)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _vm = vm;
         _gameName = string.IsNullOrWhiteSpace(gameName) ? "this game" : gameName;
         ShowInitial();

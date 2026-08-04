@@ -32,6 +32,7 @@ public sealed partial class LooseIdentifyDialog : ContentDialog
     public LooseIdentifyDialog(IReadOnlyList<LooseIdentifyProposal> proposals)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         foreach (var p in proposals)
         {
             _rows.Add(p.Match is null

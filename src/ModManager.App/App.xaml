@@ -9,6 +9,59 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- System-brush overrides (vibe-glow wave 1), as plain app-level entries. Field notes
+                 from three attempts, so nobody retries the dead ends:
+                 (1) Plain entries here re-theme the MAIN window tree (verified per-pixel) but do
+                     NOT reach Popup/ContentDialog roots for THESE control-state keys — likely
+                     because the framework's theme dictionaries define them as aliases resolved at
+                     dictionary load (mechanism partially conjectural; the per-pixel split is
+                     fact). Note the popup gap is per-key, not per-root: direct-lookup keys like
+                     MenuFlyoutPresenterBackground and ContentDialogBackground above DO reach
+                     popups from plain app-level entries. Dialog-hosted controls get these same
+                     brush instances element-scoped via Services/DialogTheming.
+                 (2) Declaring these INSIDE ResourceDictionary.ThemeDictionaries freezes the
+                     brushes — ThemeService's in-place Color mutation then throws
+                     UnauthorizedAccessException.
+                 (3) StaticResource aliases inside ThemeDictionaries resolve in no root at all.
+                 ThemeService.Apply mutates these instances in lockstep with the Theme* set;
+                 ThemeBrushContractTests locks App.xaml, Apply, and DialogTheming in sync. -->
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#0F182B" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#0F182B" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#0F182B" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#0F182B" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#0F182B" />
+            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#0F182B" />
+            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#0F182B" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#0F182B" />
+            <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#0F182B" />
+            <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#0F182B" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#58C7E6" />
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#3BB4D9" />
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundDisabled" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A8C2D9" />
+
             <!-- Themeable palette — single brush instances mutated live by ThemeService.
                  Initialized to the default "626 Labs" theme (navy + cyan). -->
             <SolidColorBrush x:Key="ThemeBg" Color="#0F182B" />
@@ -18,11 +71,13 @@
             <SolidColorBrush x:Key="ThemePanel" Color="#1A2540" />
             <SolidColorBrush x:Key="ThemeBorder" Color="#2A3A5C" />
             <SolidColorBrush x:Key="ThemeAccent" Color="#3BB4D9" />
-            <SolidColorBrush x:Key="ThemeDanger" Color="#E13A5A" />
+            <SolidColorBrush x:Key="ThemeDanger" Color="#F25C73" />
             <!-- Amber: conditional/optional hint (e.g. "MAY NEED") — de-escalated vs ThemeDanger's required red. -->
-            <SolidColorBrush x:Key="ThemeWarning" Color="#E0A33A" />
+            <SolidColorBrush x:Key="ThemeWarning" Color="#D9A441" />
             <SolidColorBrush x:Key="ThemeInk" Color="#E8F2FF" />
             <SolidColorBrush x:Key="ThemeInkSoft" Color="#A8C2D9" />
+            <SolidColorBrush x:Key="ThemeInkMuted" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="ThemeInfo" Color="#58C7E6" />
 
             <!-- ContentDialog + AccentButton overrides. Same-instance pattern as above so
                  ThemeService.Apply's in-place Color mutation flows through to every popup. The
@@ -38,11 +93,10 @@
             <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#3BB4D9" />
             <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#3BB4D9" />
             <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="#2A3A5C" />
-            <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000" />
-            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
-            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="#0F182B" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#0F182B" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#0F182B" />
             <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#A8C2D9" />
-
             <!-- ComboBox flyout (game picker + VIEW dropdown). Default WinUI uses near-black for the
                  popup chrome which doesn't match our navy. Override the dropdown chrome to ThemePanel
                  and route hover/selected accents through our brushes. -->

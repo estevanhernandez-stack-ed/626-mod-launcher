@@ -10,6 +10,7 @@ public sealed partial class ManualMatchDialog : ContentDialog
     public ManualMatchDialog(string displayName)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         IntroText.Text = $"Pick a Nexus or CurseForge mod page for \"{displayName}\".";
     }
 }

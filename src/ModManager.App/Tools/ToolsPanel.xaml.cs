@@ -130,6 +130,7 @@ public sealed partial class ToolsPanel : UserControl
                 IsPrimaryButtonEnabled = false,
                 XamlRoot = this.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(picker); // vibe-glow wave 1: popup-scope theme brushes
             list.SelectionChanged += (_, _) => picker.IsPrimaryButtonEnabled = list.SelectedItem is not null;
             iniPath = await picker.ShowAsync() == ContentDialogResult.Primary ? list.SelectedItem as string : null;
         }

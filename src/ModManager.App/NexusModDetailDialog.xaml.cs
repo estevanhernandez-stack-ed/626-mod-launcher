@@ -87,6 +87,7 @@ public sealed partial class NexusModDetailDialog : ContentDialog
         _modId = hit.ModId;
 
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
 
         HeroInitial.Text = InitialOf(hit.Name);
         NameLabel.Text = hit.Name;

@@ -8,6 +8,7 @@ public sealed partial class CharacterEditDialog : ContentDialog
     public CharacterEditDialog(CharacterSlot slot)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         IntroText.Text = $"Editing \"{slot.Name}\" — {slot.Class}, currently Lv {slot.Level}.";
         NameBox.Text = slot.Name;
         RunesBox.Value = slot.Runes;

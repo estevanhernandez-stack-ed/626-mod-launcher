@@ -20,6 +20,7 @@ public sealed partial class IniEditorDialog : ContentDialog
     public IniEditorDialog(string iniPath, string gameDataDir, string modId)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _iniPath = iniPath;
         _gameDataDir = gameDataDir;
         _modId = modId;

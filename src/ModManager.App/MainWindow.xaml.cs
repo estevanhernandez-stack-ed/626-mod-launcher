@@ -145,6 +145,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(legacy); // vibe-glow wave 1: popup-scope theme brushes
             await legacy.ShowAsync();
         }
 
@@ -181,6 +182,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(d); // vibe-glow wave 1: popup-scope theme brushes
             if (await d.ShowAsync() == ContentDialogResult.Primary)
                 await rp.RestoreAsync(ic.Timestamp);
         }
@@ -195,6 +197,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(d); // vibe-glow wave 1: popup-scope theme brushes
             if (await d.ShowAsync() == ContentDialogResult.Primary)
                 rp.DiscardPartial(ic.Timestamp);
         }
@@ -367,6 +370,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         var ok = await dialog.ShowAsync() == ContentDialogResult.Primary;
         if (ok && dontAsk.IsChecked == true) _suppressOwnedToggleWarning = true;
         return ok;
@@ -387,6 +391,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
@@ -469,6 +474,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close, // cancel is the safe default
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         var proceed = await dialog.ShowAsync() == ContentDialogResult.Primary;
         return (proceed, proceed && dontWarn.IsChecked == true);
     }
@@ -496,6 +502,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 #endif
@@ -597,6 +604,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
             switch (await dialog.ShowAsync())
             {
                 case ContentDialogResult.Primary:
@@ -625,6 +633,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                 await ViewModel.LaunchTargetExplicit(target);
             return;
@@ -760,6 +769,7 @@ public sealed partial class MainWindow : Window
             Content = new ScrollViewer { Content = content, MaxHeight = 420 },
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         await dialog.ShowAsync();
     }
 
@@ -867,6 +877,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(confirm); // vibe-glow wave 1: popup-scope theme brushes
             if (await confirm.ShowAsync() == ContentDialogResult.Primary)
             {
                 var r = await rp.RestoreAsync(rts);
@@ -890,6 +901,7 @@ public sealed partial class MainWindow : Window
                         CloseButtonText = "OK",
                         XamlRoot = Content.XamlRoot,
                     };
+                    ModManager.App.Services.DialogTheming.Apply(err); // vibe-glow wave 1: popup-scope theme brushes
                     await err.ShowAsync();
                 }
                 // On success the UI refreshes via LauncherService.RegistryChanged → RefreshAsync.
@@ -906,6 +918,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(confirm); // vibe-glow wave 1: popup-scope theme brushes
             if (await confirm.ShowAsync() == ContentDialogResult.Primary)
             {
                 rp.DeleteRestorePoint(dts);
@@ -996,6 +1009,7 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "OK",
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(msg); // vibe-glow wave 1: popup-scope theme brushes
             await msg.ShowAsync();
             return;
         }
@@ -1026,6 +1040,7 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Got it",
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         await dialog.ShowAsync();
     }
 
@@ -1041,6 +1056,7 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Close",
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
 
         var panelBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemePanel"];
 
@@ -1144,6 +1160,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             await ViewModel.RemoveActiveGameAsync();
     }
@@ -1208,6 +1225,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         if (row.HasVariantOptions) await ViewModel.UninstallFamilyAsync(row);
         else                       await ViewModel.UninstallAsync(row);
@@ -1225,6 +1243,7 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Close",
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         await dialog.ShowAsync();
     }
 
@@ -1265,6 +1284,7 @@ public sealed partial class MainWindow : Window
                 IsPrimaryButtonEnabled = false,
                 XamlRoot = Content.XamlRoot,
             };
+            ModManager.App.Services.DialogTheming.Apply(picker); // vibe-glow wave 1: popup-scope theme brushes
             list.SelectionChanged += (_, _) => picker.IsPrimaryButtonEnabled = list.SelectedItem is not null;
             var pickResult = await picker.ShowAsync();
             iniPath = pickResult == ContentDialogResult.Primary ? list.SelectedItem as string : null;
@@ -1509,6 +1529,7 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Close",
             XamlRoot = Content.XamlRoot,
         };
+        ModManager.App.Services.DialogTheming.Apply(dialog); // vibe-glow wave 1: popup-scope theme brushes
         cockpitDialog = dialog;
         await dialog.ShowAsync();
     }
