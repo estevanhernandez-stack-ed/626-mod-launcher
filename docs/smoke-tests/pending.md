@@ -746,3 +746,28 @@ Still to confirm (low risk): Manage/recent-card opens the game view + switcher s
 - [ ] **(n) Store build has it too.** On the **Store** flavor: the badges, the entry point, and the Updates view all render from whatever metadata that install has. No Nexus storefront, no plugin — but this surface is flavor-neutral and must not be missing or throw.
 
 **Why these matter:** `ModUpdateSummaryTests` proves the reader's rules headlessly — including that "never checked" is `Checked = false` and not a zero — but the rendering of that distinction is the whole feature, and it only exists in the WinUI App layer. (a), (b) and (f) are the honesty rule made visible; (j) is the constraint that the surface is a report, not a request, and it can only be proven by unplugging.
+
+---
+
+## glow/wave-1 — theme-engine-owns-color (vibe-glow F-003/006/007/011/012/036)
+
+**Shipped:** stateful WinUI controls (toggles, variant pills, checkboxes, text-field focus),
+dialog primary buttons, hyperlinks, and default text ink now consume the theme accent/tokens
+via app-level brush overrides + `DialogTheming` (per-dialog scoped shared brushes — popup
+roots don't see app-level plain entries). `danger` re-tuned in 626-labs/obsidian/ember to
+clear WCAG 4.5:1 (Core test `ThemesDangerContrastTests` locks it). `ThemeWarning`,
+`ThemeInkMuted`, `ThemeInfo` now re-colored by `ThemeService.Apply`.
+
+**Live-smoked 2026-08-03 under Matrix (worst-case palette):** game-view toggles/pills/links/text,
+Settings checkboxes + Apply, character-edit Save edit + focus border — all theme-green,
+per-pixel verified. Cleared at capture time.
+
+**Remaining smoke (not yet exercised):**
+1. Theme switch **while a dialog is open** (Settings → change theme via main window after opening
+   another dialog) — dialog brushes should re-color live (same instances).
+2. Hover/pressed states on dialog primary buttons + toggles under obsidian — PointerOver brushes
+   are wired but only rest states were captured.
+3. One code-built dialog (mod readme, chip glossary `?`, ban-risk confirm) under matrix — the
+   `DialogTheming.Apply` wiring is scripted across 22 sites; spot-check two.
+4. The amber "MAY NEED" loader chip under obsidian (ThemeWarning now re-colors; needs a game
+   whose loader is conditional to render it).

@@ -10,6 +10,7 @@ public sealed partial class FrameworkUnrecognizedNudgeDialog : ContentDialog
     public FrameworkUnrecognizedNudgeDialog(string archiveFileName)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         FilenameText.Text = archiveFileName;
         // The SecondaryButtonClick fires for the "Open feedback link" button. We launch the URL
         // on click but the dialog still closes with the Secondary result — caller routes through

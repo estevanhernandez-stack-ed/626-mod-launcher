@@ -41,6 +41,7 @@ public sealed partial class SavesDialog : ContentDialog
     public SavesDialog(GameContext ctx, LauncherService svc, IntPtr hwnd)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _svc = svc;
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;

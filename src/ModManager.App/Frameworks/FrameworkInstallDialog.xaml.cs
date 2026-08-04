@@ -12,6 +12,7 @@ public sealed partial class FrameworkInstallDialog : ContentDialog
         string installLocation)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         HeadlineText.Text = $"{framework.DisplayName} — install at game root?";
         AuthorText.Text = $"by {framework.Author}  ·  {framework.GetUrl}";
         FilesList.ItemsSource = filesToInstall;

@@ -89,6 +89,7 @@ public sealed partial class SettingsDialog : ContentDialog
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _hwnd = hwnd;
         _avatars = avatars;
         _themes = themes;

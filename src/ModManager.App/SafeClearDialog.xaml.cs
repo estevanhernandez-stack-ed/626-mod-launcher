@@ -24,6 +24,7 @@ public sealed partial class SafeClearDialog : ContentDialog
     public SafeClearDialog(IntPtr hwnd, RestorePointService svc, bool nexusConnected)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _ = hwnd; // stored for consistency with the other dialog constructors; not needed here
         _svc = svc;
 

@@ -17,6 +17,7 @@ public sealed partial class NewThemeDialog : ContentDialog
     public NewThemeDialog(ThemeService themes)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _themes = themes;
     }
 

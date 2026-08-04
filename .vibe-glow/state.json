@@ -11,5 +11,7 @@
     "Color belongs to the theme engine (23-token contract, Themes.cs) — surfaces must not hardcode palette values. Findings requiring token-contract breaks are refused; extensions must be optional-with-fallback per NormalizeTheme.",
     "Reversibility and pure-core laws hold — no UI fix may move file-op logic into the App layer or delete user data. CorePurityTests stays green."
   ],
-  "waves": []
+  "waves": [
+    { "id": 1, "name": "theme-engine-owns-color", "status": "open", "findings": ["F-003", "F-006", "F-007", "F-011", "F-012", "F-036"] }
+  ]
 }

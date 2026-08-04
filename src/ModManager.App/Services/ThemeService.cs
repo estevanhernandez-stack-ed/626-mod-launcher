@@ -66,8 +66,11 @@ public sealed class ThemeService
         Set(res, "ThemeBorder", t["border"]);
         Set(res, "ThemeAccent", t["accent"]);
         Set(res, "ThemeDanger", t["danger"]);
+        Set(res, "ThemeWarning", t["warning"]);
         Set(res, "ThemeInk", t["text"]);
         Set(res, "ThemeInkSoft", t["text_secondary"]);
+        Set(res, "ThemeInkMuted", t["text_muted"]);
+        Set(res, "ThemeInfo", t["info"]);
 
         // ContentDialog + AccentButton resource overrides (declared in App.xaml). Same in-place
         // mutation pattern: WinUI's default popup templates look up these specific keys, and
@@ -83,10 +86,49 @@ public sealed class ThemeService
         Set(res, "AccentButtonBackgroundPointerOver", t["accent"]);
         Set(res, "AccentButtonBackgroundPressed", t["accent"]);
         Set(res, "AccentButtonBackgroundDisabled", t["border"]);
-        Set(res, "AccentButtonForeground", "#000000");
-        Set(res, "AccentButtonForegroundPointerOver", "#000000");
-        Set(res, "AccentButtonForegroundPressed", "#000000");
+        Set(res, "AccentButtonForeground", t["bg"]);
+        Set(res, "AccentButtonForegroundPointerOver", t["bg"]);
+        Set(res, "AccentButtonForegroundPressed", t["bg"]);
         Set(res, "AccentButtonForegroundDisabled", t["text_secondary"]);
+
+        // Wave-1 system-brush overrides (plain app-level instances; dialogs additionally get the
+        // same instances element-scoped via DialogTheming — see App.xaml field notes).
+        Set(res, "AccentFillColorDefaultBrush", t["accent"]);
+        Set(res, "AccentFillColorSecondaryBrush", t["accent"]);
+        Set(res, "AccentFillColorTertiaryBrush", t["accent"]);
+        Set(res, "TextOnAccentFillColorPrimaryBrush", t["bg"]);
+        Set(res, "ToggleSwitchFillOn", t["accent"]);
+        Set(res, "ToggleSwitchFillOnPointerOver", t["accent"]);
+        Set(res, "ToggleSwitchFillOnPressed", t["accent"]);
+        Set(res, "ToggleSwitchStrokeOn", t["accent"]);
+        Set(res, "ToggleSwitchStrokeOnPointerOver", t["accent"]);
+        Set(res, "ToggleSwitchStrokeOnPressed", t["accent"]);
+        Set(res, "ToggleSwitchKnobFillOn", t["bg"]);
+        Set(res, "ToggleSwitchKnobFillOnPointerOver", t["bg"]);
+        Set(res, "ToggleSwitchKnobFillOnPressed", t["bg"]);
+        Set(res, "ToggleButtonBackgroundChecked", t["accent"]);
+        Set(res, "ToggleButtonBackgroundCheckedPointerOver", t["accent"]);
+        Set(res, "ToggleButtonBackgroundCheckedPressed", t["accent"]);
+        Set(res, "ToggleButtonForegroundChecked", t["bg"]);
+        Set(res, "ToggleButtonForegroundCheckedPointerOver", t["bg"]);
+        Set(res, "ToggleButtonForegroundCheckedPressed", t["bg"]);
+        Set(res, "CheckBoxCheckBackgroundFillChecked", t["accent"]);
+        Set(res, "CheckBoxCheckBackgroundFillCheckedPointerOver", t["accent"]);
+        Set(res, "CheckBoxCheckBackgroundFillCheckedPressed", t["accent"]);
+        Set(res, "CheckBoxCheckBackgroundStrokeChecked", t["accent"]);
+        Set(res, "CheckBoxCheckBackgroundStrokeCheckedPointerOver", t["accent"]);
+        Set(res, "CheckBoxCheckBackgroundStrokeCheckedPressed", t["accent"]);
+        Set(res, "CheckBoxCheckGlyphForegroundChecked", t["bg"]);
+        Set(res, "CheckBoxCheckGlyphForegroundCheckedPointerOver", t["bg"]);
+        Set(res, "CheckBoxCheckGlyphForegroundCheckedPressed", t["bg"]);
+        Set(res, "TextControlBorderBrushFocused", t["accent"]);
+        Set(res, "TextControlSelectionHighlightColor", t["accent"]);
+        Set(res, "HyperlinkButtonForeground", t["accent"]);
+        Set(res, "HyperlinkButtonForegroundPointerOver", t["info"]);
+        Set(res, "HyperlinkButtonForegroundPressed", t["accent"]);
+        Set(res, "HyperlinkButtonForegroundDisabled", t["text_muted"]);
+        Set(res, "TextFillColorPrimaryBrush", t["text"]);
+        Set(res, "TextFillColorSecondaryBrush", t["text_secondary"]);
 
         // ComboBox flyout (game picker + VIEW dropdown).
         Set(res, "ComboBoxDropDownBackground", t["glass"]);

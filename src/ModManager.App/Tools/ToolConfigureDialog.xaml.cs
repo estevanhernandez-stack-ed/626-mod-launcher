@@ -21,6 +21,7 @@ public sealed partial class ToolConfigureDialog : ContentDialog
     public ToolConfigureDialog(ToolEntry tool, string gameDataDir)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _original = tool;
         _gameDataDir = gameDataDir;
 

@@ -16,6 +16,7 @@ public sealed partial class ProfilesDialog : ContentDialog
     public ProfilesDialog(GameContext ctx, MainViewModel vm)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         _ctx = ctx;
         _vm = vm;
         _ = Refresh();

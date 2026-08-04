@@ -24,6 +24,7 @@ public sealed partial class UpdateModsDialog : ContentDialog
     public UpdateModsDialog(IntakePlan plan)
     {
         InitializeComponent();
+        ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
         foreach (var c in plan.Collisions) _rows.Add(new Row { Name = c.Name, RelPath = c.RelPath, Replace = true });
         CollisionList.ItemsSource = _rows;
         var adds = plan.ToAdd.Select(a => "+ " + a.RelPath).ToList();
