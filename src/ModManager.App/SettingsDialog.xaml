@@ -146,7 +146,7 @@
                                 <TextBlock Text="{x:Bind GameLabel}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
                                 <TextBlock Text="Catalog metadata only — never bundled. See NOTICE for full attribution."
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="12" />
+                                           FontSize="12" TextWrapping="Wrap" />
                             </StackPanel>
                             <!-- Same management affordance the framework rows below have (F-032):
                                  rename / re-pick runnable / uninstall live in the configure dialog. -->
