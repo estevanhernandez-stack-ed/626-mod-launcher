@@ -81,7 +81,7 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     /// <summary>Themed brush for the placeholder swatch — the current accent, degrading to a neutral
     /// when the resource isn't present (e.g. design-time). App-side only; keeps Core pure.</summary>
     public Brush Placeholder =>
-        Application.Current?.Resources["ThemeAccent"] as Brush ?? new SolidColorBrush(Colors.SlateGray);
+        (Brush)Application.Current.Resources["ThemeAccent"]; // hard-cast: fail loud (F-066)
 
     /// <summary>Human-readable recency line ("2 days ago" / "Unknown") — never a fake time.</summary>
     public string RecencyText => FormatRecency(Recency.LastPlayedUtc);
@@ -181,7 +181,7 @@ public sealed partial class DiscoveredGameViewModel : ObservableObject
     public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
 
     public Brush Placeholder =>
-        Application.Current?.Resources["ThemeAccent"] as Brush ?? new SolidColorBrush(Colors.SlateGray);
+        (Brush)Application.Current.Resources["ThemeAccent"]; // hard-cast: fail loud (F-066)
 
     /// <summary>Visibility helpers so the view binds directly (no converters — matches the app pattern).</summary>
     public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;

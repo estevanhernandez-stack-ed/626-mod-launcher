@@ -690,7 +690,7 @@
                     Background="Transparent" BorderThickness="0" Padding="0,0,8,0" MinWidth="0"
                     ToolTipService.ToolTip="Open game folder in Explorer"
                     Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
-                <FontIcon Glyph="&#xE838;" FontSize="12" Opacity="0.7" />
+                <FontIcon Glyph="&#xE838;" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
             </Button>
             <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.GameRootText, Mode=OneWay}" Foreground="{StaticResource ThemeInkDim}" FontSize="12"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />

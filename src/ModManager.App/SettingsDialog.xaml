@@ -193,7 +193,7 @@
                                            FontSize="12" TextWrapping="Wrap" />
                             </StackPanel>
                             <HyperlinkButton Grid.Column="1" Content="Get it here" NavigateUri="{x:Bind GetUriObj}"
-                                             Opacity="0.75" FontSize="12" VerticalAlignment="Center" />
+                                             FontSize="12" VerticalAlignment="Center" />
                             <Button Grid.Column="2" Content="Uninstall" Tag="{x:Bind FrameworkId}"
                                     Click="OnUninstallFramework" VerticalAlignment="Center" />
                         </Grid>
