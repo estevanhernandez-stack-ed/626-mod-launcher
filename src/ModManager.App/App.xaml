@@ -162,6 +162,19 @@
             <x:Double x:Key="MotionFastMs">80</x:Double>
             <x:Double x:Key="MotionGlowMs">160</x:Double>
 
+            <!-- Spacing scale (F-022, design language): 4px base, steps 4/8/12/20/32.
+                 RowPadding is the spec's 7x12 density call. Chip innards (2/6/10 clusters,
+                 6,2 chip padding) are the recorded micro-density exception - density is a
+                 feature; snapping chips to the scale inflates the very rows the spec wants
+                 tight. New surfaces route through these; the micro-exception does not grow. -->
+            <x:Double x:Key="SpaceXS">4</x:Double>
+            <x:Double x:Key="SpaceS">8</x:Double>
+            <x:Double x:Key="SpaceM">12</x:Double>
+            <x:Double x:Key="SpaceL">20</x:Double>
+            <x:Double x:Key="SpaceXL">32</x:Double>
+            <Thickness x:Key="RowPadding">12,7</Thickness>
+            <Thickness x:Key="DialogPadding">20</Thickness>
+
             <!-- Row hover = glass shift (F-023 / design language row rules). Timing is the stock
                  ListViewItem reveal; the COLOR is the theme's glass, mutated live in Apply. -->
             <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1D2126" />

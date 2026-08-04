@@ -26,7 +26,7 @@
     </ContentDialog.Title>
 
 
-    <StackPanel Spacing="10" Width="460">
+    <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                    Text="Describe a vibe, copy the prompt into any AI chat, paste the JSON it returns below, then Import." />
         <TextBox x:Name="VibeBox" Header="Vibe" PlaceholderText="e.g. deep ocean bioluminescence" />
