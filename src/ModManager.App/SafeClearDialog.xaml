@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Title="Reset launcher"
-    PrimaryButtonText="Clear"
+    PrimaryButtonText="Reset launcher"
     CloseButtonText="Cancel"
     DefaultButton="Close"
     PrimaryButtonClick="OnPrimary">
@@ -17,7 +17,7 @@
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                        Text="Your mods are kept. This archives your current setup to a restore point you can return to, then resets the launcher to first-run." />
 
-            <TextBlock Text="After clearing:" FontWeight="SemiBold" FontSize="12" />
+            <TextBlock Text="After the reset:" FontWeight="SemiBold" FontSize="12" />
             <ComboBox x:Name="EndStateBox" HorizontalAlignment="Stretch">
                 <ComboBoxItem Content="Return to vanilla (restorable)" />
                 <ComboBoxItem Content="Leave mods active" />

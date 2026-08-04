@@ -507,6 +507,10 @@ public sealed partial class MainWindow : Window
     }
 #endif
 
+    // Live find-by-name over the mod list (vibe-glow F-015); predicate is Core's ModSearch.
+    private void OnModFilterChanged(object sender, TextChangedEventArgs e)
+        => ViewModel.ModFilterText = ModFilterBox.Text;
+
     private async void OnAddMods(object sender, RoutedEventArgs e)
     {
         var picker = new FileOpenPicker();

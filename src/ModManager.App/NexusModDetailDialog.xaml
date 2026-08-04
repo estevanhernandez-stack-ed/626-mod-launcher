@@ -67,7 +67,7 @@
                      surface, they hit the user's real Nexus account, and they fire from these clicks and
                      nowhere else — never on open, load, or retry. -->
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="OpenButton" Content="Download on Nexus" Click="OnOpenOnNexus"
+                    <Button x:Name="OpenButton" Content="Open on Nexus" Click="OnOpenOnNexus"
                             ToolTipService.ToolTip="Opens this mod's page on Nexus in your browser. The launcher never downloads mod files itself." />
                     <primitives:ToggleButton x:Name="EndorseToggle" Click="OnEndorseClick"
                                              Visibility="Collapsed"

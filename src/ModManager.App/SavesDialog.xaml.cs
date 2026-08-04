@@ -128,7 +128,7 @@ public sealed partial class SavesDialog : ContentDialog
             }
             RefreshSaveFiles();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private void RefreshSaveMods()
@@ -258,7 +258,7 @@ public sealed partial class SavesDialog : ContentDialog
                         slotIndex: slot.SlotIndex, beforeEdit: slot, edit: edit);
                     statusAfter = $"Edited \"{slot.Name}\" → \"{edit.Name}\". Snapshot taken: {snap.Label}.";
                 }
-                catch (Exception ex) { statusAfter = ex.Message; }
+                catch (Exception ex) { statusAfter = ModManager.Core.ErrorRemedy.Describe(ex); }
             }
         }
 
@@ -281,7 +281,7 @@ public sealed partial class SavesDialog : ContentDialog
             StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first.";
             Refresh();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private void OnSaveModRemove(object sender, RoutedEventArgs e)
@@ -297,7 +297,7 @@ public sealed partial class SavesDialog : ContentDialog
             Refresh();
             RefreshSaveMods();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private static string Short(string g) => g.Length <= 8 ? g : g[..8] + "…";
@@ -325,7 +325,7 @@ public sealed partial class SavesDialog : ContentDialog
             StatusText.Text = "Restored that save type. Your previous state was snapshotted first.";
             Refresh();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private void OnAutoBackupChanged(object sender, RoutedEventArgs e) => PersistAutoBackup();
@@ -373,7 +373,7 @@ public sealed partial class SavesDialog : ContentDialog
             StatusText.Text = $"Snapshot saved: {snap.FileName}";
             Refresh();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private void OnRestore(object sender, RoutedEventArgs e)
@@ -386,7 +386,7 @@ public sealed partial class SavesDialog : ContentDialog
             StatusText.Text = "Restored. Your previous save was snapshotted as 'before-restore' first.";
             Refresh();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private void OnDelete(object sender, RoutedEventArgs e)

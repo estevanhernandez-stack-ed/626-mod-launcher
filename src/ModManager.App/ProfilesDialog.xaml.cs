@@ -40,7 +40,7 @@ public sealed partial class ProfilesDialog : ContentDialog
             StatusText.Text = $"Saved '{name}'.";
             await Refresh();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private async void OnLoad(object sender, RoutedEventArgs e)
@@ -54,7 +54,7 @@ public sealed partial class ProfilesDialog : ContentDialog
             Changed = true;
             StatusText.Text = $"Loaded '{name}'.";
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private async void OnDelete(object sender, RoutedEventArgs e)
@@ -66,6 +66,6 @@ public sealed partial class ProfilesDialog : ContentDialog
             StatusText.Text = $"Deleted '{name}'.";
             await Refresh();
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 }
