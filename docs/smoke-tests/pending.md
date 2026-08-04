@@ -973,3 +973,14 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
    the danger fill HOLDS through both states (was reverting on hover).
 2. Loadout segments: active segment ink reads as the theme bg color on the
    accent fill in every builtin (was hardcoded black); switch themes live.
+
+---
+
+## road-to-zero B5 — theme keys + contrast (F-049/050/052/076)
+
+**Smoke needed:**
+1. Trigger a failed reset (or any ResultBar error) — the InfoBar renders
+   panel-bg with a danger icon badge, not OS-accent red.
+2. Busy ProgressRing spins in the theme accent on every builtin.
+3. Apply a stored low-contrast user theme from the THEME menu — status line
+   names the failing pair; startup restore stays quiet.

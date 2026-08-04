@@ -234,7 +234,7 @@
                         <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />
                     </StackPanel>
                 </StackPanel>
-                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18"
+                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" Foreground="{StaticResource ThemeAccent}"
                               VerticalAlignment="Bottom" Margin="10,0,0,6" />
             </StackPanel>
 

@@ -51,6 +51,10 @@ internal static class DialogTheming
         "HyperlinkButtonForeground", "HyperlinkButtonForegroundPointerOver",
         "HyperlinkButtonForegroundPressed", "HyperlinkButtonForegroundDisabled",
         "TextFillColorPrimaryBrush", "TextFillColorSecondaryBrush",
+        // InfoBar error severity (F-049): severity brushes are framework-dictionary aliases —
+        // the same popup gap as the control-state keys; scope the app's instances in.
+        "InfoBarErrorSeverityBackgroundBrush", "InfoBarErrorSeverityIconBackground",
+        "InfoBarErrorSeverityIconForeground", "InfoBarTitleForeground", "InfoBarMessageForeground",
         // Radius resources (wave 7, F-001): CheckBox's box radius binds the control's
         // CornerRadius whose Setter resolves ControlCornerRadius — app-level 0 doesn't reach
         // popup roots, so dialogs get the same instances. Not brushes; copied like any resource.
