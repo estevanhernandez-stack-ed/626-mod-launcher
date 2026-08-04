@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "app": "626-mod-launcher",
-  "stage": "waves",
+  "stage": "done",
   "adapter": "winui-powershell",
   "evidenceDir": "docs/ui-evidence",
   "designLanguagePath": "docs/superpowers/specs/2026-08-03-626-mod-launcher-design-language.md",
