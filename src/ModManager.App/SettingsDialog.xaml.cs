@@ -45,12 +45,13 @@ public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
 
 /// <summary>One Settings tool row: the entry plus the game data dir that owns it, so
 /// Configure can write back to the right registry (vibe-glow F-032).</summary>
-public sealed record SettingsToolRow(ToolEntry Entry, string DataDir)
+public sealed record SettingsToolRow(ToolEntry Entry, string DataDir, string? GameName = null)
 {
     public string DisplayName => Entry.DisplayName;
     /// <summary>Which game owns this copy — the same tool can be installed per-game, and
-    /// Configure→Uninstall must never ambiguate between copies.</summary>
-    public string GameLabel => $"For {System.IO.Path.GetFileName(DataDir)}";
+    /// Configure→Uninstall must never ambiguate between copies. Display name when the
+    /// registry knows the game; folder key as the fallback (F-068).</summary>
+    public string GameLabel => $"For {GameName ?? System.IO.Path.GetFileName(DataDir)}";
 }
 
 /// <summary>
@@ -165,18 +166,24 @@ public sealed partial class SettingsDialog : ContentDialog
         var activeDataDir = _vm.GameDataDirPublic();
         var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
 
+        // Folder key -> display name via the games dropdown the VM already holds (F-068):
+        // "For ELDEN RING", not "For eldenring". Unregistered folders keep the key.
+        string? NameFor(string dir)
+            => _vm.Games.FirstOrDefault(g =>
+                string.Equals(g.Id, System.IO.Path.GetFileName(dir), StringComparison.OrdinalIgnoreCase))?.Name;
+
         if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
         {
             foreach (var gameDir in Directory.EnumerateDirectories(modsRoot))
             {
-                try { all.AddRange(ToolRegistry.Load(gameDir).Tools.Select(t => new SettingsToolRow(t, gameDir))); }
+                try { all.AddRange(ToolRegistry.Load(gameDir).Tools.Select(t => new SettingsToolRow(t, gameDir, NameFor(gameDir)))); }
                 catch { /* skip malformed per-game registries */ }
             }
         }
         else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
         {
             // Fallback: read only the active game's registry.
-            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools.Select(t => new SettingsToolRow(t, activeDataDir))); }
+            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools.Select(t => new SettingsToolRow(t, activeDataDir, NameFor(activeDataDir)))); }
             catch { /* skip */ }
         }
 
@@ -557,7 +564,8 @@ public sealed partial class SettingsDialog : ContentDialog
         }
         catch (Exception ex)
         {
-            StatusText.Text = ex.Message;
+            // Cause framing, not bare exception text (F-062) — the user needs to know WHAT failed.
+            StatusText.Text = "Couldn't apply these changes — " + ex.Message;
             args.Cancel = true;
         }
         finally

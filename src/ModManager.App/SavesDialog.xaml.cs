@@ -169,9 +169,9 @@ public sealed partial class SavesDialog : ContentDialog
                         // Capture first failure so the empty-state surfaces a real reason instead of "no characters detected".
                         // Log every failure to Debug for dev-build visibility; keep iterating so partial reads still populate.
                         var fileName = System.IO.Path.GetFileName(savePath);
-                        var msg = $"{fileName}: {ex.GetType().Name} — {ex.Message}";
-                        System.Diagnostics.Debug.WriteLine($"[SavesDialog] ReadCharacters failed: {msg}");
-                        firstReadError ??= msg;
+                        // Debug keeps the CLR type for root-causing; the user-facing copy doesn't (F-063).
+                        System.Diagnostics.Debug.WriteLine($"[SavesDialog] ReadCharacters failed: {fileName}: {ex.GetType().Name} — {ex.Message}");
+                        firstReadError ??= $"Couldn't read {fileName} — {ex.Message}";
                         continue;
                     }
                     foreach (var slot in slots)
@@ -236,9 +236,9 @@ public sealed partial class SavesDialog : ContentDialog
         try { result = await dialog.ShowAsync(); }
         catch (Exception ex)
         {
-            // Surface what actually went wrong — name the type so we can chase the root cause
-            // if it's something other than the nested-dialog rule.
-            statusAfter = $"Couldn't open editor ({ex.GetType().Name}): {ex.Message}";
+            // Debug keeps the CLR type for chasing non-nested-dialog causes; user copy doesn't (F-063).
+            System.Diagnostics.Debug.WriteLine($"[SavesDialog] editor open failed: {ex.GetType().Name}: {ex.Message}");
+            statusAfter = $"Couldn't open the editor — {ex.Message}";
             result = Microsoft.UI.Xaml.Controls.ContentDialogResult.None;
         }
 
