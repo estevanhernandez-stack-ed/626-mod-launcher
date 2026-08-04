@@ -68,6 +68,43 @@ public static class Bloom
         sprite.IsVisible = caster.Visibility == Visibility.Visible;
     }
 
+    /// <summary>
+    /// Text-shadow variant (Este's call on the ban-risk banner: a rect plate behind danger text
+    /// was red-on-red and hard to read). The shadow is masked to the TextBlock's glyphs via
+    /// GetAlphaMask() and nudged 2px down — a slight drop shadow under the letterforms instead
+    /// of a filled rectangle. Same token discipline; same host-behind-caster layout contract.
+    /// </summary>
+    public static void AttachTextShadow(Border host, TextBlock caster, BloomToken token)
+    {
+        var compositor = ElementCompositionPreview.GetElementVisual(host).Compositor;
+        var shadow = compositor.CreateDropShadow();
+        shadow.Offset = new Vector3(0, 2, 0);
+        shadow.Mask = caster.GetAlphaMask();
+        var sprite = compositor.CreateSpriteVisual();
+        sprite.Shadow = shadow;
+        ElementCompositionPreview.SetElementChildVisual(host, sprite);
+
+        var attachment = new Attachment(sprite, shadow, token);
+        Attachments.Add(attachment);
+        Restyle(attachment);
+
+        host.SizeChanged += (_, e) =>
+        {
+            sprite.Size = new Vector2((float)e.NewSize.Width, (float)e.NewSize.Height);
+            shadow.Mask = caster.GetAlphaMask(); // re-mask after re-layout (text changed)
+        };
+        if (host.ActualWidth > 0)
+            sprite.Size = new Vector2((float)host.ActualWidth, (float)host.ActualHeight);
+
+        caster.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) =>
+        {
+            var visible = caster.Visibility == Visibility.Visible;
+            sprite.IsVisible = visible;
+            if (visible) FadeIn(compositor, sprite);
+        });
+        sprite.IsVisible = caster.Visibility == Visibility.Visible;
+    }
+
     /// <summary>Re-color every attached bloom from the freshly applied theme.</summary>
     public static void OnThemeChanged(Color accent, Color danger, double blur, double alpha)
     {

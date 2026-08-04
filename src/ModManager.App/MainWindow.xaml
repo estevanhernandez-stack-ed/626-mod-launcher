@@ -267,18 +267,22 @@
                 <!-- Ban-risk banner: game-level anti-cheat exposure, distinct from the per-mod
                      co-op-desync warning above. Both can be visible at once; they must read as two
                      separate warnings. Stays up even after the enable gate is acked.
-                     Danger alerts are a sanctioned glow surface (F-002) — the host Border carries
-                     the danger-colored bloom behind the banner. -->
+                     Danger alerts are a sanctioned glow surface (F-002), but a rect bloom behind
+                     transparent danger text read red-on-red (Este's call) — the host now sits
+                     behind the TEXT and the shadow is glyph-masked: a slight drop shadow under
+                     the letterforms. See Bloom.AttachTextShadow. -->
                 <Grid VerticalAlignment="Bottom" Margin="6,0,0,0"
                       Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
-                <Border x:Name="BanRiskBloomHost" />
                 <Border x:Name="BanRiskBanner" Padding="8,2" CornerRadius="0"
                         ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                         Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                         <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
-                        <TextBlock AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
-                                   Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
+                        <Grid>
+                            <Border x:Name="BanRiskBloomHost" />
+                            <TextBlock x:Name="BanRiskText" AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
+                                       Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
+                        </Grid>
                     </StackPanel>
                 </Border>
                 </Grid>
