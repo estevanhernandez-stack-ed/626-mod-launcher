@@ -35,10 +35,10 @@
         <Expander x:Name="AiExpander" HorizontalAlignment="Stretch" Header="Add with AI">
             <StackPanel Spacing="8" Width="400">
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
-                           Text="Type the game name, copy the prompt into any AI agent, paste the JSON it returns, then Apply to pre-fill the wizard." />
+                           Text="Type the game name, copy the prompt into any AI chat, paste the JSON it returns, then Apply to pre-fill the wizard." />
                 <TextBox x:Name="AiGameNameBox" Header="Game name" PlaceholderText="e.g. Elden Ring" />
                 <Button Content="Copy prompt" Click="OnCopyProfilePrompt" />
-                <TextBox x:Name="AiJsonBox" Header="Agent JSON" AcceptsReturn="True" Height="150" TextWrapping="Wrap"
+                <TextBox x:Name="AiJsonBox" Header="Pasted JSON" AcceptsReturn="True" Height="150" TextWrapping="Wrap"
                          PlaceholderText="Paste the JSON the agent returned" />
                 <Button Content="Apply profile" Click="OnApplyProfile" />
                 <TextBlock x:Name="ProfileStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />
@@ -57,7 +57,7 @@
                     </ListView.ItemTemplate>
                 </ListView>
                 <Button Content="Copy batch prompt" Click="OnCopyBatchPrompt" />
-                <TextBox x:Name="BatchJsonBox" Header="Agent JSON array" AcceptsReturn="True" Height="120" TextWrapping="Wrap"
+                <TextBox x:Name="BatchJsonBox" Header="Pasted JSON array" AcceptsReturn="True" Height="120" TextWrapping="Wrap"
                          PlaceholderText="Paste the JSON array the agent returned" />
                 <Button Content="Apply all" Click="OnApplyBatch" />
                 <TextBlock x:Name="BatchStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" />

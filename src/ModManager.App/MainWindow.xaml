@@ -609,12 +609,12 @@
                             </Button>
                             <Button AutomationProperties.Name="{x:Bind IniAutomationName}" Click="OnEditIniClick" VerticalAlignment="Center"
                                     Background="Transparent" BorderThickness="0"
-                                    ToolTipService.ToolTip="Edit .ini files in this mod (snapshots before save)"
+                                    ToolTipService.ToolTip="Edit INI files in this mod (snapshots before save)"
                                     Visibility="{x:Bind IniIconVisibility, Mode=OneWay}"
                                     Tag="{x:Bind}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
                                     <SymbolIcon Symbol="Edit" />
-                                    <TextBlock Text="ini" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                                    <TextBlock Text="INI" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
