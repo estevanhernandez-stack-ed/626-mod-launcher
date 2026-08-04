@@ -159,13 +159,11 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
                                             VerticalAlignment="Center">
-                                    <!-- The standout: no browser tab can tell you this. Filled accent so
-                                         it outweighs everything else on the card.
-                                         Foreground is ThemeBg, not a hardcoded black: ThemeAccent is
-                                         user-swappable per theme (ThemeService.Apply), and a dark accent
-                                         would put black on dark. Accent-on-bg legibility is a guarantee
-                                         the whole app already leans on, and contrast is symmetric — so
-                                         bg-on-accent inherits it for free, whatever the theme. -->
+                                    <!-- The standout: no browser tab can tell you this. Outlined, not
+                                         filled (F-009 fill discipline): accent fill is reserved for the
+                                         primary action. Accent-ink-on-bg legibility is a guarantee the
+                                         whole app leans on (ThemeService.Apply keeps accent themed), so
+                                         the outline chip stays readable whatever the theme. -->
                                     <Border CornerRadius="0" Padding="7,2"
                                             Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                             Visibility="{x:Bind UpdateAvailableVisibility}"
