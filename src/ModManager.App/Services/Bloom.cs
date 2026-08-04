@@ -116,7 +116,7 @@ public static class Bloom
     /// </summary>
     public static void AttachStateGlow(
         Border host, FrameworkElement caster, BloomToken token,
-        Func<bool> isLit, DependencyProperty watch)
+        Func<bool> isLit, params DependencyProperty[] watch)
     {
         if (ElementCompositionPreview.GetElementChildVisual(host) is not null) return; // recycled — already wired
 
@@ -143,7 +143,8 @@ public static class Bloom
             sprite.IsVisible = lit;
             if (lit && !was && animate) FadeIn(compositor, sprite);
         }
-        caster.RegisterPropertyChangedCallback(watch, (_, _) => Sync(animate: true));
+        foreach (var dp in watch)
+            caster.RegisterPropertyChangedCallback(dp, (_, _) => Sync(animate: true));
         Sync(animate: false);
     }
 

@@ -78,8 +78,8 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     /// <summary>The single-letter initial shown on the placeholder swatch when no cover art exists.</summary>
     public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
 
-    /// <summary>Themed brush for the placeholder swatch — the current accent, degrading to a neutral
-    /// when the resource isn't present (e.g. design-time). App-side only; keeps Core pure.</summary>
+    /// <summary>Themed brush for the placeholder swatch — the app's live accent instance (hard-cast:
+    /// a missing key fails loud — F-066). App-side only; keeps Core pure.</summary>
     public Brush Placeholder =>
         (Brush)Application.Current.Resources["ThemeAccent"]; // hard-cast: fail loud (F-066)
 
