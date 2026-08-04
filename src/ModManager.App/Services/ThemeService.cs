@@ -70,7 +70,29 @@ public sealed class ThemeService
         Set(res, "ThemeInk", t["text"]);
         Set(res, "ThemeInkSoft", t["text_secondary"]);
         Set(res, "ThemeInkMuted", t["text_muted"]);
+        Set(res, "ThemeInkDim", t["text_dim"]);
         Set(res, "ThemeInfo", t["info"]);
+
+        // Presenter-generated text (wave 3, F-047): button/checkbox content, ComboBox display,
+        // TextBox input/header/placeholder — reached via system keys, not TextBlock styles.
+        Set(res, "ButtonForeground", t["text"]);
+        Set(res, "ButtonForegroundPointerOver", t["text"]);
+        Set(res, "ButtonForegroundPressed", t["text_secondary"]);
+        Set(res, "CheckBoxForegroundUnchecked", t["text"]);
+        Set(res, "CheckBoxForegroundUncheckedPointerOver", t["text"]);
+        Set(res, "CheckBoxForegroundUncheckedPressed", t["text"]);
+        Set(res, "CheckBoxForegroundChecked", t["text"]);
+        Set(res, "CheckBoxForegroundCheckedPointerOver", t["text"]);
+        Set(res, "CheckBoxForegroundCheckedPressed", t["text"]);
+        Set(res, "ComboBoxForeground", t["text"]);
+        Set(res, "ComboBoxPlaceholderForeground", t["text_muted"]);
+        Set(res, "TextControlForeground", t["text"]);
+        Set(res, "TextControlForegroundPointerOver", t["text"]);
+        Set(res, "TextControlForegroundFocused", t["text"]);
+        Set(res, "TextControlPlaceholderForeground", t["text_muted"]);
+        Set(res, "TextControlPlaceholderForegroundPointerOver", t["text_muted"]);
+        Set(res, "TextControlPlaceholderForegroundFocused", t["text_muted"]);
+        Set(res, "TextControlHeaderForeground", t["text_secondary"]);
 
         // ContentDialog + AccentButton resource overrides (declared in App.xaml). Same in-place
         // mutation pattern: WinUI's default popup templates look up these specific keys, and

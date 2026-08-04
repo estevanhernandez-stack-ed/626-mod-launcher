@@ -7,7 +7,7 @@
     CloseButtonText="Cancel" DefaultButton="Primary">
     <ScrollViewer MaxHeight="460" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="8" MinWidth="460">
-            <TextBlock TextWrapping="Wrap" Opacity="0.8"
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
                        Text="Best Nexus name-search match per unidentified loose file. Check the rows to keep — nothing is saved until you hit Apply, and a later exact match (archive md5, manual URL) can still supersede a name match." />
             <ItemsControl x:Name="ProposalList">
                 <ItemsControl.ItemTemplate>
@@ -16,12 +16,12 @@
                             <CheckBox Visibility="{Binding MatchVisibility}"
                                       IsChecked="{Binding Approve, Mode=TwoWay}" Click="OnRowClick">
                                 <StackPanel Spacing="2">
-                                    <TextBlock Text="{Binding Headline}" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Opacity="0.6"
+                                    <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Headline}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}"
                                                FontSize="12" Visibility="{Binding DetailVisibility}" />
                                 </StackPanel>
                             </CheckBox>
-                            <TextBlock Text="{Binding Headline}" Opacity="0.5" TextWrapping="Wrap"
+                            <TextBlock Text="{Binding Headline}" Foreground="{StaticResource ThemeInkDim}" TextWrapping="Wrap"
                                        Visibility="{Binding NoMatchVisibility}" />
                         </StackPanel>
                     </DataTemplate>

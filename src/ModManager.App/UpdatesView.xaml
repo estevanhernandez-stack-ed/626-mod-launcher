@@ -37,7 +37,7 @@
                        TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />
             <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
-                       FontSize="12" Opacity="0.6" />
+                       FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
         </Grid>
 
         <!-- Empty state. Two distinct messages, set from code — "nothing has ever been checked" must
@@ -48,7 +48,7 @@
             <TextBlock x:Name="EmptyTitle" FontSize="20" FontWeight="SemiBold"
                        TextAlignment="Center" TextWrapping="Wrap"
                        Foreground="{StaticResource ThemeInk}" />
-            <TextBlock x:Name="EmptyBody" TextWrapping="Wrap" TextAlignment="Center" Opacity="0.7" />
+            <TextBlock x:Name="EmptyBody" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
         </StackPanel>
 
         <!-- The directory itself: one block per game, one line per mod. No apply-update mechanism here
@@ -95,7 +95,7 @@
                                                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                            Foreground="{StaticResource ThemeInk}" />
                                                 <TextBlock Grid.Column="1" Text="{x:Bind VersionText}"
-                                                           FontFamily="{StaticResource MonoFontFamily}" FontSize="12" Opacity="0.8"
+                                                           FontFamily="{StaticResource MonoFontFamily}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
                                                            VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
@@ -108,7 +108,7 @@
 
                 <!-- Honesty footer: games that have never been refreshed are absent from the list above,
                      and silence about them would read as "they're fine." Say it instead. -->
-                <TextBlock x:Name="UncheckedNote" TextWrapping="Wrap" FontSize="12" Opacity="0.6"
+                <TextBlock x:Name="UncheckedNote" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource ThemeInkDim}"
                            Visibility="Collapsed" />
             </StackPanel>
         </ScrollViewer>

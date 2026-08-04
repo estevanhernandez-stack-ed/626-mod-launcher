@@ -6,7 +6,7 @@
     Title="Update installed mods?"
     PrimaryButtonText="Apply" CloseButtonText="Cancel" DefaultButton="Primary">
     <StackPanel Spacing="8" MinWidth="420">
-        <TextBlock TextWrapping="Wrap" Opacity="0.8"
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
                    Text="These files are already installed. Check the ones to replace — the old version is kept and can be reverted." />
         <CheckBox x:Name="ReplaceAllBox" Content="Replace all" Click="OnReplaceAllClick" />
         <ItemsControl x:Name="CollisionList">
@@ -16,10 +16,10 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock x:Name="AddsHeader" Opacity="0.6" FontSize="12" />
+        <TextBlock x:Name="AddsHeader" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
         <ItemsControl x:Name="AddsList">
             <ItemsControl.ItemTemplate>
-                <DataTemplate><TextBlock Text="{Binding}" Opacity="0.6" FontSize="12" /></DataTemplate>
+                <DataTemplate><TextBlock Text="{Binding}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" /></DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
     </StackPanel>

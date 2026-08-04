@@ -792,3 +792,22 @@ style → ThemeInk (F-011 second attempt — the brush override was proven inert
 4. Cascadia Mono vs Consolas: chip/tag width shifts slightly — confirm no clipped chips in
    the mod rows and Updates view.
 5. Nexus catalog title now "BROWSE NEXUS — <GAME>" caps — confirm no truncation on long names.
+
+---
+
+## glow/wave-3 — ink-completion (vibe-glow F-011/013/047/048; F-001 residue deferred)
+
+**Shipped:** presenter-text system keys (Button/CheckBox/ComboBox/TextControl foreground
+families incl. placeholder + header) wired app-level + Apply + DialogTheming; 102
+opacity-dimmed TextBlocks banded onto ThemeInkSoft/Dim/Muted; 26 bare DataTemplate
+TextBlocks explicitly inked; DesignLawTests locks all shipped laws. ToggleSwitch/CheckBox
+template re-work deliberately deferred (own micro-wave).
+
+**Smoke needed:**
+1. Under matrix: toolbar button labels (Enable all / Refresh / Profiles), Settings checkbox
+   labels, TextBox headers ("Theme name"), Search placeholder — all should now be theme ink.
+2. Dimmed metadata (row meta lines, honesty footer) reads in token tints under all themes —
+   verify hierarchy still reads (soft > dim > muted).
+3. Button pressed-state legibility (pressed = text_secondary) on neutral buttons.
+4. Dialog presenter text via DialogTheming (Apply/Close/Cancel labels + field headers in
+   Settings/character edit) under obsidian.

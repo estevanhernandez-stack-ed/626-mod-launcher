@@ -62,6 +62,33 @@
             <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E8F2FF" />
             <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A8C2D9" />
 
+            <!-- Presenter-generated text (wave 3, F-047): string Content on buttons/checkboxes,
+                 ComboBox display text, TextBox input/header/placeholder. These render through
+                 ContentPresenters, not TextBlocks — no TextBlock mechanism can reach them, so
+                 they get the same system-key treatment as the wave-1 control-state family. -->
+            <SolidColorBrush x:Key="ButtonForeground" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#A8C2D9" />
+            <SolidColorBrush x:Key="CheckBoxForegroundUnchecked" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundUncheckedPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundUncheckedPressed" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundChecked" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundCheckedPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundCheckedPressed" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxForeground" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxPlaceholderForeground" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="TextControlForeground" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="TextControlHeaderForeground" Color="#A8C2D9" />
+
+            <!-- Dim ink step (wave 3, F-013): text_dim joins ThemeInkSoft/ThemeInkMuted so the
+                 opacity-dimmed hierarchy maps onto the token contract. -->
+            <SolidColorBrush x:Key="ThemeInkDim" Color="#6A849E" />
+
             <!-- Hangar shape law (vibe-glow wave 2, F-001): corner radius 0 everywhere.
                  ControlCornerRadius/OverlayCornerRadius are the two radius resources
                  XamlControlsResources honors from app resources — they square every control

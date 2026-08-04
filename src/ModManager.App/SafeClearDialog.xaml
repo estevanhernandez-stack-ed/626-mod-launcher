@@ -14,7 +14,7 @@
 
     <ScrollViewer MaxHeight="540" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="12" Width="440">
-            <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                        Text="Your mods are kept. This archives your current setup to a restore point you can return to, then resets the launcher to first-run." />
 
             <TextBlock Text="After clearing:" FontWeight="SemiBold" FontSize="12" />

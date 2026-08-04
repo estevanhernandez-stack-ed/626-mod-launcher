@@ -9,7 +9,7 @@
     DefaultButton="Primary">
     <StackPanel Spacing="8">
         <TextBlock x:Name="BodyText" TextWrapping="Wrap" />
-        <TextBlock TextWrapping="Wrap" Opacity="0.7"
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
                    Text="After this, manage these mods in the launcher — re-deploying in Vortex may undo your changes." />
     </StackPanel>
 </ContentDialog>

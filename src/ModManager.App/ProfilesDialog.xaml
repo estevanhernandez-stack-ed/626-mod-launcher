@@ -11,7 +11,7 @@
     DefaultButton="Close">
 
     <StackPanel Spacing="12" Width="420">
-        <TextBlock Opacity="0.75" FontSize="12" TextWrapping="Wrap"
+        <TextBlock Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap"
                    Text="A profile saves which mods are on/off. Save your current loadout, then switch between them." />
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
@@ -31,7 +31,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{x:Bind}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        <TextBlock Foreground="{StaticResource ThemeInk}" Grid.Column="0" Text="{x:Bind}" VerticalAlignment="Center" FontWeight="SemiBold" />
                         <Button Grid.Column="1" Content="Load" Click="OnLoad" VerticalAlignment="Center" />
                         <Button Grid.Column="2" Click="OnDelete" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Delete profile">
@@ -41,7 +41,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="EmptyText" Text="No profiles yet." Opacity="0.6" Visibility="Collapsed" />
-        <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock x:Name="EmptyText" Text="No profiles yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
+        <TextBlock x:Name="StatusText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
     </StackPanel>
 </ContentDialog>
