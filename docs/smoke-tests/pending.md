@@ -997,3 +997,16 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
    each carries the full-width rail + title; Narrator still announces the
    dialog by name.
 4. Flat theme (bloom alpha 0) — no toggle/nav/dialog glow anywhere.
+
+---
+
+## road-to-zero B7 — keyboard + names (F-025/064/065)
+
+**Smoke needed:**
+1. Ctrl+F in a game view focuses the filter box; Ctrl+R refreshes; Esc goes
+   home ONLY from a game view with no dialog open (dialogs keep their Esc).
+2. Arrow-key into the mod list, press Space on a row — it toggles through the
+   normal path (busy latch, ban-risk gate on risky games).
+3. Narrator: FIRST status message after a cold launch is announced (F-064
+   peer-creation fix); Saves "Clone Slot 3 to another type", "Load profile
+   X"/"Delete profile X", "Edit UE4SS settings" all read per-item.

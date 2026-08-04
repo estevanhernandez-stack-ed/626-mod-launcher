@@ -13,6 +13,7 @@ public sealed class FrameworkRowViewModel
 {
     public FrameworkInstallManifest Manifest { get; }
     public string DisplayName => Manifest.DisplayName;
+    public string EditAutomationName => $"Edit {Manifest.DisplayName} settings"; // per-item UIA name (F-065)
 
     /// <summary>The framework's editable .ini config files (absolute paths), from the manifest.</summary>
     public IReadOnlyList<string> ConfigFiles { get; }

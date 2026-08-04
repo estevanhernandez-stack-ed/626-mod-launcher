@@ -12,6 +12,14 @@
 
     <Grid x:Name="RootGrid" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
           RequestedTheme="Dark" Background="{StaticResource ThemeBg}">
+        <!-- Keyboard access (F-025): the shell's three verbs get accelerators. Handlers no-op
+             (and leave the key unhandled) when the surface isn't present, so Esc and Ctrl+F/R
+             never steal from dialogs or the library home. -->
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFilterAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="R" Invoked="OnRefreshAccelerator" />
+            <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -412,7 +420,7 @@
             </StackPanel>
 
             <!-- Mod list -->
-            <ListView Grid.Row="1" Padding="8,4"
+            <ListView x:Name="ModListView" Grid.Row="1" Padding="8,4" KeyDown="OnModListKeyDown"
                   ItemsSource="{x:Bind ViewModel.Mods, Mode=OneWay}" SelectionMode="None"
                   CanReorderItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
                   CanDragItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
