@@ -865,7 +865,13 @@ public sealed partial class MainWindow : Window
 
         var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
 
-        if (dialog.OpenSafeClearRequested)
+        if (dialog.ToolConfigureRequested is { } toolRow)
+        {
+            var cfg = new Tools.ToolConfigureDialog(toolRow.Entry, toolRow.DataDir) { XamlRoot = Content.XamlRoot };
+            await cfg.ShowAsync();
+            await ViewModel.RefreshAsync(); // repaint the tool rail if the active game's tool changed
+        }
+        else if (dialog.OpenSafeClearRequested)
         {
             var sc = new SafeClearDialog(hwnd, rp, rp.NexusConnected) { XamlRoot = Content.XamlRoot };
             await sc.ShowAsync();
@@ -1543,7 +1549,8 @@ public sealed partial class MainWindow : Window
     // receipt is painted over — a drop there would install into the LAST-opened game with an
     // invisible result (vibe-glow F-033). Refuse with an instruction; in a game view, name the
     // game in the caption so the target is explicit.
-    private bool DropTargetIsHome => LibraryHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible;
+    private bool DropTargetIsHome => LibraryHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible
+        || CatalogHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible; // storefront also paints over the receipt
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
@@ -1551,7 +1558,8 @@ public sealed partial class MainWindow : Window
         if (DropTargetIsHome)
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            if (e.DragUIOverride is not null) e.DragUIOverride.Caption = "Open a game first to install mods";
+            if (e.DragUIOverride is not null) e.DragUIOverride.Caption = CatalogHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible
+                    ? "Close the store to install mods" : "Open a game first to install mods";
             return;
         }
         e.AcceptedOperation = DataPackageOperation.Copy;

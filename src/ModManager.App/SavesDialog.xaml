@@ -124,7 +124,7 @@
                    Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
 
         <TextBlock Text="Snapshots" FontWeight="SemiBold" />
-            <TextBlock Text="Restoring snapshots your current save first, as 'before-restore'."
+            <TextBlock Text="Restore takes a snapshot of your current save first, labeled 'before-restore'."
                        Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap" />
         <ListView x:Name="SnapshotList" MaxHeight="260" SelectionMode="None">
             <ListView.ItemTemplate>

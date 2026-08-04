@@ -48,6 +48,9 @@ public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
 public sealed record SettingsToolRow(ToolEntry Entry, string DataDir)
 {
     public string DisplayName => Entry.DisplayName;
+    /// <summary>Which game owns this copy — the same tool can be installed per-game, and
+    /// Configure→Uninstall must never ambiguate between copies.</summary>
+    public string GameLabel => $"For {System.IO.Path.GetFileName(DataDir)}";
 }
 
 /// <summary>
@@ -92,6 +95,10 @@ public sealed partial class SettingsDialog : ContentDialog
     /// first-ever connect) shows the consent dialog — neither can be nested under this ContentDialog, so we
     /// hand off: MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> after this dialog closes.</summary>
     public bool ConnectNexusRequested { get; private set; }
+
+    /// <summary>Set when the user clicks Configure… on a Settings tool row. MainWindow.OnSettings
+    /// opens ToolConfigureDialog after this dialog closes — same no-nesting hand-off pattern.</summary>
+    public SettingsToolRow? ToolConfigureRequested { get; private set; }
 
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
@@ -647,12 +654,13 @@ public sealed partial class SettingsDialog : ContentDialog
         Hide();
     }
 
-    private async void OnToolConfigure(object sender, RoutedEventArgs e)
+    private void OnToolConfigure(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not SettingsToolRow row) return;
-        var dialog = new Tools.ToolConfigureDialog(row.Entry, row.DataDir) { XamlRoot = this.XamlRoot };
-        ModManager.App.Services.DialogTheming.Apply(dialog);
-        await dialog.ShowAsync();
-        RefreshInstalledTools();
+        // WinUI 3 allows one ContentDialog per XamlRoot — same flag + Hide() hand-off as
+        // Reset/Restore/Delete: MainWindow.OnSettings opens the configure dialog after this
+        // one has fully closed, then reloads so the tool rail repaints (F-032).
+        ToolConfigureRequested = row;
+        Hide();
     }
 }

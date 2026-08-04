@@ -54,7 +54,7 @@
                                         <LineBreak/>
                                         <Run Text="Catalog metadata only — never bundled." />
                                         <LineBreak/>
-                                        <Run Text="Click to launch. Right-click to configure or uninstall." />
+                                        <Run Text="Click to launch. Right-click (or Shift+F10) to configure or uninstall." />
                                     </TextBlock>
                                 </ToolTip>
                             </ToolTipService.ToolTip>

@@ -143,6 +143,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind GameLabel}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
                                 <TextBlock Text="Catalog metadata only — never bundled. See NOTICE for full attribution."
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="12" />
