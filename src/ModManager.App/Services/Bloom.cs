@@ -25,9 +25,11 @@ public static class Bloom
 {
     private sealed record Attachment(SpriteVisual Sprite, DropShadow Shadow, BloomToken Token);
 
-    // Attachments are never pruned — Attach is for APP-LIFETIME shell surfaces only (both
-    // current casters live on MainWindow, created once). Do not attach per-row or per-dialog
-    // elements: each attachment roots its composition visuals for the process lifetime.
+    // Attachments are never pruned — Attach is for APP-LIFETIME surfaces only: shell elements
+    // (MainWindow) and ListView-recycled template containers, whose pool is bounded and lives
+    // as long as the window. Do not attach per-open-dialog or otherwise unbounded elements:
+    // each attachment roots its composition visuals for the process lifetime. AttachStateGlow
+    // guards double-attach on recycle via the host's existing child visual.
     private static readonly List<Attachment> Attachments = new();
     private static Color _accent = Color.FromArgb(255, 0x4d, 0xa3, 0xff);
     private static Color _danger = Color.FromArgb(255, 0xf2, 0x5c, 0x73);
@@ -103,6 +105,46 @@ public static class Bloom
             if (visible) FadeIn(compositor, sprite);
         });
         sprite.IsVisible = caster.Visibility == Visibility.Visible;
+    }
+
+    /// <summary>
+    /// State-driven glow (F-077): the last two sanctioned surfaces — enabled toggles and active
+    /// nav — are lit only while their state says so. <paramref name="isLit"/> is re-evaluated
+    /// whenever <paramref name="watch"/> changes on the caster; the glow fades in on lighting
+    /// (160ms ease-out) and vanishes on unlighting. Safe on ListView-recycled containers: a host
+    /// that already carries a child visual is left alone.
+    /// </summary>
+    public static void AttachStateGlow(
+        Border host, FrameworkElement caster, BloomToken token,
+        Func<bool> isLit, DependencyProperty watch)
+    {
+        if (ElementCompositionPreview.GetElementChildVisual(host) is not null) return; // recycled — already wired
+
+        var compositor = ElementCompositionPreview.GetElementVisual(host).Compositor;
+        var shadow = compositor.CreateDropShadow();
+        shadow.Offset = Vector3.Zero;
+        var sprite = compositor.CreateSpriteVisual();
+        sprite.Shadow = shadow;
+        ElementCompositionPreview.SetElementChildVisual(host, sprite);
+
+        var attachment = new Attachment(sprite, shadow, token);
+        Attachments.Add(attachment);
+        Restyle(attachment);
+
+        host.SizeChanged += (_, e) =>
+            sprite.Size = new Vector2((float)e.NewSize.Width, (float)e.NewSize.Height);
+        if (host.ActualWidth > 0)
+            sprite.Size = new Vector2((float)host.ActualWidth, (float)host.ActualHeight);
+
+        void Sync(bool animate)
+        {
+            var lit = isLit();
+            var was = sprite.IsVisible;
+            sprite.IsVisible = lit;
+            if (lit && !was && animate) FadeIn(compositor, sprite);
+        }
+        caster.RegisterPropertyChangedCallback(watch, (_, _) => Sync(animate: true));
+        Sync(animate: false);
     }
 
     /// <summary>Re-color every attached bloom from the freshly applied theme.</summary>

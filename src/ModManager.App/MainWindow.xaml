@@ -204,20 +204,32 @@
                     <Border CornerRadius="0" BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                             Background="{StaticResource ThemePanel}">
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
-                                    BorderThickness="0" CornerRadius="0" MinWidth="44"
-                                    Background="{x:Bind ViewModel.LoadoutAllBrush, Mode=OneWay}"
-                                    Foreground="{x:Bind ViewModel.LoadoutAllForeground, Mode=OneWay}" />
+                            <!-- Active nav is a sanctioned glow surface (F-077): each segment carries a
+                                 bloom host behind it, lit only while that segment's fill is the accent
+                                 (wired in the ctor via Bloom.AttachStateGlow on BackgroundProperty). -->
+                            <Grid>
+                                <Border x:Name="LoadoutAllGlowHost" />
+                                <Button x:Name="LoadoutAllSegment" Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
+                                        BorderThickness="0" CornerRadius="0" MinWidth="44"
+                                        Background="{x:Bind ViewModel.LoadoutAllBrush, Mode=OneWay}"
+                                        Foreground="{x:Bind ViewModel.LoadoutAllForeground, Mode=OneWay}" />
+                            </Grid>
                             <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
-                            <Button Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
-                                    BorderThickness="0" CornerRadius="0" MinWidth="44"
-                                    Background="{x:Bind ViewModel.LoadoutMpBrush, Mode=OneWay}"
-                                    Foreground="{x:Bind ViewModel.LoadoutMpForeground, Mode=OneWay}" />
+                            <Grid>
+                                <Border x:Name="LoadoutMpGlowHost" />
+                                <Button x:Name="LoadoutMpSegment" Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
+                                        BorderThickness="0" CornerRadius="0" MinWidth="44"
+                                        Background="{x:Bind ViewModel.LoadoutMpBrush, Mode=OneWay}"
+                                        Foreground="{x:Bind ViewModel.LoadoutMpForeground, Mode=OneWay}" />
+                            </Grid>
                             <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
-                            <Button Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
-                                    BorderThickness="0" CornerRadius="0" MinWidth="44"
-                                    Background="{x:Bind ViewModel.LoadoutSpBrush, Mode=OneWay}"
-                                    Foreground="{x:Bind ViewModel.LoadoutSpForeground, Mode=OneWay}" />
+                            <Grid>
+                                <Border x:Name="LoadoutSpGlowHost" />
+                                <Button x:Name="LoadoutSpSegment" Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
+                                        BorderThickness="0" CornerRadius="0" MinWidth="44"
+                                        Background="{x:Bind ViewModel.LoadoutSpBrush, Mode=OneWay}"
+                                        Foreground="{x:Bind ViewModel.LoadoutSpForeground, Mode=OneWay}" />
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -446,12 +458,19 @@
                         <!-- Toggle leads the row (design language row anatomy; vibe-glow F-005 — Este's call:
                              toggle first, art second). Declared FIRST as well as placed first: XAML tab order
                              and the UIA tree follow declaration order, and the toggle is the row's primary
-                             affordance for keyboard and screen-reader users too. -->
-                        <ToggleSwitch Grid.Column="0" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
-                                      AutomationProperties.Name="{x:Bind ToggleAutomationName, Mode=OneWay}"
-                                      IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
-                                      VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
-                                      Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
+                             affordance for keyboard and screen-reader users too.
+                             The empty Border hosts the enabled-state bloom BEHIND the switch (F-077):
+                             light means live — an ON toggle emits the accent glow. Wired in
+                             OnRowToggleLoaded; recycle-safe (AttachStateGlow skips wired hosts). -->
+                        <Grid Grid.Column="0">
+                            <Border />
+                            <ToggleSwitch IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
+                                          Loaded="OnRowToggleLoaded"
+                                          AutomationProperties.Name="{x:Bind ToggleAutomationName, Mode=OneWay}"
+                                          IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
+                                          VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
+                                          Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
+                        </Grid>
 
                         <!-- Icon cell: load-order number (editable) in reorder mode, else art/monogram -->
                         <Grid Grid.Column="1" Width="48" Height="40" VerticalAlignment="Center">

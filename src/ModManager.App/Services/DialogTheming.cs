@@ -71,6 +71,28 @@ internal static class DialogTheming
         }
         dialog.Resources.MergedDictionaries.Add(d);
 
+        // Dialog shell for code-built dialogs (F-079): a plain string Title becomes rail + title,
+        // so the ~22 code-built confirms share the XAML fleet's head. The UIA name a string Title
+        // would have derived is preserved explicitly; the rail stays out of the accessibility
+        // tree. (No eyebrow — code-built dialogs are transient confirms; the stencil stamp is
+        // authored per-dialog in the XAML fleet.)
+        if (dialog.Title is string s && !string.IsNullOrWhiteSpace(s))
+        {
+            var rail = new Border
+            {
+                Height = 3,
+                Background = app.TryGetValue("ThemeAccent", out var accent) ? accent as Microsoft.UI.Xaml.Media.Brush : null,
+                Margin = new Thickness(-24, 0, -24, 4),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                rail, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            var stack = new StackPanel { Spacing = 6 };
+            stack.Children.Add(rail);
+            stack.Children.Add(new TextBlock { Text = s, FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(dialog, s);
+            dialog.Title = stack;
+        }
+
         // Dialog shell (vibe-glow F-008): the stock template pins its Title ContentControl to
         // HorizontalAlignment="Left", so title content sizes to itself and the 3px accent rail
         // the XAML dialogs put in their Title can't span the header. Stretch it once the template
