@@ -16,6 +16,7 @@
     { "id": 2, "name": "hangar-skeleton", "status": "shipped", "findings": ["F-001", "F-004", "F-010", "F-011", "F-014"] },
     { "id": 3, "name": "ink-completion", "status": "shipped", "findings": ["F-011", "F-013", "F-047", "F-048"] },
     { "id": 4, "name": "felt-qol", "status": "clean", "findings": ["F-015", "F-016", "F-017", "F-018", "F-019", "F-024", "F-030"] },
-    { "id": 5, "name": "heard-not-just-seen", "status": "clean", "findings": ["F-021", "F-034", "F-035", "F-040", "F-042", "F-045"] }
+    { "id": 5, "name": "heard-not-just-seen", "status": "clean", "findings": ["F-021", "F-034", "F-035", "F-040", "F-042", "F-045"] },
+    { "id": 6, "name": "reveal-prep", "status": "clean", "findings": ["F-028", "F-029", "F-031", "F-032", "F-033", "F-038", "F-039", "F-041"] }
   ]
 }
