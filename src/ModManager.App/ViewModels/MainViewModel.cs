@@ -301,13 +301,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     private Brush SegmentBrushFor(string mode)
         => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
-            ? (Application.Current.Resources["ThemeAccent"] as Brush ?? new SolidColorBrush(Colors.MediumPurple))
+            ? (Brush)Application.Current.Resources["ThemeAccent"]
             : TransparentBrush;
 
     private Brush SegmentForegroundFor(string mode)
         => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
-            ? (Application.Current.Resources["ThemeBg"] as Brush ?? new SolidColorBrush(Colors.Black))
-            : (Application.Current.Resources["ThemeInk"] as Brush ?? new SolidColorBrush(Colors.White));
+            ? (Brush)Application.Current.Resources["ThemeBg"]
+            : (Brush)Application.Current.Resources["ThemeInk"];
 
     partial void OnActiveModeChanged(string value)
     {
