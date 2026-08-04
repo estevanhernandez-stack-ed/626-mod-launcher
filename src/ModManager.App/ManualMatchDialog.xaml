@@ -17,16 +17,16 @@
             <TextBlock Text="NEXUS // MANUAL MATCH" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Match to a mod" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Match to a mod" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
 
     <StackPanel Spacing="12" Width="440">
-        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
         <TextBox x:Name="UrlBox" Header="Mod page URL"
                  PlaceholderText="https://www.nexusmods.com/eldenring/mods/510 or https://www.curseforge.com/.../mods/..." />
-        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="11"
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}"
                    Text="Paste the URL from the mod's Nexus or CurseForge page. We'll pull the title, author, downloads, and icon. The match locks — future rescans won't override it." />
     </StackPanel>
 </ContentDialog>

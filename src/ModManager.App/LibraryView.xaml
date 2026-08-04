@@ -12,7 +12,7 @@
         <!-- Empty state: no games registered yet -->
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="420"
                     Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}">
-            <TextBlock Text="Your library is empty" FontSize="20" FontWeight="SemiBold"
+            <TextBlock Text="Your library is empty" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold"
                        HorizontalAlignment="Center" Foreground="{StaticResource ThemeInk}" />
             <TextBlock Text="Add a game to get started — 626 finds installed games below once you add one, or use + Game up top."
                        TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
@@ -56,7 +56,7 @@
                                             <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="150"
                                                        Foreground="{StaticResource ThemeInk}" />
-                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
+                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
                                     </Button>
                                 </DataTemplate>
@@ -124,41 +124,41 @@
 
                                     <!-- Body: name + source/recency line + mod state + chips -->
                                     <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="15"
+                                        <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}"
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{StaticResource ThemeInk}" />
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{x:Bind SourceBadge}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
+                                            <TextBlock Text="{x:Bind SourceBadge}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                                        Visibility="{x:Bind SourceBadgeVisibility}" />
-                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
+                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
-                                        <TextBlock Text="{x:Bind ModStateText}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
+                                        <TextBlock Text="{x:Bind ModStateText}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
 
                                         <!-- Chips: tier · ban risk · detected loaders -->
                                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                                     ToolTipService.ToolTip="{x:Bind TierTooltip}">
-                                                <TextBlock AutomationProperties.HelpText="{x:Bind TierTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                                                <TextBlock AutomationProperties.HelpText="{x:Bind TierTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                                     ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
                                                     Visibility="{x:Bind UpdateBadgeVisibility}">
-                                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateBadgeTooltip}" Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateBadgeTooltip}" Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                            Foreground="{StaticResource ThemeAccent}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
                                                     ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                                                     Visibility="{x:Bind BanRiskVisibility}">
-                                                <TextBlock AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                            Foreground="{StaticResource ThemeDanger}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeAccent}"
                                                     ToolTipService.ToolTip="Mod loaders detected in this game's folder"
                                                     Visibility="{x:Bind LoaderVisibility}">
-                                                <TextBlock AutomationProperties.HelpText="Mod loaders detected in this game's folder" Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="Mod loaders detected in this game's folder" Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                            Foreground="{StaticResource ThemeAccent}" />
                                             </Border>
                                         </StackPanel>
@@ -212,7 +212,7 @@
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                             <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Name}" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{x:Bind StoreKind}" FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
+                                            <TextBlock Text="{x:Bind StoreKind}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Content="+ Add" VerticalAlignment="Center"
                                                 Click="OnAddDiscovered" Tag="{x:Bind}" />
@@ -221,7 +221,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <TextBlock Text="Nothing new — every installed game 626 can see is already in your library."
-                                   Foreground="{StaticResource ThemeInkDim}" FontSize="12"
+                                   Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}"
                                    Visibility="{x:Bind ViewModel.DiscoveryEmptyVisibility, Mode=OneWay}" />
                     </StackPanel>
                 </Expander>

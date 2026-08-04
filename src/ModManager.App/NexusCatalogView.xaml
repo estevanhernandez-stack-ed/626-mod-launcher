@@ -28,7 +28,7 @@
                     Padding="6,4" VerticalAlignment="Center"
                     ToolTipService.ToolTip="Back to this game's mods">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xE72B;" FontSize="13" />
+                    <FontIcon Glyph="&#xE72B;" FontSize="{StaticResource BodyFontSize}" />
                     <TextBlock Text="Back" />
                 </StackPanel>
             </Button>
@@ -38,7 +38,7 @@
                        TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />
             <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
-                       FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
+                       FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
         </Grid>
 
         <!-- Filter bar. Search submits on Enter or the button; sort and category reload from the first
@@ -113,7 +113,7 @@
                                 </Grid.ColumnDefinitions>
                                 <Grid Grid.Column="0" Width="96" Height="54" CornerRadius="0">
                                     <Border CornerRadius="0" Background="{StaticResource ThemeBarBg}">
-                                        <TextBlock Text="{x:Bind Initial}" FontSize="20" FontWeight="Bold"
+                                        <TextBlock Text="{x:Bind Initial}" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="Bold"
                                                    Foreground="{StaticResource ThemeInkDim}" HorizontalAlignment="Center"
                                                    VerticalAlignment="Center" />
                                     </Border>
@@ -123,29 +123,29 @@
                                     </Border>
                                 </Grid>
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Top">
-                                    <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="14"
+                                    <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}"
                                                TextWrapping="Wrap" MaxLines="2"
                                                TextTrimming="CharacterEllipsis"
                                                Foreground="{StaticResource ThemeInk}" />
-                                    <TextBlock Text="{x:Bind Author}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
+                                    <TextBlock Text="{x:Bind Author}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                                TextTrimming="CharacterEllipsis"
                                                Visibility="{x:Bind AuthorVisibility}" />
                                 </StackPanel>
                             </Grid>
 
-                            <TextBlock Grid.Row="1" Text="{x:Bind Summary}" FontSize="12" Foreground="{StaticResource ThemeInkDim}"
+                            <TextBlock Grid.Row="1" Text="{x:Bind Summary}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}"
                                        TextWrapping="Wrap" MaxLines="2" VerticalAlignment="Top"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{x:Bind SummaryVisibility}" />
 
                             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="{x:Bind Endorsements}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
+                                <TextBlock Text="{x:Bind Endorsements}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                            Visibility="{x:Bind EndorsementsVisibility}" />
-                                <TextBlock Text="{x:Bind Downloads}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
+                                <TextBlock Text="{x:Bind Downloads}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                            Visibility="{x:Bind DownloadsVisibility}" />
                             </StackPanel>
 
-                            <TextBlock Grid.Row="3" Text="{x:Bind MetaLine}" FontSize="11" Foreground="{StaticResource ThemeInkDim}"
+                            <TextBlock Grid.Row="3" Text="{x:Bind MetaLine}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkDim}"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{x:Bind MetaVisibility}" />
 
@@ -168,20 +168,20 @@
                                             Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                             Visibility="{x:Bind UpdateAvailableVisibility}"
                                             ToolTipService.ToolTip="You have this mod and the author has published a newer version">
-                                        <TextBlock AutomationProperties.HelpText="You have this mod and the author has published a newer version" Text="Update available" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock AutomationProperties.HelpText="You have this mod and the author has published a newer version" Text="Update available" FontSize="{StaticResource MetaFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource ThemeAccent}" />
                                     </Border>
                                     <Border CornerRadius="0" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                             Visibility="{x:Bind InstalledVisibility}"
                                             ToolTipService.ToolTip="You have already downloaded this mod on Nexus">
-                                        <TextBlock AutomationProperties.HelpText="You have already downloaded this mod on Nexus" Text="Installed" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
+                                        <TextBlock AutomationProperties.HelpText="You have already downloaded this mod on Nexus" Text="Installed" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
                                     </Border>
                                     <Border CornerRadius="0" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                             Visibility="{x:Bind EndorsedVisibility}"
                                             ToolTipService.ToolTip="You have endorsed this mod">
-                                        <TextBlock AutomationProperties.HelpText="You have endorsed this mod" Text="♥ Endorsed" FontSize="11"
+                                        <TextBlock AutomationProperties.HelpText="You have endorsed this mod" Text="♥ Endorsed" FontSize="{StaticResource MetaFontSize}"
                                                    Foreground="{StaticResource ThemeAccent}" />
                                     </Border>
                                 </StackPanel>

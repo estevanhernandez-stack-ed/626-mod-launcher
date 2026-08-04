@@ -20,7 +20,7 @@
             <TextBlock Text="FRAMEWORK // VALIDATE THEN EXTRACT" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Install framework" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Install framework" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
@@ -31,19 +31,19 @@
          runs FrameworkInstaller.Install via the caller (MainViewModel). -->
     <StackPanel Spacing="12" Width="440">
         <TextBlock x:Name="HeadlineText" FontWeight="SemiBold" TextWrapping="Wrap" />
-        <TextBlock x:Name="AuthorText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
-        <TextBlock Text="Files that will be installed:" FontWeight="SemiBold" FontSize="12" />
+        <TextBlock x:Name="AuthorText" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
+        <TextBlock Text="Files that will be installed:" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" />
         <ListView x:Name="FilesList" MaxHeight="200" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="x:String">
-                    <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                    <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" />
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="OverwriteWarning" Foreground="{StaticResource ThemeWarning}" FontSize="12" TextWrapping="Wrap"
+        <TextBlock x:Name="OverwriteWarning" Foreground="{StaticResource ThemeWarning}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
                    Visibility="Collapsed" />
-        <TextBlock x:Name="LocationText" Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap" />
-        <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap"
+        <TextBlock x:Name="LocationText" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap" />
+        <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap"
                    Text="Reversible from Settings → Installed frameworks. The launcher snapshots replaced files before extraction." />
     </StackPanel>
 </ContentDialog>

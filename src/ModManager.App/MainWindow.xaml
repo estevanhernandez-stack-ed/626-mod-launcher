@@ -51,7 +51,7 @@
                      the library (which IS the game switcher); the label shows the game you're managing. -->
                 <Button AutomationProperties.Name="Home" x:Name="HomeButton" Click="OnGoHome" Background="Transparent" BorderThickness="0"
                         VerticalAlignment="Center" ToolTipService.ToolTip="Back to your library">
-                    <FontIcon Glyph="&#xE80F;" FontSize="15" />
+                    <FontIcon Glyph="&#xE80F;" FontSize="{StaticResource RowTitleFontSize}" />
                 </Button>
                 <!-- Game switcher: pick another game without a Home round-trip. Selecting sets ActiveGame
                      (TwoWay) -> OnActiveGameChanged -> reload; the Home button still opens the full library. -->
@@ -63,7 +63,7 @@
                 <Button ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
                         Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        <FontIcon Glyph="&#xE712;" FontSize="{StaticResource RowTitleFontSize}" />
                         <TextBlock Text="More" Foreground="{StaticResource ThemeInkSoft}" />
                     </StackPanel>
                     <Button.Flyout>
@@ -115,7 +115,7 @@
                      game-scoped. Pulled out of the game "More" flyout so the home can reach it too. -->
                 <Button AutomationProperties.Name="Settings" Click="OnSettings" Background="Transparent" BorderThickness="0"
                         ToolTipService.ToolTip="App settings — avatar / theme / window transparency / Nexus account">
-                    <FontIcon Glyph="&#xE713;" FontSize="15" />
+                    <FontIcon Glyph="&#xE713;" FontSize="{StaticResource RowTitleFontSize}" />
                 </Button>
                 <Button Content="+ Game" Click="OnAddGame" />
             </StackPanel>
@@ -168,14 +168,14 @@
                                 Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                 ToolTipService.ToolTip="Browse this game's Nexus mods in the launcher — sorted, filterable, and marked with what you already have. Get opens the mod page to download.">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE721;" FontSize="13" />
+                                <FontIcon Glyph="&#xE721;" FontSize="{StaticResource BodyFontSize}" />
                                 <TextBlock Text="Browse Nexus" Foreground="{StaticResource ThemeAccent}" />
                             </StackPanel>
                         </Button>
                         <DropDownButton ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
                             <DropDownButton.Content>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE721;" FontSize="13" />
+                                    <FontIcon Glyph="&#xE721;" FontSize="{StaticResource BodyFontSize}" />
                                     <TextBlock Text="Find mods" />
                                 </StackPanel>
                             </DropDownButton.Content>
@@ -261,7 +261,7 @@
             <!-- Load-order mode: reorder controls replace the normal bar -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                         Visibility="{x:Bind ViewModel.LoadOrderVisibility, Mode=OneWay}">
-                <FontIcon Glyph="&#xE8CB;" FontSize="14" Foreground="{StaticResource ThemeAccent}" />
+                <FontIcon Glyph="&#xE8CB;" FontSize="{StaticResource RowTitleFontSize}" Foreground="{StaticResource ThemeAccent}" />
                 <TextBlock Text="Load order — drag rows or type a position." VerticalAlignment="Center" />
                 <Button Content="Apply order" Click="OnApplyOrder" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1" />
                 <Button Content="Cancel" Click="OnCancelOrder" />
@@ -275,7 +275,7 @@
                         ToolTipService.ToolTip="Seamless Co-op is installed but its launcher is missing — co-op needs the full mod"
                         Visibility="{x:Bind ViewModel.CoopHintVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
                         <TextBlock Text="Co-op needs its launcher" Foreground="{StaticResource ThemeDanger}" />
                     </StackPanel>
                 </Button>
@@ -283,7 +283,7 @@
                         ToolTipService.ToolTip="Some enabled mods may desync co-op — review before hosting or joining"
                         Visibility="{x:Bind ViewModel.MpWarningVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
                         <TextBlock AutomationProperties.HelpText="Some enabled mods may desync co-op — review before hosting or joining" Text="{x:Bind ViewModel.MpWarningText, Mode=OneWay}"
                                    Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
                     </StackPanel>
@@ -301,7 +301,7 @@
                         ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                         Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="{StaticResource ThemeDanger}" />
+                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
                         <Grid>
                             <Border x:Name="BanRiskBloomHost" />
                             <TextBlock x:Name="BanRiskText" AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
@@ -315,7 +315,7 @@
                         ToolTipService.ToolTip="This game needs a launch option for mods to load"
                         Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="13" />
+                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" />
                         <TextBlock Text="Launch options" Foreground="{StaticResource ThemeAccent}" />
                     </StackPanel>
                 </Button>
@@ -409,7 +409,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="14" VerticalAlignment="Center"
+                        <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="{StaticResource RowTitleFontSize}" VerticalAlignment="Center"
                                   Foreground="{StaticResource ThemeDanger}" />
                         <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SteamBuildMessage, Mode=OneWay}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />
@@ -443,7 +443,7 @@
                                 Background="{StaticResource ThemePanel}" CornerRadius="0" BorderThickness="0"
                                 ToolTipService.ToolTip="What do the chips and icons mean?"
                                 Visibility="{x:Bind FirstSectionHelpVisibility, Mode=OneWay}">
-                            <TextBlock Text="?" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
+                            <TextBlock Text="?" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeAccent}" />
                         </Button>
                     </Grid>
                     <Grid Padding="4,8" ColumnSpacing="12" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,0,0,1">
@@ -498,26 +498,26 @@
 
                         <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{x:Bind FileTag}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeInkMuted}"
+                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind FileTag}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkMuted}"
                                            VerticalAlignment="Center" Visibility="{x:Bind FileTagVisibility}" />
                             </StackPanel>
                             <TextBlock Text="{x:Bind Description}" Foreground="{StaticResource ThemeInkSoft}" TextWrapping="Wrap" MaxLines="2"
                                        Visibility="{x:Bind DescriptionVisibility}" />
                             <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{x:Bind CreditVisibility}">
-                                <TextBlock Text="{x:Bind AuthorText}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text="{x:Bind AuthorText}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind AuthorVisibility}" />
-                                <HyperlinkButton Content="{x:Bind ModUrlLabel}" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="12"
+                                <HyperlinkButton Content="{x:Bind ModUrlLabel}" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
                                                  Visibility="{x:Bind ModUrlVisibility}" />
-                                <HyperlinkButton Content="Source" NavigateUri="{x:Bind SourceUri}" Padding="6,0" FontSize="12"
+                                <HyperlinkButton Content="Source" NavigateUri="{x:Bind SourceUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
                                                  Visibility="{x:Bind SourceVisibility}" />
-                                <HyperlinkButton Content="Donate" NavigateUri="{x:Bind DonateUri}" Padding="6,0" FontSize="12"
+                                <HyperlinkButton Content="Donate" NavigateUri="{x:Bind DonateUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
                                                  Foreground="{StaticResource ThemeDanger}" Visibility="{x:Bind DonateVisibility}" />
-                                <TextBlock Text="{x:Bind DownloadsText}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text="{x:Bind DownloadsText}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind DownloadsVisibility}" />
-                                <TextBlock Text="{x:Bind EndorsementsText}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text="{x:Bind EndorsementsText}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind EndorsementsVisibility}" />
-                                <TextBlock Text="Removed from Nexus" Foreground="{StaticResource ThemeDanger}" FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text="Removed from Nexus" Foreground="{StaticResource ThemeDanger}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind RemovedFromNexusVisibility}" />
                             </StackPanel>
                             <!-- Multi-variant family: pick which level(s) to run, inline on this one row -->
@@ -532,12 +532,12 @@
                                     <DataTemplate x:DataType="vm:VariantOptionVM">
                                         <ToggleButton Content="{x:Bind Label}" IsChecked="{x:Bind Enabled, Mode=OneWay}"
                                                       IsEnabled="{x:Bind CanToggle}" Click="OnVariantClick"
-                                                      MinWidth="0" Padding="10,2" FontSize="12" />
+                                                      MinWidth="0" Padding="10,2" FontSize="{StaticResource BodyFontSize}" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock Text="Same mod, different levels — pick one (turning one on turns the others off). Drop in more anytime; they won't collide."
-                                       Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap" Margin="0,2,0,0"
                                        Visibility="{x:Bind VariantOptionsVisibility, Mode=OneWay}" />
                         </StackPanel>
 
@@ -549,7 +549,7 @@
                                 <Border CornerRadius="0" Padding="6,2"
                                         BorderThickness="1" BorderBrush="{x:Bind MissingFrameworkBrush, Mode=OneWay}">
                                     <TextBlock Text="{x:Bind MissingFrameworkChip, Mode=OneWay}"
-                                               FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                               FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                Foreground="{x:Bind MissingFrameworkBrush, Mode=OneWay}" />
                                 </Border>
                             </HyperlinkButton>
@@ -557,44 +557,44 @@
                                     BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
                                     ToolTipService.ToolTip="Managed by another mod tool — shown read-only here"
                                     Visibility="{x:Bind ManagedVisibility, Mode=OneWay}">
-                                <TextBlock AutomationProperties.HelpText="Managed by another mod tool — shown read-only here" Text="{x:Bind ManagedBadge}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
+                                <TextBlock AutomationProperties.HelpText="Managed by another mod tool — shown read-only here" Text="{x:Bind ManagedBadge}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
                             </Border>
                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemePanel}"
                                     BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
                                     ToolTipService.ToolTip="Ships with UE4SS — framework mod, not a downloaded mod"
                                     Visibility="{x:Bind BuiltinVisibility, Mode=OneWay}">
-                                <TextBlock AutomationProperties.HelpText="Ships with UE4SS — framework mod, not a downloaded mod" Text="UE4SS BUILT-IN" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
+                                <TextBlock AutomationProperties.HelpText="Ships with UE4SS — framework mod, not a downloaded mod" Text="UE4SS BUILT-IN" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
                             </Border>
                             <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on"
                                     Visibility="{x:Bind LoaderChipVisibility, Mode=OneWay}">
-                                <TextBlock AutomationProperties.HelpText="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on" Text="LOADER" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
+                                <TextBlock AutomationProperties.HelpText="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on" Text="LOADER" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeAccent}" />
                             </Border>
                             <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="{x:Bind UpdateTooltip}"
                                     Visibility="{x:Bind UpdateAvailableVisibility}">
-                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateTooltip}" Text="UPDATE" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
+                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateTooltip}" Text="UPDATE" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeAccent}" />
                             </Border>
                             <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="One of several variants of the same mod — toggle whichever you want"
                                     Visibility="{x:Bind VariantGroupVisibility, Mode=OneWay}">
-                                <TextBlock AutomationProperties.HelpText="One of several variants of the same mod — toggle whichever you want" Text="VARIANT" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" Foreground="{StaticResource ThemeAccent}" />
+                                <TextBlock AutomationProperties.HelpText="One of several variants of the same mod — toggle whichever you want" Text="VARIANT" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeAccent}" />
                             </Border>
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="0" Padding="6,2"
                                     ToolTipService.ToolTip="{x:Bind ClassChipTooltip}">
-                                <TextBlock AutomationProperties.HelpText="{x:Bind ClassChipTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind ClassChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                                <TextBlock AutomationProperties.HelpText="{x:Bind ClassChipTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind ClassChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" />
                             </Border>
                             <Border Background="{StaticResource ThemePanel}" CornerRadius="0" Padding="6,2"
                                     Visibility="{x:Bind VariantVisibility}"
                                     ToolTipService.ToolTip="Active variant of this mod. Click another in the family to switch.">
-                                <TextBlock AutomationProperties.HelpText="Active variant of this mod. Click another in the family to switch." Foreground="{StaticResource ThemeInk}" Text="{x:Bind VariantChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                                <TextBlock AutomationProperties.HelpText="Active variant of this mod. Click another in the family to switch." Foreground="{StaticResource ThemeInk}" Text="{x:Bind VariantChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" />
                             </Border>
                             <!-- MP-safety badge doubles as the set-override affordance (faint "MP?" = no claim) -->
                             <Button Padding="6,2" CornerRadius="0" BorderThickness="0" MinHeight="24" MinWidth="24"
                                     Background="{StaticResource ThemePanel}" VerticalAlignment="Center"
                                     Opacity="{x:Bind MpBadgeOpacity, Mode=OneWay}"
                                     ToolTipService.ToolTip="{x:Bind MpBadgeTooltip, Mode=OneWay}">
-                                <TextBlock Text="{x:Bind MpBadge, Mode=OneWay}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                <TextBlock Text="{x:Bind MpBadge, Mode=OneWay}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                            Foreground="{x:Bind MpBadgeBrush, Mode=OneWay}" />
                                 <Button.Flyout>
                                     <MenuFlyout>
@@ -615,7 +615,7 @@
                                     ToolTipService.ToolTip="{x:Bind EndorseTooltip, Mode=OneWay}"
                                     Visibility="{x:Bind EndorseVisibility, Mode=OneWay}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
-                                    <FontIcon Glyph="{x:Bind EndorseGlyph, Mode=OneWay}" FontSize="14"
+                                    <FontIcon Glyph="{x:Bind EndorseGlyph, Mode=OneWay}" FontSize="{StaticResource RowTitleFontSize}"
                                               HorizontalAlignment="Center" Foreground="{StaticResource ThemeAccent}" />
                                     <TextBlock Text="endorse" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                                 </StackPanel>
@@ -625,7 +625,7 @@
                                     ToolTipService.ToolTip="Readme"
                                     Visibility="{x:Bind ReadmeVisibility, Mode=OneWay}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
-                                    <FontIcon Glyph="&#xE8A5;" FontSize="14" HorizontalAlignment="Center" />
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="{StaticResource RowTitleFontSize}" HorizontalAlignment="Center" />
                                     <TextBlock Text="readme" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -634,7 +634,7 @@
                                     ToolTipService.ToolTip="Config cockpit — edit settings, view keybinds &amp; commands"
                                     Visibility="{x:Bind CockpitVisibility, Mode=OneWay}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
-                                    <FontIcon Glyph="&#xE713;" FontSize="14" HorizontalAlignment="Center" />
+                                    <FontIcon Glyph="&#xE713;" FontSize="{StaticResource RowTitleFontSize}" HorizontalAlignment="Center" />
                                     <TextBlock Text="config" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -655,7 +655,7 @@
                                 ToolTipService.ToolTip="Uninstall (permanent)"
                                 Visibility="{x:Bind ManageVisibility, Mode=OneWay}">
                             <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
-                                <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" HorizontalAlignment="Center" />
+                                <FontIcon Glyph="&#xE74D;" FontSize="{StaticResource RowTitleFontSize}" Foreground="{StaticResource ThemeDanger}" HorizontalAlignment="Center" />
                                 <TextBlock Text="uninstall" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
@@ -690,11 +690,11 @@
                     Background="Transparent" BorderThickness="0" Padding="0,0,8,0" MinWidth="0"
                     ToolTipService.ToolTip="Open game folder in Explorer"
                     Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
-                <FontIcon Glyph="&#xE838;" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
+                <FontIcon Glyph="&#xE838;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
             </Button>
-            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.GameRootText, Mode=OneWay}" Foreground="{StaticResource ThemeInkDim}" FontSize="12"
+            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.GameRootText, Mode=OneWay}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <TextBlock x:Name="AppStatusText" Grid.Column="2" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
+            <TextBlock x:Name="AppStatusText" Grid.Column="2" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                        AutomationProperties.LiveSetting="Polite"
                        VerticalAlignment="Center" />
         </Grid>

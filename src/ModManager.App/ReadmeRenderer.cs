@@ -62,7 +62,7 @@ public static class ReadmeRenderer
     private static Paragraph Code(string text)
     {
         var p = new Paragraph { Margin = new Thickness(0, 4, 0, 4) };
-        p.Inlines.Add(new Run { Text = text, FontFamily = Mono, FontSize = 13 });
+        p.Inlines.Add(new Run { Text = text, FontFamily = Mono, FontSize = (double)Application.Current.Resources["BodyFontSize"] });
         return p;
     }
 

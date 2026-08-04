@@ -170,7 +170,7 @@
                                         Tag="{x:Bind Manifest}"
                                         Visibility="{x:Bind ConfigVisibility}"
                                         ToolTipService.ToolTip="Edit this framework's settings (e.g. enable the UE4SS console)">
-                                    <FontIcon Glyph="&#xE70F;" FontSize="12" />
+                                    <FontIcon Glyph="&#xE70F;" FontSize="{StaticResource BodyFontSize}" />
                                 </Button>
                             </StackPanel>
                         </DataTemplate>

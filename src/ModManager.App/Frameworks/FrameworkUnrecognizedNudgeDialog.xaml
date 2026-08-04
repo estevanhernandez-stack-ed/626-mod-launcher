@@ -21,7 +21,7 @@
             <TextBlock Text="FRAMEWORK // UNRECOGNIZED" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Looks like a framework" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Looks like a framework" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
@@ -34,11 +34,11 @@
             but it isn't in our catalog yet. We can't safely auto-install frameworks we don't
             recognize — but if you've used this one before, we'd love to add it.
         </TextBlock>
-        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12">
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}">
             If you want to install it anyway, the launcher will route it through regular mod
             intake (extracts to your mods folder). This usually doesn't work for frameworks
             but is sometimes correct.
         </TextBlock>
-        <TextBlock x:Name="FilenameText" Foreground="{StaticResource ThemeInkDim}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+        <TextBlock x:Name="FilenameText" Foreground="{StaticResource ThemeInkDim}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" />
     </StackPanel>
 </ContentDialog>

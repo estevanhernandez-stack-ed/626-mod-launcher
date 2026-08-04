@@ -1032,3 +1032,13 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
    restart needed.
 2. Hovering a mod row shifts its background to the theme's glass color on
    every builtin.
+
+---
+
+## road-to-zero B11 — type-size sweep (F-010)
+
+**Smoke needed:**
+1. Read a long session across views — body copy sits at 13 now (was mostly
+   12), meta at 11.5; nothing clips or wraps oddly in dialogs (fixed
+   widths + bigger body is the risk).
+2. Dialog titles read at ViewTitle 21 across the fleet (was 20).

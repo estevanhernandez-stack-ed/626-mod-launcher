@@ -18,7 +18,7 @@
             <TextBlock Text="INI // SNAPSHOT FIRST" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Edit INI" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Edit INI" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
@@ -33,6 +33,6 @@
                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                  Height="320" />
         <TextBlock Text="Saving takes a snapshot of this file first. Restore previous puts back the last snapshot."
-                   Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
+                   Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" Margin="0,6,0,0" />
     </StackPanel>
 </ContentDialog>

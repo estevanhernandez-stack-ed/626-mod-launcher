@@ -21,7 +21,7 @@
             <TextBlock Text="TOOL // CONFIGURE" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Configure tool" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Configure tool" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 

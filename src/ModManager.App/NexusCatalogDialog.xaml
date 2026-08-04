@@ -15,7 +15,7 @@
             <TextBlock Text="NEXUS // BROWSE" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Browse Nexus" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Browse Nexus" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
@@ -44,12 +44,12 @@
                             <StackPanel Grid.Column="0" Spacing="2">
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <TextBlock Text="{Binding Author}" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
+                                    <TextBlock Text="{Binding Author}" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                                                Visibility="{Binding AuthorVisibility}" />
-                                    <TextBlock Text="{Binding Endorsements}" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
+                                    <TextBlock Text="{Binding Endorsements}" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                                                Visibility="{Binding EndorsementsVisibility}" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Summary}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap"
+                                <TextBlock Text="{Binding Summary}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
                                            Visibility="{Binding SummaryVisibility}" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="Get" VerticalAlignment="Center"

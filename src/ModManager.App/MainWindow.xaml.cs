@@ -812,7 +812,7 @@ public sealed partial class MainWindow : Window
                 {
                     Text = chip,
                     FontFamily = new FontFamily("Cascadia Mono, Consolas"),
-                    FontSize = 11,
+                    FontSize = (double)Application.Current.Resources["MetaFontSize"],
                     MinWidth = 56,
                     TextAlignment = TextAlignment.Center,
                 },
@@ -1159,7 +1159,7 @@ public sealed partial class MainWindow : Window
             foreach (var opt in options)
             {
                 var card = new StackPanel { Spacing = 6 };
-                card.Children.Add(new TextBlock { Text = opt.Title, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                card.Children.Add(new TextBlock { Text = opt.Title, FontSize = (double)Application.Current.Resources["RowTitleFontSize"], FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
                 card.Children.Add(new TextBlock { Text = opt.Detail, TextWrapping = TextWrapping.Wrap, Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"] });
 
                 switch (opt.Kind)
@@ -1432,7 +1432,7 @@ public sealed partial class MainWindow : Window
             {
                 Text = cfg.FileName,  // filename from our own file scan, safe
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                FontSize = 13,
+                FontSize = (double)Application.Current.Resources["BodyFontSize"],
             };
             section.Children.Add(header);
 
@@ -1453,7 +1453,7 @@ public sealed partial class MainWindow : Window
                     Text = entry.Key,   // key from parsed config — textContent only
                     VerticalAlignment = VerticalAlignment.Center,
                     FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-                    FontSize = 12,
+                    FontSize = (double)Application.Current.Resources["BodyFontSize"],
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 };
                 if (!string.IsNullOrEmpty(entry.Description))
@@ -1465,7 +1465,7 @@ public sealed partial class MainWindow : Window
                     Text = entry.Value,  // value from parsed config — text binding only
                     IsSpellCheckEnabled = false,
                     FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-                    FontSize = 12,
+                    FontSize = (double)Application.Current.Resources["BodyFontSize"],
                 };
                 Grid.SetColumn(valueBox, 1);
 
@@ -1501,7 +1501,7 @@ public sealed partial class MainWindow : Window
         if (keybinds.Count > 0)
         {
             var kbSection = new StackPanel { Spacing = 6 };
-            kbSection.Children.Add(new TextBlock { Text = "Keybinds", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+            kbSection.Children.Add(new TextBlock { Text = "Keybinds", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = (double)Application.Current.Resources["BodyFontSize"] });
 
             foreach (var bind in keybinds)
             {
@@ -1517,7 +1517,7 @@ public sealed partial class MainWindow : Window
                     {
                         Text = modText + bind.Key,   // key/modifier names from Lua regex scan — textContent
                         FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-                        FontSize = 12,
+                        FontSize = (double)Application.Current.Resources["BodyFontSize"],
                     };
                     kbSection.Children.Add(chip);
                 }
@@ -1534,7 +1534,7 @@ public sealed partial class MainWindow : Window
                             Text = modText,   // modifier names from Lua regex — textContent
                             VerticalAlignment = VerticalAlignment.Center,
                             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-                            FontSize = 12,
+                            FontSize = (double)Application.Current.Resources["BodyFontSize"],
                             Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"],
                         });
                     }
@@ -1547,7 +1547,7 @@ public sealed partial class MainWindow : Window
                         Width = 80,
                         IsSpellCheckEnabled = false,
                         FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-                        FontSize = 12,
+                        FontSize = (double)Application.Current.Resources["BodyFontSize"],
                         VerticalAlignment = VerticalAlignment.Center,
                     };
                     bindRow.Children.Add(keyBox);
@@ -1561,7 +1561,7 @@ public sealed partial class MainWindow : Window
                             Foreground = dangerBrush,
                             FontWeight = Microsoft.UI.Text.FontWeights.Bold,
                             VerticalAlignment = VerticalAlignment.Center,
-                            FontSize = 14,
+                            FontSize = (double)Application.Current.Resources["RowTitleFontSize"],
                         };
                         ToolTipService.SetToolTip(conflictMark, "Conflict: another bind uses the same key combo.");
                         bindRow.Children.Add(conflictMark);
@@ -1589,7 +1589,7 @@ public sealed partial class MainWindow : Window
         if (commands.Count > 0)
         {
             var cmdSection = new StackPanel { Spacing = 6 };
-            cmdSection.Children.Add(new TextBlock { Text = "Console commands", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+            cmdSection.Children.Add(new TextBlock { Text = "Console commands", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = (double)Application.Current.Resources["BodyFontSize"] });
             foreach (var cmd in commands)
             {
                 var row3 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -1598,7 +1598,7 @@ public sealed partial class MainWindow : Window
                 {
                     Text = cmd.Name,  // command name from Lua regex scan — textContent
                     FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-                    FontSize = 12,
+                    FontSize = (double)Application.Current.Resources["BodyFontSize"],
                 };
                 var copyBtn = new Button { Content = "Copy", Padding = new Thickness(6, 2, 6, 2) };
                 var capturedCmdName = cmd.Name;
