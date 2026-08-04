@@ -13,6 +13,7 @@
   ],
   "waves": [
     { "id": 1, "name": "theme-engine-owns-color", "status": "shipped", "findings": ["F-003", "F-006", "F-007", "F-011", "F-012", "F-036"] },
-    { "id": 2, "name": "hangar-skeleton", "status": "shipped", "findings": ["F-001", "F-004", "F-010", "F-011", "F-014"] }
+    { "id": 2, "name": "hangar-skeleton", "status": "shipped", "findings": ["F-001", "F-004", "F-010", "F-011", "F-014"] },
+    { "id": 3, "name": "ink-completion", "status": "open", "findings": ["F-001", "F-011", "F-013", "F-047", "F-048"] }
   ]
 }

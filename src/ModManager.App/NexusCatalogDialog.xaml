@@ -16,7 +16,7 @@
         </StackPanel>
 
         <!-- Status line for the Initial / Loading / Empty states. Only one is visible at a time. -->
-        <TextBlock x:Name="StatusLabel" TextWrapping="Wrap" Opacity="0.7" />
+        <TextBlock x:Name="StatusLabel" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" />
 
         <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="ResultsList">
@@ -28,14 +28,14 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Spacing="2">
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <TextBlock Text="{Binding Author}" Opacity="0.7" FontSize="12"
+                                    <TextBlock Text="{Binding Author}" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                                                Visibility="{Binding AuthorVisibility}" />
-                                    <TextBlock Text="{Binding Endorsements}" Opacity="0.7" FontSize="12"
+                                    <TextBlock Text="{Binding Endorsements}" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                                                Visibility="{Binding EndorsementsVisibility}" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Summary}" Opacity="0.6" FontSize="12" TextWrapping="Wrap"
+                                <TextBlock Text="{Binding Summary}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap"
                                            Visibility="{Binding SummaryVisibility}" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="Get" VerticalAlignment="Center"

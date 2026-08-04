@@ -9,10 +9,10 @@
     DefaultButton="Primary">
 
     <StackPanel Spacing="12" Width="440">
-        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
         <TextBox x:Name="UrlBox" Header="Mod page URL"
                  PlaceholderText="https://www.nexusmods.com/eldenring/mods/510 or https://www.curseforge.com/.../mods/..." />
-        <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11"
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="11"
                    Text="Paste the URL from the mod's Nexus or CurseForge page. We'll pull the title, author, downloads, and icon. The match locks — future rescans won't override it." />
     </StackPanel>
 </ContentDialog>

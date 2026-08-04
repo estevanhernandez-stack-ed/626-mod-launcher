@@ -20,7 +20,7 @@
     <StackPanel Spacing="12" Width="440">
         <Expander x:Name="AiExpander" HorizontalAlignment="Stretch" Header="Add with AI">
             <StackPanel Spacing="8" Width="400">
-                <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                            Text="Type the game name, copy the prompt into any AI agent, paste the JSON it returns, then Apply to pre-fill the wizard." />
                 <TextBox x:Name="AiGameNameBox" Header="Game name" PlaceholderText="e.g. Elden Ring" />
                 <Button Content="Copy prompt" Click="OnCopyProfilePrompt" />
@@ -32,13 +32,13 @@
         </Expander>
         <Expander x:Name="BatchExpander" HorizontalAlignment="Stretch" Header="Batch from Steam (multiple games)">
             <StackPanel Spacing="8" Width="400">
-                <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                            Text="Pick the Steam games you want to onboard, copy the batch prompt into your agent, paste the JSON array back, then Apply all. Profiles that pass register on Add; the rest are skipped." />
                 <ListView x:Name="BatchSteamList" SelectionMode="Multiple" Height="160"
                           BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
                     <ListView.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding Name}" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Name}" />
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
@@ -53,8 +53,8 @@
                             <Border BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
                                     CornerRadius="0" Padding="8" Margin="0,0,0,4">
                                 <StackPanel Spacing="2">
-                                    <TextBlock Text="{Binding Headline}" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding Detail}" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+                                    <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Headline}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Detail}" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -68,7 +68,7 @@
         <StackPanel Spacing="6">
             <TextBlock Text="Quick add from Steam" FontWeight="SemiBold" FontSize="13" />
             <TextBlock Text="Check the games to add — engine, folder, and saves are detected for you. Then click Add."
-                       TextWrapping="Wrap" Opacity="0.75" FontSize="12" />
+                       TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
             <ListView x:Name="SteamGamesList" SelectionMode="Multiple" MaxHeight="180"
                       BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
                       SelectionChanged="OnSteamSelectionChanged">
@@ -83,15 +83,15 @@
                                     Background="{ThemeResource ControlElevationBorderBrush}">
                                 <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{Binding Display}" VerticalAlignment="Center" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Grid.Column="1" Text="{Binding Display}" VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
             <TextBlock x:Name="SteamEmptyNote" Visibility="Collapsed"
-                       Text="No installed Steam games detected." Opacity="0.7" FontSize="12" />
+                       Text="No installed Steam games detected." Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
             <TextBlock x:Name="SteamSetupHeader" Visibility="Collapsed" Margin="0,6,0,0"
-                       Text="Set up (engine not detected)" FontWeight="SemiBold" FontSize="12" Opacity="0.85" />
+                       Text="Set up (engine not detected)" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
             <ListView x:Name="SteamSetupList" Visibility="Collapsed" SelectionMode="None" MaxHeight="160"
                       BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
                 <ListView.ItemTemplate>
@@ -106,7 +106,7 @@
                                     Background="{ThemeResource ControlElevationBorderBrush}">
                                 <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
                             <Button Grid.Column="2" Content="Set up" Click="OnSteamSetup" />
                         </Grid>
                     </DataTemplate>

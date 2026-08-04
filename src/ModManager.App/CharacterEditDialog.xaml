@@ -9,7 +9,7 @@
     DefaultButton="Primary">
 
     <StackPanel Spacing="12" Width="460">
-        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
         <TextBox x:Name="NameBox" Header="Name" MaxLength="16"
                  PlaceholderText="Character name (max 16)" />
         <NumberBox x:Name="RunesBox" Header="Runes" Minimum="0" Maximum="999999999"
@@ -34,8 +34,8 @@
             <NumberBox x:Name="ArcBox" Grid.Row="3" Grid.Column="1" Header="ARC" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
         </Grid>
 
-        <TextBlock x:Name="LevelText" Opacity="0.7" FontSize="12" />
-        <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11"
+        <TextBlock x:Name="LevelText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="11"
                    Text="Saving creates a snapshot first. The previous state stays restorable from the Snapshots list — even if something goes wrong." />
     </StackPanel>
 </ContentDialog>

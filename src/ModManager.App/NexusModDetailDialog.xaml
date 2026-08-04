@@ -16,13 +16,13 @@
 
         <StackPanel x:Name="LoadingPanel" Orientation="Horizontal" Spacing="10" Margin="0,18,0,18">
             <ProgressRing IsActive="True" Width="18" Height="18" VerticalAlignment="Center" />
-            <TextBlock Text="Loading this mod from Nexus…" Opacity="0.75" VerticalAlignment="Center" />
+            <TextBlock Text="Loading this mod from Nexus…" Foreground="{StaticResource ThemeInkSoft}" VerticalAlignment="Center" />
         </StackPanel>
 
         <!-- Failure still offers the browser: a detail fetch that fell over must not strand the user with
              a dead dialog when the mod page itself is one click away. -->
         <StackPanel x:Name="FailurePanel" Spacing="10" Visibility="Collapsed" Margin="0,12,0,4">
-            <TextBlock x:Name="FailureLabel" TextWrapping="Wrap" Opacity="0.8" />
+            <TextBlock x:Name="FailureLabel" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" />
             <Button x:Name="FailureOpenButton" Content="Open on Nexus" Click="OnOpenOnNexus"
                     HorizontalAlignment="Left" Visibility="Collapsed"
                     ToolTipService.ToolTip="Opens this mod's page on Nexus in your browser." />
@@ -41,7 +41,7 @@
                      leaves the monogram showing instead of a hole. -->
                 <Grid Height="200" CornerRadius="0">
                     <Border CornerRadius="0" Background="{StaticResource ThemeBarBg}">
-                        <TextBlock x:Name="HeroInitial" FontSize="48" FontWeight="Bold" Opacity="0.35"
+                        <TextBlock x:Name="HeroInitial" FontSize="48" FontWeight="Bold" Foreground="{StaticResource ThemeInkMuted}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <Border CornerRadius="0">
@@ -55,12 +55,12 @@
                                Foreground="{StaticResource ThemeInk}" />
                     <TextBlock x:Name="ByLabel" FontSize="13" TextWrapping="Wrap"
                                Foreground="{StaticResource ThemeInkSoft}" />
-                    <TextBlock x:Name="MetaLabel" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+                    <TextBlock x:Name="MetaLabel" FontSize="12" Foreground="{StaticResource ThemeInkDim}" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="16">
-                    <TextBlock x:Name="EndorsementsLabel" FontSize="13" Opacity="0.8" />
-                    <TextBlock x:Name="DownloadsLabel" FontSize="13" Opacity="0.8" />
+                    <TextBlock x:Name="EndorsementsLabel" FontSize="13" Foreground="{StaticResource ThemeInkSoft}" />
+                    <TextBlock x:Name="DownloadsLabel" FontSize="13" Foreground="{StaticResource ThemeInkSoft}" />
                 </StackPanel>
 
                 <!-- Download stays a browser handoff. Endorse and Track are the only writes on this
@@ -80,7 +80,7 @@
                 <TextBlock x:Name="ActionMessage" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
                            Foreground="{StaticResource ThemeAccent}" />
 
-                <TextBlock x:Name="SummaryLabel" Visibility="Collapsed" FontSize="13" Opacity="0.8"
+                <TextBlock x:Name="SummaryLabel" Visibility="Collapsed" FontSize="13" Foreground="{StaticResource ThemeInkSoft}"
                            TextWrapping="Wrap" IsTextSelectionEnabled="True" />
 
                 <StackPanel x:Name="DescriptionSection" Spacing="4" Visibility="Collapsed">
@@ -88,7 +88,7 @@
                                Foreground="{StaticResource ThemeInk}" />
                     <!-- Always the converted text, never the raw Nexus body: descriptions are BBCode and
                          HTML mixed together. -->
-                    <TextBlock x:Name="DescriptionLabel" FontSize="13" Opacity="0.85"
+                    <TextBlock x:Name="DescriptionLabel" FontSize="13" Foreground="{StaticResource ThemeInkSoft}"
                                TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </StackPanel>
 
@@ -111,14 +111,14 @@
                                             <TextBlock Text="{Binding Name}" TextWrapping="Wrap"
                                                        Foreground="{StaticResource ThemeAccent}" />
                                             <TextBlock Text="{Binding Detail}" TextWrapping="Wrap"
-                                                       FontSize="12" Opacity="0.6"
+                                                       FontSize="12" Foreground="{StaticResource ThemeInkDim}"
                                                        Visibility="{Binding DetailVisibility}" />
                                         </StackPanel>
                                     </Button>
                                     <StackPanel Spacing="1" Margin="0,3" Visibility="{Binding PlainVisibility}">
-                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                        <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Name}" TextWrapping="Wrap" />
                                         <TextBlock Text="{Binding Detail}" TextWrapping="Wrap"
-                                                   FontSize="12" Opacity="0.6"
+                                                   FontSize="12" Foreground="{StaticResource ThemeInkDim}"
                                                    Visibility="{Binding DetailVisibility}" />
                                     </StackPanel>
                                 </Grid>

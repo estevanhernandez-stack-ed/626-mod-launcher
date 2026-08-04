@@ -15,7 +15,7 @@
             <TextBlock Text="Your library is empty" FontSize="20" FontWeight="SemiBold"
                        HorizontalAlignment="Center" Foreground="{StaticResource ThemeInk}" />
             <TextBlock Text="Add a game to get started — 626 finds installed games below once you add one, or use + Game up top."
-                       TextWrapping="Wrap" TextAlignment="Center" Opacity="0.7" />
+                       TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
         </StackPanel>
 
         <ScrollViewer Visibility="{x:Bind ViewModel.ContentVisibility, Mode=OneWay}"
@@ -56,7 +56,7 @@
                                             <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="150"
                                                        Foreground="{StaticResource ThemeInk}" />
-                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Opacity="0.6" />
+                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
                                     </Button>
                                 </DataTemplate>
@@ -127,18 +127,18 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{StaticResource ThemeInk}" />
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{x:Bind SourceBadge}" FontSize="12" Opacity="0.7"
+                                            <TextBlock Text="{x:Bind SourceBadge}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
                                                        Visibility="{x:Bind SourceBadgeVisibility}" />
-                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Opacity="0.6" />
+                                            <TextBlock Text="{x:Bind RecencyText}" FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
-                                        <TextBlock Text="{x:Bind ModStateText}" FontSize="12" Opacity="0.7" />
+                                        <TextBlock Text="{x:Bind ModStateText}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
 
                                         <!-- Chips: tier · ban risk · detected loaders -->
                                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                                     ToolTipService.ToolTip="{x:Bind TierTooltip}">
-                                                <TextBlock Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
                                                     ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
@@ -209,9 +209,9 @@
                                             </Border>
                                         </Grid>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
+                                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Name}" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{x:Bind StoreKind}" FontSize="12" Opacity="0.6" />
+                                            <TextBlock Text="{x:Bind StoreKind}" FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Content="+ Add" VerticalAlignment="Center"
                                                 Click="OnAddDiscovered" Tag="{x:Bind}" />
@@ -220,7 +220,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <TextBlock Text="Nothing new — every installed game 626 can see is already in your library."
-                                   Opacity="0.5" FontSize="12"
+                                   Foreground="{StaticResource ThemeInkDim}" FontSize="12"
                                    Visibility="{x:Bind ViewModel.DiscoveryEmptyVisibility, Mode=OneWay}" />
                     </StackPanel>
                 </Expander>

@@ -38,7 +38,7 @@
                        TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />
             <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
-                       FontSize="12" Opacity="0.6" />
+                       FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
         </Grid>
 
         <!-- Filter bar. Search submits on Enter or the button; sort and category reload from the first
@@ -63,7 +63,7 @@
 
         <!-- Status line: loading / empty. Only shown when there are no cards to show. -->
         <TextBlock x:Name="StatusLabel" Grid.Row="2" Margin="20,8,20,0" TextWrapping="Wrap"
-                   Opacity="0.7" VerticalAlignment="Top" />
+                   Foreground="{StaticResource ThemeInkSoft}" VerticalAlignment="Top" />
 
         <!-- Card grid. GridView owns its own scrolling, so there is no outer ScrollViewer. Selection is
              off — a card is a display surface with its own Get button, not a pick list. Clicking a card
@@ -114,7 +114,7 @@
                                 <Grid Grid.Column="0" Width="96" Height="54" CornerRadius="0">
                                     <Border CornerRadius="0" Background="{StaticResource ThemeBarBg}">
                                         <TextBlock Text="{x:Bind Initial}" FontSize="20" FontWeight="Bold"
-                                                   Opacity="0.5" HorizontalAlignment="Center"
+                                                   Foreground="{StaticResource ThemeInkDim}" HorizontalAlignment="Center"
                                                    VerticalAlignment="Center" />
                                     </Border>
                                     <Border CornerRadius="0">
@@ -127,25 +127,25 @@
                                                TextWrapping="Wrap" MaxLines="2"
                                                TextTrimming="CharacterEllipsis"
                                                Foreground="{StaticResource ThemeInk}" />
-                                    <TextBlock Text="{x:Bind Author}" FontSize="12" Opacity="0.7"
+                                    <TextBlock Text="{x:Bind Author}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
                                                TextTrimming="CharacterEllipsis"
                                                Visibility="{x:Bind AuthorVisibility}" />
                                 </StackPanel>
                             </Grid>
 
-                            <TextBlock Grid.Row="1" Text="{x:Bind Summary}" FontSize="12" Opacity="0.6"
+                            <TextBlock Grid.Row="1" Text="{x:Bind Summary}" FontSize="12" Foreground="{StaticResource ThemeInkDim}"
                                        TextWrapping="Wrap" MaxLines="2" VerticalAlignment="Top"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{x:Bind SummaryVisibility}" />
 
                             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="{x:Bind Endorsements}" FontSize="12" Opacity="0.75"
+                                <TextBlock Text="{x:Bind Endorsements}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
                                            Visibility="{x:Bind EndorsementsVisibility}" />
-                                <TextBlock Text="{x:Bind Downloads}" FontSize="12" Opacity="0.75"
+                                <TextBlock Text="{x:Bind Downloads}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
                                            Visibility="{x:Bind DownloadsVisibility}" />
                             </StackPanel>
 
-                            <TextBlock Grid.Row="3" Text="{x:Bind MetaLine}" FontSize="11" Opacity="0.55"
+                            <TextBlock Grid.Row="3" Text="{x:Bind MetaLine}" FontSize="11" Foreground="{StaticResource ThemeInkDim}"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{x:Bind MetaVisibility}" />
 
@@ -177,7 +177,7 @@
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                             Visibility="{x:Bind InstalledVisibility}"
                                             ToolTipService.ToolTip="You have already downloaded this mod on Nexus">
-                                        <TextBlock Text="Installed" FontSize="11" Opacity="0.8" />
+                                        <TextBlock Text="Installed" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
                                     </Border>
                                     <Border CornerRadius="0" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"

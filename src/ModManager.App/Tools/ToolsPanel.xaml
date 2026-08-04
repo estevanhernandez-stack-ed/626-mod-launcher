@@ -38,7 +38,7 @@
                                 Tag="{x:Bind}">
                             <ToolTipService.ToolTip>
                                 <ToolTip>
-                                    <TextBlock>
+                                    <TextBlock Foreground="{StaticResource ThemeInk}">
                                         <Run Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
                                         <LineBreak/>
                                         <Run Text="Catalog metadata only — never bundled." />
@@ -47,7 +47,7 @@
                                     </TextBlock>
                                 </ToolTip>
                             </ToolTipService.ToolTip>
-                            <TextBlock Text="{x:Bind DisplayName}" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" />
                         </Button>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
@@ -97,7 +97,7 @@
                                     Tag="{x:Bind}">
                                 <ToolTipService.ToolTip>
                                     <ToolTip>
-                                        <TextBlock>
+                                        <TextBlock Foreground="{StaticResource ThemeInk}">
                                             <Run Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
                                             <LineBreak/>
                                             <Run Text="Ban-safe mod loader — launches the game via its own entry point." />
@@ -152,7 +152,7 @@
                                         Click="OnFrameworkClick"
                                         Tag="{x:Bind Manifest}"
                                         ToolTipService.ToolTip="How to use this — click for the in-game keys + mods folder">
-                                    <TextBlock Text="{x:Bind DisplayName}" />
+                                    <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" />
                                 </Button>
                                 <Button Padding="6,4"
                                         Click="OnEditFrameworkConfigClick"

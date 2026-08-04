@@ -40,7 +40,7 @@
             <CheckBox x:Name="AutoBackupCheck" Content="Auto-backup before launch"
                       Checked="OnAutoBackupChanged" Unchecked="OnAutoBackupChanged"
                       ToolTipService.ToolTip="Snapshot the save automatically each time you press Play (older auto snapshots are pruned; your named backups are kept)." />
-            <TextBlock Text="keep" VerticalAlignment="Center" Opacity="0.7" />
+            <TextBlock Text="keep" VerticalAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
             <NumberBox x:Name="KeepBox" Minimum="1" Maximum="999" SpinButtonPlacementMode="Compact"
                        Width="120" ValueChanged="OnKeepChanged" VerticalAlignment="Center"
                        ToolTipService.ToolTip="How many auto snapshots to keep before pruning the oldest. Your named backups are never pruned." />
@@ -56,8 +56,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
-                            <TextBlock Text="{x:Bind TypeLabel}" Opacity="0.6" FontSize="12" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind TypeLabel}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
                         </StackPanel>
                         <DropDownButton Grid.Column="1" Content="Clone to…" VerticalAlignment="Center"
                                         ToolTipService.ToolTip="Copy this save to another type — safe, never overwrites">
@@ -69,7 +69,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="SaveFilesEmpty" Text="No save files detected in this folder." Opacity="0.6" FontSize="12" Visibility="Collapsed" />
+        <TextBlock x:Name="SaveFilesEmpty" Text="No save files detected in this folder." Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
 
         <TextBlock Text="Characters" FontWeight="SemiBold" />
         <ListView x:Name="CharacterList" MaxHeight="200" SelectionMode="None">
@@ -81,8 +81,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Headline}" FontWeight="SemiBold" />
-                            <TextBlock Text="{x:Bind Detail}" Opacity="0.6" FontSize="12" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Headline}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
                         </StackPanel>
                         <Button Grid.Column="1" Content="Edit" Click="OnEditCharacter" VerticalAlignment="Center"
                                 ToolTipService.ToolTip="Edit stats, runes, name — snapshots before applying" />
@@ -91,9 +91,9 @@
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="CharactersEmpty" Text="No editable characters detected in this folder."
-                   Opacity="0.6" FontSize="12" Visibility="Collapsed"
+                   Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed"
                    TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-        <TextBlock x:Name="EditorCredit" Opacity="0.5" FontSize="11" TextWrapping="Wrap" />
+        <TextBlock x:Name="EditorCredit" Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap" />
 
         <TextBlock Text="Installed save mods" FontWeight="SemiBold" />
         <ListView x:Name="SaveModList" MaxHeight="200" SelectionMode="None">
@@ -106,8 +106,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
-                            <TextBlock Text="{x:Bind Detail}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Title}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap" />
                         </StackPanel>
                         <Button Grid.Column="1" Content="Reset" Click="OnSaveModReset" VerticalAlignment="Center"
                                 ToolTipService.ToolTip="Re-install from the kept source zip — snapshots first" />
@@ -121,7 +121,7 @@
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="SaveModEmpty" Text="No save mods installed. Drop a world zip to install."
-                   Opacity="0.6" FontSize="12" Visibility="Collapsed" />
+                   Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
 
         <TextBlock Text="Snapshots" FontWeight="SemiBold" />
         <ListView x:Name="SnapshotList" MaxHeight="260" SelectionMode="None">
@@ -135,8 +135,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
-                            <TextBlock Text="{x:Bind Detail}" Opacity="0.6" FontSize="12" />
+                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Title}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
                         </StackPanel>
                         <DropDownButton Grid.Column="1" Content="Only" MinWidth="84" VerticalAlignment="Center"
                                         ToolTipService.ToolTip="Restore just one save type from this snapshot">
@@ -153,7 +153,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="EmptyText" Text="No snapshots yet." Opacity="0.6" Visibility="Collapsed" />
-        <TextBlock x:Name="StatusText" Opacity="0.75" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <TextBlock x:Name="EmptyText" Text="No snapshots yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
+        <TextBlock x:Name="StatusText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
     </StackPanel>
 </ContentDialog>

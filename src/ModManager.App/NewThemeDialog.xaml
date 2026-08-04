@@ -13,7 +13,7 @@
     PrimaryButtonClick="OnImport">
 
     <StackPanel Spacing="10" Width="460">
-        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
                    Text="Describe a vibe, copy the prompt into any AI chat, paste the JSON it returns below, then Import." />
         <TextBox x:Name="VibeBox" Header="Vibe" PlaceholderText="e.g. deep ocean bioluminescence" />
         <Button Content="Copy prompt" Click="OnCopyPrompt" />

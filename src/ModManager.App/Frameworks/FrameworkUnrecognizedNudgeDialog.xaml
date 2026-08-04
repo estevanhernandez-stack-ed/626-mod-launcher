@@ -20,11 +20,11 @@
             but it isn't in our catalog yet. We can't safely auto-install frameworks we don't
             recognize — but if you've used this one before, we'd love to add it.
         </TextBlock>
-        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12">
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12">
             If you want to install it anyway, the launcher will route it through regular mod
             intake (extracts to your mods folder). This usually doesn't work for frameworks
             but is sometimes correct.
         </TextBlock>
-        <TextBlock x:Name="FilenameText" Opacity="0.6" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+        <TextBlock x:Name="FilenameText" Foreground="{StaticResource ThemeInkDim}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
     </StackPanel>
 </ContentDialog>
