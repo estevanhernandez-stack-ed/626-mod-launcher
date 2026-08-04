@@ -37,6 +37,17 @@ public sealed partial class MainWindow : Window
         Services.Bloom.Attach(LaunchBloomHost, LaunchSplitButton, Services.BloomToken.Accent);
         Services.Bloom.AttachTextShadow(BanRiskBloomHost, BanRiskText, Services.BloomToken.Danger);
 
+        // Active nav glow (F-077): a segment is lit exactly while its fill IS the shared accent
+        // brush instance — the same signal the VM uses to mark it active. Reference equality is
+        // deliberate: SegmentBrushFor returns the app's ThemeAccent instance or TransparentBrush.
+        var accentBrush = Application.Current.Resources["ThemeAccent"];
+        void WireSegment(Border host, Button segment) =>
+            Services.Bloom.AttachStateGlow(host, segment, Services.BloomToken.Accent,
+                () => ReferenceEquals(segment.Background, accentBrush), Button.BackgroundProperty);
+        WireSegment(LoadoutAllGlowHost, LoadoutAllSegment);
+        WireSegment(LoadoutMpGlowHost, LoadoutMpSegment);
+        WireSegment(LoadoutSpGlowHost, LoadoutSpSegment);
+
         // Library home: build the VM + view, mount into the overlay host, wire its navigation events.
         // Open (card/Manage) collapses the overlay onto the game's mod view; Add routes the discovered
         // game through the existing + Game flow, then reloads the home.
@@ -514,6 +525,17 @@ public sealed partial class MainWindow : Window
     }
 #endif
 
+
+    // Enabled-toggle glow (F-077): each realized row's switch gets a bloom behind it, lit while
+    // IsOn. Containers are ListView-recycled — AttachStateGlow no-ops on an already-wired host,
+    // and the IsOn callback reads the CURRENT row's state after rebind, so recycling stays honest.
+    private void OnRowToggleLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleSwitch toggle || toggle.Parent is not Grid wrap
+            || wrap.Children.Count == 0 || wrap.Children[0] is not Border host) return;
+        Services.Bloom.AttachStateGlow(host, toggle, Services.BloomToken.Accent,
+            () => toggle.IsOn, ToggleSwitch.IsOnProperty);
+    }
 
     private async void OnAddMods(object sender, RoutedEventArgs e)
     {

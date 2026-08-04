@@ -984,3 +984,16 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
 2. Busy ProgressRing spins in the theme accent on every builtin.
 3. Apply a stored low-contrast user theme from the THEME menu — status line
    names the failing pair; startup restore stays quiet.
+
+---
+
+## road-to-zero B6 — glow completion (F-077/079)
+
+**Smoke needed:**
+1. Toggle a mod ON — the switch gains the accent halo with the 160ms fade;
+   OFF removes it. Scroll a long list (recycled rows keep honest glow state).
+2. Switch Loadout segments — the glow follows the active segment.
+3. Open several code-built confirms (remove game, restore point, glossary) —
+   each carries the full-width rail + title; Narrator still announces the
+   dialog by name.
+4. Flat theme (bloom alpha 0) — no toggle/nav/dialog glow anywhere.
