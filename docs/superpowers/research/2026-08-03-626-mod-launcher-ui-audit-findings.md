@@ -294,6 +294,22 @@ XAML-fleet-only by design or the builder pattern should grow one.
 | F-079 | code-built dialog shells | conformance | 2 | 2 | ~22 code-built ContentDialogs have no rail/eyebrow shell | from wave-8 close-out | DialogTheming auto-wraps string Titles into the shell (eyebrow optional per site) | clean (road-to-zero B6 — DialogTheming auto-wraps string Titles into rail + title with the UIA name preserved; rail Raw view; stretch hook applies; verified live on the code-built glossary dialog) |
 | F-080 | theme persistence | qol | 3 | 5 | Theme choice is not persisted anywhere; every launch lands on Default — post-Forge this is the whole user experience | discovered at the reveal (default flip) | Persist theme id (camelCase JSON, round-trip test); restore on launch; Default only for first-run/missing | clean (road-to-zero B2 — themeId in app-settings.json (camelCase, serializer-escaped), restored in the VM ctor, saved on every pick; restart-proven live: Obsidian survived kill+relaunch, deleted/missing ids fall back to Forge) |
 
+## Road-to-zero outcome (2026-08-04, PRs #232-#248)
+
+Este's directive after the reveal: **get the register to 0.** Fourteen
+batches later it is — **80 of 80 rows clean, re-derived from the rows
+themselves at close** (the only scoreboard rule this register trusts).
+The 8 remaining audit rows and all 32 wave proposals (F-049-F-080) closed:
+theme persistence, the filter trio, danger-hover discipline, theme-key
+gaps, the glow rule's last two surfaces + code-built dialog shells,
+keyboard access + per-item names, nine lint-armor detectors, the add-game
+reorder, motion tokens + reduced-motion, the body type sweep, and the
+spacing scale. Two mid-sweep consolidated reviews (fresh Opus) caught ten
+should-fixes — all landed same-session. Documented acceptances live in
+their rows (NumberBox spin flyout, dialog-open XBF animation, knob timing,
+chip micro-density, Loadout hover/glow divergence); each names its reason.
+Evidence: docs/ui-evidence/road-to-zero-b13/ + wave-8-verify/.
+
 ## Audit notes
 
 
