@@ -23,7 +23,7 @@
     </ContentDialog.Title>
 
 
-    <StackPanel Spacing="8" Width="600" Height="400">
+    <StackPanel Spacing="{StaticResource SpaceM}" Width="600" Height="400">
         <TextBlock x:Name="PathLabel" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
         <TextBox x:Name="ContentsBox"
                  AcceptsReturn="True"

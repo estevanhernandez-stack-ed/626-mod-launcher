@@ -1059,3 +1059,12 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
 5. Loadout hover: the active segment's glow stays lit while the hover state
    momentarily greys the fill (known cosmetic divergence — stock hover
    repaint; accepted).
+
+---
+
+## road-to-zero B12 — spacing snap (F-022)
+
+**Smoke needed:**
+1. Mod rows sit at 7x12 padding — denser vertically, indented 12; a full
+   loadout still fits one screen; toggles/chips don't clip.
+2. Dialog root rhythm reads at the 12 step (Settings, Saves, safe-clear).

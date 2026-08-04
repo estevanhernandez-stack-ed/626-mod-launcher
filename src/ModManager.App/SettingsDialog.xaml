@@ -26,7 +26,7 @@
 
 
     <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="14" Width="460">
+        <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
             <!-- ============ IDENTITY ============ -->
             <TextBlock Text="Identity" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"

@@ -446,7 +446,7 @@
                             <TextBlock Text="?" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeAccent}" />
                         </Button>
                     </Grid>
-                    <Grid Padding="4,8" ColumnSpacing="12" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,0,0,1">
+                    <Grid Padding="{StaticResource RowPadding}" ColumnSpacing="12" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,0,0,1">
                         <!-- Columns: toggle / art / name(*) / chips / actions / uninstall (F-005). -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
