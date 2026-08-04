@@ -9,14 +9,16 @@
     PrimaryButtonText="Continue as mod"
     SecondaryButtonText="Open feedback link"
     CloseButtonText="Cancel"
-    DefaultButton="Primary">
+    DefaultButton="Primary"
+    AutomationProperties.Name="Looks like a framework">
 
     <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
          per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
     <ContentDialog.Title>
         <StackPanel Spacing="6">
-            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4" />
-            <TextBlock Text="FRAMEWORK // UNRECOGNIZED" FontFamily="{StaticResource MonoFontFamily}"
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="FRAMEWORK // UNRECOGNIZED" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
             <TextBlock Text="Looks like a framework" FontSize="20" FontWeight="SemiBold" />

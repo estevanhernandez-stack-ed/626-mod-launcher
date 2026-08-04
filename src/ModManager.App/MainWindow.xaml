@@ -269,7 +269,8 @@
                      separate warnings. Stays up even after the enable gate is acked.
                      Danger alerts are a sanctioned glow surface (F-002) — the host Border carries
                      the danger-colored bloom behind the banner. -->
-                <Grid VerticalAlignment="Bottom" Margin="6,0,0,0">
+                <Grid VerticalAlignment="Bottom" Margin="6,0,0,0"
+                      Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
                 <Border x:Name="BanRiskBloomHost" />
                 <Border x:Name="BanRiskBanner" Padding="8,2" CornerRadius="0"
                         ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
@@ -427,11 +428,22 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+
                         <Grid.ContextFlyout>
                             <MenuFlyout>
                                 <MenuFlyoutItem Text="Match to a mod…" Click="OnManualMatch" />
                             </MenuFlyout>
                         </Grid.ContextFlyout>
+
+                        <!-- Toggle leads the row (design language row anatomy; vibe-glow F-005 — Este's call:
+                             toggle first, art second). Declared FIRST as well as placed first: XAML tab order
+                             and the UIA tree follow declaration order, and the toggle is the row's primary
+                             affordance for keyboard and screen-reader users too. -->
+                        <ToggleSwitch Grid.Column="0" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
+                                      AutomationProperties.Name="{x:Bind ToggleAutomationName, Mode=OneWay}"
+                                      IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
+                                      VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
+                                      Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
 
                         <!-- Icon cell: load-order number (editable) in reorder mode, else art/monogram -->
                         <Grid Grid.Column="1" Width="48" Height="40" VerticalAlignment="Center">
@@ -602,14 +614,6 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
-
-                        <!-- Toggle leads the row (design language row anatomy; vibe-glow F-005 — Este's call:
-                             toggle first, art second). The on/off state is the row's primary affordance. -->
-                        <ToggleSwitch Grid.Column="0" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
-                                      AutomationProperties.Name="{x:Bind ToggleAutomationName, Mode=OneWay}"
-                                      IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
-                                      VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
-                                      Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
 
                         <Button AutomationProperties.Name="{x:Bind UninstallAutomationName}" Grid.Column="5" Click="OnUninstall" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"

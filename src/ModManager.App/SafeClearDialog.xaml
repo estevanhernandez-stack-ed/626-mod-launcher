@@ -9,14 +9,16 @@
     PrimaryButtonText="Reset launcher"
     CloseButtonText="Cancel"
     DefaultButton="Close"
-    PrimaryButtonClick="OnPrimary">
+    PrimaryButtonClick="OnPrimary"
+    AutomationProperties.Name="Reset launcher">
 
     <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
          per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
     <ContentDialog.Title>
         <StackPanel Spacing="6">
-            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4" />
-            <TextBlock Text="RESET // RESTORE POINT FIRST" FontFamily="{StaticResource MonoFontFamily}"
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="RESET // RESTORE POINT FIRST" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
             <TextBlock Text="Reset launcher" FontSize="20" FontWeight="SemiBold" />

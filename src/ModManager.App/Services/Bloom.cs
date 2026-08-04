@@ -25,6 +25,9 @@ public static class Bloom
 {
     private sealed record Attachment(SpriteVisual Sprite, DropShadow Shadow, BloomToken Token);
 
+    // Attachments are never pruned — Attach is for APP-LIFETIME shell surfaces only (both
+    // current casters live on MainWindow, created once). Do not attach per-row or per-dialog
+    // elements: each attachment roots its composition visuals for the process lifetime.
     private static readonly List<Attachment> Attachments = new();
     private static Color _accent = Color.FromArgb(255, 0x4d, 0xa3, 0xff);
     private static Color _danger = Color.FromArgb(255, 0xf2, 0x5c, 0x73);

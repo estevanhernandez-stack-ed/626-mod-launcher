@@ -901,8 +901,10 @@ chips → actions → uninstall ("toggle first, art second"); dialog shell ×17 
 mono-caps stencil eyebrow via ContentDialog.Title content, title stretch hooked on the Title
 content's Loaded in DialogTheming; fill discipline — LOADER/UPDATE/VARIANT/count chips and
 secondary CTAs (Browse Nexus / Apply order / Launch options / UpdatesEntry) demoted to 1px
-accent outline, Play keeps the only accent fill with ThemeBg ink (code-built anti-cheat toggle
-included).
+accent outline; Play keeps its accent fill with ThemeBg ink and the code-built anti-cheat
+toggle's ink went Black → ThemeBg. The active Loadout segment keeps its pre-existing accent
+fill (out of this wave's scope — recorded). Dialog shells carry AutomationProperties.Name
+(non-string Title loses the derived UIA name) with rail + eyebrow in the Raw accessibility view.
 
 **Smoke needed:**
 1. Bloom: on 626 Labs (or any bloom-bearing theme) Play modded shows a soft accent halo; open a

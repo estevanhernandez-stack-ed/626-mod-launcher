@@ -1159,7 +1159,7 @@ public sealed partial class MainWindow : Window
             Content = on
                 ? "Switch to offline mode (anti-cheat off)"
                 : "Switch to online mode (anti-cheat on)",
-            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black),
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeBg"],
             Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeAccent"],
         };
         toggle.Click += (_, _) => { ViewModel.SetAntiCheat(opt, turnOn: !on); rebuild(); };
