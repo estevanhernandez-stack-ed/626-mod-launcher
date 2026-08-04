@@ -8,10 +8,15 @@ namespace ModManager.Core;
 public static class ModSearch
 {
     public static bool Matches(string? name, string? author, string? query)
+        => Matches(name, author, null, query);
+
+    /// <summary>Overload that also searches the on-screen file key (F-060) — the row shows
+    /// "2RingSlots" next to the display name, so typing it must hit.</summary>
+    public static bool Matches(string? name, string? author, string? fileTag, string? query)
     {
         if (string.IsNullOrWhiteSpace(query)) return true;
         var q = query.Trim();
-        return Contains(name, q) || Contains(author, q);
+        return Contains(name, q) || Contains(author, q) || Contains(fileTag, q);
     }
 
     private static bool Contains(string? haystack, string needle)

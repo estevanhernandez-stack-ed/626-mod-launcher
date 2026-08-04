@@ -640,6 +640,11 @@
                    Text="No game registered yet. Add one with + Game."
                    Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}" />
 
+        <!-- Zero-match filter state (F-059): a blank list reads as broken — name the query. -->
+        <TextBlock Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource ThemeInkDim}"
+                   Text="{x:Bind ViewModel.FilterEmptyText, Mode=OneWay}"
+                   Visibility="{x:Bind ViewModel.FilterEmptyVisibility, Mode=OneWay}" />
+
         <!-- Status bar -->
         <Grid Grid.Row="4" Height="32" Padding="12,0" Background="{StaticResource ThemeFooterBg}"
               BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0">

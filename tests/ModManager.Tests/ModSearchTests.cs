@@ -21,4 +21,16 @@ public class ModSearchTests
     [Fact]
     public void Null_query_matches_everything()
         => Assert.True(ModSearch.Matches("Anything", "Anyone", null));
+
+    // F-059/F-060 (road-to-zero B3): the filter also matches the on-screen file key —
+    // "2RingSlots" is what the row SHOWS next to the display name, so typing it must hit.
+    [Theory]
+    [InlineData("More Ring and Necklace Slots", "Baradrim", "2RingSlots", "2ring", true)]
+    [InlineData("More Ring and Necklace Slots", "Baradrim", "2RingSlots", "RINGSLOTS", true)]
+    [InlineData("More Ring and Necklace Slots", "Baradrim", "2RingSlots", "necklace", true)]
+    [InlineData("More Ring and Necklace Slots", "Baradrim", "2RingSlots", "unrelated", false)]
+    [InlineData("More Ring and Necklace Slots", "Baradrim", null, "2ring", false)]
+    [InlineData("More Ring and Necklace Slots", "Baradrim", "", "2ring", false)]
+    public void Matches_file_tag_too(string name, string? author, string? fileTag, string query, bool expected)
+        => Assert.Equal(expected, ModSearch.Matches(name, author, fileTag, query));
 }
