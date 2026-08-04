@@ -72,7 +72,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="SaveFilesEmpty" Text="No save files detected in this folder." Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+        <TextBlock x:Name="SaveFilesEmpty" Text="No save files here. Check the save folder above, or start the game once to create one." Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
 
         <TextBlock Text="Characters" FontWeight="SemiBold" />
         <ListView x:Name="CharacterList" MaxHeight="200" SelectionMode="None">
@@ -93,7 +93,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="CharactersEmpty" Text="No editable characters detected in this folder."
+        <TextBlock x:Name="CharactersEmpty" Text="No editable characters here. If the folder is right, this game's save format isn't itemized yet."
                    Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed"
                    TextWrapping="Wrap" IsTextSelectionEnabled="True" />
         <TextBlock x:Name="EditorCredit" Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap" />
@@ -158,7 +158,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="EmptyText" Text="No snapshots yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
+        <TextBlock x:Name="EmptyText" Text="No snapshots yet. Hit Back up now to make one." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
         <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
     </StackPanel>
     </ScrollViewer>

@@ -12,6 +12,15 @@
     DefaultButton="Close"
     PrimaryButtonClick="OnPrimary">
 
+    <!-- Destructive confirm: the primary is the ONE sanctioned filled-danger surface
+         (design language button rules; vibe-glow F-037). Keyboard default stays on Cancel. -->
+    <ContentDialog.PrimaryButtonStyle>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource ThemeDanger}" />
+            <Setter Property="Foreground" Value="{StaticResource ThemeBg}" />
+        </Style>
+    </ContentDialog.PrimaryButtonStyle>
+
     <ScrollViewer MaxHeight="540" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="12" Width="440">
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"

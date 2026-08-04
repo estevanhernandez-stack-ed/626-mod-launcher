@@ -31,7 +31,7 @@ public sealed class NexusCatalogCard
     public string Author => string.IsNullOrWhiteSpace(Hit.Author) ? "" : $"by {Hit.Author}";
     public string Summary => TrimSummary(Hit.Summary);
     public string Endorsements => Hit.EndorsementCount is { } n ? $"♥ {n:N0}" : "";
-    public string Downloads => Hit.DownloadCount is { } n ? $"⬇ {n:N0}" : "";
+    public string Downloads => Hit.DownloadCount is { } n ? $"↓ {n:N0}" : "";
     public string Initial => Hit.Name.Length > 0 ? Hit.Name[..1].ToUpperInvariant() : "?";
 
     /// <summary>Category / version / updated date, collapsed into one quiet line — whichever parts the

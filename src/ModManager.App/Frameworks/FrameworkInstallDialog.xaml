@@ -26,7 +26,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="OverwriteWarning" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap"
+        <TextBlock x:Name="OverwriteWarning" Foreground="{StaticResource ThemeWarning}" FontSize="12" TextWrapping="Wrap"
                    Visibility="Collapsed" />
         <TextBlock x:Name="LocationText" Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap" />
         <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap"

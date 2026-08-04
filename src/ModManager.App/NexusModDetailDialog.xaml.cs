@@ -11,7 +11,7 @@ namespace ModManager.App;
 
 /// <summary>
 /// One mod, in full, without leaving the launcher: hero art, name, author/uploader, version, category,
-/// ♥ endorsements + ⬇ downloads, updated date, the readable description, and the requirements list —
+/// endorsements + downloads, updated date, the readable description, and the requirements list —
 /// plus the two things that honor the author, <b>Endorse</b> and <b>Track</b>, done in-app.
 ///
 /// <para>A <see cref="ContentDialog"/> is the right shape here, unlike the storefront grid: this is a
@@ -158,7 +158,7 @@ public sealed partial class NexusModDetailDialog : ContentDialog
 
         EndorsementsLabel.Text = detail.EndorsementCount is { } endorsements ? $"♥ {endorsements:N0}" : "";
         EndorsementsLabel.Visibility = Vis(EndorsementsLabel.Text.Length > 0);
-        DownloadsLabel.Text = detail.DownloadCount is { } downloads ? $"⬇ {downloads:N0}" : "";
+        DownloadsLabel.Text = detail.DownloadCount is { } downloads ? $"↓ {downloads:N0}" : "";
         DownloadsLabel.Visibility = Vis(DownloadsLabel.Text.Length > 0);
 
         // DecodePixelWidth MUST be set before the source — the BitmapImage(Uri) path starts decoding

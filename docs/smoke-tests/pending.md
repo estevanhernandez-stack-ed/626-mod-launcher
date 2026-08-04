@@ -871,3 +871,21 @@ Saves snapshots; "no source loaded" ×5 → Settings-path instruction; "Restore 
 2. Drag a zip over the library home → "Open a game first" caption, drop does nothing; over a
    game view → caption names the game, install proceeds.
 3. INI editor + Saves show their snapshot-first notes before any write.
+
+---
+
+## glow/wave-7 — loose-ends (vibe-glow F-001/013/020/027/037/046)
+
+**Shipped:** squared ToggleSwitch (stock WinUI template, 3 radii zeroed — Styles/SquaredControls.xaml);
+CheckBox squaring reaches dialogs via ControlCornerRadius in DialogTheming.SharedKeys; 8 code-behind
+opacity sites → token brushes + .cs guard arm; emoji/variant-presentation glyphs stripped from
+strings (📄🗑⚙⚠▶⬇); empty states carry instructions; safe-clear primary is filled danger;
+Themes.ContrastReport (Core) + import readability advisory.
+
+**Smoke needed:**
+1. Toggle drag interaction on the squared switch (template swap preserved states — verify drag,
+   not just click). Toggle in a DIALOG (safe-clear keep-Nexus switch) is square too.
+2. Checkbox in Settings: box renders square now (popup radius scope).
+3. Import a deliberately low-contrast theme JSON → warning names the pair + ratio, import still
+   succeeds, dialog stays open to read it.
+4. Safe-clear: primary reads filled danger red, Enter still triggers Cancel.
