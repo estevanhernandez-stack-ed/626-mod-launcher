@@ -1068,3 +1068,20 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
 1. Mod rows sit at 7x12 padding — denser vertically, indented 12; a full
    loadout still fits one screen; toggles/chips don't clip.
 2. Dialog root rhythm reads at the 12 step (Settings, Saves, safe-clear).
+
+---
+
+## polish — hover flash + glow fit (Este's live catches, post-zero)
+
+**Shipped:** button hover is the glass shift everywhere (stock grey trio read
+as a bright flash on gunmetal home rows); pressed steps to the border tone;
+button borders stay themed through the transition. The toggle bloom host is
+sized to the switch track (40x14, left-aligned) — a tight halo hugging the
+switch instead of a box behind the whole cell.
+
+**Smoke needed:**
+1. Hover game rows on the home — one soft glass step, no bright flash, no
+   third color.
+2. ON toggles show a tight amber aura around the track only.
+3. Regular buttons across dialogs hover glass (Close/Cancel etc.) — nothing
+   flashes light grey anymore.
