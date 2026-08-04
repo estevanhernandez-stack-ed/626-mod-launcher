@@ -64,6 +64,19 @@ public sealed class AppSettingsService
         Save();
     }
 
+    /// <summary>The last theme the user picked, restored at launch (F-080). Null means no pick
+    /// has ever been saved — the shell falls back to ThemeService.Default (the flagship).</summary>
+    public string? ThemeId => _themeId;
+
+    private string? _themeId;
+
+    public void SetThemeId(string id)
+    {
+        if (_themeId == id) return;
+        _themeId = id;
+        Save();
+    }
+
     public AppSettingsService()
     {
         Path = System.IO.Path.Combine(
@@ -73,6 +86,7 @@ public sealed class AppSettingsService
         _autoUpdateDefinitions = LoadAutoUpdate();
         _autoCheckModUpdates = LoadAutoCheckModUpdates();
         _keepPluginsUpdated = LoadKeepPluginsUpdated();
+        _themeId = LoadThemeId();
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
@@ -145,16 +159,36 @@ public sealed class AppSettingsService
         return true;
     }
 
+    private string? LoadThemeId()
+    {
+        try
+        {
+            if (!File.Exists(Path)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
+            if (doc.RootElement.TryGetProperty("themeId", out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                var id = v.GetString();
+                return string.IsNullOrWhiteSpace(id) ? null : id;
+            }
+        }
+        catch { /* missing / corrupt — no saved pick */ }
+        return null;
+    }
+
     private void Save()
     {
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
+            // themeId is serializer-escaped: user-theme ids come from Slugify today, but the
+            // camelCase-JSON rule wants round-trip safety, not luck.
+            var themeId = _themeId is null ? "null" : JsonSerializer.Serialize(_themeId);
             var json =
                 $"{{\"backdrop\":\"{_backdrop.ToString().ToLowerInvariant()}\","
                 + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")},"
                 + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")},"
-                + $"\"keepPluginsUpdated\":{(_keepPluginsUpdated ? "true" : "false")}}}";
+                + $"\"keepPluginsUpdated\":{(_keepPluginsUpdated ? "true" : "false")},"
+                + $"\"themeId\":{themeId}}}";
             File.WriteAllText(Path, json);
         }
         catch { /* best-effort persist; in-memory state still holds */ }

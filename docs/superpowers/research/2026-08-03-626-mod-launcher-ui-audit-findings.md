@@ -292,7 +292,7 @@ XAML-fleet-only by design or the builder pattern should grow one.
 | F-077 | toggle + active-nav bloom | conformance | 3 | 3 | Two sanctioned glow surfaces still not consuming accent_bloom; shell host-Border pattern doesn't fit per-control | from wave-8 close-out | Per-control composition strategy (template part or attached glow) | open |
 | F-078 | Loadout active segment | conformance | 2 | 3 | Accent fill + Colors.Black ink outside F-009's shipped scope (MainViewModel.cs Loadout brushes) | from wave-8 close-out | ThemeBg ink; align with fill discipline | open |
 | F-079 | code-built dialog shells | conformance | 2 | 2 | ~22 code-built ContentDialogs have no rail/eyebrow shell | from wave-8 close-out | DialogTheming auto-wraps string Titles into the shell (eyebrow optional per site) | open |
-| F-080 | theme persistence | qol | 3 | 5 | Theme choice is not persisted anywhere; every launch lands on Default — post-Forge this is the whole user experience | discovered at the reveal (default flip) | Persist theme id (camelCase JSON, round-trip test); restore on launch; Default only for first-run/missing | open |
+| F-080 | theme persistence | qol | 3 | 5 | Theme choice is not persisted anywhere; every launch lands on Default — post-Forge this is the whole user experience | discovered at the reveal (default flip) | Persist theme id (camelCase JSON, round-trip test); restore on launch; Default only for first-run/missing | clean (road-to-zero B2 — themeId in app-settings.json (camelCase, serializer-escaped), restored in the VM ctor, saved on every pick; restart-proven live: Obsidian survived kill+relaunch, deleted/missing ids fall back to Forge) |
 
 ## Audit notes
 
