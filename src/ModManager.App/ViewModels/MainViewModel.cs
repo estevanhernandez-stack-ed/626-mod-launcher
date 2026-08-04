@@ -272,7 +272,10 @@ public sealed partial class MainViewModel : ObservableObject
         _nexusPoll = nexusPoll;
         _sources = sources;
         ThemeOptions = themes.Themes;
-        SelectedTheme = themes.Default; // applies the default theme via OnSelectedThemeChanged
+        // Restore the user's saved pick (F-080); Default (the flagship) covers first-run, a
+        // cleared setting, and a saved id whose theme has since been deleted. Applying via
+        // OnSelectedThemeChanged also re-saves the id — a no-op when unchanged.
+        SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == appSettings.ThemeId) ?? themes.Default;
     }
 
     // Segmented Loadout control: the selected segment tints with the theme accent; the others stay
@@ -308,6 +311,7 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnSelectedThemeChanged(Theme? value)
     {
         if (value is not null) _themes.Apply(value);
+        if (value is not null) _appSettings.SetThemeId(value.Id); // F-080: picks survive restart
         // Inactive-segment foreground uses the resource-backed ThemeInk brush, so its color tracks
         // the theme via ThemeService.Set's in-place mutation. The ACTIVE segment's brush is
         // ThemeAccent (also resource-backed) - same story. We still re-notify so any caller that

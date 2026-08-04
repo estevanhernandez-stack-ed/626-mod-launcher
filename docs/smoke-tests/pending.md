@@ -938,3 +938,17 @@ lands on Forge.
    == accent in Forge — confirm "UPDATE"-class hints still read as hints).
 4. Per capture-checklist note: future capture rounds swap `default` for
    Forge as the flagship label.
+
+---
+
+## road-to-zero B2 — theme persistence (F-080)
+
+**Shipped:** themeId persisted to app-settings.json on every pick, restored at
+launch; Default (Forge) covers first-run / cleared setting / deleted theme.
+
+**Smoke needed:**
+1. Pick a USER-imported theme, restart — it restores. Delete that theme's
+   JSON from %APPDATA%\ModManagerBuilder\themes, restart — falls back to
+   Forge without error.
+2. Derived-from-avatar theme applied via Settings Apply persists too (any
+   SelectedTheme change saves).
