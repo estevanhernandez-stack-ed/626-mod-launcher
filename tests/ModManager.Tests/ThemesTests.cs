@@ -25,13 +25,13 @@ public class ThemesTests
     }
 
     [Fact]
-    public void Exactly_7_builtin_themes() => Assert.Equal(7, Themes.BuiltinThemes.Count);
+    public void Exactly_8_builtin_themes() => Assert.Equal(8, Themes.BuiltinThemes.Count);
 
     [Fact]
     public void Builtin_ids_match_expected_set()
     {
         Assert.Equal(
-            new[] { "626-labs", "aurora", "blueprint", "ember", "matrix", "mint", "obsidian" },
+            new[] { "626-labs", "aurora", "blueprint", "ember", "forge", "matrix", "mint", "obsidian" },
             Themes.BuiltinThemes.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray());
     }
 
@@ -94,7 +94,7 @@ public class ThemesTests
     public void BuildThemeList_builtins_only()
     {
         var list = Themes.BuildThemeList(Themes.BuiltinThemes, Array.Empty<(string, RawTheme)>());
-        Assert.Equal(7, list.Count);
+        Assert.Equal(8, list.Count);
         Assert.All(list, t => Assert.False(string.IsNullOrEmpty(t.Id) || string.IsNullOrEmpty(t.Name)));
     }
 
@@ -102,7 +102,7 @@ public class ThemesTests
     public void BuildThemeList_new_user_theme_appended()
     {
         var list = Themes.BuildThemeList(Themes.BuiltinThemes, new[] { ("synthwave", Synthwave()) });
-        Assert.Equal(8, list.Count);
+        Assert.Equal(9, list.Count);
         Assert.Contains(list, t => t.Id == "synthwave");
     }
 
@@ -112,7 +112,7 @@ public class ThemesTests
         var tweaked = Clone(Themes.BuiltinThemes["obsidian"]);
         tweaked.Tokens["name"] = "My Obsidian";
         var list = Themes.BuildThemeList(Themes.BuiltinThemes, new[] { ("obsidian", tweaked) });
-        Assert.Equal(7, list.Count);
+        Assert.Equal(8, list.Count);
         Assert.Equal("My Obsidian", list.First(t => t.Id == "obsidian").Name);
     }
 
@@ -122,6 +122,30 @@ public class ThemesTests
         var bad = new RawTheme();
         bad.Tokens["name"] = "Bad";
         var list = Themes.BuildThemeList(Themes.BuiltinThemes, new[] { ("bad", bad) });
-        Assert.Equal(7, list.Count);
+        Assert.Equal(8, list.Count);
+    }
+
+    // The flagship (vibe-glow reveal): gunmetal + amber, bloom on. Values are the design
+    // language's Forge table verbatim — a drifted token here means the shipped theme no
+    // longer matches the measuring stick.
+    [Fact]
+    public void Forge_flagship_matches_the_design_language()
+    {
+        var raw = Themes.BuiltinThemes["forge"];
+        Assert.Equal("Forge", raw.Tokens["name"]);
+        Assert.Equal("#14161a", raw.Tokens["bg"]);
+        Assert.Equal("#1d2126", raw.Tokens["glass"]);
+        Assert.Equal("#101216", raw.Tokens["title_bg"]);
+        Assert.Equal("#33383f", raw.Tokens["border"]);
+        Assert.Equal("#e6e8ea", raw.Tokens["text"]);
+        Assert.Equal("#ffb454", raw.Tokens["accent"]);
+        Assert.Equal("#ff5c33", raw.Tokens["danger"]);
+        Assert.Equal("#ffb454", raw.Tokens["warning"]);
+        Assert.Equal("#7ec46f", raw.Tokens["success"]);
+        Assert.Equal("#6fb3c4", raw.Tokens["info"]);
+        Assert.Equal("#0f1114", raw.Tokens["footer_bg"]);
+        Assert.NotNull(raw.AccentBloom);
+        Assert.Equal(6, raw.AccentBloom!.Blur);
+        Assert.Equal(0.45, raw.AccentBloom.Alpha);
     }
 }
