@@ -69,6 +69,14 @@ public static class Themes
 
     public static IReadOnlyDictionary<string, RawTheme> BuiltinThemes { get; } = new Dictionary<string, RawTheme>
     {
+        // The flagship (vibe-glow reveal, 2026-08): gunmetal + amber, bloom on. Token values are
+        // the design language's Forge table verbatim (docs/superpowers/specs/
+        // 2026-08-03-626-mod-launcher-design-language.md) — ThemesTests pins them.
+        ["forge"] = T("Forge", "#14161a", "#1d2126", "#191c21", "#101216", "#33383f",
+            "#e6e8ea", "#aeb4bc", "#767e88", "#4e555e",
+            "#ffb454", "#1d2126", "#0f1114", "#ff5c33", "#ffb454",
+            "#7ec46f", "#ffb454", "#ff5c33", "#6fb3c4",
+            "#ffb454", "#6fb3c4", "#ff5c33", "#7ec46f", 6, 0.45),
         ["obsidian"] = T("Obsidian", "#0d0d0d", "#1c1c1c", "#1a1a1c", "#161616", "#333333",
             "#e8e4dc", "#b8b4ac", "#777777", "#555555",
             "#6c63ff", "#2a2a2a", "#111111", "#ff6b6b", "#6c63ff",

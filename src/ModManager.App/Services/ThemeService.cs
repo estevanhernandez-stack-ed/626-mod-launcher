@@ -19,7 +19,10 @@ public sealed class ThemeService
     public ThemeService() => _themes = BuildList();
 
     public IReadOnlyList<Theme> Themes => _themes;
-    public Theme Default => _themes.FirstOrDefault(t => t.Id == "626-labs") ?? _themes[0];
+    // Forge is the flagship (vibe-glow reveal). NOTE: theme choice is not persisted anywhere
+    // today — every launch lands on Default (pre-existing behavior, recorded as a proposed
+    // register addition), so this flip is what every user sees at next start.
+    public Theme Default => _themes.FirstOrDefault(t => t.Id == "forge") ?? _themes[0];
 
     private static string UserDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder", "themes");

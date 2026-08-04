@@ -102,7 +102,7 @@
 
             <!-- Dim ink step (wave 3, F-013): text_dim joins ThemeInkSoft/ThemeInkMuted so the
                  opacity-dimmed hierarchy maps onto the token contract. -->
-            <SolidColorBrush x:Key="ThemeInkDim" Color="#6A849E" />
+            <SolidColorBrush x:Key="ThemeInkDim" Color="#767E88" />
 
             <!-- Hangar shape law (vibe-glow wave 2, F-001): corner radius 0 everywhere.
                  ControlCornerRadius/OverlayCornerRadius are the two radius resources
@@ -130,21 +130,23 @@
             <x:Double x:Key="TagFontSize">10</x:Double>
 
             <!-- Themeable palette — single brush instances mutated live by ThemeService.
-                 Initialized to the default "626 Labs" theme (navy + cyan). -->
-            <SolidColorBrush x:Key="ThemeBg" Color="#0F182B" />
-            <SolidColorBrush x:Key="ThemeTitleBg" Color="#131A2A" />
-            <SolidColorBrush x:Key="ThemeBarBg" Color="#1A2540" />
-            <SolidColorBrush x:Key="ThemeFooterBg" Color="#0A121F" />
-            <SolidColorBrush x:Key="ThemePanel" Color="#1A2540" />
-            <SolidColorBrush x:Key="ThemeBorder" Color="#2A3A5C" />
-            <SolidColorBrush x:Key="ThemeAccent" Color="#3BB4D9" />
-            <SolidColorBrush x:Key="ThemeDanger" Color="#F25C73" />
+                 Initialized to the default "Forge" theme (gunmetal + amber). NOTE: initial hexes never
+                 actually paint — ThemeService.Apply runs in the MainWindow ctor before Activate — they
+                 just keep the file readable next to the token table. -->
+            <SolidColorBrush x:Key="ThemeBg" Color="#14161A" />
+            <SolidColorBrush x:Key="ThemeTitleBg" Color="#101216" />
+            <SolidColorBrush x:Key="ThemeBarBg" Color="#1D2126" />
+            <SolidColorBrush x:Key="ThemeFooterBg" Color="#0F1114" />
+            <SolidColorBrush x:Key="ThemePanel" Color="#1D2126" />
+            <SolidColorBrush x:Key="ThemeBorder" Color="#33383F" />
+            <SolidColorBrush x:Key="ThemeAccent" Color="#FFB454" />
+            <SolidColorBrush x:Key="ThemeDanger" Color="#FF5C33" />
             <!-- Amber: conditional/optional hint (e.g. "MAY NEED") — de-escalated vs ThemeDanger's required red. -->
-            <SolidColorBrush x:Key="ThemeWarning" Color="#D9A441" />
-            <SolidColorBrush x:Key="ThemeInk" Color="#E8F2FF" />
-            <SolidColorBrush x:Key="ThemeInkSoft" Color="#A8C2D9" />
-            <SolidColorBrush x:Key="ThemeInkMuted" Color="#4A5F7A" />
-            <SolidColorBrush x:Key="ThemeInfo" Color="#58C7E6" />
+            <SolidColorBrush x:Key="ThemeWarning" Color="#FFB454" />
+            <SolidColorBrush x:Key="ThemeInk" Color="#E6E8EA" />
+            <SolidColorBrush x:Key="ThemeInkSoft" Color="#AEB4BC" />
+            <SolidColorBrush x:Key="ThemeInkMuted" Color="#4E555E" />
+            <SolidColorBrush x:Key="ThemeInfo" Color="#6FB3C4" />
 
             <!-- ContentDialog + AccentButton overrides. Same-instance pattern as above so
                  ThemeService.Apply's in-place Color mutation flows through to every popup. The

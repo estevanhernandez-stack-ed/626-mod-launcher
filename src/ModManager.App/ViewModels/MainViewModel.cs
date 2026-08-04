@@ -279,7 +279,7 @@ public sealed partial class MainViewModel : ObservableObject
     // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.
     // Inactive segments return the resource-backed ThemeInk brush directly so theme switches
     // propagate via the in-place color mutation in ThemeService.Set (no extra notify needed for
-    // inactive). The active foreground is currently Black - readable on the default cyan accent;
+    // inactive). The active foreground is currently Black - readable on the default amber accent;
     // a future text_on_accent theme slot would let this re-theme correctly on arbitrary accents.
     private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
 

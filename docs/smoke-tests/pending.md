@@ -919,3 +919,22 @@ fill (out of this wave's scope — recorded). Dialog shells carry AutomationProp
    reopen — the stretch hook re-fires on Loaded).
 5. Chips: LOADER/UPDATE/VARIANT chips read as outlines; variant chips on a multi-option mod
    (Faster Ships) still show selected vs unselected distinctly.
+
+---
+
+## feat/forge-reveal — flagship theme + default flip (vibe-glow reveal)
+
+**Shipped:** Forge (gunmetal + amber, bloom 6/0.45) as the 8th builtin and the
+new default; App.xaml initial hexes moved to Forge; theme menu lists Forge
+first. Theme choice is still not persisted (pre-existing) — every launch
+lands on Forge.
+
+**Smoke needed:**
+1. Cold start lands on Forge — no navy/cyan flash frame before first paint.
+2. THEME dropdown lists Forge first and re-selecting other builtins still
+   works, including back to Forge.
+3. Amber accent reads right across the shell: toggles, chips, rail, Play
+   bloom, Loadout active segment (black-on-amber), warned surfaces (warning
+   == accent in Forge — confirm "UPDATE"-class hints still read as hints).
+4. Per capture-checklist note: future capture rounds swap `default` for
+   Forge as the flagship label.
