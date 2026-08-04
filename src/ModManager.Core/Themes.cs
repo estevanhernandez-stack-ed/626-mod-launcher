@@ -71,7 +71,7 @@ public static class Themes
     {
         // The flagship (vibe-glow reveal, 2026-08): gunmetal + amber, bloom on. Token values are
         // the design language's Forge table verbatim (docs/superpowers/specs/
-        // 2026-08-03-626-mod-launcher-design-language.md) — ForgeTests pin them.
+        // 2026-08-03-626-mod-launcher-design-language.md) — ThemesTests pins them.
         ["forge"] = T("Forge", "#14161a", "#1d2126", "#191c21", "#101216", "#33383f",
             "#e6e8ea", "#aeb4bc", "#767e88", "#4e555e",
             "#ffb454", "#1d2126", "#0f1114", "#ff5c33", "#ffb454",

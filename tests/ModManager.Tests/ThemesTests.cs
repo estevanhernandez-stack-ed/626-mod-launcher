@@ -138,6 +138,17 @@ public class ThemesTests
         Assert.Equal("#101216", raw.Tokens["title_bg"]);
         Assert.Equal("#33383f", raw.Tokens["border"]);
         Assert.Equal("#e6e8ea", raw.Tokens["text"]);
+        Assert.Equal("#aeb4bc", raw.Tokens["text_secondary"]);
+        Assert.Equal("#767e88", raw.Tokens["text_dim"]);
+        Assert.Equal("#4e555e", raw.Tokens["text_muted"]);
+        Assert.Equal("#191c21", raw.Tokens["glass_on_mica"]);
+        Assert.Equal("#1d2126", raw.Tokens["bar_bg"]);
+        Assert.Equal("#ff5c33", raw.Tokens["pace_marker"]);
+        Assert.Equal("#ffb454", raw.Tokens["sparkline"]);
+        Assert.Equal("#ffb454", raw.Tokens["tag_secondary"]);
+        Assert.Equal("#6fb3c4", raw.Tokens["tag_client_only"]);
+        Assert.Equal("#ff5c33", raw.Tokens["tag_vortex"]);
+        Assert.Equal("#7ec46f", raw.Tokens["tag_folder"]);
         Assert.Equal("#ffb454", raw.Tokens["accent"]);
         Assert.Equal("#ff5c33", raw.Tokens["danger"]);
         Assert.Equal("#ffb454", raw.Tokens["warning"]);

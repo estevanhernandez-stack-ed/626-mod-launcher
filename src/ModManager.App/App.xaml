@@ -130,7 +130,9 @@
             <x:Double x:Key="TagFontSize">10</x:Double>
 
             <!-- Themeable palette — single brush instances mutated live by ThemeService.
-                 Initialized to the default "626 Labs" theme (navy + cyan). -->
+                 Initialized to the default "Forge" theme (gunmetal + amber). NOTE: initial hexes never
+                 actually paint — ThemeService.Apply runs in the MainWindow ctor before Activate — they
+                 just keep the file readable next to the token table. -->
             <SolidColorBrush x:Key="ThemeBg" Color="#14161A" />
             <SolidColorBrush x:Key="ThemeTitleBg" Color="#101216" />
             <SolidColorBrush x:Key="ThemeBarBg" Color="#1D2126" />
