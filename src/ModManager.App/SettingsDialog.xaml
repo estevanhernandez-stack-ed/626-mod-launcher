@@ -20,7 +20,7 @@
             <TextBlock Text="APP // SETTINGS" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Settings" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
@@ -28,8 +28,8 @@
     <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="14" Width="460">
             <!-- ============ IDENTITY ============ -->
-            <TextBlock Text="Identity" FontWeight="SemiBold" FontSize="14" />
-            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
+            <TextBlock Text="Identity" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                        Text="Pick an image — a Discord avatar, a screenshot, a photo. Use it as the launcher's icon and derive a theme from its colors. Everything stays on your machine." />
 
             <Grid ColumnSpacing="12">
@@ -44,13 +44,13 @@
                 <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
                     <Button Content="Pick image…" Click="OnPickImage" />
                     <Button x:Name="RemoveButton" Content="Remove avatar" Click="OnRemove" Visibility="Collapsed" />
-                    <TextBlock x:Name="FileLabel" Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="FileLabel" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Grid>
 
             <TextBlock Text="Extracted palette" FontWeight="SemiBold" Margin="0,4,0,0" />
             <StackPanel x:Name="PaletteStrip" Orientation="Horizontal" Spacing="6" Height="32" />
-            <TextBlock x:Name="PaletteEmpty" Text="Pick an image to see its dominant colors." Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
+            <TextBlock x:Name="PaletteEmpty" Text="Pick an image to see its dominant colors." Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
 
             <CheckBox x:Name="UseAsIconCheck" Content="Use this image as the launcher's icon" IsChecked="True" />
             <CheckBox x:Name="DeriveThemeCheck" Content="Save a theme derived from these colors" IsChecked="True" />
@@ -59,7 +59,7 @@
             <!-- Window transparency. Sits with the icon options because both control how the
                  launcher LOOKS on the desktop. Applies immediately (no Apply button needed). -->
             <StackPanel Orientation="Vertical" Spacing="2" Margin="0,8,0,0">
-                <TextBlock Text="Window transparency" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource ThemeInkSoft}" />
+                <TextBlock Text="Window transparency" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
                 <ComboBox x:Name="BackdropBox" SelectionChanged="OnBackdropChanged"
                           ToolTipService.ToolTip="Solid keeps your theme's background opaque. Mica lets a hint of the desktop tint show through. Acrylic is more translucent.">
                     <ComboBoxItem Content="Solid" Tag="solid" />
@@ -72,7 +72,7 @@
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
             <!-- ============ NEXUS MODS ============ -->
-            <TextBlock Text="Nexus Mods" FontWeight="SemiBold" FontSize="14" />
+            <TextBlock Text="Nexus Mods" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
 
             <!-- Connected banner (visible when connected) -->
             <Border x:Name="NexusConnectedBanner" Visibility="Collapsed"
@@ -84,7 +84,7 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="NexusExplainer" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
+            <TextBlock x:Name="NexusExplainer" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
 
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button x:Name="NexusConnectButton" Content="Connect Nexus account" Click="OnNexusConnect" />
@@ -92,9 +92,9 @@
             </StackPanel>
 
             <!-- Dark-window note: shown (button disabled) until Nexus delivers the OAuth client_id. -->
-            <TextBlock x:Name="NexusConnectSublabel" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+            <TextBlock x:Name="NexusConnectSublabel" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
 
-            <TextBlock x:Name="StatusText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
 
             <!-- Auto-check toggle. Polls Nexus by mod id on game load (debounced ~24h/game) to flag
                  mods with a newer version available. The manual "Refresh Nexus stats" action works
@@ -111,7 +111,7 @@
                       Content="Keep plugins updated"
                       Click="OnKeepPluginsUpdatedToggled"
                       ToolTipService.ToolTip="Once a day, quietly fetch the latest signed Nexus plugin from the 626 Mod Launcher feed. The first install always runs on connect; this gates the daily re-check." />
-            <TextBlock x:Name="PluginStatusText" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
+            <TextBlock x:Name="PluginStatusText" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
             <!-- Manual install / refresh button — FULL only. On STORE the PluginStatusText already
                  shows "Plugins are a desktop-only feature." and this button is absent from the tree.
                  The x:Name is referenced in the code-behind; the code-behind #if FULL guards it. -->
@@ -124,8 +124,8 @@
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
             <!-- ============ ABOUT ============ -->
-            <TextBlock Text="About" FontWeight="SemiBold" FontSize="14" />
-            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" Margin="0,8,0,0">
+            <TextBlock Text="About" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" Margin="0,8,0,0">
                 <Run Text="Save editor format work based on community reverse-engineering. Credit to: " />
                 <Hyperlink NavigateUri="https://github.com/BenGrn/EldenRingSaveCopier">
                     <Run Text="BenGrn/EldenRingSaveCopier" />
@@ -143,7 +143,7 @@
 
             <TextBlock Text="Installed tools" FontWeight="SemiBold" Margin="0,16,0,4" />
             <TextBlock x:Name="InstalledToolsEmpty" Text="No third-party tools installed yet. Install one from the tools rail (+) in a game view."
-                       Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+                       Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
             <ItemsRepeater x:Name="InstalledToolsList">
                 <ItemsRepeater.Layout>
                     <StackLayout Orientation="Vertical" Spacing="8" />
@@ -157,10 +157,10 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
-                                <TextBlock Text="{x:Bind GameLabel}" Foreground="{StaticResource ThemeInkDim}" FontSize="12" />
+                                <TextBlock Text="{x:Bind GameLabel}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
                                 <TextBlock Text="Catalog metadata only — never bundled. See NOTICE for full attribution."
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="12" TextWrapping="Wrap" />
+                                           FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
                             <!-- Same management affordance the framework rows below have (F-032):
                                  rename / re-pick runnable / uninstall live in the configure dialog. -->
@@ -173,7 +173,7 @@
 
             <TextBlock Text="Installed frameworks" FontWeight="SemiBold" Margin="0,16,0,4" />
             <TextBlock x:Name="InstalledFrameworksEmpty" Text="No frameworks installed by the launcher yet. Drop a framework archive onto a game to install one."
-                       Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+                       Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
             <ItemsRepeater x:Name="InstalledFrameworksList">
                 <ItemsRepeater.Layout>
                     <StackLayout Orientation="Vertical" Spacing="8" />
@@ -190,22 +190,22 @@
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" FontWeight="SemiBold" />
                                 <TextBlock Text="{x:Bind Detail}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="12" TextWrapping="Wrap" />
+                                           FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
                             <HyperlinkButton Grid.Column="1" Content="Get it here" NavigateUri="{x:Bind GetUriObj}"
-                                             FontSize="12" VerticalAlignment="Center" />
+                                             FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center" />
                             <Button Grid.Column="2" Content="Uninstall" Tag="{x:Bind FrameworkId}"
                                     Click="OnUninstallFramework" VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
-            <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+            <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap" Margin="0,4,0,0"
                        Text="The launcher never bundles frameworks. Drop a recognized framework zip to install; this section tracks what's been installed and reverses it." />
 
             <TextBlock Text="Direct-inject mod configs" FontWeight="SemiBold" Margin="0,16,0,4" />
 
-            <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="12" TextWrapping="Wrap"
+            <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
                        Text="Per-mod config-file path overrides for direct-inject mods (Seamless Co-op, ReShade, etc.). Leave alone to use the catalog default; Override when your install is in an unusual location." />
             <ItemsRepeater x:Name="DirectInjectConfigsList">
                 <ItemsRepeater.Layout>
@@ -222,7 +222,7 @@
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Title}" FontWeight="SemiBold" />
                                 <TextBlock Text="{x:Bind Subtitle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="12" TextWrapping="Wrap" />
+                                           FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="Override…" Tag="{x:Bind}"
                                     Click="OnDirectInjectOverrideClick" VerticalAlignment="Center" />
@@ -232,14 +232,14 @@
             </ItemsRepeater>
             <TextBlock x:Name="DirectInjectConfigsEmpty"
                        Text="No catalog-known direct-inject mods for the active engine."
-                       Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+                       Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
 
             <!-- Divider -->
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
             <!-- ============ RESET ============ -->
-            <TextBlock Text="Reset" FontWeight="SemiBold" FontSize="14" />
-            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
+            <TextBlock Text="Reset" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                        Text="Archive your current setup to a restore point, then reset the launcher to first-run. Your mods stay on disk." />
             <Button x:Name="ResetLauncherButton"
                     Content="Reset launcher…"
@@ -249,11 +249,11 @@
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
             <!-- ============ RESTORE POINTS ============ -->
-            <TextBlock Text="Restore points" FontWeight="SemiBold" FontSize="14" />
-            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12"
+            <TextBlock Text="Restore points" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                        Text="Snapshots of your launcher state created before a reset. Restore to bring back a previous setup, or delete what you no longer need." />
             <TextBlock x:Name="NoRestorePointsText" Text="No restore points yet."
-                       Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
+                       Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
             <ItemsRepeater x:Name="RestorePointsList">
                 <ItemsRepeater.Layout>
                     <StackLayout Orientation="Vertical" Spacing="8" />
@@ -270,7 +270,7 @@
                                 <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Timestamp}" FontWeight="SemiBold" />
                                 <TextBlock Text="{x:Bind Detail}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="12" TextWrapping="Wrap" />
+                                           FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="Restore" Tag="{x:Bind Id}"
                                     Click="OnRestorePoint" VerticalAlignment="Center" />

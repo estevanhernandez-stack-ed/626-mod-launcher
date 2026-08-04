@@ -20,13 +20,13 @@
             <TextBlock Text="LOADOUTS // PROFILES" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Profiles" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Profiles" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
 
     <StackPanel Spacing="12" Width="420">
-        <TextBlock Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap"
+        <TextBlock Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
                    Text="A profile saves which mods are on/off. Save your current loadout, then switch between them." />
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
@@ -51,13 +51,13 @@
                                 AutomationProperties.Name="{x:Bind LoadAutomationName}" />
                         <Button Grid.Column="2" AutomationProperties.Name="{x:Bind DeleteAutomationName}" Click="OnDelete" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Delete profile">
-                            <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{StaticResource ThemeDanger}" />
+                            <FontIcon Glyph="&#xE74D;" FontSize="{StaticResource RowTitleFontSize}" Foreground="{StaticResource ThemeDanger}" />
                         </Button>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
         <TextBlock x:Name="EmptyText" Text="No profiles yet." Foreground="{StaticResource ThemeInkDim}" Visibility="Collapsed" />
-        <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
     </StackPanel>
 </ContentDialog>

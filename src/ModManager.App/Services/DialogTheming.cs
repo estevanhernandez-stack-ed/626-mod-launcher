@@ -88,7 +88,7 @@ internal static class DialogTheming
                 rail, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
             var stack = new StackPanel { Spacing = 6 };
             stack.Children.Add(rail);
-            stack.Children.Add(new TextBlock { Text = s, FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            stack.Children.Add(new TextBlock { Text = s, FontSize = (double)app["ViewTitleFontSize"], FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(dialog, s);
             dialog.Title = stack;
         }

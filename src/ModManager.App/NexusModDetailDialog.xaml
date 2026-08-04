@@ -16,7 +16,7 @@
             <TextBlock Text="NEXUS // MOD DETAIL" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Mod details" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Mod details" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
@@ -67,14 +67,14 @@
                     <TextBlock x:Name="NameLabel" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"
                                IsTextSelectionEnabled="True"
                                Foreground="{StaticResource ThemeInk}" />
-                    <TextBlock x:Name="ByLabel" FontSize="13" TextWrapping="Wrap"
+                    <TextBlock x:Name="ByLabel" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
                                Foreground="{StaticResource ThemeInkSoft}" />
-                    <TextBlock x:Name="MetaLabel" FontSize="12" Foreground="{StaticResource ThemeInkDim}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="MetaLabel" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="16">
-                    <TextBlock x:Name="EndorsementsLabel" FontSize="13" Foreground="{StaticResource ThemeInkSoft}" />
-                    <TextBlock x:Name="DownloadsLabel" FontSize="13" Foreground="{StaticResource ThemeInkSoft}" />
+                    <TextBlock x:Name="EndorsementsLabel" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
+                    <TextBlock x:Name="DownloadsLabel" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
                 </StackPanel>
 
                 <!-- Download stays a browser handoff. Endorse and Track are the only writes on this
@@ -91,23 +91,23 @@
                                              ToolTipService.ToolTip="Track this mod on your Nexus account." />
                 </StackPanel>
 
-                <TextBlock x:Name="ActionMessage" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+                <TextBlock x:Name="ActionMessage" Visibility="Collapsed" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
                            Foreground="{StaticResource ThemeAccent}" />
 
-                <TextBlock x:Name="SummaryLabel" Visibility="Collapsed" FontSize="13" Foreground="{StaticResource ThemeInkSoft}"
+                <TextBlock x:Name="SummaryLabel" Visibility="Collapsed" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                            TextWrapping="Wrap" IsTextSelectionEnabled="True" />
 
                 <StackPanel x:Name="DescriptionSection" Spacing="4" Visibility="Collapsed">
-                    <TextBlock Text="Description" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock Text="Description" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource ThemeInk}" />
                     <!-- Always the converted text, never the raw Nexus body: descriptions are BBCode and
                          HTML mixed together. -->
-                    <TextBlock x:Name="DescriptionLabel" FontSize="13" Foreground="{StaticResource ThemeInkSoft}"
+                    <TextBlock x:Name="DescriptionLabel" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </StackPanel>
 
                 <StackPanel x:Name="RequirementsSection" Spacing="4" Visibility="Collapsed">
-                    <TextBlock Text="Requirements" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock Text="Requirements" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource ThemeInk}" />
                     <ItemsControl x:Name="RequirementList">
                         <ItemsControl.ItemTemplate>
@@ -125,14 +125,14 @@
                                             <TextBlock Text="{Binding Name}" TextWrapping="Wrap"
                                                        Foreground="{StaticResource ThemeAccent}" />
                                             <TextBlock Text="{Binding Detail}" TextWrapping="Wrap"
-                                                       FontSize="12" Foreground="{StaticResource ThemeInkDim}"
+                                                       FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}"
                                                        Visibility="{Binding DetailVisibility}" />
                                         </StackPanel>
                                     </Button>
                                     <StackPanel Spacing="1" Margin="0,3" Visibility="{Binding PlainVisibility}">
                                         <TextBlock Foreground="{StaticResource ThemeInk}" Text="{Binding Name}" TextWrapping="Wrap" />
                                         <TextBlock Text="{Binding Detail}" TextWrapping="Wrap"
-                                                   FontSize="12" Foreground="{StaticResource ThemeInkDim}"
+                                                   FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}"
                                                    Visibility="{Binding DetailVisibility}" />
                                     </StackPanel>
                                 </Grid>

@@ -27,7 +27,7 @@
                     Padding="6,4" VerticalAlignment="Center"
                     ToolTipService.ToolTip="Back to your library">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xE72B;" FontSize="13" />
+                    <FontIcon Glyph="&#xE72B;" FontSize="{StaticResource BodyFontSize}" />
                     <TextBlock Text="Back" />
                 </StackPanel>
             </Button>
@@ -37,7 +37,7 @@
                        TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />
             <TextBlock x:Name="CountLabel" Grid.Column="2" VerticalAlignment="Center"
-                       FontSize="12" Foreground="{StaticResource ThemeInkDim}" />
+                       FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
         </Grid>
 
         <!-- Empty state. Two distinct messages, set from code — "nothing has ever been checked" must
@@ -45,7 +45,7 @@
         <StackPanel x:Name="EmptyPanel" Grid.Row="1" Spacing="8" MaxWidth="480"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Visibility="Collapsed">
-            <TextBlock x:Name="EmptyTitle" FontSize="20" FontWeight="SemiBold"
+            <TextBlock x:Name="EmptyTitle" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold"
                        TextAlignment="Center" TextWrapping="Wrap"
                        Foreground="{StaticResource ThemeInk}" />
             <TextBlock x:Name="EmptyBody" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
@@ -67,13 +67,13 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10"
                                                 VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind GameName}" FontSize="15" FontWeight="SemiBold"
+                                        <TextBlock Text="{x:Bind GameName}" FontSize="{StaticResource RowTitleFontSize}" FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{StaticResource ThemeInk}" />
                                         <Border CornerRadius="0" Padding="6,2"
                                                 Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                                 VerticalAlignment="Center">
-                                            <TextBlock Text="{x:Bind CountText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                            <TextBlock Text="{x:Bind CountText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                        Foreground="{StaticResource ThemeAccent}" />
                                         </Border>
                                     </StackPanel>
@@ -95,7 +95,7 @@
                                                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                            Foreground="{StaticResource ThemeInk}" />
                                                 <TextBlock Grid.Column="1" Text="{x:Bind VersionText}"
-                                                           FontFamily="{StaticResource MonoFontFamily}" FontSize="12" Foreground="{StaticResource ThemeInkSoft}"
+                                                           FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                                            VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
@@ -108,7 +108,7 @@
 
                 <!-- Honesty footer: games that have never been refreshed are absent from the list above,
                      and silence about them would read as "they're fine." Say it instead. -->
-                <TextBlock x:Name="UncheckedNote" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource ThemeInkDim}"
+                <TextBlock x:Name="UncheckedNote" TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}"
                            Visibility="Collapsed" />
             </StackPanel>
         </ScrollViewer>

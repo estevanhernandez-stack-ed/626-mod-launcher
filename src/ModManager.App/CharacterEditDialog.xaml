@@ -17,13 +17,13 @@
             <TextBlock Text="SAVE EDITOR // SNAPSHOT FIRST" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Edit character" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Edit character" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 
 
     <StackPanel Spacing="12" Width="460">
-        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
         <TextBox x:Name="NameBox" Header="Name" MaxLength="16"
                  PlaceholderText="Character name (max 16)" />
         <NumberBox x:Name="RunesBox" Header="Runes" Minimum="0" Maximum="999999999"
@@ -48,8 +48,8 @@
             <NumberBox x:Name="ArcBox" Grid.Row="3" Grid.Column="1" Header="ARC" Minimum="1" Maximum="99" SpinButtonPlacementMode="Compact" ValueChanged="OnStatChanged" />
         </Grid>
 
-        <TextBlock x:Name="LevelText" Foreground="{StaticResource ThemeInkSoft}" FontSize="12" />
-        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="11"
+        <TextBlock x:Name="LevelText" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
+        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}"
                    Text="Saving creates a snapshot first. The previous state stays restorable from the Snapshots list — even if something goes wrong." />
     </StackPanel>
 </ContentDialog>
