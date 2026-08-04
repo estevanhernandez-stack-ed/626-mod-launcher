@@ -202,6 +202,12 @@ public sealed class ThemeService
         Set(res, "ListViewItemBackgroundPointerOver", t["glass"]);
         Set(res, "ListViewItemBackgroundPressed", t["glass"]);
 
+        // Button hover glass (Este's flash catch): hover = glass, pressed = border tone.
+        Set(res, "ButtonBackgroundPointerOver", t["glass"]);
+        Set(res, "ButtonBackgroundPressed", t["border"]);
+        Set(res, "ButtonBorderBrushPointerOver", t["border"]);
+        Set(res, "ButtonBorderBrushPressed", t["border"]);
+
         // Glow rule (F-002): restyle every attached bloom from this theme's accent_bloom token.
         // A theme with alpha 0 reads flat — that's the token doing its job, not a bug.
         Bloom.OnThemeChanged(Parse(t["accent"]), Parse(t["danger"]), t.AccentBloom.Blur, t.AccentBloom.Alpha);

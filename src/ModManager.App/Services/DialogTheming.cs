@@ -36,6 +36,8 @@ internal static class DialogTheming
         "CheckBoxCheckGlyphForegroundChecked", "CheckBoxCheckGlyphForegroundCheckedPointerOver", "CheckBoxCheckGlyphForegroundCheckedPressed",
         "TextControlBorderBrushFocused", "TextControlSelectionHighlightColor",
         "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed",
+        "ButtonBackgroundPointerOver", "ButtonBackgroundPressed",
+        "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed",
         "CheckBoxForegroundUnchecked", "CheckBoxForegroundUncheckedPointerOver", "CheckBoxForegroundUncheckedPressed",
         "CheckBoxForegroundChecked", "CheckBoxForegroundCheckedPointerOver", "CheckBoxForegroundCheckedPressed",
         "ComboBoxForeground", "ComboBoxForegroundPointerOver", "ComboBoxForegroundPressed",

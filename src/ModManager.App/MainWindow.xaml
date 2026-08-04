@@ -471,7 +471,11 @@
                              light means live — an ON toggle emits the accent glow. Wired in
                              OnRowToggleLoaded; recycle-safe (AttachStateGlow skips wired hosts). -->
                         <Grid Grid.Column="0">
-                            <Border />
+                            <!-- Sized to the switch TRACK (40x20 in SquaredControls), not the
+                                 control's layout box — the full-cell glow read as a weird box
+                                 behind the toggle (Este's catch). Slightly shorter than the
+                                 track so the halo hugs it. -->
+                            <Border Width="40" Height="14" HorizontalAlignment="Left" VerticalAlignment="Center" />
                             <ToggleSwitch IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
                                           Loaded="OnRowToggleLoaded"
                                           AutomationProperties.Name="{x:Bind ToggleAutomationName, Mode=OneWay}"

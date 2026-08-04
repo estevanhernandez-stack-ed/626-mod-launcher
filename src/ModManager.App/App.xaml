@@ -180,6 +180,14 @@
             <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1D2126" />
             <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#1D2126" />
 
+            <!-- Button hover = the same glass shift as rows (Este's catch: the stock grey trio
+                 reads as a bright flash on gunmetal). Pressed steps to the border tone; the
+                 border stays themed so nothing light flickers through the transition. -->
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#1D2126" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#33383F" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#33383F" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#33383F" />
+
             <!-- ContentDialog + AccentButton overrides. Same-instance pattern as above so
                  ThemeService.Apply's in-place Color mutation flows through to every popup. The
                  keys here are the ones WinUI 3's default ContentDialog + AccentButton templates
