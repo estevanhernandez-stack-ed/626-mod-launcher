@@ -62,15 +62,6 @@
             <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E8F2FF" />
             <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A8C2D9" />
 
-            <!-- Default ink, second attempt (wave 2, F-011). The TextFillColorPrimaryBrush
-                 override above is INERT under RequestedTheme="Dark" — the framework theme
-                 dictionary shadows it (byte-identical white pixel counts across themes in the
-                 wave-1 re-review). An implicit TextBlock style outranks the template default;
-                 explicit Foreground and Opacity dimming at usage sites still win over it. -->
-            <Style TargetType="TextBlock">
-                <Setter Property="Foreground" Value="{StaticResource ThemeInk}" />
-            </Style>
-
             <!-- Hangar shape law (vibe-glow wave 2, F-001): corner radius 0 everywhere.
                  ControlCornerRadius/OverlayCornerRadius are the two radius resources
                  XamlControlsResources honors from app resources — they square every control
@@ -78,14 +69,17 @@
             <CornerRadius x:Key="ControlCornerRadius">0</CornerRadius>
             <CornerRadius x:Key="OverlayCornerRadius">0</CornerRadius>
 
-            <!-- Hangar type voice (wave 2, F-004): stencil chrome + mono data faces, with
-                 fallbacks per the design language (Segoe UI Semibold when the Bahnschrift
-                 width axis is unavailable; Consolas when Cascadia Mono isn't installed). -->
-            <FontFamily x:Key="StencilFontFamily">Bahnschrift SemiBold Condensed, Segoe UI</FontFamily>
+            <!-- Hangar type voice (wave 2, F-004): stencil chrome + mono data faces. The
+                 stencil family is plain "Bahnschrift" — the SemiBold/Condensed axes are driven
+                 by FontWeight/FontStretch at the usage sites, because named variable-font
+                 instances ("Bahnschrift SemiBold Condensed") don't reliably resolve as families
+                 and would silently fall back to Segoe at the wrong weight. -->
+            <FontFamily x:Key="StencilFontFamily">Bahnschrift, Segoe UI</FontFamily>
             <FontFamily x:Key="MonoFontFamily">Cascadia Mono, Consolas</FontFamily>
 
             <!-- Type ramp (wave 2, F-010) — the six steps from the design language.
-                 Chrome/eyebrow role sits at the tag step (10) with +.06em tracking. -->
+                 Chrome/eyebrow role sits at the tag step (10) with +.08em tracking
+                 (CharacterSpacing 80); view titles track at +.06em (60). -->
             <x:Double x:Key="HeroFontSize">34</x:Double>
             <x:Double x:Key="ViewTitleFontSize">21</x:Double>
             <x:Double x:Key="RowTitleFontSize">14</x:Double>
@@ -154,6 +148,19 @@
             <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="#E8F2FF" />
             <SolidColorBrush x:Key="MenuFlyoutItemForegroundPressed" Color="#E8F2FF" />
             <SolidColorBrush x:Key="MenuFlyoutSeparatorBackground" Color="#2A3A5C" />
+
+            <!-- Default ink, second attempt (wave 2, F-011). The TextFillColorPrimaryBrush
+                 override above is INERT under RequestedTheme="Dark" — the framework theme
+                 dictionary shadows it (byte-identical white pixel counts across themes in the
+                 wave-1 re-review). An implicit TextBlock style outranks the template default;
+                 explicit Foreground and Opacity dimming at usage sites still win over it.
+                 MUST be declared after ThemeInk — StaticResource cannot forward-reference.
+                 Caveat: an implicit style DEFEATS Foreground inheritance from parents; any
+                 TextBlock inside an accent-filled control needs an explicit Foreground (or
+                 Style="{x:Null}" to restore inheritance). -->
+            <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource ThemeInk}" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

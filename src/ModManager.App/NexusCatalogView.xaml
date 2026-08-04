@@ -33,7 +33,7 @@
                 </StackPanel>
             </Button>
             <TextBlock x:Name="TitleLabel" Grid.Column="1" VerticalAlignment="Center"
-                       FontFamily="{StaticResource StencilFontFamily}" FontWeight="SemiBold"
+                       FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed"
                        FontSize="{StaticResource ViewTitleFontSize}" CharacterSpacing="60"
                        TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />

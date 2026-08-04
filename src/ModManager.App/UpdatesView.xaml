@@ -32,7 +32,7 @@
                 </StackPanel>
             </Button>
             <TextBlock Grid.Column="1" Text="UPDATES" VerticalAlignment="Center"
-                       FontFamily="{StaticResource StencilFontFamily}" FontWeight="SemiBold"
+                       FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed"
                        FontSize="{StaticResource ViewTitleFontSize}" CharacterSpacing="60"
                        TextTrimming="CharacterEllipsis"
                        Foreground="{StaticResource ThemeInk}" />

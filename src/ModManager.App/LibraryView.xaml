@@ -24,7 +24,7 @@
 
                 <!-- Recent strip: big cover cards, most-recently-played first -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="JUMP BACK IN" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
+                    <TextBlock Text="JUMP BACK IN" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                                Foreground="{StaticResource ThemeInkSoft}" />
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
                                   HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
@@ -73,7 +73,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="ALL GAMES" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
+                        <TextBlock Grid.Column="0" Text="ALL GAMES" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                                    VerticalAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
                         <!-- Cross-game Updates entry point. Present ONLY when something is actually
                              pending — an empty or never-checked library keeps the home clean rather

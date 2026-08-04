@@ -140,7 +140,7 @@
                      (discovery action — the user goes OUT to find mods, then comes back to drop or
                      + Add them locally). -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="MODS" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80" />
+                    <TextBlock Text="MODS" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
                         <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
@@ -156,7 +156,7 @@
                                 ToolTipService.ToolTip="Browse this game's Nexus mods in the launcher — sorted, filterable, and marked with what you already have. Get opens the mod page to download.">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <FontIcon Glyph="&#xE721;" FontSize="13" />
-                                <TextBlock Text="Browse Nexus" />
+                                <TextBlock Text="Browse Nexus" Foreground="Black" />
                             </StackPanel>
                         </Button>
                         <DropDownButton ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
@@ -188,7 +188,7 @@
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
                 <!-- LOADOUT: All / MP / SP filter (segmented) -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="LOADOUT" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80" />
+                    <TextBlock Text="LOADOUT" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <Border CornerRadius="0" BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                             Background="{StaticResource ThemePanel}">
                         <StackPanel Orientation="Horizontal">
@@ -213,7 +213,7 @@
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
                 <!-- LIBRARY: rescan + reorder + saved-state surfaces -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="LIBRARY" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80" />
+                    <TextBlock Text="LIBRARY" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Button Content="↻ Refresh" Command="{x:Bind ViewModel.RefreshCommand}"
                                 ToolTipService.ToolTip="Re-scan the game folder for mod changes, and refresh Nexus stats (endorsements, downloads, update flags) when connected" />
@@ -274,12 +274,12 @@
                         Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE7BA;" FontSize="13" />
-                        <TextBlock Text="Launch options" />
+                        <TextBlock Text="Launch options" Foreground="Black" />
                     </StackPanel>
                 </Button>
                 <!-- VIEW: how the mod list is grouped -->
                 <StackPanel Orientation="Vertical" Spacing="2" Margin="10,0,0,0">
-                    <TextBlock Text="VIEW" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80" />
+                    <TextBlock Text="VIEW" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <ComboBox MinWidth="120" ToolTipService.ToolTip="Group the mod list"
                               ItemsSource="{x:Bind ViewModel.GroupModes}"
                               SelectedItem="{x:Bind ViewModel.GroupMode, Mode=TwoWay}" />
@@ -289,7 +289,7 @@
                 <!-- THEME: picker + generator in one dropdown. Selecting a theme applies it; the
                      "+ New theme…" item at the bottom of the flyout opens the AI theme generator. -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="THEME" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80" />
+                    <TextBlock Text="THEME" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <DropDownButton MinWidth="140" ToolTipService.ToolTip="Pick a theme or generate a new one">
                         <DropDownButton.Content>
                             <TextBlock Text="{x:Bind ViewModel.SelectedThemeName, Mode=OneWay}" />
@@ -395,7 +395,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{x:Bind SectionHeader}"
-                                   FontWeight="SemiBold" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
+                                   FontWeight="SemiBold" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" CharacterSpacing="80"
                                    Foreground="{StaticResource ThemeAccent}" />
                         <Button Grid.Column="1" Click="OnShowChipGlossary" Padding="6,0" MinWidth="22" Height="20"
                                 Background="{StaticResource ThemePanel}" CornerRadius="0" BorderThickness="0"

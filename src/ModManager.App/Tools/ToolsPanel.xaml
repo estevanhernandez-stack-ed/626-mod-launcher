@@ -23,7 +23,7 @@
             <TextBlock Text="TOOLS"
                        Foreground="{StaticResource ThemeInkSoft}"
                        FontSize="{StaticResource TagFontSize}"
-                       FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
+                       FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                        VerticalAlignment="Center" />
 
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.Tools, Mode=OneWay}" VerticalAlignment="Center">
@@ -63,7 +63,11 @@
                                          Click="OnGetToolClick"
                                          Tag="{x:Bind}"
                                          ToolTipService.ToolTip="Open the download page in your browser">
-                            <TextBlock Text="{x:Bind DisplayName}" />
+                            <!-- Style x:Null restores Foreground inheritance from the
+                                 HyperlinkButton (the app-wide implicit TextBlock style
+                                 would otherwise pin this to ThemeInk and kill the
+                                 hover/pressed/disabled link states). -->
+                            <TextBlock Text="{x:Bind DisplayName}" Style="{x:Null}" />
                         </HyperlinkButton>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
@@ -79,7 +83,7 @@
                 <TextBlock Text="LOADERS"
                            Foreground="{StaticResource ThemeInkSoft}"
                            FontSize="{StaticResource TagFontSize}"
-                           FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
+                           FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                            VerticalAlignment="Center"
                            Margin="8,0,0,0" />
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.Loaders, Mode=OneWay}" VerticalAlignment="Center">
@@ -102,7 +106,7 @@
                                         </TextBlock>
                                     </ToolTip>
                                 </ToolTipService.ToolTip>
-                                <TextBlock>
+                                <TextBlock Style="{x:Null}">
                                     <Run Text="Launch via " />
                                     <Run Text="{x:Bind DisplayName}" />
                                 </TextBlock>
@@ -131,7 +135,7 @@
                 <TextBlock Text="FRAMEWORKS"
                            Foreground="{StaticResource ThemeInkSoft}"
                            FontSize="{StaticResource TagFontSize}"
-                           FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
+                           FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                            VerticalAlignment="Center"
                            Margin="8,0,0,0" />
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.FrameworkRows, Mode=OneWay}" VerticalAlignment="Center">
