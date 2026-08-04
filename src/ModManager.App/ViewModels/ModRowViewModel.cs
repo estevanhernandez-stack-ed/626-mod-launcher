@@ -25,7 +25,7 @@ public sealed partial class ModRowViewModel : ObservableObject
 
     // Screen-reader names carry the mod's identity — 27 rows must never announce as 27
     // identical "toggle switch" / "uninstall" controls (vibe-glow F-034).
-    public string ToggleAutomationName => (Enabled ? "Disable " : "Enable ") + DisplayName;
+    public string ToggleAutomationName => (ToggleIsOn ? "Disable " : "Enable ") + DisplayName;
     public string EndorseAutomationName => "Endorse " + DisplayName;
     public string ReadmeAutomationName => "Readme for " + DisplayName;
     public string ConfigAutomationName => "Configure " + DisplayName;

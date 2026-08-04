@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ModManager.App.Services.A11y.WireLiveRegion(AppStatusText); // vibe-glow wave 5: announce status writes
         ViewModel = App.AppHost.Services.GetRequiredService<MainViewModel>();
         // Hand the same VM instance to the tools row. The control reads installed tools + catalog
         // gaps off MainViewModel directly — no separate data context for this slim strip.

@@ -17,6 +17,7 @@ public sealed partial class ProfilesDialog : ContentDialog
     {
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
+        ModManager.App.Services.A11y.WireLiveRegion(StatusText); // vibe-glow wave 5: announce status writes
         _ctx = ctx;
         _vm = vm;
         _ = Refresh();

@@ -138,27 +138,27 @@
                                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
-                                                    AutomationProperties.HelpText="{x:Bind TierTooltip}" ToolTipService.ToolTip="{x:Bind TierTooltip}">
-                                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
+                                                    ToolTipService.ToolTip="{x:Bind TierTooltip}">
+                                                <TextBlock AutomationProperties.HelpText="{x:Bind TierTooltip}" Foreground="{StaticResource ThemeInk}" Text="{x:Bind TierChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeAccent}"
-                                                    AutomationProperties.HelpText="{x:Bind UpdateBadgeTooltip}" ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
+                                                    ToolTipService.ToolTip="{x:Bind UpdateBadgeTooltip}"
                                                     Visibility="{x:Bind UpdateBadgeVisibility}">
-                                                <TextBlock Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="{x:Bind UpdateBadgeTooltip}" Text="{x:Bind UpdateBadgeText}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="Black" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
-                                                    AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
+                                                    ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                                                     Visibility="{x:Bind BanRiskVisibility}">
-                                                <TextBlock Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="{StaticResource ThemeDanger}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeAccent}"
-                                                    AutomationProperties.HelpText="Mod loaders detected in this game's folder" ToolTipService.ToolTip="Mod loaders detected in this game's folder"
+                                                    ToolTipService.ToolTip="Mod loaders detected in this game's folder"
                                                     Visibility="{x:Bind LoaderVisibility}">
-                                                <TextBlock Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                                                <TextBlock AutomationProperties.HelpText="Mod loaders detected in this game's folder" Text="{x:Bind LoaderChip}" FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                                            Foreground="{StaticResource ThemeAccent}" />
                                             </Border>
                                         </StackPanel>

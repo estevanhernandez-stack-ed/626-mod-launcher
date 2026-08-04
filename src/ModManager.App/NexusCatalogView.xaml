@@ -169,21 +169,21 @@
                                     <Border CornerRadius="0" Padding="7,2"
                                             Background="{StaticResource ThemeAccent}"
                                             Visibility="{x:Bind UpdateAvailableVisibility}"
-                                            AutomationProperties.HelpText="You have this mod and the author has published a newer version" ToolTipService.ToolTip="You have this mod and the author has published a newer version">
-                                        <TextBlock Text="Update available" FontSize="11" FontWeight="SemiBold"
+                                            ToolTipService.ToolTip="You have this mod and the author has published a newer version">
+                                        <TextBlock AutomationProperties.HelpText="You have this mod and the author has published a newer version" Text="Update available" FontSize="11" FontWeight="SemiBold"
                                                    Foreground="{StaticResource ThemeBg}" />
                                     </Border>
                                     <Border CornerRadius="0" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                             Visibility="{x:Bind InstalledVisibility}"
-                                            AutomationProperties.HelpText="You have already downloaded this mod on Nexus" ToolTipService.ToolTip="You have already downloaded this mod on Nexus">
-                                        <TextBlock Text="Installed" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
+                                            ToolTipService.ToolTip="You have already downloaded this mod on Nexus">
+                                        <TextBlock AutomationProperties.HelpText="You have already downloaded this mod on Nexus" Text="Installed" FontSize="11" Foreground="{StaticResource ThemeInkSoft}" />
                                     </Border>
                                     <Border CornerRadius="0" Padding="6,2"
                                             BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                                             Visibility="{x:Bind EndorsedVisibility}"
-                                            AutomationProperties.HelpText="You have endorsed this mod" ToolTipService.ToolTip="You have endorsed this mod">
-                                        <TextBlock Text="♥ Endorsed" FontSize="11"
+                                            ToolTipService.ToolTip="You have endorsed this mod">
+                                        <TextBlock AutomationProperties.HelpText="You have endorsed this mod" Text="♥ Endorsed" FontSize="11"
                                                    Foreground="{StaticResource ThemeAccent}" />
                                     </Border>
                                 </StackPanel>
