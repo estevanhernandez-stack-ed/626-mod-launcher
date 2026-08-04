@@ -43,6 +43,16 @@ public sealed record DirectInjectConfigRow(
 /// and total size so the XAML template binds a plain string, no converter needed.</summary>
 public sealed record RestorePointRow(string Timestamp, string Detail, string Id);
 
+/// <summary>One Settings tool row: the entry plus the game data dir that owns it, so
+/// Configure can write back to the right registry (vibe-glow F-032).</summary>
+public sealed record SettingsToolRow(ToolEntry Entry, string DataDir)
+{
+    public string DisplayName => Entry.DisplayName;
+    /// <summary>Which game owns this copy — the same tool can be installed per-game, and
+    /// Configure→Uninstall must never ambiguate between copies.</summary>
+    public string GameLabel => $"For {System.IO.Path.GetFileName(DataDir)}";
+}
+
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
 /// account in one place. The Apply button commits the avatar + derived theme changes (gated by
@@ -85,6 +95,10 @@ public sealed partial class SettingsDialog : ContentDialog
     /// first-ever connect) shows the consent dialog — neither can be nested under this ContentDialog, so we
     /// hand off: MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> after this dialog closes.</summary>
     public bool ConnectNexusRequested { get; private set; }
+
+    /// <summary>Set when the user clicks Configure… on a Settings tool row. MainWindow.OnSettings
+    /// opens ToolConfigureDialog after this dialog closes — same no-nesting hand-off pattern.</summary>
+    public SettingsToolRow? ToolConfigureRequested { get; private set; }
 
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
@@ -144,7 +158,7 @@ public sealed partial class SettingsDialog : ContentDialog
     /// </summary>
     private void RefreshInstalledTools()
     {
-        var all = new List<ToolEntry>();
+        var all = new List<SettingsToolRow>();
 
         // The active game's DataDir is <_626mods>/<gameId>. Its parent is the _626mods root that
         // holds every game's per-game data dir. Enumerate them all to list tools across games.
@@ -155,14 +169,14 @@ public sealed partial class SettingsDialog : ContentDialog
         {
             foreach (var gameDir in Directory.EnumerateDirectories(modsRoot))
             {
-                try { all.AddRange(ToolRegistry.Load(gameDir).Tools); }
+                try { all.AddRange(ToolRegistry.Load(gameDir).Tools.Select(t => new SettingsToolRow(t, gameDir))); }
                 catch { /* skip malformed per-game registries */ }
             }
         }
         else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
         {
             // Fallback: read only the active game's registry.
-            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools); }
+            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools.Select(t => new SettingsToolRow(t, activeDataDir))); }
             catch { /* skip */ }
         }
 
@@ -637,6 +651,16 @@ public sealed partial class SettingsDialog : ContentDialog
     private void OnResetLauncher(object sender, RoutedEventArgs e)
     {
         OpenSafeClearRequested = true;
+        Hide();
+    }
+
+    private void OnToolConfigure(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not SettingsToolRow row) return;
+        // WinUI 3 allows one ContentDialog per XamlRoot — same flag + Hide() hand-off as
+        // Reset/Restore/Delete: MainWindow.OnSettings opens the configure dialog after this
+        // one has fully closed, then reloads so the tool rail repaints (F-032).
+        ToolConfigureRequested = row;
         Hide();
     }
 }
