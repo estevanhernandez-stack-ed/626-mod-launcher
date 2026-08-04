@@ -29,7 +29,7 @@
     <Grid MaxWidth="620" HorizontalAlignment="Stretch">
 
         <StackPanel x:Name="LoadingPanel" Orientation="Horizontal" Spacing="10" Margin="0,18,0,18">
-            <ProgressRing IsActive="True" Width="18" Height="18" VerticalAlignment="Center" />
+            <ProgressRing IsActive="True" Width="18" Height="18" VerticalAlignment="Center" Foreground="{StaticResource ThemeAccent}" />
             <TextBlock Text="Loading this mod from Nexus…" Foreground="{StaticResource ThemeInkSoft}" VerticalAlignment="Center" />
         </StackPanel>
 

@@ -148,6 +148,15 @@
             <SolidColorBrush x:Key="ThemeInkMuted" Color="#4E555E" />
             <SolidColorBrush x:Key="ThemeInfo" Color="#6FB3C4" />
 
+            <!-- InfoBar error severity (F-049): the stock aliases resolve to OS accent colors that
+                 ignore the theme. Panel body, danger icon badge, bg-on-danger glyph, themed text.
+                 ThemeService.Apply mutates these in lockstep; DialogTheming scopes them into popups. -->
+            <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#1D2126" />
+            <SolidColorBrush x:Key="InfoBarErrorSeverityIconBackground" Color="#FF5C33" />
+            <SolidColorBrush x:Key="InfoBarErrorSeverityIconForeground" Color="#14161A" />
+            <SolidColorBrush x:Key="InfoBarTitleForeground" Color="#E6E8EA" />
+            <SolidColorBrush x:Key="InfoBarMessageForeground" Color="#AEB4BC" />
+
             <!-- ContentDialog + AccentButton overrides. Same-instance pattern as above so
                  ThemeService.Apply's in-place Color mutation flows through to every popup. The
                  keys here are the ones WinUI 3's default ContentDialog + AccentButton templates

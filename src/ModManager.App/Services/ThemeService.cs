@@ -191,6 +191,13 @@ public sealed class ThemeService
         Set(res, "MenuFlyoutItemForegroundPressed", t["text"]);
         Set(res, "MenuFlyoutSeparatorBackground", t["border"]);
 
+        // InfoBar error severity (F-049) — panel body, danger badge, themed text.
+        Set(res, "InfoBarErrorSeverityBackgroundBrush", t["glass"]);
+        Set(res, "InfoBarErrorSeverityIconBackground", t["danger"]);
+        Set(res, "InfoBarErrorSeverityIconForeground", t["bg"]);
+        Set(res, "InfoBarTitleForeground", t["text"]);
+        Set(res, "InfoBarMessageForeground", t["text_secondary"]);
+
         // Glow rule (F-002): restyle every attached bloom from this theme's accent_bloom token.
         // A theme with alpha 0 reads flat — that's the token doing its job, not a bug.
         Bloom.OnThemeChanged(Parse(t["accent"]), Parse(t["danger"]), t.AccentBloom.Blur, t.AccentBloom.Alpha);

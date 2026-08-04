@@ -91,7 +91,7 @@ public static class Themes
             "#f5e6e0", "#d4a89c", "#8b6b60", "#6b4b40",
             "#f97316", "#2d1a1a", "#150808", "#fbbf24", "#f97316",
             "#84cc16", "#fbbf24", "#f25545", "#fb923c",
-            "#fbbf24", "#fdba74", "#ef4444", "#84cc16", 6, 0.55),
+            "#fbbf24", "#fdba74", "#f25545", "#84cc16", 6, 0.55),
         ["mint"] = T("Mint", "#0a1a14", "#122a1e", "#0e2419", "#0c1f14", "#22543d",
             "#e0f5ec", "#9cd4b8", "#5a9a78", "#3a7a58",
             "#34d399", "#163020", "#081510", "#f472b6", "#34d399",
@@ -111,7 +111,7 @@ public static class Themes
             "#e8f2ff", "#a8c2d9", "#6a849e", "#4a5f7a",
             "#3bb4d9", "#1a2540", "#0a121f", "#e13aa0", "#3bb4d9",
             "#3bd98f", "#d9a441", "#f25c73", "#58c7e6",
-            "#3bb4d9", "#58c7e6", "#e13a5a", "#3bd98f", 6, 0.60),
+            "#3bb4d9", "#58c7e6", "#f25c73", "#3bd98f", 6, 0.60),
     };
 
     private static string HexToRgba(string hex, double alpha)

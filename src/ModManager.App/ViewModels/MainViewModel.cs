@@ -318,6 +318,17 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (value is not null) _themes.Apply(value);
         if (value is not null && !_restoringTheme) _appSettings.SetThemeId(value.Id); // F-080: real picks survive restart
+
+        // Warn-on-APPLY (F-076): the import-time advisory only fires once; a stored low-contrast
+        // theme applied later was silent. Recomputed from the theme itself (derive, don't persist —
+        // Este's call), advisory-only, and skipped during the startup restore to keep launch quiet.
+        if (value is not null && !_restoringTheme)
+        {
+            var contrast = ModManager.Core.Themes.ContrastReport(value);
+            if (contrast.Count > 0)
+                StatusText = $"{value.Name} applied. Readability heads-up: {contrast[0]}"
+                    + (contrast.Count > 1 ? $" (+{contrast.Count - 1} more pair{(contrast.Count > 2 ? "s" : "")})" : "");
+        }
         // Inactive-segment foreground uses the resource-backed ThemeInk brush, so its color tracks
         // the theme via ThemeService.Set's in-place mutation. The ACTIVE segment's brush is
         // ThemeAccent (also resource-backed) - same story. We still re-notify so any caller that
