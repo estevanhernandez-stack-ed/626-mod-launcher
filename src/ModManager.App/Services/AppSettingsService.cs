@@ -189,7 +189,11 @@ public sealed class AppSettingsService
                 + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")},"
                 + $"\"keepPluginsUpdated\":{(_keepPluginsUpdated ? "true" : "false")},"
                 + $"\"themeId\":{themeId}}}";
-            File.WriteAllText(Path, json);
+            // Atomic temp-write + rename (file-op law): theme picks made this write frequent,
+            // and a kill mid-WriteAllText would truncate the file and silently reset every toggle.
+            var tmp = Path + ".tmp";
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, Path, overwrite: true);
         }
         catch { /* best-effort persist; in-memory state still holds */ }
     }

@@ -187,9 +187,13 @@
                             </DropDownButton.Flyout>
                         </DropDownButton>
                         <Button Content="+ Add mods" Click="OnAddMods" />
+                        <!-- TwoWay so a VM-side clear (game switch, no-game reset) empties the BOX
+                             too — a one-way box->VM flow left stale text stating a filter that
+                             wasn't applied (B4.5 review catch). -->
                         <TextBox x:Name="ModFilterBox" Width="170" PlaceholderText="Filter mods…"
-                                 TextChanged="OnModFilterChanged" VerticalAlignment="Center"
-                                 ToolTipService.ToolTip="Narrow the list by mod name or author" />
+                                 Text="{x:Bind ViewModel.ModFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalAlignment="Center"
+                                 ToolTipService.ToolTip="Narrow the list by mod name, author, or file key" />
                     </StackPanel>
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"

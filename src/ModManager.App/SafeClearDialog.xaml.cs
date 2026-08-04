@@ -37,9 +37,17 @@ public sealed partial class SafeClearDialog : ContentDialog
         {
             titleContent.Loaded += (s, _) =>
             {
-                DependencyObject? node = (DependencyObject)s, root = null;
-                while (node is not null) { root = node; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node); }
-                if (root is null || FindDescendant(root, "PrimaryButton") is not Button primary) return;
+                // Search down from THIS dialog first (tight — can't hit another popup's
+                // PrimaryButton); the walk-to-root pass is the fallback for template shapes
+                // where the part tree doesn't hang off the dialog element.
+                var primary = FindDescendant(this, "PrimaryButton") as Button;
+                if (primary is null)
+                {
+                    DependencyObject? node = (DependencyObject)s, root = null;
+                    while (node is not null) { root = node; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node); }
+                    primary = root is null ? null : FindDescendant(root, "PrimaryButton") as Button;
+                }
+                if (primary is null) return;
                 var res = Application.Current.Resources;
                 primary.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
                 primary.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
