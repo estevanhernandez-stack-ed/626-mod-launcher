@@ -1042,3 +1042,20 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
    12), meta at 11.5; nothing clips or wraps oddly in dialogs (fixed
    widths + bigger body is the risk).
 2. Dialog titles read at ViewTitle 21 across the fleet (was 20).
+
+---
+
+## road-to-zero review residue (B5-B8 pass)
+
+**Smoke needed:**
+1. Open Browse Nexus overlay: Ctrl+F / Ctrl+R do nothing (no hidden focus
+   steal, no invisible rescan); Esc still closes the overlay.
+2. Type a filter, press Esc — filter clears, still in the game view; second
+   Esc goes home.
+3. Close Settings after changing only the avatar — NO "readability heads-up"
+   appears (was firing on every Settings close with a custom theme).
+4. Enter load-order mode with a toggled-on row — no stray glow where the
+   hidden toggle was.
+5. Loadout hover: the active segment's glow stays lit while the hover state
+   momentarily greys the fill (known cosmetic divergence — stock hover
+   repaint; accepted).

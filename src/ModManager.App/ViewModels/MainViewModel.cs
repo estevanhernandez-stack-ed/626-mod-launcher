@@ -373,7 +373,12 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _themes.Reload();
         ThemeOptions = _themes.Themes;
-        SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == SelectedTheme?.Id) ?? _themes.Default;
+        // Reload() rebuilds instances, so this reassign ALWAYS fires the setter even when the id
+        // is unchanged — gate it like the startup restore or every Settings close re-persists and
+        // re-warns as if the user picked a theme (B5-B8 review, S3).
+        _restoringTheme = true;
+        try { SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == SelectedTheme?.Id) ?? _themes.Default; }
+        finally { _restoringTheme = false; }
     }
 
     // LoadAsync rebuilds the games dropdown (Games.Clear + repopulate) and is NON-atomic — it awaits

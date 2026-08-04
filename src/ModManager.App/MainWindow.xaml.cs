@@ -259,6 +259,7 @@ public sealed partial class MainWindow : Window
     private void OnFilterAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
     {
         if (!ViewModel.HasGame || GameTitleControls.Visibility != Visibility.Visible) return;
+        if (CatalogHost.Visibility == Visibility.Visible) return; // storefront overlay owns the keys (S1)
         ModFilterBox.Focus(FocusState.Keyboard);
         args.Handled = true;
     }
@@ -266,6 +267,7 @@ public sealed partial class MainWindow : Window
     private void OnRefreshAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
     {
         if (!ViewModel.HasGame || GameTitleControls.Visibility != Visibility.Visible) return;
+        if (CatalogHost.Visibility == Visibility.Visible) return; // no invisible rescans under the overlay (S1)
         if (ViewModel.RefreshCommand.CanExecute(null)) { ViewModel.RefreshCommand.Execute(null); args.Handled = true; }
     }
 
@@ -275,6 +277,13 @@ public sealed partial class MainWindow : Window
         // theirs), and never from the home itself.
         if (GameTitleControls.Visibility != Visibility.Visible) return;
         if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(Content.XamlRoot).Count > 0) return;
+        // Esc means "clear the filter" while one is live — home is the SECOND Esc (S2).
+        if (!string.IsNullOrEmpty(ViewModel.ModFilterText))
+        {
+            ViewModel.ModFilterText = "";
+            args.Handled = true;
+            return;
+        }
         ShowLibrary();
         args.Handled = true;
     }
@@ -584,7 +593,8 @@ public sealed partial class MainWindow : Window
         if (sender is not ToggleSwitch toggle || toggle.Parent is not Grid wrap
             || wrap.Children.Count == 0 || wrap.Children[0] is not Border host) return;
         Services.Bloom.AttachStateGlow(host, toggle, Services.BloomToken.Accent,
-            () => toggle.IsOn, ToggleSwitch.IsOnProperty);
+            () => toggle.IsOn && toggle.Visibility == Visibility.Visible,
+            ToggleSwitch.IsOnProperty, UIElement.VisibilityProperty);
     }
 
     private async void OnAddMods(object sender, RoutedEventArgs e)
