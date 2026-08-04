@@ -89,3 +89,26 @@ framework-unrecognized-nudge, vortex-takeover.
   the operator has no signal the watcher is down.
 - Window titles all read "WinUI Desktop" — auto-labels are useless for
   this app; every capture needs a manual rename pass.
+
+## Protocol addenda (road-to-zero, 2026-08-04)
+
+**Pin the game (F-058):** every theme round captures the SAME game
+(Windrose is the pinned reference — most mods, most chip variety) so
+byte-diffs between rounds mean "the theme changed", never "the content
+changed". If Windrose is unavailable, name the substitute in the capture
+dir's README and re-pin.
+
+**Interaction states need two hands or UIA (F-070):** hover, drag-in-flight,
+and open-flyout states can't be captured single-handed with F8 — the
+capture keystroke steals focus/hover. Two options, in preference order:
+(1) UIA-driven single-shot mode — the agent invokes the control and calls
+capture.ps1 -Surface directly (proven in waves 8+; cursor-park works for
+hover, see the B4 hover proof); (2) two-person capture — one drives, one
+F8s. Record which was used per capture.
+
+**Presenter/placeholder coverage (F-057):** the six surfaces the ink laws
+could never pixel-prove (LibraryView search placeholder, NexusCatalog
+search + empty, AddGame placeholders, Saves list, Profiles empty,
+NewTheme JSON box) are UIA-reachable except NexusCatalog (needs a
+connected plugin — capture on Este's next connected session; recorded,
+not skipped). Captured set lives in docs/ui-evidence/road-to-zero-b13/.
