@@ -22,8 +22,8 @@
 
             <TextBlock Text="TOOLS"
                        Foreground="{StaticResource ThemeInkSoft}"
-                       FontSize="10"
-                       CharacterSpacing="80"
+                       FontSize="{StaticResource TagFontSize}"
+                       FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
                        VerticalAlignment="Center" />
 
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.Tools, Mode=OneWay}" VerticalAlignment="Center">
@@ -78,8 +78,8 @@
                         Visibility="{x:Bind ViewModel.HasLoaders, Mode=OneWay}">
                 <TextBlock Text="LOADERS"
                            Foreground="{StaticResource ThemeInkSoft}"
-                           FontSize="10"
-                           CharacterSpacing="80"
+                           FontSize="{StaticResource TagFontSize}"
+                           FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
                            VerticalAlignment="Center"
                            Margin="8,0,0,0" />
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.Loaders, Mode=OneWay}" VerticalAlignment="Center">
@@ -130,8 +130,8 @@
                         Visibility="{x:Bind ViewModel.HasInstalledFrameworks, Mode=OneWay}">
                 <TextBlock Text="FRAMEWORKS"
                            Foreground="{StaticResource ThemeInkSoft}"
-                           FontSize="10"
-                           CharacterSpacing="80"
+                           FontSize="{StaticResource TagFontSize}"
+                           FontFamily="{StaticResource StencilFontFamily}" CharacterSpacing="80"
                            VerticalAlignment="Center"
                            Margin="8,0,0,0" />
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.FrameworkRows, Mode=OneWay}" VerticalAlignment="Center">

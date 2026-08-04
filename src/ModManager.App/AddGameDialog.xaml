@@ -51,7 +51,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
-                                    CornerRadius="4" Padding="8" Margin="0,0,0,4">
+                                    CornerRadius="0" Padding="8" Margin="0,0,0,4">
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="{Binding Headline}" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding Detail}" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
@@ -79,7 +79,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Width="46" Height="22" CornerRadius="3"
+                            <Border Grid.Column="0" Width="46" Height="22" CornerRadius="0"
                                     Background="{ThemeResource ControlElevationBorderBrush}">
                                 <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                             </Border>
@@ -102,7 +102,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Width="46" Height="22" CornerRadius="3"
+                            <Border Grid.Column="0" Width="46" Height="22" CornerRadius="0"
                                     Background="{ThemeResource ControlElevationBorderBrush}">
                                 <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                             </Border>

@@ -23,7 +23,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Width="96" Height="96" CornerRadius="8"
+                <Border Grid.Column="0" Width="96" Height="96" CornerRadius="0"
                         Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="1">
                     <Image x:Name="PreviewImage" Stretch="UniformToFill" />
                 </Border>
@@ -63,7 +63,7 @@
             <!-- Connected banner (visible when connected) -->
             <Border x:Name="NexusConnectedBanner" Visibility="Collapsed"
                     Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeAccent}"
-                    BorderThickness="0,0,0,2" Padding="12,10,12,10" CornerRadius="4">
+                    BorderThickness="0,0,0,2" Padding="12,10,12,10" CornerRadius="0">
                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE73E;" FontSize="18" Foreground="{StaticResource ThemeAccent}" VerticalAlignment="Center" />
                     <TextBlock x:Name="NexusConnectedText" FontWeight="SemiBold" VerticalAlignment="Center" />

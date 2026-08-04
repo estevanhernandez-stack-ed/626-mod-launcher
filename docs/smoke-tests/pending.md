@@ -771,3 +771,24 @@ per-pixel verified. Cleared at capture time.
    `DialogTheming.Apply` wiring is scripted across 22 sites; spot-check two.
 4. The amber "MAY NEED" loader chip under obsidian (ThemeWarning now re-colors; needs a game
    whose loader is conditional to render it).
+
+---
+
+## glow/wave-2 — hangar-skeleton (vibe-glow F-001/004/010/011/014)
+
+**Shipped:** corner radius 0 everywhere (ControlCornerRadius/OverlayCornerRadius + 47 XAML
++ 10 code literals swept); StencilFontFamily (Bahnschrift SemiBold Condensed) on eyebrows +
+view titles; MonoFontFamily (Cascadia Mono, Consolas) on all 27 mono sites; 9px row-action
+labels raised to the 10px tag step; type-ramp x:Double resources declared; implicit TextBlock
+style → ThemeInk (F-011 second attempt — the brush override was proven inert).
+
+**Smoke needed:**
+1. Bahnschrift renders condensed (not Segoe fallback) on eyebrows + UPDATES/BROWSE NEXUS
+   titles — check on a machine without Bahnschrift too if possible (fallback path).
+2. Implicit TextBlock style under matrix/obsidian: mod names + dialog labels now follow theme
+   ink; verify no surface went unreadable (explicit-Foreground sites keep their color).
+3. Squared corners inside dialogs + flyouts (ComboBox dropdown, MenuFlyout, ContentDialog
+   shell) — OverlayCornerRadius path.
+4. Cascadia Mono vs Consolas: chip/tag width shifts slightly — confirm no clipped chips in
+   the mod rows and Updates view.
+5. Nexus catalog title now "BROWSE NEXUS — <GAME>" caps — confirm no truncation on long names.
