@@ -17,6 +17,7 @@ public class ThemesDangerContrastTests
     private static double Luminance(string hex)
     {
         var h = hex.TrimStart('#');
+        if (h.Length == 3) h = string.Concat(h.Select(c => $"{c}{c}"));
         var r = Convert.ToByte(h.Substring(0, 2), 16);
         var g = Convert.ToByte(h.Substring(2, 2), 16);
         var b = Convert.ToByte(h.Substring(4, 2), 16);
@@ -36,12 +37,16 @@ public class ThemesDangerContrastTests
 
     [Theory]
     [MemberData(nameof(BuiltinIds))]
-    public void Danger_clears_wcag_aa_on_bg_and_bar_bg(string id)
+    public void Danger_clears_wcag_aa_on_its_carrier_surfaces(string id)
     {
+        // bg (page), bar_bg (toolbar/banner), glass (dialog/panel) — the three surfaces danger
+        // text actually renders on in the shell.
         var t = Themes.BuiltinThemes[id].Tokens;
-        var onBg = Contrast(t["danger"], t["bg"]);
-        var onBar = Contrast(t["danger"], t["bar_bg"]);
-        Assert.True(onBg >= 4.5, $"{id}: danger {t["danger"]} on bg {t["bg"]} = {onBg:F2}:1 (needs 4.5:1)");
-        Assert.True(onBar >= 4.5, $"{id}: danger {t["danger"]} on bar_bg {t["bar_bg"]} = {onBar:F2}:1 (needs 4.5:1)");
+        foreach (var surface in new[] { "bg", "bar_bg", "glass" })
+        {
+            var ratio = Contrast(t["danger"], t[surface]);
+            Assert.True(ratio >= 4.5,
+                $"{id}: danger {t["danger"]} on {surface} {t[surface]} = {ratio:F2}:1 (needs 4.5:1)");
+        }
     }
 }

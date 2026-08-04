@@ -11,16 +11,20 @@
 
             <!-- System-brush overrides (vibe-glow wave 1), as plain app-level entries. Field notes
                  from three attempts, so nobody retries the dead ends:
-                 (1) plain entries here re-theme the MAIN window tree (verified per-pixel) but do
-                     NOT reach Popup/ContentDialog roots — dialog-hosted controls resolve the
-                     framework theme dictionaries instead. Dialogs get the same brushes via
-                     Services/DialogTheming (element-scope resources outrank framework theme
-                     dictionaries inside every root).
+                 (1) Plain entries here re-theme the MAIN window tree (verified per-pixel) but do
+                     NOT reach Popup/ContentDialog roots for THESE control-state keys — likely
+                     because the framework's theme dictionaries define them as aliases resolved at
+                     dictionary load (mechanism partially conjectural; the per-pixel split is
+                     fact). Note the popup gap is per-key, not per-root: direct-lookup keys like
+                     MenuFlyoutPresenterBackground and ContentDialogBackground above DO reach
+                     popups from plain app-level entries. Dialog-hosted controls get these same
+                     brush instances element-scoped via Services/DialogTheming.
                  (2) Declaring these INSIDE ResourceDictionary.ThemeDictionaries freezes the
                      brushes — ThemeService's in-place Color mutation then throws
                      UnauthorizedAccessException.
                  (3) StaticResource aliases inside ThemeDictionaries resolve in no root at all.
-                 ThemeService.Apply mutates these instances in lockstep with the Theme* set. -->
+                 ThemeService.Apply mutates these instances in lockstep with the Theme* set;
+                 ThemeBrushContractTests locks App.xaml, Apply, and DialogTheming in sync. -->
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#3BB4D9" />
             <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3BB4D9" />
             <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#3BB4D9" />
@@ -69,7 +73,7 @@
             <SolidColorBrush x:Key="ThemeAccent" Color="#3BB4D9" />
             <SolidColorBrush x:Key="ThemeDanger" Color="#F25C73" />
             <!-- Amber: conditional/optional hint (e.g. "MAY NEED") — de-escalated vs ThemeDanger's required red. -->
-            <SolidColorBrush x:Key="ThemeWarning" Color="#E0A33A" />
+            <SolidColorBrush x:Key="ThemeWarning" Color="#D9A441" />
             <SolidColorBrush x:Key="ThemeInk" Color="#E8F2FF" />
             <SolidColorBrush x:Key="ThemeInkSoft" Color="#A8C2D9" />
             <SolidColorBrush x:Key="ThemeInkMuted" Color="#4A5F7A" />
@@ -89,9 +93,9 @@
             <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#3BB4D9" />
             <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#3BB4D9" />
             <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="#2A3A5C" />
-            <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000" />
-            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
-            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="#0F182B" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#0F182B" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#0F182B" />
             <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#A8C2D9" />
             <!-- ComboBox flyout (game picker + VIEW dropdown). Default WinUI uses near-black for the
                  popup chrome which doesn't match our navy. Override the dropdown chrome to ThemePanel

@@ -5,12 +5,16 @@ namespace ModManager.App.Services;
 
 /// <summary>
 /// Scopes the app's system-brush overrides onto a ContentDialog (vibe-glow wave 1, F-003/F-006).
-/// Popup roots do not consult the app-level plain resource entries for framework template lookups
-/// — dialog-hosted toggles, checkboxes, text boxes, and the primary button fall back to the OS
-/// accent (verified per-pixel). Element-scope resources outrank the framework theme dictionaries
-/// in every root, so each dialog gets a dictionary whose entries are the SAME brush instances
-/// ThemeService mutates — dialogs re-theme live with the rest of the app.
+/// The popup gap is per-KEY, not per-root: direct-lookup keys (ContentDialogBackground,
+/// MenuFlyoutPresenterBackground) reach popups from plain app-level entries, but the
+/// control-STATE keys below (ToggleSwitchFillOn, CheckBox*Checked, AccentFillColor*, ...) do
+/// not — dialog-hosted toggles, checkboxes, text boxes, and the primary button fell back to the
+/// OS accent (verified per-pixel; likely framework-dictionary aliases resolved at load).
+/// Element-scope resources outrank the framework theme dictionaries, so each dialog gets a
+/// dictionary whose entries are the SAME brush instances ThemeService mutates — dialogs
+/// re-theme live with the rest of the app.
 /// Call from every ContentDialog constructor (XAML dialogs) or construction site (code-built).
+/// ThemeBrushContractTests asserts SharedKeys stays a subset of App.xaml's brush keys.
 /// </summary>
 internal static class DialogTheming
 {
