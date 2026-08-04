@@ -782,8 +782,11 @@ public sealed partial class MainWindow : Window
     {
         var themes = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
         var dialog = new NewThemeDialog(themes) { XamlRoot = Content.XamlRoot };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && dialog.Imported is not null)
-            ViewModel.OnThemeImported(dialog.Imported);
+        // Imported alone drives the apply: a readability-warned import cancels the Primary close
+        // to show its note (args.Cancel), so the result is None when the user then closes — the
+        // theme is real and installed either way (vibe-glow F-046 review fix).
+        await dialog.ShowAsync();
+        if (dialog.Imported is not null) ViewModel.OnThemeImported(dialog.Imported);
     }
 
     // Build the THEME dropdown menu fresh each time it opens. Lists every installed theme with a

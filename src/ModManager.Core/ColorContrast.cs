@@ -14,6 +14,22 @@ public static class ColorContrast
         return (hi + 0.05) / (lo + 0.05);
     }
 
+    /// <summary>Total variant for advisory paths: false when either color isn't 3/6-digit hex
+    /// (named colors, rgba() strings) — an advisory must never throw on user input.</summary>
+    public static bool TryRatio(string fg, string bg, out double ratio)
+    {
+        ratio = 0;
+        if (!IsHex(fg) || !IsHex(bg)) return false;
+        ratio = Ratio(fg, bg);
+        return true;
+    }
+
+    private static bool IsHex(string s)
+    {
+        var h = s.TrimStart('#');
+        return (h.Length is 3 or 6) && h.All(Uri.IsHexDigit);
+    }
+
     public static double Luminance(string hex)
     {
         var h = hex.TrimStart('#');

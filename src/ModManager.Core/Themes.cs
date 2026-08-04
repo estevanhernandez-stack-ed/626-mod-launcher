@@ -198,9 +198,11 @@ public static class Themes
         var warnings = new List<string>();
         foreach (var (fg, bg) in pairs)
         {
-            var ratio = ColorContrast.Ratio(t[fg], t[bg]);
+            // TryRatio: an advisory is total — unparseable color formats (named colors,
+            // rgba strings) are skipped, never thrown, because the theme is already imported.
+            if (!ColorContrast.TryRatio(t[fg], t[bg], out var ratio)) continue;
             if (ratio < 4.5)
-                warnings.Add($"{fg} on {bg} is {ratio:F1}:1 — below the 4.5:1 readability floor.");
+                warnings.Add($"{fg} on {bg} is {ratio.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}:1 — below the 4.5:1 readability floor.");
         }
         return warnings;
     }

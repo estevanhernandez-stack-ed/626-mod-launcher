@@ -11,7 +11,7 @@ namespace ModManager.App;
 
 /// <summary>
 /// One mod, in full, without leaving the launcher: hero art, name, author/uploader, version, category,
-/// ♥ endorsements + ⬇ downloads, updated date, the readable description, and the requirements list —
+/// endorsements + downloads, updated date, the readable description, and the requirements list —
 /// plus the two things that honor the author, <b>Endorse</b> and <b>Track</b>, done in-app.
 ///
 /// <para>A <see cref="ContentDialog"/> is the right shape here, unlike the storefront grid: this is a

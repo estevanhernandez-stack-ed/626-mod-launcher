@@ -40,7 +40,7 @@ public class DesignLawTests
         // Code-built text dims through the token brushes, same as XAML (wave-7 F-013 close).
         // Any fractional Opacity literal in App code is treated as dimming — the App layer has
         // no legitimate non-token fractional opacity in code today; add an allowlist if one appears.
-        => Regex.Matches(text, @"Opacity = 0\.\d+").Select(m => m.Value);
+        => Regex.Matches(text, @"Opacity\s*=\s*0?\.\d+").Select(m => m.Value);
 
     internal static IEnumerable<string> FindUnnamedIconOnlyButtons(string text)
     {

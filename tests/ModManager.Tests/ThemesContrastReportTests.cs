@@ -40,6 +40,15 @@ public class ThemesContrastReportTests
     }
 
     [Fact]
+    public void Unparseable_color_formats_are_skipped_never_thrown()
+    {
+        // The theme is already persisted when the report runs — an advisory must be total.
+        var t = Build(tokens => tokens["text"] = "rgba(0,0,0,1)");
+        var warnings = Themes.ContrastReport(t);
+        Assert.DoesNotContain(warnings, w => w.StartsWith("text on"));
+    }
+
+    [Fact]
     public void All_builtins_pass_their_own_report_for_primary_pairs()
     {
         foreach (var (id, raw) in Themes.BuiltinThemes)

@@ -30,8 +30,11 @@ public sealed partial class NewThemeDialog : ContentDialog
         Show("Prompt copied — paste it into any AI chat, then bring the JSON back here.", "ThemeAccent");
     }
 
+    private bool _warned; // second Import click after a readability warning proceeds to close
+
     private void OnImport(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        if (_warned) return; // proceed with the close — the theme is already imported
         try
         {
             Imported = _themes.ImportUserTheme(JsonBox.Text);
@@ -44,11 +47,13 @@ public sealed partial class NewThemeDialog : ContentDialog
                 Show($"Theme imported. Readability heads-up: {warnings[0]}"
                      + (warnings.Count > 1 ? $" (+{warnings.Count - 1} more pair{(warnings.Count > 2 ? "s" : "")})" : ""),
                      "ThemeWarning");
-                args.Cancel = true; // stays open to show the note; Close proceeds with the theme kept
+                args.Cancel = true; // stays open to show the note; Close (or Import again) proceeds
+                _warned = true;
             }
         }
         catch (Exception ex)
         {
+            Imported = null; // never let a stale earlier import survive a failed retry
             Show(ex.Message, "ThemeDanger");
             args.Cancel = true; // keep the dialog open so they can fix the JSON
         }
