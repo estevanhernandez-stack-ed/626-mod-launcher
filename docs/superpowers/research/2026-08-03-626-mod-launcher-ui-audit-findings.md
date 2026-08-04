@@ -16,14 +16,14 @@
 | id | surface | lens | sev | vis | evidence | verdict | fix direction | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | F-001 | global (every view + dialog) | conformance+consistency | 5 | 5 | 47/50 CornerRadius non-zero (20×3, 10×6, 10×4, 6×8, 1×10) + WinUI defaults on undeclared controls; no radius resource exists. LibraryView.xaml:100, UpdatesView.xaml:86, MainWindow.xaml:401, MainWindow.xaml.cs:718,1089,1301,1386,1502; PNGs 01, 13, 19 | CONFIRMED — counts exact; the 3 zero-radius sites are nested in a r3 border, not a deliberate stance. WAVE-2: all declared radii swept to 0 + ControlCornerRadius/OverlayCornerRadius zeroed (dialog shells square, per-pixel). Residue: ToggleSwitch pill + CheckBox glyph radius are template-level — ControlCornerRadius doesn't reach them; needs explicit template overrides | Template overrides for ToggleSwitch/CheckBox (the last two rounded controls) | clean (wave 7 — stock template with 4 radii zeroed, pixel-verified; CheckBox needed no template, popup radius scope via DialogTheming) |
-| F-002 | global (glow rule) | conformance | 5 | 5 | accent_bloom parsed/normalized/serialized (Themes.cs:6,48,129,164; SettingsDialog.xaml.cs:572-575) but zero Shadow/DropShadow/ThemeShadow consumers in src XAML; only consumer is the dead Electron-era ThemeToCssVars. PNGs 02 vs 30 (matrix bloom 0.60 renders flat) | CONFIRMED — token round-trips through settings and lands nowhere | AccentBloomShadow resource driven by live AccentBloom; attach to the four sanctioned surfaces only | open |
+| F-002 | global (glow rule) | conformance | 5 | 5 | accent_bloom parsed/normalized/serialized (Themes.cs:6,48,129,164; SettingsDialog.xaml.cs:572-575) but zero Shadow/DropShadow/ThemeShadow consumers in src XAML; only consumer is the dead Electron-era ThemeToCssVars. PNGs 02 vs 30 (matrix bloom 0.60 renders flat) | CONFIRMED — token round-trips through settings and lands nowhere | AccentBloomShadow resource driven by live AccentBloom; attach to the four sanctioned surfaces only | clean (wave 8 — Bloom composition service consumes accent_bloom live on Play modded + ban-risk banner; toggle/active-nav bloom slices recorded as proposed addition) |
 | F-003 | mod rows, variant chips, checkboxes, text-field focus | conformance+consistency+a11y | 4 | 5 | No ToggleSwitch*/ToggleButton*Checked/CheckBox*Checked/TextControl*Focused brush keys in App.xaml:13-71 or ThemeService.cs:58-114. Per-pixel: 539 px #0000B2 track + 88 px #000000 knob identical across 02/22/30; knob-on-track 1.64:1, track-vs-bg 1.38:1 (WCAG 1.4.11 needs 3:1) | CONFIRMED — pixel-identical across themes; fix maps existing tokens, invariant-clean | Add the stateful-control brush keys to App.xaml and mutate them in ThemeService.Apply | clean (wave 1) |
 | F-004 | global chrome type | conformance | 4 | 5 | Zero Bahnschrift anywhere in src; only explicit face is Consolas (19 XAML + 8 code sites, no shared resource). Chrome labels (LibraryView.xaml:27, MainWindow.xaml:143,191,216) are default Segoe. PNG 01 | CONFIRMED — corrected: mono face EXISTS (Consolas); the stencil chrome face is 100% absent; Cascadia→Consolas swap is a low-sev token change | StencilFontFamily + MonoFontFamily app resources; route chrome + chips through them | clean (wave 2 — Bahnschrift condensed verified per-pixel at all 13 sites; Cascadia Mono verified by letterform) |
-| F-005 | mod row anatomy | conformance | 4 | 5 | Toggle sits Grid.Column=4 of 6, second-from-right (MainWindow.xaml:408-415, :592); language says toggle left. ~1700px eye traverse per row × 27 rows (PNGs 02, 30) | CONFIRMED — needs a design call first: language never accounted for mod art / reorder NumberBox in col0 | Move toggle left of name (design call: art demoted vs toggle-after-art), shift action cluster right | open |
+| F-005 | mod row anatomy | conformance | 4 | 5 | Toggle sits Grid.Column=4 of 6, second-from-right (MainWindow.xaml:408-415, :592); language says toggle left. ~1700px eye traverse per row × 27 rows (PNGs 02, 30) | CONFIRMED — needs a design call first: language never accounted for mod art / reorder NumberBox in col0 | Move toggle left of name (design call: art demoted vs toggle-after-art), shift action cluster right | clean (wave 8 — design call made: toggle first, art second; toggle is col 0 AND first declared child so tab/UIA order match) |
 | F-006 | all 17 ContentDialogs — primary button | conformance+consistency+a11y | 4 | 4 | Primary renders #0000B2 with #000000 text = 1.64:1 in every theme (zero #3BB4D9 pixels in dialog PNGs 03/09/16/20/28/33). App.xaml:37-44 AccentButtonForeground DOES land (black glyphs); only Background fails — lead suspect is the BrushTransition composition path (generic.xaml:8899-8901), not ThemeDictionaries scoping | CONFIRMED — mechanism corrected by skeptic; verify the BrushTransition lead at fix time | Make dialog primaries consume the theme accent (explicit PrimaryButtonStyle or the brush WinUI actually resolves); confirm mechanism first | clean (wave 1) |
 | F-007 | hyperlinks app-wide | consistency+a11y | 4 | 4 | HyperlinkButtonForeground never set; 11 sites; #0000D6 at 1.66:1 (default bg) to 1.92:1 (matrix), 502 px identical across themes. Donate link at MainWindow.xaml:453-454 IS themed — pattern known, applied once. ToolsPanel.xaml:62-67 | CONFIRMED — for MissingTools chips the link is the control's only affordance | HyperlinkButtonForeground (+PointerOver/Pressed) wired to accent in ThemeService.Apply | clean (wave 1) |
-| F-008 | all 17 dialogs — shell | conformance | 4 | 4 | No dialog has the 0-radius shell, 3px accent rail, or stencil eyebrow; App.xaml overrides ContentDialog colors but never radius (WinUI 8px stands). SavesDialog.xaml:2, SafeClearDialog.xaml:2 et al; PNGs 03, 09, 16, 19, 20 | CONFIRMED — scope corrected upward from 5 dialogs to all 17. WAVE-2 side effect: the 0-radius third is DONE (OverlayCornerRadius; square shell verified per-pixel on Settings) — remaining: 3px accent rail + stencil eyebrow | DialogShell pattern for rail + eyebrow (radius already handled) | open (radius third clean) |
-| F-009 | mods screen + library — fills | conformance+consistency | 4 | 4 | Six accent-filled surfaces on one mods screen (LOADER/UPDATE/VARIANT chips MainWindow.xaml:507-517, All filter, Browse Nexus :154-155, Play modded :114-118) vs "primary is the only fill." Black-on-accent at 10 sites (7 in MainWindow.xaml incl :118,:155,:234,:271; LibraryView.xaml:147,:169; MainWindow.xaml.cs:1126) vs documented ThemeBg rule (NexusCatalogView.xaml:163-168) | CONFIRMED — foreground count corrected 6→10; hardcoded Black is a live invariant-1 violation on dark-accent themes | Chips to outline-in-token-color; accent fill reserved for primary; replace Black with ThemeBg at all 10 sites | open |
+| F-008 | all 17 dialogs — shell | conformance | 4 | 4 | No dialog has the 0-radius shell, 3px accent rail, or stencil eyebrow; App.xaml overrides ContentDialog colors but never radius (WinUI 8px stands). SavesDialog.xaml:2, SafeClearDialog.xaml:2 et al; PNGs 03, 09, 16, 19, 20 | CONFIRMED — scope corrected upward from 5 dialogs to all 17. WAVE-2 side effect: the 0-radius third is DONE (OverlayCornerRadius; square shell verified per-pixel on Settings) — remaining: 3px accent rail + stencil eyebrow | DialogShell pattern for rail + eyebrow (radius already handled) | clean (wave 8 — 3px rail + stencil eyebrow via ContentDialog.Title content ×17; title presenter stretched on Title-content Loaded; UIA names preserved, rail/eyebrow Raw view) |
+| F-009 | mods screen + library — fills | conformance+consistency | 4 | 4 | Six accent-filled surfaces on one mods screen (LOADER/UPDATE/VARIANT chips MainWindow.xaml:507-517, All filter, Browse Nexus :154-155, Play modded :114-118) vs "primary is the only fill." Black-on-accent at 10 sites (7 in MainWindow.xaml incl :118,:155,:234,:271; LibraryView.xaml:147,:169; MainWindow.xaml.cs:1126) vs documented ThemeBg rule (NexusCatalogView.xaml:163-168) | CONFIRMED — foreground count corrected 6→10; hardcoded Black is a live invariant-1 violation on dark-accent themes | Chips to outline-in-token-color; accent fill reserved for primary; replace Black with ThemeBg at all 10 sites | clean (wave 8 — chips + secondary CTAs to 1px accent outline; Play keeps the only shell accent fill; all Black inks → ThemeBg incl. code-built anti-cheat toggle; Loadout active segment recorded as proposed addition) |
 | F-010 | global type ramp | conformance+consistency+a11y | 3 | 5 | 13 distinct FontSize literals (frequencies verified exact; 12 ×90 is de-facto body vs ramp's 13); FontSize=9 at 5 row-action sites (MainWindow.xaml:559-603) below the 10px floor; eyebrow drift 10/11/12 | CONFIRMED — "WinUI ignores OS text-size slider" sub-claim struck as unverified; 9px cluster is the accessibility-flavored piece. WAVE-2: shipped slice clean (zero 9px sites remain; eyebrows uniform at the tag step; ramp published). Remaining: body normalization (95×12 + neighbors) deferred by design; four ramp resources (Hero/RowTitle/Body/Meta) have zero consumers | Body-size sweep wave: route the 12/11/15 literals onto Body/Meta/RowTitle steps with per-surface capture | open (deferred slice) |
 | F-011 | primary text theming | consistency | 4 | 3 | Only 12/229 TextBlocks use ThemeInk (counts verified exact); no implicit TextBlock style exists; MainWindow 0/47, SettingsDialog 0/35 inherit WinUI white via RequestedTheme="Dark" (MainWindow.xaml:14). PNG 29 green game names vs PNG 30 white mod names | CONFIRMED — invisible in default theme, loud in high-chroma themes. WAVE-1: brush override proven inert. WAVE-2: implicit TextBlock style shipped — static-tree TextBlocks now follow theme ink (per-pixel), but the style structurally CANNOT reach (a) TextBlocks realized inside DataTemplates (ListView/ItemsRepeater/ItemsControl — mod names still #FFFFFF byte-identical across themes) or (b) presenter-generated text (string Content on buttons/checkboxes, TextBox.Header, PlaceholderText, ComboBox display). Remaining fix is per-site: explicit ThemeInk in DataTemplates + control-level Foreground for presenter text | Per-site ThemeInk in the item templates + themed Foreground on presenter-text controls | clean (wave 3 — third attempt; matrix-green mod names with matched glyph coverage, the byte-diff that failed both prior waves) |
 | F-012 | ban-risk / danger text | a11y | 4 | 3 | danger-on-bar_bg: 626-labs 3.58:1, obsidian 4.43:1, ember 4.38:1 (independent recomputation matched to 2dp); 11-14px text so 4.5:1 applies; icons at 3:1 pass — text-only failure. LibraryView.xaml:149-155, MainWindow.xaml:126 (bar_bg container), :246-247, :262-269 | CONFIRMED — the app's most safety-critical text is least legible in the shipped default theme | Adjust danger token in the 3 failing builtins (theme data, invariant-clean) + Core test asserting 4.5:1 on bg and bar_bg | clean (wave 1) |
@@ -195,6 +195,9 @@ and the NOTICE-line truncation the wave's own Configure column caused
 Evidence: `docs/ui-evidence/wave-6-recapture/`.
 
 **THE REVEAL GATE IS OPEN: zero severity-4+ findings remain open.**
+(CORRECTED 2026-08-04 at the reveal gate: this claim was wrong — F-002, F-005,
+F-008, F-009 were still open. Scoreboard lines must be re-derived from the
+register rows, never carried forward. Wave 8 closed all four.)
 
 **Proposed register additions from wave 6 (pending approval):** (1)
 GameLabel shows the folder key ("For windrose") not the display name;
@@ -219,6 +222,40 @@ by one this wave); (5) SDK-pin guard for SquaredControls.xaml (csproj
 version vs template header); (6) warn-on-APPLY for low-contrast themes
 (recompute at surface — Este's persistence question, answered: derive,
 don't persist).
+
+## Wave 8 outcome (2026-08-04, PR #227, re-reviewed post-merge)
+
+Wave `conformance-heavies` — the four severity-4+ rows the reveal gate
+surfaced: **F-002, F-005, F-008, F-009 all clean.** F-002's glow rule
+finally consumes accent_bloom: a hand-rolled composition DropShadow service
+(no toolkit dep) blooms Play modded (accent) and the ban-risk banner
+(danger), restyled live by ThemeService.Apply, 160ms ease-out on appearance
+— halo pixel-verified against the shell background. F-005 landed Este's
+design call (toggle first, art second) in both geometry and declaration
+order. F-008's rail needed two mechanism discoveries: the stock template
+pins the Title presenter HorizontalAlignment=Left (stretched via
+DialogTheming), and Opened races the popup tree wiring in both directions —
+the Title content's own Loaded is the deterministic hook. F-009 demoted six
+accent fills to outlines and killed the hardcoded Black inks.
+
+Pre-merge review (fresh Opus) caught three should-fixes landed in #227's
+second commit: the anti-cheat toggle ink claimed-but-not-shipped (the smoke
+doc asserted a fix the diff didn't contain — corrected both), toggle
+declaration order (tab/UIA order followed declaration, not Grid.Column),
+and the 17 dialogs' lost UIA names from non-string Titles. Reviewer's
+"bloom may render nothing" was refuted with on-screen pixel sampling.
+Post-merge re-review: CLEAN, one stale-comment nit (NexusCatalogView update
+chip still documented the fill rationale) fixed in this close-out.
+Wave status: `clean`.
+Evidence: `docs/ui-evidence/wave-8-verify/` (UIA-driven captures).
+
+**Proposed register additions from wave 8 (pending approval):** (1) toggle
+and active-nav bloom — the two sanctioned glow surfaces not yet consuming
+accent_bloom (needs a per-control composition strategy, not the shell
+host-Border pattern); (2) Loadout active segment is an accent fill with
+Colors.Black ink outside F-009's shipped scope; (3) code-built ContentDialogs
+(~22 sites) have no rail/eyebrow shell — decide whether the shell is
+XAML-fleet-only by design or the builder pattern should grow one.
 
 ## Audit notes
 
