@@ -219,7 +219,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility CoopHintVisibility => CoopLauncherMissing ? Visibility.Visible : Visibility.Collapsed;
 
     // MP-safety summary: how many enabled mods read as not-co-op-safe (Risky or SP-only). Non-blocking.
-    private int MpRiskyEnabledCount => Mods.Count(m => m.Enabled && m.EffectiveMp is MpRisk.Risky or MpRisk.SpOnly);
+    private int MpRiskyEnabledCount => _allRows.Count(m => m.Enabled && m.EffectiveMp is MpRisk.Risky or MpRisk.SpOnly);
     public Visibility MpWarningVisibility => MpRiskyEnabledCount > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string MpWarningText
     {
@@ -406,6 +406,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null)
         {
             Mods.Clear();
+            _allRows = Array.Empty<ModRowViewModel>(); // no ghost rows through the filter (F-015/S7)
+            ModFilterText = "";
             GameRootText = "";
             StatusText = "No game registered. Add one with + Game.";
             MissingFrameworks.Clear();
@@ -753,7 +755,7 @@ public sealed partial class MainViewModel : ObservableObject
         else Reload();
     }
 
-    private void UpdateStatus() => StatusText = $"{Mods.Count(m => m.Enabled)} of {Mods.Count} enabled";
+    private void UpdateStatus() => StatusText = $"{_allRows.Count(m => m.Enabled)} of {_allRows.Count} enabled";
 
     /// <summary>Suffix for the post-drop status line when the active game has a missing framework.
     /// Empty string when nothing's missing. The drop status line gets ". Heads up: this mod needs X
@@ -842,15 +844,14 @@ public sealed partial class MainViewModel : ObservableObject
             r.SectionHeader = label != prev ? label : null;
             prev = label;
         }
-        // Mark the first row carrying a SectionHeader as the legend host. Only one ? button per render.
-        var firstSection = ordered.FirstOrDefault(m => !string.IsNullOrEmpty(m.SectionHeader));
-        if (firstSection is not null) firstSection.IsFirstSectionHeader = true;
         _allRows = ordered;
         Mods = new ObservableCollection<ModRowViewModel>(FilterRows(ordered));
     }
 
-    // Find-by-name over the loaded rows (vibe-glow F-015). The predicate is Core (ModSearch);
-    // filtering rebuilds Mods from the master list so section grouping stays intact per render.
+    // Find-by-name over the loaded rows (vibe-glow F-015). The predicate is Core (ModSearch).
+    // THE RULE: Mods is the RENDER list; _allRows is the STATE list. Every write/safety/status
+    // path (load order, play-vanilla step-aside, launch guard, enable-all, MP warnings,
+    // loose-identify) reads _allRows — a typed filter must never narrow a file op.
     private IReadOnlyList<ModRowViewModel> _allRows = Array.Empty<ModRowViewModel>();
 
     [ObservableProperty] private string modFilterText = "";
@@ -858,8 +859,23 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnModFilterTextChanged(string value)
         => Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
 
-    private IEnumerable<ModRowViewModel> FilterRows(IEnumerable<ModRowViewModel> rows)
-        => rows.Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, ModFilterText));
+    private List<ModRowViewModel> FilterRows(IEnumerable<ModRowViewModel> rows)
+    {
+        var visible = rows.Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, ModFilterText)).ToList();
+        // Re-stamp section dividers + the legend host over the VISIBLE sequence — a filtered-out
+        // first row must not take its section header or the ? glossary button with it.
+        string? prev = null;
+        foreach (var r in visible)
+        {
+            var label = SectionOf(r.Mod).Label;
+            r.SectionHeader = label != prev ? label : null;
+            r.IsFirstSectionHeader = false;
+            prev = label;
+        }
+        var first = visible.FirstOrDefault(m => !string.IsNullOrEmpty(m.SectionHeader));
+        if (first is not null) first.IsFirstSectionHeader = true;
+        return visible;
+    }
 
     /// <summary>The single ban-risk enable gate every enable path consults. Resolves the active
     /// game's risk LIVE by Steam app id (so a feed raising risk protects an already-added game) and
@@ -950,9 +966,12 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleVariantAsync(VariantOptionVM opt, bool enable)
     {
         if (_ctx is null) return;
+        var owner = _allRows.FirstOrDefault(r => r.VariantOptions.Any(v => v.ModName == opt.ModName));
+        if (owner?.IsBusy == true) return; // reentrancy guard (F-016) — chips share the row's busy state
         // Ban-risk gate before enabling a variant (the view already reflects the desired state; on
         // cancel we abort without touching files — the chip rebuild on the next reload corrects it).
         if (enable && !await GateBanRiskEnableAsync()) { await ReloadModsAsync(); return; }
+        if (owner is not null) owner.IsBusy = true;
         try
         {
             if (enable)
@@ -969,6 +988,7 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { if (owner is not null) owner.IsBusy = false; }
     }
 
     /// <summary>Toggle a variant family on or off. ON re-enables the LAST-active variant (remembered
@@ -978,10 +998,12 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleFamilyAsync(ModRowViewModel row, bool on)
     {
         if (_ctx is null || !row.HasVariantOptions) return;
+        if (row.IsBusy) return; // reentrancy guard (F-016) — same net as the single toggle
         // Ban-risk gate before turning a variant family ON (the family switch reflects the desired
         // state; on cancel we reload so the switch rebuilds from actual state — nothing enabled).
         if (on && !await GateBanRiskEnableAsync()) { await ReloadModsAsync(); return; }
         var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
+        row.IsBusy = true;
         try
         {
             if (on)
@@ -1003,6 +1025,7 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { row.IsBusy = false; }
     }
 
     /// <summary>Permanently uninstall every variant in a family. Gated by a confirm dialog in the
@@ -1047,7 +1070,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
             if (DirectInjectBacked)
             {
-                foreach (var m in Mods.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
+                foreach (var m in _allRows.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
                 return Task.CompletedTask;
             }
             if (LooseRootBacked)
@@ -1058,7 +1081,7 @@ public sealed partial class MainViewModel : ObservableObject
                 // scanner world's bulk guard, made explicit here). A bulk disable includes the
                 // loader row WITHOUT the per-row loader warning: the user asked for everything
                 // off, so "disabling the loader disables the plugins" is the requested outcome.
-                foreach (var m in Mods.Where(m => m.CanToggle && !m.Mod.ReadOnly && m.Enabled != on))
+                foreach (var m in _allRows.Where(m => m.CanToggle && !m.Mod.ReadOnly && m.Enabled != on))
                     LooseRootService.SetEnabled(_ctx!.Game, m.Mod.Name, on);
                 return Task.CompletedTask;
             }
@@ -1174,12 +1197,12 @@ public sealed partial class MainViewModel : ObservableObject
         if (ConfigBacked)
         {
             // The config's array order IS the load order — keep enabled mods in their current order.
-            ordered = Mods.Where(m => m.Enabled).ToList();
+            ordered = _allRows.Where(m => m.Enabled).ToList();
         }
         else
         {
             var orderKeys = await Scanner.GetLoadOrderAsync(_ctx);
-            var byKey = Mods.Where(m => m.Enabled)
+            var byKey = _allRows.Where(m => m.Enabled)
                 .GroupBy(m => m.Mod.Name).ToDictionary(g => g.Key, g => g.First());
             ordered = orderKeys.Where(byKey.ContainsKey).Select(k => byKey[k]).ToList();
         }
@@ -1234,7 +1257,7 @@ public sealed partial class MainViewModel : ObservableObject
     public IReadOnlyList<LaunchTarget> LaunchTargets => _ctx?.Game.LaunchTargets ?? Array.Empty<LaunchTarget>();
 
     /// <summary>True when any mod is enabled — the trigger for launch enforcement.</summary>
-    public bool AnyModsEnabled => Mods.Any(m => m.Enabled);
+    public bool AnyModsEnabled => _allRows.Any(m => m.Enabled);
 
     /// <summary>The launch target the primary Launch button will fire — state-aware. With Seamless
     /// Co-op fully installed on a FromSoft game, the Seamless launcher IS the modded launch path
@@ -1333,7 +1356,7 @@ public sealed partial class MainViewModel : ObservableObject
             // row; the active variant lives in the option chips, NOT the row's representative Mod. Read
             // the enabled variant members by their REAL name so we step aside the file that's actually
             // loading — using the representative's name would miss the active variant's .pak entirely.
-            ActiveModRows = () => Mods.SelectMany(m => m.HasVariantOptions
+            ActiveModRows = () => _allRows.SelectMany(m => m.HasVariantOptions
                     ? m.VariantOptions.Where(v => v.Enabled && v.CanToggle)
                         .Select(v => new StashedModRow { Name = v.ModName, Location = m.Mod.Location })
                     : (m.Enabled && !m.Mod.ReadOnly)
@@ -1612,7 +1635,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// and the menu item is absent.</summary>
     public bool LooseIdentifyAvailable => NexusActionsAvailable
         && NexusSource is IModTextSearch
-        && Mods.Any(r => r.Mod.Location == LooseRootListing.LooseRootLocation);
+        && _allRows.Any(r => r.Mod.Location == LooseRootListing.LooseRootLocation);
     public Visibility LooseIdentifyVisibility => LooseIdentifyAvailable ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Whether the active game resolves a Nexus domain (stored, or by Steam app id). The
@@ -1922,7 +1945,7 @@ public sealed partial class MainViewModel : ObservableObject
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return null; }
 
-        var candidates = LooseIdentify.Candidates(Mods.Select(r => r.Mod).ToList(), Scanner.LoadMetadata(_ctx));
+        var candidates = LooseIdentify.Candidates(_allRows.Select(r => r.Mod).ToList(), Scanner.LoadMetadata(_ctx));
         if (candidates.Count == 0) { StatusText = "No loose mods need identifying."; return null; }
 
         IsBusy = true;

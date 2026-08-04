@@ -594,7 +594,6 @@
 
                         <ToggleSwitch Grid.Column="4" IsOn="{x:Bind ToggleIsOn, Mode=OneWay}" Toggled="OnModToggled"
                                       IsEnabled="{x:Bind CanInteract, Mode=OneWay}"
-                                      Opacity="{x:Bind BusyOpacity, Mode=OneWay}"
                                       VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
                                       Visibility="{x:Bind ToggleVisibility, Mode=OneWay}" />
 

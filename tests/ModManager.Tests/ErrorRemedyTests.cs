@@ -49,6 +49,30 @@ public class ErrorRemedyTests
     }
 
     [Fact]
+    public void Localized_sharing_violation_is_caught_by_hresult()
+    {
+        // German Windows message — no English fragment; HResult 0x80070020 carries the truth.
+        var e = new IOException("Der Prozess kann nicht auf die Datei zugreifen.", unchecked((int)0x80070020));
+        var msg = ErrorRemedy.Describe(e);
+        Assert.Contains("in use", msg);
+        Assert.Contains("close the game", msg, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Localized_disk_full_is_caught_by_hresult()
+    {
+        var e = new IOException("Auf dem Datenträger ist nicht genügend Speicherplatz vorhanden.", unchecked((int)0x80070070));
+        Assert.Contains("disk is full", ErrorRemedy.Describe(e), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Unpunctuated_unknown_message_gets_a_period()
+    {
+        var msg = ErrorRemedy.Describe(new InvalidOperationException("Something odd"));
+        Assert.Contains("Something odd. If it keeps happening", msg);
+    }
+
+    [Fact]
     public void Action_context_leads_the_message_when_given()
     {
         var e = new IOException("The process cannot access the file 'x.dll' because it is being used by another process.");

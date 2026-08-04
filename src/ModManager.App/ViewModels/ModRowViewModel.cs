@@ -16,16 +16,18 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Mod Mod { get; }
 
     // Set programmatically during reload without triggering a disk write (parent guards on this).
-    [ObservableProperty] private bool enabled;
-    // Busy drives the row's pending treatment: toggle disabled + row dimmed while the file
-    // move + rescan runs (vibe-glow F-016). CanInteract folds in the static CanToggle gate.
+    // Notifies ToggleIsOn so the "revert the visual" writes in ToggleAsync's gate/catch paths
+    // actually move the switch (vibe-glow F-016 — previously a silent no-op).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToggleIsOn))]
+    private bool enabled;
+    // Busy disables the toggle while the file move + rescan runs; WinUI's disabled visual state
+    // carries the dimming (vibe-glow F-016). CanInteract folds in the static CanToggle gate.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInteract))]
-    [NotifyPropertyChangedFor(nameof(BusyOpacity))]
     private bool isBusy;
 
     public bool CanInteract => CanToggle && !IsBusy;
-    public double BusyOpacity => IsBusy ? 0.45 : 1.0;
 
     // Load-order mode: show the position number (editable), hide the normal row controls/art.
     [ObservableProperty]
