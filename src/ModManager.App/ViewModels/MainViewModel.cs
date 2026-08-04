@@ -1294,8 +1294,8 @@ public sealed partial class MainViewModel : ObservableObject
             var t = EffectiveLaunchTarget;
             var how = LaunchMechanismLabel(t);   // "Steam" | "<launcher>.exe name" | ""
             if (CurrentLaunchMode == LaunchMode.Vanilla)
-                return string.IsNullOrEmpty(how) ? "▶ Play vanilla" : $"▶ Play vanilla ({how})";
-            return string.IsNullOrEmpty(how) ? "▶ Play (modded)" : $"▶ Play modded ({how})";
+                return string.IsNullOrEmpty(how) ? "Play vanilla" : $"Play vanilla ({how})";
+            return string.IsNullOrEmpty(how) ? "Play (modded)" : $"Play modded ({how})";
         }
     }
 

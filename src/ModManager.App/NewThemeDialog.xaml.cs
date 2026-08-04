@@ -35,6 +35,17 @@ public sealed partial class NewThemeDialog : ContentDialog
         try
         {
             Imported = _themes.ImportUserTheme(JsonBox.Text);
+            // Advisory only (vibe-glow F-046): the import always succeeds — user theming stays
+            // unrestricted — but low-contrast pairs get named so nobody lives in an unreadable
+            // theme by accident. Keep the dialog open long enough to read the warning.
+            var warnings = ModManager.Core.Themes.ContrastReport(Imported);
+            if (warnings.Count > 0)
+            {
+                Show($"Theme imported. Readability heads-up: {warnings[0]}"
+                     + (warnings.Count > 1 ? $" (+{warnings.Count - 1} more pair{(warnings.Count > 2 ? "s" : "")})" : ""),
+                     "ThemeWarning");
+                args.Cancel = true; // stays open to show the note; Close proceeds with the theme kept
+            }
         }
         catch (Exception ex)
         {

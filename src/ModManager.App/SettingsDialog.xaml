@@ -128,7 +128,7 @@
             </TextBlock>
 
             <TextBlock Text="Installed tools" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock x:Name="InstalledToolsEmpty" Text="No third-party tools installed yet."
+            <TextBlock x:Name="InstalledToolsEmpty" Text="No third-party tools installed yet. Install one from the tools rail (+) in a game view."
                        Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
             <ItemsRepeater x:Name="InstalledToolsList">
                 <ItemsRepeater.Layout>
@@ -158,7 +158,7 @@
             </ItemsRepeater>
 
             <TextBlock Text="Installed frameworks" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock x:Name="InstalledFrameworksEmpty" Text="No frameworks installed by the launcher yet."
+            <TextBlock x:Name="InstalledFrameworksEmpty" Text="No frameworks installed by the launcher yet. Drop a framework archive onto a game to install one."
                        Foreground="{StaticResource ThemeInkDim}" FontSize="12" Visibility="Collapsed" />
             <ItemsRepeater x:Name="InstalledFrameworksList">
                 <ItemsRepeater.Layout>

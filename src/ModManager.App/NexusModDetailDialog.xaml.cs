@@ -158,7 +158,7 @@ public sealed partial class NexusModDetailDialog : ContentDialog
 
         EndorsementsLabel.Text = detail.EndorsementCount is { } endorsements ? $"♥ {endorsements:N0}" : "";
         EndorsementsLabel.Visibility = Vis(EndorsementsLabel.Text.Length > 0);
-        DownloadsLabel.Text = detail.DownloadCount is { } downloads ? $"⬇ {downloads:N0}" : "";
+        DownloadsLabel.Text = detail.DownloadCount is { } downloads ? $"↓ {downloads:N0}" : "";
         DownloadsLabel.Visibility = Vis(DownloadsLabel.Text.Length > 0);
 
         // DecodePixelWidth MUST be set before the source — the BitmapImage(Uri) path starts decoding

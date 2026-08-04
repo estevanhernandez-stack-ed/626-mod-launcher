@@ -183,6 +183,28 @@ public static class Themes
         };
     }
 
+    /// <summary>Advisory readability report for a normalized theme (vibe-glow F-046): names the
+    /// token pairs that fall below WCAG AA small-text contrast (4.5:1). Never blocks an import —
+    /// user theming stays unrestricted; the dialog surfaces these as warnings.</summary>
+    public static IReadOnlyList<string> ContrastReport(Theme t)
+    {
+        // The pairs the shell actually renders: primary/secondary ink on the page and panels,
+        // danger on its carrier surfaces (the ban-risk text), accent-as-text on bg (links).
+        var pairs = new (string Fg, string Bg)[]
+        {
+            ("text", "bg"), ("text", "glass"), ("text_secondary", "bg"), ("text_secondary", "glass"),
+            ("danger", "bg"), ("danger", "bar_bg"), ("danger", "glass"), ("accent", "bg"),
+        };
+        var warnings = new List<string>();
+        foreach (var (fg, bg) in pairs)
+        {
+            var ratio = ColorContrast.Ratio(t[fg], t[bg]);
+            if (ratio < 4.5)
+                warnings.Add($"{fg} on {bg} is {ratio:F1}:1 — below the 4.5:1 readability floor.");
+        }
+        return warnings;
+    }
+
     /// <summary>Built-ins merged with user/agent themes; user wins on id collision.</summary>
     public static IReadOnlyList<Theme> BuildThemeList(
         IReadOnlyDictionary<string, RawTheme> builtins,

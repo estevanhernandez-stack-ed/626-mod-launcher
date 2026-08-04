@@ -20,7 +20,7 @@ public sealed partial class FrameworkInstallDialog : ContentDialog
         if (filesThatWillBeReplaced.Count > 0)
         {
             OverwriteWarning.Text =
-                $"⚠ {filesThatWillBeReplaced.Count} existing file(s) will be replaced and " +
+                $"{filesThatWillBeReplaced.Count} existing file(s) will be replaced and " +
                 $"backed up to _626mods/<game>/frameworks/{framework.FrameworkId}/backup/. " +
                 $"Replaced: {string.Join(", ", filesThatWillBeReplaced)}";
             OverwriteWarning.Visibility = Microsoft.UI.Xaml.Visibility.Visible;

@@ -7,6 +7,8 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <!-- Squared ToggleSwitch template (wave 7, F-001) — see the file's header. -->
+                <ResourceDictionary Source="ms-appx:///Styles/SquaredControls.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- System-brush overrides (vibe-glow wave 1), as plain app-level entries. Field notes

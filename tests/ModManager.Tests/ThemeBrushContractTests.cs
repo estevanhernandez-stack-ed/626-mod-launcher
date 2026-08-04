@@ -25,6 +25,15 @@ public class ThemeBrushContractTests
             .Select(m => m.Groups[1].Value).ToHashSet();
     }
 
+    private static HashSet<string> AppXamlSharedResourceKeys(string root)
+    {
+        // DialogTheming may share non-brush resources too (CornerRadius, wave 7) — the subset
+        // check accepts any keyed App.xaml resource, while the brush/Apply equality stays strict.
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "ModManager.App", "App.xaml"));
+        return Regex.Matches(xaml, "<(?:SolidColorBrush|CornerRadius|FontFamily|x:Double) x:Key=\"([^\"]+)\"")
+            .Select(m => m.Groups[1].Value).ToHashSet();
+    }
+
     private static List<string> ThemeServiceSetKeys(string root)
     {
         var cs = File.ReadAllText(Path.Combine(root, "src", "ModManager.App", "Services", "ThemeService.cs"));
@@ -72,7 +81,7 @@ public class ThemeBrushContractTests
     public void DialogTheming_shared_keys_all_exist_in_app_xaml()
     {
         var root = RepoRoot();
-        var xamlKeys = AppXamlBrushKeys(root);
+        var xamlKeys = AppXamlSharedResourceKeys(root);
         var shared = DialogSharedKeys(root);
 
         var sharedDupes = shared.GroupBy(k => k).Where(g => g.Count() > 1).Select(g => g.Key).ToList();

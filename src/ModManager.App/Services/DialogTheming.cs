@@ -50,6 +50,10 @@ internal static class DialogTheming
         "HyperlinkButtonForeground", "HyperlinkButtonForegroundPointerOver",
         "HyperlinkButtonForegroundPressed", "HyperlinkButtonForegroundDisabled",
         "TextFillColorPrimaryBrush", "TextFillColorSecondaryBrush",
+        // Radius resources (wave 7, F-001): CheckBox's box radius binds the control's
+        // CornerRadius whose Setter resolves ControlCornerRadius — app-level 0 doesn't reach
+        // popup roots, so dialogs get the same instances. Not brushes; copied like any resource.
+        "ControlCornerRadius", "OverlayCornerRadius",
     };
 
     public static void Apply(ContentDialog dialog)

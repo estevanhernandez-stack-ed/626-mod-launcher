@@ -762,9 +762,9 @@ public sealed partial class MainWindow : Window
         Add("PLUGIN",   "Loose ASI plugin in the game root — loads through the ASI loader.");
         Add("SHADERS",  "Shader/addon package (ReShade addons and presets).");
         Add("LOADER",   "The DLL other mods load through — turning it off turns off every mod that injects through it.");
-        Add("📄 readme",   "Open the mod's bundled readme.");
-        Add("⚙ config",    "Open the config cockpit (UE4SS keybinds + settings).");
-        Add("🗑 uninstall", "Permanently remove the mod from disk.");
+        Add("readme",   "Open the mod's bundled readme.");
+        Add("config",    "Open the config cockpit (UE4SS keybinds + settings).");
+        Add("uninstall", "Permanently remove the mod from disk.");
 
         var dialog = new ContentDialog
         {
@@ -1082,7 +1082,7 @@ public sealed partial class MainWindow : Window
             {
                 var card = new StackPanel { Spacing = 6 };
                 card.Children.Add(new TextBlock { Text = opt.Title, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-                card.Children.Add(new TextBlock { Text = opt.Detail, TextWrapping = TextWrapping.Wrap, Opacity = 0.8 });
+                card.Children.Add(new TextBlock { Text = opt.Detail, TextWrapping = TextWrapping.Wrap, Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"] });
 
                 switch (opt.Kind)
                 {
@@ -1095,7 +1095,7 @@ public sealed partial class MainWindow : Window
 #endif
 
                     case ModManager.Core.LaunchOptionKind.Internal:
-                        var run = new Button { Content = "▶ Play this", Margin = new Thickness(0, 2, 0, 0) };
+                        var run = new Button { Content = "Play this", Margin = new Thickness(0, 2, 0, 0) };
                         run.Click += async (_, _) => { dialog.Hide(); await ViewModel.RunInternalOption(opt); };
                         card.Children.Add(run);
                         break;
@@ -1104,7 +1104,7 @@ public sealed partial class MainWindow : Window
                         card.Children.Add(new TextBlock
                         {
                             Text = "Add this in Steam → right-click the game → Properties → General → Launch Options:",
-                            TextWrapping = TextWrapping.Wrap, Opacity = 0.8,
+                            TextWrapping = TextWrapping.Wrap, Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"],
                         });
                         card.Children.Add(new TextBox { Text = opt.SteamOptions ?? "", IsReadOnly = true, IsSpellCheckEnabled = false });
                         var copy = new Button { Content = "Copy" };
@@ -1130,7 +1130,7 @@ public sealed partial class MainWindow : Window
         var state = ViewModel.AntiCheatStateOf(opt);
         if (state == ModManager.Core.AntiCheatState.Unsupported)
         {
-            card.Children.Add(new TextBlock { Text = "Couldn't find the game files to toggle anti-cheat.", Opacity = 0.8, TextWrapping = TextWrapping.Wrap });
+            card.Children.Add(new TextBlock { Text = "Couldn't find the game files to toggle anti-cheat.", Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"], TextWrapping = TextWrapping.Wrap });
             return;
         }
 
@@ -1143,7 +1143,7 @@ public sealed partial class MainWindow : Window
             Text = on
                 ? "Currently in ONLINE mode (anti-cheat on) — official multiplayer works, file-based mods are blocked."
                 : "Currently in OFFLINE mode (anti-cheat off) — Play loads mods. No official online until you switch back.",
-            Opacity = 0.9, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
+            Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"], TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
         });
         var toggle = new Button
         {
@@ -1334,7 +1334,6 @@ public sealed partial class MainWindow : Window
             {
                 Text = row.OwnedConfigWarning,  // textContent — no raw mod data
                 TextWrapping = TextWrapping.Wrap,
-                Opacity = 0.9,
                 Foreground = dangerBrush,
             };
             warn.Child = warnText;
@@ -1344,7 +1343,7 @@ public sealed partial class MainWindow : Window
         // Config files
         if (configs.Count == 0 && keybinds.Count == 0 && commands.Count == 0)
         {
-            root.Children.Add(new TextBlock { Text = "No config files or Lua registrations found in this mod folder.", Opacity = 0.6, TextWrapping = TextWrapping.Wrap });
+            root.Children.Add(new TextBlock { Text = "No config files or Lua registrations found in this mod folder.", Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkDim"], TextWrapping = TextWrapping.Wrap });
         }
 
         foreach (var cfg in configs)
@@ -1361,7 +1360,7 @@ public sealed partial class MainWindow : Window
 
             if (cfg.Entries.Count == 0)
             {
-                section.Children.Add(new TextBlock { Text = "No parseable entries.", Opacity = 0.5 });
+                section.Children.Add(new TextBlock { Text = "No parseable entries.", Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkDim"] });
             }
 
             foreach (var entry in cfg.Entries)
@@ -1458,7 +1457,7 @@ public sealed partial class MainWindow : Window
                             VerticalAlignment = VerticalAlignment.Center,
                             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
                             FontSize = 12,
-                            Opacity = 0.7,
+                            Foreground = (Microsoft.UI.Xaml.Media.SolidColorBrush)Microsoft.UI.Xaml.Application.Current.Resources["ThemeInkSoft"],
                         });
                     }
 
