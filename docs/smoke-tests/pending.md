@@ -840,8 +840,8 @@ em-dash guard.
 **Shipped:** AutomationProperties.Name on all 9 icon-only buttons (3 destructive) + the
 library game card + per-mod names on row toggle/actions ("Enable Faster Ships",
 "Uninstall Faster Ships"); LiveSetting=Polite on the status line + 3 dialog status sinks;
-MinHeight/MinWidth 24 on the MP badge + glossary "?"; HelpText mirroring tooltips on 16
-chip Borders; palette swatches announce their hex. New DesignLaw: icon-only buttons must
+MinHeight/MinWidth 24 on the MP badge + glossary "?"; HelpText mirroring tooltips on 16 chip
+TextBlocks (Borders have no automation peer); palette swatches carry visible hex captions. New DesignLaw: icon-only buttons must
 carry a Name (red→green TDD).
 
 **Smoke needed (Narrator or Accessibility Insights):**
@@ -849,4 +849,7 @@ carry a Name (red→green TDD).
    "Uninstall <mod>" — not 27 identical controls.
 2. Toggle a mod: the status-line result is announced without focus moving (LiveSetting).
 3. Home/Settings/delete-profile/delete-snapshot buttons announce their names.
-4. MP badge + "?" are comfortably clickable (24px targets).
+4. MP badge + "?" are comfortably clickable (24px targets); row density change acceptable.
+5. Chip HelpText retrievable in Narrator scan mode (BAN RISK, MANAGED, UPDATE chips).
+6. FIRST status write after app launch is announced (WireLiveRegion uses FromElement — a
+   missing peer at first write is the known risk).
