@@ -203,7 +203,7 @@ public sealed partial class SavesDialog : ContentDialog
             }
             else
             {
-                CharactersEmpty.Text = "No editable characters detected in this folder.";
+                CharactersEmpty.Text = "No editable characters here. If the folder is right, this game's save format isn't itemized yet.";
             }
             CharactersEmpty.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         }
