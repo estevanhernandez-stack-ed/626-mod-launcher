@@ -93,7 +93,8 @@ public sealed partial class AddGameDialog : ContentDialog
                 manual.Add(new SteamSetupRow(g.AppId, g.Name, _store.ResolveCoverArtPath(g.AppId), g.InstallDir));
             }
         }
-        SteamGamesList.ItemsSource = addable;
+        _steamRows = addable;
+        SteamGamesList.ItemsSource = _steamRows;
         if (addable.Count == 0) SteamEmptyNote.Visibility = Visibility.Visible;
         if (manual.Count > 0)
         {
@@ -318,10 +319,41 @@ public sealed partial class AddGameDialog : ContentDialog
         EngineBox.Focus(FocusState.Programmatic);
     }
 
-    // React as the user checks Steam games. The dialog's Add button commits the selection.
+    // Filter over the detected list (F-026). Checked games survive filtering: the checked SET
+    // is the source of truth, the ListView selection is just its visible projection.
+    private List<SteamAddRow> _steamRows = new();
+    private readonly HashSet<SteamAddRow> _steamChecked = new();
+    private bool _steamRelisting;
+
+    private void OnSteamFilterChanged(object sender, TextChangedEventArgs e)
+    {
+        var q = SteamFilterBox.Text.Trim();
+        var view = q.Length == 0
+            ? _steamRows
+            : _steamRows.Where(r => r.Display.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        _steamRelisting = true;
+        try
+        {
+            SteamGamesList.ItemsSource = view;
+            foreach (var r in view) if (_steamChecked.Contains(r)) SteamGamesList.SelectedItems.Add(r);
+        }
+        finally { _steamRelisting = false; }
+        UpdateSteamSelectionUi();
+    }
+
+    // React as the user checks Steam games. The dialog's Add button commits the CHECKED SET —
+    // a game checked, then filtered out of view, still adds (the status line names it).
     private void OnSteamSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var picked = SteamGamesList.SelectedItems.Cast<SteamAddRow>().ToList();
+        if (_steamRelisting) return; // programmatic re-list churn, not a user action
+        foreach (var r in e.AddedItems.OfType<SteamAddRow>()) _steamChecked.Add(r);
+        foreach (var r in e.RemovedItems.OfType<SteamAddRow>()) _steamChecked.Remove(r);
+        UpdateSteamSelectionUi();
+    }
+
+    private void UpdateSteamSelectionUi()
+    {
+        var picked = _steamChecked.ToList();
         var n = picked.Count;
 
         // When Steam games are checked, the manual single-game form is irrelevant — each game
@@ -409,7 +441,7 @@ public sealed partial class AddGameDialog : ContentDialog
     {
         // Steam quick-add wins: any checked Steam games auto-register through the same BatchApproved
         // loop MainWindow uses for the AI flow. saveDir null -> AddGameAsync resolves it (Ludusavi etc.).
-        var steamPicked = SteamGamesList.SelectedItems.Cast<SteamAddRow>().ToList();
+        var steamPicked = _steamChecked.ToList();
         if (steamPicked.Count > 0)
         {
             foreach (var row in steamPicked) _batchApproved.Add((row.Input, null));
