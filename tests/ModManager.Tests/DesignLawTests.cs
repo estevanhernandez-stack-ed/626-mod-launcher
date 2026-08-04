@@ -4,10 +4,97 @@ namespace ModManager.Tests;
 
 // F-048 (vibe-glow wave 3): the shipped design laws from waves 1-3 have no compile-time
 // enforcement — a new CornerRadius="6", a 9px label, a hardcoded mono face, raw-opacity
-// dimming, or a bare TextBlock in a DataTemplate would regress silently. This suite lints
-// the App-layer sources so the laws fail loud instead.
+// dimming, or a bare TextBlock in a DataTemplate would regress silently. Each detector is a
+// pure function with synthetic positive/negative controls (so a regex typo can't leave the
+// suite permanently green), then the file scans run the proven detectors over the App layer.
 public class DesignLawTests
 {
+    // ---- detectors (pure) ----
+
+    private static string StripXmlComments(string text) => Regex.Replace(text, "<!--.*?-->", "", RegexOptions.Singleline);
+
+    internal static IEnumerable<string> FindNonZeroRadiusXaml(string text)
+        => Regex.Matches(StripXmlComments(text), "CornerRadius=\"[0-9., ]*[1-9][0-9., ]*\"").Select(m => m.Value);
+
+    internal static IEnumerable<string> FindNonZeroRadiusCode(string text)
+        => Regex.Matches(text, @"new CornerRadius\((?!0\))[0-9., ]+\)").Select(m => m.Value);
+
+    internal static IEnumerable<string> FindSubTagFontSizeXaml(string text)
+        => Regex.Matches(StripXmlComments(text), "FontSize=\"[0-9](\\.[0-9]+)?\"").Select(m => m.Value);
+
+    internal static IEnumerable<string> FindSubTagFontSizeCode(string text)
+        => Regex.Matches(text, @"FontSize = [0-9](\.[0-9]+)?[,;\s]").Select(m => m.Value.Trim());
+
+    internal static IEnumerable<string> FindHardcodedMonoXaml(string text)
+        => Regex.Matches(StripXmlComments(text), "FontFamily=\"Consolas\"").Select(m => m.Value);
+
+    internal static IEnumerable<string> FindHardcodedMonoCode(string text)
+        => Regex.Matches(text, "FontFamily\\(\"Consolas\"\\)").Select(m => m.Value);
+
+    internal static IEnumerable<string> FindRawOpacityDimming(string text)
+        => Regex.Matches(StripXmlComments(text), "<TextBlock\\b[^>]*?/?>", RegexOptions.Singleline)
+            .Select(m => m.Value)
+            .Where(tag => tag.Contains("Opacity=\"0.") && !tag.Contains("Foreground=") && !tag.Contains("Style="));
+
+    internal static IEnumerable<string> FindUninkedTemplateText(string text)
+    {
+        var clean = StripXmlComments(text);
+        var spans = new List<(int Start, int End)>();
+        foreach (Match dt in Regex.Matches(clean, "<DataTemplate\\b"))
+        {
+            var depth = 0;
+            foreach (Match t in Regex.Matches(clean.Substring(dt.Index), "</?DataTemplate\\b"))
+            {
+                depth += t.Value[1] != '/' ? 1 : -1;
+                if (depth == 0) { spans.Add((dt.Index, dt.Index + t.Index + t.Length)); break; }
+            }
+        }
+        foreach (Match m in Regex.Matches(clean, "<TextBlock\\b[^>]*?/?>", RegexOptions.Singleline))
+        {
+            if (!spans.Any(s => s.Start <= m.Index && m.Index < s.End)) continue;
+            if (!m.Value.Contains("Foreground=") && !m.Value.Contains("Style="))
+                yield return m.Value;
+        }
+    }
+
+    // ---- positive/negative controls: every detector must fire on bad and stay quiet on good ----
+
+    public static IEnumerable<object[]> DetectorControls() => new[]
+    {
+        new object[] { "radius-xaml", "<Border CornerRadius=\"4\" />", "<Border CornerRadius=\"0\" /><Border CornerRadius=\"{ThemeResource ControlCornerRadius}\" /><!-- CornerRadius=\"6\" -->" },
+        new object[] { "radius-xaml-tuple", "<Border CornerRadius=\"0,0,4,4\" />", "<Border CornerRadius=\"0,0,0,0\" />" },
+        new object[] { "radius-code", "x.CornerRadius = new CornerRadius(6);", "x.CornerRadius = new CornerRadius(0);" },
+        new object[] { "fontsize-xaml", "<TextBlock FontSize=\"9\" />", "<TextBlock FontSize=\"10\" /><!-- FontSize=\"9\" -->" },
+        new object[] { "fontsize-code", "b.FontSize = 9;", "b.FontSize = 12;" },
+        new object[] { "mono-xaml", "<TextBlock FontFamily=\"Consolas\" />", "<TextBlock FontFamily=\"{StaticResource MonoFontFamily}\" />" },
+        new object[] { "mono-code", "new FontFamily(\"Consolas\")", "new FontFamily(\"Cascadia Mono, Consolas\")" },
+        new object[] { "opacity-dim", "<TextBlock Text=\"x\" Opacity=\"0.6\" />", "<TextBlock Text=\"x\" Opacity=\"0.6\" Foreground=\"{StaticResource ThemeDanger}\" />" },
+        new object[] { "template-ink", "<DataTemplate><TextBlock Text=\"x\" /></DataTemplate>", "<DataTemplate><TextBlock Text=\"x\" Foreground=\"{StaticResource ThemeInk}\" /></DataTemplate><DataTemplate><TextBlock Style=\"{x:Null}\" /></DataTemplate><TextBlock Text=\"outside\" />" },
+    };
+
+    private static IEnumerable<string> RunDetector(string id, string sample) => id switch
+    {
+        "radius-xaml" or "radius-xaml-tuple" => FindNonZeroRadiusXaml(sample),
+        "radius-code" => FindNonZeroRadiusCode(sample),
+        "fontsize-xaml" => FindSubTagFontSizeXaml(sample),
+        "fontsize-code" => FindSubTagFontSizeCode(sample),
+        "mono-xaml" => FindHardcodedMonoXaml(sample),
+        "mono-code" => FindHardcodedMonoCode(sample),
+        "opacity-dim" => FindRawOpacityDimming(sample),
+        "template-ink" => FindUninkedTemplateText(sample).ToList(),
+        _ => throw new ArgumentOutOfRangeException(id),
+    };
+
+    [Theory]
+    [MemberData(nameof(DetectorControls))]
+    public void Detector_fires_on_bad_and_stays_quiet_on_good(string id, string bad, string good)
+    {
+        Assert.NotEmpty(RunDetector(id, bad));
+        Assert.Empty(RunDetector(id, good));
+    }
+
+    // ---- file scans over the App layer ----
+
     private static string AppRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -23,88 +110,32 @@ public class DesignLawTests
                      && !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .Select(p => (p, File.ReadAllText(p)));
 
-    private static string Offend(string path, Match m) => $"{Path.GetFileName(path)}: {m.Value.Trim()}";
+    private static List<string> Scan(string pattern, Func<string, IEnumerable<string>> detector)
+        => Sources(pattern)
+            .SelectMany(s => detector(s.Text).Select(v => $"{Path.GetFileName(s.Path)}: {v.Trim()}"))
+            .ToList();
+
+    [Fact]
+    public void App_sources_are_non_empty() // guards the guard: a broken glob would green everything
+        => Assert.True(Sources("*.xaml").Count() >= 10, "App XAML glob matched suspiciously few files");
 
     [Fact]
     public void Shape_law_no_nonzero_corner_radius()
-    {
-        var offenders = new List<string>();
-        foreach (var (path, text) in Sources("*.xaml"))
-            foreach (Match m in Regex.Matches(text, "CornerRadius=\"[0-9., ]*[1-9][0-9., ]*\""))
-                offenders.Add(Offend(path, m));
-        foreach (var (path, text) in Sources("*.cs"))
-            foreach (Match m in Regex.Matches(text, @"new CornerRadius\((?!0\))[0-9., ]+\)"))
-                offenders.Add(Offend(path, m));
-        Assert.Empty(offenders);
-    }
+        => Assert.Empty(Scan("*.xaml", FindNonZeroRadiusXaml).Concat(Scan("*.cs", FindNonZeroRadiusCode)));
 
     [Fact]
     public void Type_law_no_font_size_below_the_tag_step()
-    {
-        var offenders = new List<string>();
-        foreach (var (path, text) in Sources("*.xaml"))
-            foreach (Match m in Regex.Matches(text, "FontSize=\"[0-9](\\.[0-9]+)?\""))
-                offenders.Add(Offend(path, m));
-        Assert.Empty(offenders);
-    }
+        => Assert.Empty(Scan("*.xaml", FindSubTagFontSizeXaml).Concat(Scan("*.cs", FindSubTagFontSizeCode)));
 
     [Fact]
     public void Type_law_mono_face_routes_through_the_resource()
-    {
-        var offenders = new List<string>();
-        foreach (var (path, text) in Sources("*.xaml"))
-            foreach (Match m in Regex.Matches(text, "FontFamily=\"Consolas\""))
-                offenders.Add(Offend(path, m));
-        foreach (var (path, text) in Sources("*.cs"))
-            foreach (Match m in Regex.Matches(text, "FontFamily\\(\"Consolas\"\\)"))
-                offenders.Add(Offend(path, m));
-        Assert.Empty(offenders);
-    }
+        => Assert.Empty(Scan("*.xaml", FindHardcodedMonoXaml).Concat(Scan("*.cs", FindHardcodedMonoCode)));
 
     [Fact]
     public void Ink_law_no_raw_opacity_dimming_on_untinted_text()
-    {
-        // Dimming goes through ThemeInkSoft/Dim/Muted (the token contract), never a raw
-        // opacity over default ink. Opacity WITH an explicit Foreground is a deliberate tint.
-        var offenders = new List<string>();
-        foreach (var (path, text) in Sources("*.xaml"))
-        {
-            foreach (Match m in Regex.Matches(text, "<TextBlock\\b[^>]*?/?>", RegexOptions.Singleline))
-            {
-                var tag = m.Value;
-                if (tag.Contains("Opacity=\"0.") && !tag.Contains("Foreground=") && !tag.Contains("Style="))
-                    offenders.Add(Offend(path, m));
-            }
-        }
-        Assert.Empty(offenders);
-    }
+        => Assert.Empty(Scan("*.xaml", FindRawOpacityDimming));
 
     [Fact]
     public void Ink_law_data_template_text_declares_its_ink()
-    {
-        // Implicit TextBlock styles do not reach DataTemplate-realized TextBlocks (proven
-        // per-pixel in the wave-2 re-review) — template text must carry Foreground or Style.
-        var offenders = new List<string>();
-        foreach (var (path, text) in Sources("*.xaml"))
-        {
-            var spans = new List<(int Start, int End)>();
-            foreach (Match dt in Regex.Matches(text, "<DataTemplate\\b"))
-            {
-                var depth = 0;
-                foreach (Match t in Regex.Matches(text.Substring(dt.Index), "</?DataTemplate\\b"))
-                {
-                    depth += t.Value[1] != '/' ? 1 : -1;
-                    if (depth == 0) { spans.Add((dt.Index, dt.Index + t.Index + t.Length)); break; }
-                }
-            }
-            foreach (Match m in Regex.Matches(text, "<TextBlock\\b[^>]*?/?>", RegexOptions.Singleline))
-            {
-                if (!spans.Any(s => s.Start <= m.Index && m.Index < s.End)) continue;
-                var tag = m.Value;
-                if (!tag.Contains("Foreground=") && !tag.Contains("Style="))
-                    offenders.Add(Offend(path, m));
-            }
-        }
-        Assert.Empty(offenders);
-    }
+        => Assert.Empty(Scan("*.xaml", t => FindUninkedTemplateText(t)));
 }

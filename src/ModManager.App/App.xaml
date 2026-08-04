@@ -76,7 +76,20 @@
             <SolidColorBrush x:Key="CheckBoxForegroundCheckedPointerOver" Color="#E8F2FF" />
             <SolidColorBrush x:Key="CheckBoxForegroundCheckedPressed" Color="#E8F2FF" />
             <SolidColorBrush x:Key="ComboBoxForeground" Color="#E8F2FF" />
-            <SolidColorBrush x:Key="ComboBoxPlaceholderForeground" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="ComboBoxForegroundPointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxForegroundPressed" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxForegroundFocused" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxForegroundFocusedPressed" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="ComboBoxHeaderForeground" Color="#A8C2D9" />
+            <!-- Capital H is correct — ComboBox is the one WinUI family that spells PlaceHolder that way. -->
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForeground" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForegroundPointerOver" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForegroundPressed" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForegroundFocused" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForegroundFocusedPressed" Color="#4A5F7A" />
+            <SolidColorBrush x:Key="CheckBoxForegroundIndeterminate" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundIndeterminatePointerOver" Color="#E8F2FF" />
+            <SolidColorBrush x:Key="CheckBoxForegroundIndeterminatePressed" Color="#E8F2FF" />
             <SolidColorBrush x:Key="TextControlForeground" Color="#E8F2FF" />
             <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#E8F2FF" />
             <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E8F2FF" />
