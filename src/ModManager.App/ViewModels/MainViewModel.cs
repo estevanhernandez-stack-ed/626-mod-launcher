@@ -282,8 +282,8 @@ public sealed partial class MainViewModel : ObservableObject
     // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.
     // Inactive segments return the resource-backed ThemeInk brush directly so theme switches
     // propagate via the in-place color mutation in ThemeService.Set (no extra notify needed for
-    // inactive). The active foreground is currently Black - readable on the default amber accent;
-    // a future text_on_accent theme slot would let this re-theme correctly on arbitrary accents.
+    // inactive). The active foreground is the resource-backed ThemeBg brush (F-078) — the same
+    // bg-on-accent convention every other accent fill uses, re-themed live like ThemeInk.
     private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
 
     public Brush LoadoutAllBrush => SegmentBrushFor("all");
@@ -300,7 +300,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private Brush SegmentForegroundFor(string mode)
         => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
-            ? new SolidColorBrush(Colors.Black)
+            ? (Application.Current.Resources["ThemeBg"] as Brush ?? new SolidColorBrush(Colors.Black))
             : (Application.Current.Resources["ThemeInk"] as Brush ?? new SolidColorBrush(Colors.White));
 
     partial void OnActiveModeChanged(string value)

@@ -963,3 +963,13 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
 2. Type a FileTag key (2RingSlots) — the row matches.
 3. Filter on game A, switch to game B — full unfiltered list renders and the
    filter box is empty.
+
+---
+
+## road-to-zero B4 — danger/hover (F-037/072/078)
+
+**Smoke needed:**
+1. Settings -> Reset launcher: hover and press the "Reset launcher" primary —
+   the danger fill HOLDS through both states (was reverting on hover).
+2. Loadout segments: active segment ink reads as the theme bg color on the
+   accent fill in every builtin (was hardcoded black); switch themes live.
