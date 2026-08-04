@@ -952,3 +952,14 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
    Forge without error.
 2. Derived-from-avatar theme applied via Settings Apply persists too (any
    SelectedTheme change saves).
+
+---
+
+## road-to-zero B3 — filter trio (F-059/060/061)
+
+**Smoke needed:**
+1. Type a no-hit query — "No mods match 'x'." centers where the list was;
+   clearing restores rows.
+2. Type a FileTag key (2RingSlots) — the row matches.
+3. Filter on game A, switch to game B — full unfiltered list renders and the
+   filter box is empty.

@@ -399,6 +399,8 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnActiveGameChanged(GameOption? value)
     {
         if (_suppressActiveSwitch || value is null) return;
+        // A filter typed for one game must not pre-narrow the next game's first render (F-061).
+        ModFilterText = "";
         _svc.SetActiveGame(value.Id);
         _ = ReloadModsAsync();
     }
@@ -866,9 +868,17 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnModFilterTextChanged(string value)
         => Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
 
+    // Zero-match empty state (F-059): a blank list reads as broken; name the query instead.
+    [ObservableProperty] private string filterEmptyText = "";
+    [ObservableProperty] private Visibility filterEmptyVisibility = Visibility.Collapsed;
+
     private List<ModRowViewModel> FilterRows(IEnumerable<ModRowViewModel> rows)
     {
-        var visible = rows.Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, ModFilterText)).ToList();
+        var all = rows.ToList();
+        var visible = all.Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, r.FileTag, ModFilterText)).ToList();
+        var filteredToNothing = visible.Count == 0 && all.Count > 0 && !string.IsNullOrWhiteSpace(ModFilterText);
+        FilterEmptyText = filteredToNothing ? $"No mods match \"{ModFilterText.Trim()}\"." : "";
+        FilterEmptyVisibility = filteredToNothing ? Visibility.Visible : Visibility.Collapsed;
         // Re-stamp section dividers + the legend host over the VISIBLE sequence — a filtered-out
         // first row must not take its section header or the ? glossary button with it.
         string? prev = null;
