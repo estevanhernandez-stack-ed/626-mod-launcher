@@ -164,13 +164,22 @@ public static class Bloom
         attachment.Shadow.Opacity = (float)Math.Clamp(_alpha, 0, 1);
     }
 
+    // prefers-reduced-motion (F-023): when Windows says animations off, the glow appears
+    // instantly — the 160ms fade is the only motion the design language grants, and it's the
+    // first thing dropped. UISettings is cheap to hold; the OS setting is read per fade so a
+    // live settings change is honored without restart.
+    private static readonly Windows.UI.ViewManagement.UISettings OsSettings = new();
+
     private static void FadeIn(Compositor compositor, SpriteVisual sprite)
     {
+        if (!OsSettings.AnimationsEnabled) return; // reduced motion: appear, don't fade
+
+        var ms = Application.Current.Resources.TryGetValue("MotionGlowMs", out var v) && v is double d ? d : 160;
         var fade = compositor.CreateScalarKeyFrameAnimation();
         fade.InsertKeyFrame(0f, 0f);
         fade.InsertKeyFrame(1f, 1f, compositor.CreateCubicBezierEasingFunction(
             new Vector2(0f, 0f), new Vector2(0.2f, 1f)));
-        fade.Duration = TimeSpan.FromMilliseconds(160);
+        fade.Duration = TimeSpan.FromMilliseconds(ms);
         sprite.StartAnimation(nameof(sprite.Opacity), fade);
     }
 }

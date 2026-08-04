@@ -1021,3 +1021,14 @@ launch; Default (Forge) covers first-run / cleared setting / deleted theme.
    named both while filtered).
 3. Filter, uncheck a visible game, clear filter — only the still-checked
    game remains selected.
+
+---
+
+## road-to-zero B10 — motion (F-023)
+
+**Smoke needed:**
+1. Windows Settings -> Accessibility -> Animation effects OFF: toggling a mod
+   shows the glow instantly (no fade); ON restores the 160ms fade — no
+   restart needed.
+2. Hovering a mod row shifts its background to the theme's glass color on
+   every builtin.
