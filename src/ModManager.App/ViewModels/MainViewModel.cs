@@ -777,7 +777,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string groupMode = "By source";
     partial void OnGroupModeChanged(string value)
     {
-        if (Mods.Count > 0) OrderAndStampSections(Mods.ToList()); // re-group in place, no rescan
+        // Re-group from the STATE list, never the filtered render list — regrouping while a
+        // filter is typed must not collapse _allRows (OrderAndStampSections reassigns it), or
+        // Disable-all / play-vanilla silently act on the visible subset (F-015 close-out fix).
+        if (_allRows.Count > 0) OrderAndStampSections(_allRows.ToList()); // re-group in place, no rescan
     }
 
     // Loose-root rows group by mod NATURE (their Class carries the detector's kind), not by the
