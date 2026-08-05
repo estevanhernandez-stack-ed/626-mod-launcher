@@ -38,6 +38,11 @@ public sealed record GameManifestEntry
     public string? GroupingRule { get; init; }
     public int? Featured { get; init; }               // quick-pick rank; null = not in the quick-pick list
     public string? BanRisk { get; init; }             // null | "low" | "medium" | "high" — anti-cheat/ban exposure for online play (descriptive only)
+    // Ban-risk nuance (batch 4): does a DOCUMENTED safe modding route exist despite the risk?
+    // "offline" | "private-server" | "official-mods" | "none" | "unclear" | null (unresearched).
+    // Descriptive only, like BanRisk — the warn-and-ack mechanism stays compiled code.
+    public string? SafeRoute { get; init; }
+    public string? SafeRouteHint { get; init; }       // one user-facing sentence naming the route (or the absence of one)
     public ManifestProvenance Provenance { get; init; } = new();
 }
 

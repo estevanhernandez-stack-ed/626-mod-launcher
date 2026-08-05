@@ -25,6 +25,9 @@ public class GameManifestJsonTests
                     Stores = new StoreIds { SteamAppId = "1245620" },
                     NexusDomain = "eldenring",
                     SaveDirHint = "<home>/EldenRing",
+                    BanRisk = "high",
+                    SafeRoute = "offline",
+                    SafeRouteHint = "Mod offline with EAC disabled; never carry modded files into vanilla online play.",
                     Provenance = new ManifestProvenance
                     {
                         Sources = new[] { ManifestSources.KnownEngines, ManifestSources.NexusDomains },
@@ -38,6 +41,11 @@ public class GameManifestJsonTests
         Assert.Contains("\"schemaVersion\"", json);
         Assert.Contains("\"steamAppId\"", json);
         Assert.Contains("\"nexusDomain\"", json);
+        // Ban-risk nuance (batch 4): the safe-route facet rides next to banRisk, camelCase like
+        // everything else, and must survive the round-trip so the feed can publish it.
+        Assert.Contains("\"safeRoute\"", json);
+        Assert.Contains("\"safeRouteHint\"", json);
+        Assert.DoesNotContain("\"SafeRoute\"", json);
         Assert.Contains("\"saveDirHint\"", json);
         Assert.DoesNotContain("\"SchemaVersion\"", json);
         Assert.DoesNotContain("\"SteamAppId\"", json);
@@ -48,6 +56,8 @@ public class GameManifestJsonTests
         Assert.Equal("elden-ring", back!.Games[0].Id);
         Assert.Equal("1245620", back.Games[0].Stores.SteamAppId);
         Assert.Equal("fromsoft", back.Games[0].Engine);
+        Assert.Equal("offline", back.Games[0].SafeRoute);
+        Assert.StartsWith("Mod offline", back.Games[0].SafeRouteHint);
         Assert.Contains(ManifestSources.NexusDomains, back.Games[0].Provenance.Sources);
     }
 
