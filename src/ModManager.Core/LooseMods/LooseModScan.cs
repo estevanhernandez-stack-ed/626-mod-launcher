@@ -8,7 +8,10 @@ namespace ModManager.Core.LooseMods;
 /// Phase-2 seam: this is one signal; a vanilla-diff signal composes alongside it later.</summary>
 public static class LooseModScan
 {
-    private static readonly string[] ProxyNames =
+    // internal (not private): ModManager.Core.Discovery.DiscoverySweep also reads this list for its
+    // signature-file rule. One list, two detectors — edit here and both stay in sync; do not widen
+    // past internal (same-assembly only) and do not fork a second copy.
+    internal static readonly string[] ProxyNames =
         { "dinput8.dll", "version.dll", "winmm.dll", "d3d11.dll", "dxgi.dll", "winhttp.dll" };
 
     public static IReadOnlyList<DirectInjectMod> Detect(

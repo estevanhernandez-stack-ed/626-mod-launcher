@@ -1,3 +1,5 @@
+using ModManager.Core.LooseMods;
+
 namespace ModManager.Core.Discovery;
 
 /// <summary>
@@ -12,10 +14,7 @@ namespace ModManager.Core.Discovery;
 public static class DiscoverySweep
 {
     // The proxy-loader names + .asi convention: a game never ships these, so they are mods
-    // regardless of location. Mirrors LooseModScan's by-nature rules.
-    private static readonly string[] ProxyNames =
-        { "dinput8.dll", "version.dll", "winmm.dll", "d3d11.dll", "dxgi.dll", "winhttp.dll" };
-
+    // regardless of location. Shares LooseModScan.ProxyNames (internal) rather than a second copy.
     private static readonly string[] ArchiveExtensions = { "zip", "7z", "rar" };
 
     public static IReadOnlyList<DiscoveryCandidate> Classify(
@@ -54,7 +53,7 @@ public static class DiscoverySweep
             || path.Contains("/" + folder + "/", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsSignature(string fileName, string extension)
-        => extension == "asi" || ProxyNames.Contains(fileName, StringComparer.OrdinalIgnoreCase);
+        => extension == "asi" || LooseModScan.ProxyNames.Contains(fileName, StringComparer.OrdinalIgnoreCase);
 
     // Engine-typical extension AND inside this game's mod folder. Both halves are required:
     // the same .pak extension is a shipped game file one directory up.

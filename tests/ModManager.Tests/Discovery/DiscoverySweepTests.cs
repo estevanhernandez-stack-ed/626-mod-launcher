@@ -84,4 +84,48 @@ public class DiscoverySweepTests
 
         Assert.Equal(2, found.Count);   // the shipped pak has no mod path to sit in — not claimed
     }
+
+    // Hardening: the safety line depends on case-insensitive matching and backslash normalization
+    // holding everywhere. These pin that behavior so a regression (dropped comparer, dropped
+    // Replace('\\','/'), or a substring-based skip check) fails loudly instead of shipping silent.
+
+    [Fact]
+    public void Uppercase_signature_file_is_still_classified()
+    {
+        var listing = new[] { "DINPUT8.DLL" };
+
+        var one = Assert.Single(DiscoverySweep.Classify(listing, UeOptions()));
+        Assert.Equal(DiscoveryKind.Signature, one.Kind);
+    }
+
+    [Fact]
+    public void Windows_separators_and_mixed_case_extension_still_classify_engine_shaped()
+    {
+        var listing = new[] { "Content\\Paks\\~mods\\Foo_P.PAK" };
+
+        var one = Assert.Single(DiscoverySweep.Classify(listing, UeOptions()));
+        Assert.Equal(DiscoveryKind.EngineShaped, one.Kind);
+        Assert.Equal("Foo_P.PAK", one.FileName);
+    }
+
+    [Fact]
+    public void Mixed_case_skip_folder_is_still_skipped()
+    {
+        var listing = new[] { "_626MODS/whatever.pak" };
+
+        Assert.Empty(DiscoverySweep.Classify(listing, UeOptions()));
+    }
+
+    [Fact]
+    public void Folder_that_only_contains_a_skip_word_is_not_skipped()
+    {
+        var options = new DiscoverySweepOptions(
+            ModPath: "mymods",
+            EngineExtensions: new[] { "pak" },
+            SkipFolders: new[] { "mods" });
+        var listing = new[] { "mymods/Real_P.pak" };
+
+        var one = Assert.Single(DiscoverySweep.Classify(listing, options));
+        Assert.Equal("Real_P.pak", one.FileName);
+    }
 }
