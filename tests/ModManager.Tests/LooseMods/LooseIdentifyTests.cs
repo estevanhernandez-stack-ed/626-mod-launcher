@@ -181,4 +181,39 @@ public class LooseIdentifyTests
         Assert.Equal("nameSearch", meta.SourceConfidence);
         Assert.False(meta.IsManual);
     }
+
+    // The name-search offer used to be loose-root only, so an unidentified mod in a Bethesda
+    // Data folder or a UE Paks folder could never be identified. Widening the scope must NOT
+    // weaken any other candidate rule.
+    [Fact]
+    public void Candidates_include_rows_outside_loose_root()
+    {
+        var rows = new List<Mod>
+        {
+            new() { Base = "SkyUI_5_2_SE", Name = "SkyUI_5_2_SE", Location = "Data", Class = "plugin" },
+            new() { Base = "FasterShips_P", Name = "FasterShips_P", Location = "Content/Paks/~mods", Class = "pak" },
+        };
+
+        var candidates = LooseIdentify.Candidates(rows, new Dictionary<string, ModMeta>());
+
+        Assert.Equal(2, candidates.Count);
+    }
+
+    [Fact]
+    public void Widening_does_not_weaken_the_other_candidate_rules()
+    {
+        var rows = new List<Mod>
+        {
+            new() { Base = "Manual", Name = "Manual", Location = "Data", Class = "plugin" },
+            new() { Base = "Identified", Name = "Identified", Location = "Data", Class = "plugin" },
+            new() { Base = "Loader", Name = "Loader", Location = "Data", Class = "loader" },
+        };
+        var meta = new Dictionary<string, ModMeta>
+        {
+            ["Manual"] = new() { IsManual = true },
+            ["Identified"] = new() { NexusModId = 42 },
+        };
+
+        Assert.Empty(LooseIdentify.Candidates(rows, meta));
+    }
 }

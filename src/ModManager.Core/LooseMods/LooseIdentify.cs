@@ -20,17 +20,18 @@ public static class LooseIdentify
 {
     private const string LoaderClass = "loader";
 
-    /// <summary>Loose-root rows worth proposing a search for: not a loader row (dinput8/dxgi/version
-    /// proxies aren't "mods" a user would search Nexus for), not manually pinned by the user
-    /// (<see cref="ModMeta.IsManual"/> locks the entry — auto-identify never clobbers it), and not
-    /// already identified (a Nexus id or any prior source confidence means a search would be
-    /// redundant, and could overwrite a stronger match with a weaker name-search one).</summary>
+    /// <summary>Rows worth proposing a search for, in ANY location (loose-root, a Bethesda Data
+    /// folder, a UE Paks folder — an unidentified mod is worth identifying wherever it sits): not
+    /// a loader row (dinput8/dxgi/version proxies aren't "mods" a user would search Nexus for),
+    /// not manually pinned by the user (<see cref="ModMeta.IsManual"/> locks the entry —
+    /// auto-identify never clobbers it), and not already identified (a Nexus id or any prior
+    /// source confidence means a search would be redundant, and could overwrite a stronger match
+    /// with a weaker name-search one).</summary>
     public static IReadOnlyList<Mod> Candidates(IReadOnlyList<Mod> rows, IReadOnlyDictionary<string, ModMeta> meta)
     {
         var result = new List<Mod>();
         foreach (var row in rows)
         {
-            if (row.Location != LooseRootListing.LooseRootLocation) continue;
             if (row.Class == LoaderClass) continue;
             if (meta.TryGetValue(row.Base, out var m))
             {
