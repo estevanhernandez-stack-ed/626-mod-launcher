@@ -25,6 +25,18 @@ public class NameMatchTests
     }
 
     [Fact]
+    public void CleanModName_splits_trailing_digits_glued_to_a_word_instead_of_dropping_them()
+    {
+        // "FasterShips10" has no case boundary between the word and the version digits — split
+        // them into their own token so overlap still sees "ships", or the match dies at the gate.
+        Assert.Equal("Faster Ships 10", NameMatch.CleanModName("FasterShips10.pak"));
+
+        // The split must never drop the digits — "Fallout4" and "Fallout 3" are different games,
+        // and a normalizer that eats trailing numbers would silently merge their mods.
+        Assert.Equal("Fallout 4", NameMatch.CleanModName("Fallout4"));
+    }
+
+    [Fact]
     public void PickBestMatch_returns_closest_candidate_above_threshold()
     {
         var cands = new[] { new Cand("Black Market Shipyard"), new Cand("Some Other Mod") };

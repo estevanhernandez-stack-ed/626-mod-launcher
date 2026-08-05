@@ -31,6 +31,12 @@ public static partial class NameMatch
     [GeneratedRegex(@"([a-z0-9])([A-Z])")]
     private static partial Regex CamelRe();
 
+    // Trailing digits glued to a word with no case boundary (FasterShips10, Fallout4) are the
+    // dominant real-world mod-name shape, not an edge case — split, don't drop, so token overlap
+    // still sees "ships" while a version/variant number never silently merges two different mods.
+    [GeneratedRegex(@"([a-zA-Z])(\d)")]
+    private static partial Regex LetterDigitRe();
+
     [GeneratedRegex(@"\s+")]
     private static partial Regex WsRe();
 
@@ -53,7 +59,7 @@ public static partial class NameMatch
                 if (VersionRe().IsMatch(t)) return false;                                     // v2
                 return true;
             })
-            .Select(t => CamelRe().Replace(t, "$1 $2"));
+            .Select(t => LetterDigitRe().Replace(CamelRe().Replace(t, "$1 $2"), "$1 $2"));
         return WsRe().Replace(string.Join(" ", kept), " ").Trim();
     }
 
