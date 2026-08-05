@@ -1191,3 +1191,64 @@ caller. Items 1, 3, and 7 target that failure class directly; the rest confirm t
 law (no file ever moves on adopt) and the two gates added late (md5 cap, batch-add opt-out) don't
 regress under a real Windows session with a real Nexus account.
 
+---
+
+## feat/identify-consolidation — one action instead of six
+
+**Shipped:** The More menu's six identify/metadata actions collapse to `Identify my mods…` plus an
+Advanced submenu (`Match against my downloads folder…`, `Refresh details from Nexus`,
+`Check CurseForge`). `Re-scan mods & launchers` is now `Re-detect launchers & frameworks`. One run
+does sweep -> md5 -> fill-blanks -> name search, behind one review dialog with two sections.
+
+**Smoke needed:**
+
+1. **The menu item is actually there.** Open More on a game with Nexus connected AND on one with
+   Nexus signed out. EXPECT: `Identify my mods…` visible in BOTH; every Advanced item visible in
+   both. This surface has already shipped a computed-visibility item that built fine and rendered
+   permanently collapsed — absence is the regression to look for.
+2. **Guards explain rather than hide.** Signed out, click each Advanced item. EXPECT: a status line
+   naming the fix ("Connect Nexus first (toolbar -> Nexus).") — and for
+   `Match against my downloads folder…`, EXPECT that message with NO file picker appearing first.
+   An item that vanishes when signed out teaches the user nothing; "guard, don't hide" means every
+   item stays clickable and self-explains.
+3. **Both sections render, and the count is the sum.** On Cyberpunk (194 mods, ~98 identified), run
+   `Identify my mods…` and choose a downloads folder. EXPECT both `NEW TO YOUR LIST` and
+   `NOW IDENTIFIED` populated; the primary button reads `Apply N changes` where N equals the total
+   checked across BOTH sections; unchecking in either section decrements it; it disables at zero.
+4. **The busy ring stays honest for the whole run — watch it, because nothing else will.** `IsBusy`
+   is `[ObservableProperty]` state on the view model; it is unit-untestable, and it has regressed
+   TWICE during this branch's fix rounds, caught only by code review, never by a test. During the
+   same full run as item 3, watch the ring continuously from the moment `Identify my mods…` starts
+   until the review dialog opens — it must never drop, including across the fill-in-details pass
+   (which internally reloads the mod list) and across the whole Nexus name search. After Apply,
+   EXPECT the ring goes DOWN and stays down — a ring stuck on is the other failure mode. A human
+   watching the ring for the full run is the only guard this behavior has.
+5. **An empty section disappears.** Run it again immediately. EXPECT the second run has little or
+   nothing to propose, and any section with zero rows hides its header too (no orphan
+   `NOW IDENTIFIED` heading over empty space).
+6. **Fill-blanks does NOT appear in the dialog.** EXPECT no row anywhere reading like "added a
+   description". Descriptions and cover art should simply BE there on the rows afterwards, with the
+   count reported only in the status line.
+7. **Stop works mid-run and keeps what finished.** Start a run on Cyberpunk, hit Stop during the
+   `Searching Nexus — N of M…` phase. EXPECT the run ends, the review dialog still opens with what
+   completed (or a status line saying nothing finished), and the mod list is unchanged until Apply.
+8. **The status line never lies about what a stopped run did.** Two defects caught in review: a
+   stopped run claiming nothing happened when it had already written something, and a stopped run
+   claiming everything is already identified when the search that would have found more is the
+   thing that just got stopped. Run three separate stops on Cyberpunk — hit Stop during the folder
+   sweep, hit Stop during the fill-in-details pass, and hit Stop during the Nexus name search — and
+   for each, check the final status line against what actually happened (the mod list /
+   `metadata.json`, not just the words). EXPECT it never claims nothing happened when something was
+   written, and never claims everything is identified when a still-running search was the thing you
+   just cut off.
+9. **Nothing moved.** After applying, confirm the game folder listing and file timestamps are
+   unchanged. Metadata-only is the law; the first file move is still the user's first toggle.
+10. **The Advanced passes still work individually.** Run each one on its own and confirm it does its
+    single job and reports it.
+
+**Why these matter:** every layer below the dialog is unit-tested, but the busy-ring lifecycle,
+the guard messaging over a WinUI menu-item visibility binding, and the honesty of the final status
+line under a mid-run Stop are App-VM behavior the test project can't reach. Items 4 and 8 target
+the two failure classes that review has already caught more than once on this exact branch —
+nothing says a live pass won't be the one that lets a third slip through.
+
