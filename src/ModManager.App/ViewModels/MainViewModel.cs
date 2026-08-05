@@ -2229,6 +2229,28 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         var ctx = _ctx!;
 
+        // BuildDiscoveryProposalsAsync sets StatusText itself for every "nothing found" reason,
+        // gated on auto exactly as this method used to gate it inline before the split.
+        var proposals = await BuildDiscoveryProposalsAsync(ctx, CancellationToken.None, auto);
+        if (proposals.Count == 0) return;
+
+        if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
+        var approved = await ReviewDiscoveries(proposals);
+
+        // ApplyDiscoveriesAsync sets StatusText itself for the write outcome, same auto gating.
+        await ApplyDiscoveriesAsync(approved, proposals.Count, ctx, auto);
+    }
+
+    /// <summary>Sweep + classify + tier-match, stopping BEFORE review. Split out of
+    /// <see cref="DiscoverExistingModsAsync"/> so the unified identify run can compose discovery
+    /// with the other passes behind a single review dialog. Writes nothing.
+    /// <paramref name="auto"/> mirrors <see cref="DiscoverExistingModsAsync"/>'s parameter of the
+    /// same name and gates the same "nothing found" status lines below; it defaults to false so a
+    /// caller composing a bigger run (with no "auto" concept of its own, e.g. the unified identify
+    /// run) always gets the status line instead of silent no-ops.</summary>
+    private async Task<IReadOnlyList<AdoptionProposal>> BuildDiscoveryProposalsAsync(
+        GameContext ctx, CancellationToken ct, bool auto = false)
+    {
         // Skip the launcher's own holding folders plus anything another manager has taken over.
         // ctx.TakenOver is already the resolved, loaded set (Scanner.GameContext loads it once from
         // taken-over.json) — reuse it instead of re-reading the file. It's ABSOLUTE paths
@@ -2271,7 +2293,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (candidates.Count == 0)
         {
             if (!auto) StatusText = "No unmanaged mods found in this game's folder.";
-            return;
+            return Array.Empty<AdoptionProposal>();
         }
 
         // Never re-propose a candidate whose best-guess key is already identified (manual match, a
@@ -2311,7 +2333,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (candidates.Count == 0)
         {
             if (!auto) StatusText = "Every mod in this game's folder is already in your list.";
-            return;
+            return Array.Empty<AdoptionProposal>();
         }
 
         var existing = Scanner.LoadMetadata(ctx);
@@ -2319,7 +2341,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (unmanaged.Count == 0)
         {
             if (!auto) StatusText = "No unmanaged mods found in this game's folder.";
-            return;
+            return Array.Empty<AdoptionProposal>();
         }
 
         var domain = NexusDomains.Effective(ctx.Game);
@@ -2344,6 +2366,8 @@ public sealed partial class MainViewModel : ObservableObject
         var proposals = new List<AdoptionProposal>(unmanaged.Count);
         foreach (var candidate in unmanaged)
         {
+            if (ct.IsCancellationRequested) break;
+
             AdoptionProposal? proposal = null;
 
             // Tier 1: archive md5 — Nexus hashes the PUBLISHED archive, so this only ever applies to
@@ -2377,9 +2401,23 @@ public sealed partial class MainViewModel : ObservableObject
             proposals.Add(proposal);
         }
 
-        if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
-        var approved = await ReviewDiscoveries(proposals);
-        if (approved.Count == 0) { if (!auto) StatusText = "Nothing adopted."; return; }
+        return proposals;
+    }
+
+    /// <summary>Persist approved adoptions. Returns the mod keys actually written, so the unified
+    /// run can stop a weaker later pass from overwriting them (see LooseIdentify.ExcludeKeys).
+    /// <paramref name="auto"/> mirrors <see cref="DiscoverExistingModsAsync"/>'s parameter of the
+    /// same name and gates the same "nothing adopted" status lines below; it defaults to false so a
+    /// caller composing a bigger run (with no "auto" concept of its own) always gets the status
+    /// line.</summary>
+    private async Task<IReadOnlyList<string>> ApplyDiscoveriesAsync(
+        IReadOnlyList<AdoptionProposal> approved, int proposalCount, GameContext ctx, bool auto = false)
+    {
+        if (approved.Count == 0)
+        {
+            if (!auto) StatusText = "Nothing adopted.";
+            return Array.Empty<string>();
+        }
 
         // Adoption is metadata-only — no file is moved, renamed, or deleted. One atomic batch write
         // through Scanner.WriteManyMeta, the same route ApplyLooseIdentifyAsync uses above; never a
@@ -2392,6 +2430,7 @@ public sealed partial class MainViewModel : ObservableObject
         // filename (a real Nexus download like "FasterShips-42-1-0-1699999.zip" would never match
         // the installed file's key). When an identified archive's contents don't map to any known
         // mod key, it expands to zero writes rather than a wrong or inert fallback key.
+        var existing = Scanner.LoadMetadata(ctx);
         var writes = new List<(string ModKey, ModMeta Meta)>();
         // Tracked separately so the "nothing happened" status line (below) can say WHY instead of
         // reusing one caption for two different outcomes: an archive whose contents don't map to
@@ -2427,7 +2466,7 @@ public sealed partial class MainViewModel : ObservableObject
                         ? "Nothing to adopt — those mods are already identified."
                         : "Nothing to adopt.";
             }
-            return;
+            return Array.Empty<string>();
         }
 
         Scanner.WriteManyMeta(ctx, writes);
@@ -2437,6 +2476,8 @@ public sealed partial class MainViewModel : ObservableObject
             ? "Adopted 1 mod. Your files were not moved."
             : $"Adopted {adoptedCount} mods. Your files were not moved.";
         await ReloadModsAsync();
+
+        return writes.Select(w => w.ModKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>True when <paramref name="key"/> already has an identity the sweep must never
