@@ -514,6 +514,13 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogActionsVisibility));
             return;
         }
+        // Save/restore, never a bare `false`. This reload is routinely NESTED inside a longer
+        // operation that raised the ring itself — the unified identify run reloads between passes,
+        // and so does every apply that writes metadata. A nested callee must not lower a ring it
+        // did not raise: doing so left the run's longest await (the pass-4 name search) rendering
+        // as idle. Restoring the prior value makes a reload transparent to whatever composes it,
+        // which is why this belongs here rather than as a re-assert at each call site.
+        var wasBusy = IsBusy;
         IsBusy = true;
         try
         {
@@ -799,7 +806,7 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogActionsVisibility));
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsBusy = false; }
+        finally { IsBusy = wasBusy; }
 
         // Debounced Nexus auto-check (once per 24h per game, off the UI hot path). Fire-and-forget:
         // it polls Nexus by mod id for the active game, flags newer versions, and persists — then we
@@ -2232,6 +2239,10 @@ public sealed partial class MainViewModel : ObservableObject
         // user-scoped action — gate the apply so the dark window never commits a match.
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return 0; }
         if (approved.Count == 0) { StatusText = "No matches approved — nothing written."; return 0; }
+        // Save/restore for the same reason ReloadModsAsync does it: this apply is the tail of the
+        // unified identify run, which raised the ring itself. A nested callee must not lower a ring
+        // it did not raise.
+        var wasBusy = IsBusy;
         IsBusy = true;
         try
         {
@@ -2245,7 +2256,7 @@ public sealed partial class MainViewModel : ObservableObject
             return writes.Count;
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return 0; }
-        finally { IsBusy = false; }
+        finally { IsBusy = wasBusy; }
     }
 
     /// <summary>
@@ -2299,18 +2310,29 @@ public sealed partial class MainViewModel : ObservableObject
             var searchProgress = new Progress<LooseIdentifyProgress>(p =>
                 StatusText = $"Searching Nexus for names — {p.Completed} of {p.Total}…");
             IReadOnlyList<LooseIdentifyProposal> identifications = Array.Empty<LooseIdentifyProposal>();
+            // Null means the pass gated out or found nothing, and it has already written the SPECIFIC
+            // reason (not connected / no domain / no loose mods need identifying / no matches). Keep
+            // those words: the run must not answer "why is my list unchanged?" with "everything is
+            // already identified", a claim it never got far enough to test.
+            string? searchNote = null;
             if (!cts.IsCancellationRequested)
-                identifications = await SearchUnnamedRowsAsync(ctx, searchProgress, cts.Token)
-                                  ?? Array.Empty<LooseIdentifyProposal>();
+            {
+                var found = await SearchUnnamedRowsAsync(ctx, searchProgress, cts.Token);
+                if (found is null) searchNote = StatusText;
+                else identifications = found;
+            }
 
             var stopped = cts.IsCancellationRequested;
 
             if (adoptions.Count == 0 && identifications.Count == 0)
             {
-                StatusText = RunSummary(
-                    adopted: 0, named: 0, filled: filled, droppedNameMatches: 0,
-                    stopped: stopped, downloadsNote: downloadsNote,
-                    nothingFoundLine: "Everything in this game's folder is already in your list and identified.");
+                StatusText = IdentifyRunReport.Summarize(new IdentifyRunOutcome
+                {
+                    Filled = filled,
+                    Stopped = stopped,
+                    DownloadsNote = downloadsNote,
+                    NothingHappenedLine = searchNote,
+                });
                 return;
             }
 
@@ -2325,72 +2347,48 @@ public sealed partial class MainViewModel : ObservableObject
 
             // Strongest first — see the apply-order note above.
             var written = await ApplyDiscoveriesAsync(approvedAdoptions, adoptions.Count, ctx);
+
+            // Approvals went in and no key came out. The apply distinguishes three different reasons
+            // for that (the archive maps to nothing installed yet / every key was already identified
+            // / neither) and has put the right one on the status line. Capture it — the zero-key case
+            // is the downloads-folder NORM, so a user who just approved "Adopt 3 mods" would
+            // otherwise be told "Nothing was changed." with the explanation deleted.
+            string? adoptionNote = null;
+            if (approvedAdoptions.Count > 0 && written.Count == 0) adoptionNote = StatusText;
+
             var safeIdentifications = LooseIdentify.ExcludeKeys(approvedIdentifications, written);
             var dropped = approvedIdentifications.Count - safeIdentifications.Count;
 
             // Only call the name-search apply when it has something to write. Standalone it reports
             // "No matches approved — nothing written." on an empty batch, which is right for the
             // Advanced entry but would overwrite the adoption result the user just earned here.
-            var named = safeIdentifications.Count > 0
-                ? await ApplyLooseIdentifyAsync(safeIdentifications, identifications.Count)
-                : 0;
+            string? identifyNote = null;
+            var named = 0;
+            if (safeIdentifications.Count > 0)
+            {
+                named = await ApplyLooseIdentifyAsync(safeIdentifications, identifications.Count);
+                // Same shape as the adoption capture above: a batch went in and nothing came out, so
+                // the apply refused (signed out, or it threw) and its reason is the useful part.
+                // Carried into the summary rather than returned early — bailing here would drop the
+                // adoptions and fills this run already wrote, which breaks the very rule the
+                // composer exists to enforce.
+                if (named == 0) identifyNote = StatusText;
+            }
 
-            // A batch went in and nothing came out: the apply refused (signed out, or it threw) and
-            // has already put the reason on the status line. Leave it there — a composed summary
-            // would replace a real explanation with a count.
-            if (safeIdentifications.Count > 0 && named == 0) return;
-
-            StatusText = RunSummary(
-                adopted: written.Count, named: named, filled: filled, droppedNameMatches: dropped,
-                stopped: stopped, downloadsNote: downloadsNote,
-                nothingFoundLine: "Nothing was changed.");
+            StatusText = IdentifyRunReport.Summarize(new IdentifyRunOutcome
+            {
+                Adopted = written.Count,
+                Named = named,
+                Filled = filled,
+                DroppedNameMatches = dropped,
+                Stopped = stopped,
+                AdoptionNote = adoptionNote,
+                IdentifyNote = identifyNote,
+                DownloadsNote = downloadsNote,
+            });
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
-    }
-
-    /// <summary>The unified run's one terminal line. Each pass writes its own status as it goes
-    /// (right for the Advanced entries, which run alone), so by the end only the LAST pass's line
-    /// would survive and it would speak for the whole run. This composes what actually landed
-    /// instead — and never says "nothing" while something was written, which is the specific lie a
-    /// four-pass run makes easy: pass 3 writes its partial batch even when the user hits Stop.</summary>
-    private static string RunSummary(
-        int adopted, int named, int filled, int droppedNameMatches,
-        bool stopped, string? downloadsNote, string nothingFoundLine)
-    {
-        static string S(int n) => n == 1 ? "" : "s";
-
-        // Lowercase verb phrases so they join cleanly in any combination; the composed clause gets
-        // its capital below. Building them pre-capitalized breaks the moment the first pass to do
-        // something is not the first pass in the list.
-        var did = new List<string>();
-        if (adopted > 0) did.Add($"adopted {adopted} mod{S(adopted)}");
-        if (named > 0) did.Add($"named {named} mod{S(named)}");
-        if (filled > 0) did.Add($"filled in details for {filled} mod{S(filled)}");
-
-        var clause = did.Count switch
-        {
-            0 => "",
-            1 => did[0],
-            _ => $"{string.Join(", ", did.Take(did.Count - 1))} and {did[^1]}",
-        };
-
-        var line = did.Count == 0
-            ? stopped ? "Stopped. Nothing was changed." : nothingFoundLine
-            : $"{char.ToUpperInvariant(clause[0])}{clause[1..]}.";
-
-        // The adoption promise, and only where it applies — adoption is the pass that could have
-        // touched files and deliberately did not.
-        if (adopted > 0) line += " Your files were not moved.";
-
-        if (droppedNameMatches > 0)
-            line += $" {droppedNameMatches} name match{(droppedNameMatches == 1 ? " was" : "es were")} skipped — "
-                    + $"an exact file-hash match already named {(droppedNameMatches == 1 ? "that mod" : "those mods")}.";
-
-        if (downloadsNote is not null) line += $" {downloadsNote}";
-        if (stopped && did.Count > 0) line += " Stopped early — run it again for the rest.";
-
-        return line;
     }
 
     /// <summary>Pass 2b of the unified run: md5 the archives in a user-chosen downloads folder
@@ -2425,21 +2423,23 @@ public sealed partial class MainViewModel : ObservableObject
         // dialog reads better. Filename is the right identity — it is the same file either way.
         var seen = existing.Select(p => p.Candidate.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var capped = archives.Count > DownloadsMd5Cap;
-        var budget = capped ? DownloadsMd5Cap : archives.Count;
-
         var added = new List<AdoptionProposal>();
         var checkedCount = 0;
+        // Set from the cap BREAK, never from "folder size > cap". Duplicates already claimed by the
+        // game-folder sweep are skipped below without charging the budget, so a 400-archive folder
+        // sitting inside the game root can run to completion having checked 40 — telling that user
+        // to "check the rest" would point at a rest that does not exist.
+        var truncated = false;
         foreach (var path in archives)
         {
             if (ct.IsCancellationRequested) break;
-            if (checkedCount >= budget) break;
+            if (checkedCount >= DownloadsMd5Cap) { truncated = true; break; }
 
             var fileName = Path.GetFileName(path);
             if (!seen.Add(fileName)) continue;
             checkedCount++;
 
-            StatusText = $"Matching your downloads folder — {checkedCount} of {budget}…";
+            StatusText = $"Matching your downloads folder — {checkedCount} of {Math.Min(archives.Count, DownloadsMd5Cap)}…";
             var candidate = new DiscoveryCandidate(path, fileName, DiscoveryKind.Archive);
             var md5 = await Task.Run(() => _discovery.Md5Of(ctx.GameRoot, candidate));
             if (md5 is null) continue;
@@ -2452,21 +2452,13 @@ public sealed partial class MainViewModel : ObservableObject
             catch { /* a miss / outage never blocks the run — the other passes still stand */ }
         }
 
-        // Say what the folder did, always. Silence here reads as "my folder was used and everything
-        // in it was checked", which is exactly what the cap makes untrue. Report the count actually
-        // reached, not the budget — a Stop mid-pass must not be described as a full capped run, and
-        // the run's own "Stopped early" suffix already covers that case.
-        var notes = new List<string>();
-        if (capped && !ct.IsCancellationRequested)
-            notes.Add($"Checked the first {checkedCount} of {archives.Count} archives in that downloads folder — "
-                      + "that's the per-run limit on Nexus hash lookups. Point at a smaller folder to check the rest.");
-        if (added.Count == 0)
-            notes.Add(capped
-                ? "None of those matched Nexus."
-                : "Nothing in that downloads folder matched Nexus — it has to be the ORIGINAL downloaded archives for this game.");
+        // Wording and every "should we even say this" branch live in Core behind tests — see
+        // IdentifyRunReport.DownloadsFolderNote.
+        var note = IdentifyRunReport.DownloadsFolderNote(
+            archivesFound: archives.Count, checkedCount: checkedCount, matched: added.Count,
+            truncated: truncated, stopped: ct.IsCancellationRequested);
 
-        return (added.Count == 0 ? existing : existing.Concat(added).ToList(),
-                notes.Count == 0 ? null : string.Join(" ", notes));
+        return (added.Count == 0 ? existing : existing.Concat(added).ToList(), note);
     }
 
     /// <summary>The archives inside a user-chosen downloads folder. One implementation, shared by
