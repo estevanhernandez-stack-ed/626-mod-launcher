@@ -130,13 +130,14 @@ public static class LooseIdentify
     /// only — callers apply this over the existing entry, not replace it — and it never sets
     /// <see cref="ModMeta.IsManual"/>: a name-search hit is a proposal the user approved, not a
     /// manual paste, so a later stronger identify (fingerprint/md5) can still supersede it.</summary>
-    public static ModMeta ToMeta(SourceSearchHit hit) => new()
+    public static ModMeta ToMeta(SourceSearchHit hit)
     {
-        Title = hit.Name,
-        Author = hit.Author,
-        Url = hit.Url,
-        NexusModId = hit.ModId,
-        EndorsementCount = hit.EndorsementCount,
-        SourceConfidence = "nameSearch",
-    };
+        // Delegates to the ONE search-hit mapper rather than hand-copying a subset. The hand-rolled
+        // version listed six fields and dropped everything else the API had already paid for —
+        // Summary and ThumbnailUrl among them — so identified rows rendered with no description and
+        // no picture even though the UI has always bound both.
+        var meta = Plugins.SourceMetadataMapper.FromSearchHit(hit);
+        meta.SourceConfidence = "nameSearch";
+        return meta;
+    }
 }

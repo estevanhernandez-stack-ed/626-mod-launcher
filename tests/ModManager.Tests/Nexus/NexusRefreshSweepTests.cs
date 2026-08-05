@@ -149,6 +149,37 @@ public class NexusRefreshSweepTests
         Assert.Equal("2.0", result.Updated.Single(m => m.NexusModId == 1).NexusLatestVersion);
     }
 
+    // A name-search identify carries no description and no thumbnail, and nothing ever revisits an
+    // already-identified row — so without a fill on the poll those rows render blank forever even
+    // though every poll response contains the text and the image. Fill the HOLES only.
+    [Fact]
+    public async Task RefreshAllAsync_fills_a_missing_description_and_image_but_never_rewrites_them()
+    {
+        var metas = new[]
+        {
+            // Name-search identified: named, but no description/image/category yet.
+            new ModMeta { Title = "Equipment-EX", NexusModId = 1, SourceConfidence = "nameSearch" },
+            // Already enriched (or hand-curated): must survive verbatim.
+            new ModMeta { Title = "Curated", NexusModId = 2, Description = "mine", Image = "mine.png", Category = "Mine" },
+        };
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(10, 20L, "1.0", null, null,
+                Description: "from nexus", ImageUrl: "https://nexus/thumb.jpg", Category: "Gameplay")));
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "cyberpunk2077", fake, NoDelay);
+
+        var filled = result.Updated.Single(m => m.NexusModId == 1);
+        Assert.Equal("from nexus", filled.Description);
+        Assert.Equal("https://nexus/thumb.jpg", filled.Image);
+        Assert.Equal("Gameplay", filled.Category);
+        Assert.Equal("Equipment-EX", filled.Title); // identity still never restated
+
+        var untouched = result.Updated.Single(m => m.NexusModId == 2);
+        Assert.Equal("mine", untouched.Description);
+        Assert.Equal("mine.png", untouched.Image);
+        Assert.Equal("Mine", untouched.Category);
+    }
+
     [Fact]
     public async Task RefreshAllAsync_stops_on_rate_limit_and_returns_partial_progress()
     {

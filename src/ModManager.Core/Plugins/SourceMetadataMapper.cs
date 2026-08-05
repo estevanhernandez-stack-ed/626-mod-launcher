@@ -28,6 +28,33 @@ public static class SourceMetadataMapper
             new ModMeta { NexusModId = r.Ref.ModId, Version = string.IsNullOrEmpty(r.Ref.Version) ? null : r.Ref.Version },
             r.Metadata);
 
+    /// <summary>Builds a Nexus-sourced ModMeta from a name-search hit — the ONE writer for
+    /// "search hit to ModMeta", so a field the search returns can't be silently dropped by a
+    /// hand-rolled copy at a call site (which is exactly how Description and Image went missing on
+    /// every name-identified mod: the API returned them, the mapper never ran, and the row rendered
+    /// blank because the UI had nothing to show).
+    ///
+    /// <para>VERSION IS DELIBERATELY NOT MAPPED, either side. A name match identifies WHICH MOD this
+    /// is; it says nothing about which FILE is on disk. <see cref="SourceSearchHit.Version"/> is the
+    /// author's currently-published version, so writing it to <see cref="ModMeta.Version"/> (the
+    /// installed side) would assert an install we never verified, and writing it to
+    /// <see cref="ModMeta.NexusLatestVersion"/> while the installed side stays null lights
+    /// <see cref="Mod.UpdateAvailable"/> on every single row — the same false-UPDATE-chip trap
+    /// <see cref="FromIdentify"/> documents, except md5 can seed the installed version honestly and
+    /// a name search cannot. Update state stays owned by the md5/poll paths that actually know it.</para></summary>
+    public static ModMeta FromSearchHit(SourceSearchHit hit) => new()
+    {
+        Title = hit.Name,
+        Description = hit.Summary,
+        Author = hit.Author,
+        Url = hit.Url,
+        Image = hit.ThumbnailUrl,
+        Category = hit.Category,
+        Downloads = hit.DownloadCount,
+        EndorsementCount = hit.EndorsementCount,
+        NexusModId = hit.ModId,
+    };
+
     public static ModMeta Apply(ModMeta meta, SourceModMetadata dto)
     {
         meta.EndorsementCount = dto.Endorsements ?? meta.EndorsementCount;

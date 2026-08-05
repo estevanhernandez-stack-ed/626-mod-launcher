@@ -232,15 +232,21 @@ public static class NexusRefresh
         // identity + installed side — preserved verbatim from existing (the DTO's identity fields,
         // if any, are intentionally ignored: a stats refresh must never rewrite a manual match's title)
         Title = existing.Title,
-        Description = existing.Description,
+        // FILL-ONLY, never rewrite. The rule this file guards is that a stats refresh must not
+        // RESTATE identity the user or a stronger identify already established — so a value that
+        // exists is kept verbatim. A NULL is not identity, it's a hole, and refusing to fill it
+        // strands rows permanently: a name-search identify carries no description or thumbnail,
+        // and nothing else ever revisits an already-identified row, so those rows would render
+        // blank forever despite the API returning the text and the image on every poll.
+        Description = existing.Description ?? dto.Description,
         Author = existing.Author,
         AuthorUrl = existing.AuthorUrl,
         Url = existing.Url,
         Source = existing.Source,
         Donate = existing.Donate,
-        Image = existing.Image,
+        Image = existing.Image ?? dto.ImageUrl,
         CurseforgeId = existing.CurseforgeId,
-        Category = existing.Category,
+        Category = existing.Category ?? dto.Category,
         IsManual = existing.IsManual,
         InstalledUtc = existing.InstalledUtc,
         SourceConfidence = existing.SourceConfidence,

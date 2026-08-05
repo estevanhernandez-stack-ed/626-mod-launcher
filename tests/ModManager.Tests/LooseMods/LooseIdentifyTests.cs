@@ -155,8 +155,12 @@ public class LooseIdentifyTests
         Assert.Equal(999, merged.NexusModId);
         Assert.Equal("nameSearch", merged.SourceConfidence);
         Assert.Equal(42, merged.EndorsementCount);
-        // …and the unrelated existing fields survive.
-        Assert.Equal("Detected: ASI plugin at game root", merged.Description);
+        // The hit's real summary REPLACES the launcher's own detection placeholder — that's the
+        // point of identifying: "Detected: ASI plugin at game root" describes how we found it,
+        // the Nexus summary describes what it is.
+        Assert.Equal("summary", merged.Description);
+        // …and fields this hit carries nothing for still survive (fill-only merge). This hit has
+        // no ThumbnailUrl and no DownloadCount, so prior enrichment stands.
         Assert.Equal("cover.png", merged.Image);
         Assert.Equal(5, merged.Downloads);
         Assert.Equal(installed, merged.InstalledUtc);
@@ -217,13 +221,55 @@ public class LooseIdentifyTests
         Assert.Empty(LooseIdentify.Candidates(rows, meta));
     }
 
+    // ---- ToMeta carries the WHOLE hit, not a hand-picked subset ----
+
+    // The row UI binds Description and Image (MainWindow.xaml thumbnail + description block), so a
+    // dropped Summary/ThumbnailUrl renders as a blank, picture-less row even on a perfect match.
+    [Fact]
+    public void ToMeta_keeps_the_description_and_the_thumbnail()
+    {
+        var hit = new SourceSearchHit("cyberpunk2077", 4159, "Equipment-EX", "psiberx",
+            "Expands the equipment system.", 4200, "https://nexusmods.com/cyberpunk2077/mods/4159")
+        {
+            ThumbnailUrl = "https://staticdelivery.nexusmods.com/thumb.jpg",
+            Category = "Gameplay",
+            DownloadCount = 990_000,
+        };
+
+        var meta = LooseIdentify.ToMeta(hit);
+
+        Assert.Equal("Equipment-EX", meta.Title);
+        Assert.Equal("Expands the equipment system.", meta.Description);
+        Assert.Equal("https://staticdelivery.nexusmods.com/thumb.jpg", meta.Image);
+        Assert.Equal("Gameplay", meta.Category);
+        Assert.Equal(990_000, meta.Downloads);
+        Assert.Equal("psiberx", meta.Author);
+        Assert.Equal(4159, meta.NexusModId);
+        Assert.Equal(4200, meta.EndorsementCount);
+        Assert.Equal("nameSearch", meta.SourceConfidence);
+    }
+
+    // A name match identifies WHICH mod, never which FILE is installed. Writing the published
+    // version to either side would light a false UPDATE chip on every identified row.
+    [Fact]
+    public void ToMeta_never_invents_version_state_from_a_name_match()
+    {
+        var hit = new SourceSearchHit("cyberpunk2077", 4159, "Equipment-EX", "psiberx", null, null, null)
+        {
+            Version = "2.1",
+        };
+
+        var meta = LooseIdentify.ToMeta(hit);
+
+        Assert.Null(meta.Version);
+        Assert.Null(meta.NexusLatestVersion);
+        Assert.False(new Mod { NexusLatestVersion = meta.NexusLatestVersion, Version = meta.Version }.UpdateAvailable);
+    }
+
     // ---- ProposeAsync at real-library scale (a hand-modded Cyberpunk install is ~200 rows) ----
 
     private static List<Mod> Many(int n) =>
         Enumerable.Range(0, n).Select(i => Row($"Mod{i:D3}", "plugin")).ToList();
-
-    private static SourceSearchHit Hit(string name) =>
-        new("testgame", 1, name, "Author", null, null, null);
 
     // Concurrency must not reshuffle the review dialog. Slowest-first ordering guarantees the
     // results ARRIVE backwards, so a naive "append as they complete" implementation fails here.
