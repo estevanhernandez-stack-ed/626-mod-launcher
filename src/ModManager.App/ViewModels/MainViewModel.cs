@@ -11,6 +11,7 @@ using ModManager.App.Frameworks;
 using ModManager.App.Services;
 using ModManager.App.Tools;
 using ModManager.Core;
+using ModManager.Core.Discovery;
 using ModManager.Core.Frameworks;
 using ModManager.Core.Loaders;
 using ModManager.Core.LooseMods;
@@ -62,6 +63,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly AppSettingsService _appSettings;
     private readonly NexusUpdatePoll _nexusPoll;
     private readonly ModSourceRegistry _sources;
+    private readonly Services.DiscoveryScanService _discovery;
+    private readonly Services.ModNameIndexSource _nameIndex;
     // Dispatcher captured at VM construction (UI thread, because DI builds the VM during the
     // MainWindow ctor). Used to marshal cross-thread notifications — e.g. tool Process.Exited,
     // which fires on a thread-pool thread — back to the UI thread before touching VM state.
@@ -100,6 +103,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// <see cref="ConfirmBanRiskEnable"/> delegate pattern.
     /// </summary>
     public Func<string, Task<bool>>? ConfirmLooseLoaderDisable { get; set; }
+
+    /// <summary>
+    /// Shows the review-before-adopt dialog for a discovery sweep's proposals and returns the
+    /// approved subset (empty on Cancel). The view wires this (dialog + XamlRoot live in the
+    /// code-behind, not the VM) — exactly the <see cref="ConfirmBanRiskEnable"/> pattern. When unset,
+    /// <see cref="DiscoverExistingModsAsync"/> stops after building proposals: nothing is adopted.
+    /// </summary>
+    public Func<IReadOnlyList<AdoptionProposal>, Task<IReadOnlyList<AdoptionProposal>>>? ReviewDiscoveries { get; set; }
 
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
@@ -194,6 +205,27 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool isBusy;
 
+    /// <summary>True while a long operation is running that the user is allowed to stop. Drives the
+    /// Stop button beside the busy ring. Separate from <see cref="IsBusy"/> because most busy work
+    /// is a quick, atomic file op that must NOT be interruptible mid-flight — only a long,
+    /// read-only, resumable run (the Nexus name-search sweep) offers Stop.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CancelVisibility))]
+    private bool isCancellable;
+
+    public Visibility CancelVisibility => IsCancellable ? Visibility.Visible : Visibility.Collapsed;
+
+    private CancellationTokenSource? _longOpCts;
+
+    /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
+    /// nothing on its own — whatever finished is still handed to the review dialog for approval.</summary>
+    public void CancelLongOperation()
+    {
+        if (_longOpCts is null) return;
+        StatusText = "Stopping…";
+        _longOpCts.Cancel();
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LaunchHintVisibility))]
     private bool launchNeedsAttention;
@@ -257,7 +289,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources, Services.DiscoveryScanService discovery, Services.ModNameIndexSource nameIndex)
     {
         _svc = svc;
         _me2 = me2;
@@ -271,6 +303,8 @@ public sealed partial class MainViewModel : ObservableObject
         _appSettings = appSettings;
         _nexusPoll = nexusPoll;
         _sources = sources;
+        _discovery = discovery;
+        _nameIndex = nameIndex;
         ThemeOptions = themes.Themes;
         // Restore the user's saved pick (F-080); Default (the flagship) covers first-run, a
         // cleared setting, and a saved id whose theme has since been deleted. The restore gate
@@ -763,7 +797,17 @@ public sealed partial class MainViewModel : ObservableObject
         // reload rows to surface UPDATE chips only if it actually changed something. Self-limiting via
         // the per-game stamp, so the per-toggle re-entry of ReloadModsAsync costs a stamp read + bail.
         // Every failure is swallowed inside MaybePollAsync — it can never break the session.
-        if (_ctx is { } ctx) _ = AutoCheckNexusUpdatesAsync(ctx);
+        if (_ctx is { } ctx)
+        {
+            _ = AutoCheckNexusUpdatesAsync(ctx);
+            // Same debounce shape, different payload: seed the per-game Nexus name index so the
+            // discovery sweep's tier-2 match actually has something to match against. Task 7 shipped
+            // SeedAsync with no caller ever gating or calling it — ModNameIndexSource.MaybeSeedAsync
+            // closes that gap using the exact NexusPollStamp mechanism MaybePollAsync uses, gated on
+            // the SAME AutoCheckModUpdates setting MaybePollAsync checks (a user who turned auto-check
+            // off shouldn't still get up to 10 catalog requests per game per day for this).
+            _ = _nameIndex.MaybeSeedAsync(ctx.DataDir, ctx.Game.Id, NexusDomains.Effective(ctx.Game), _nexus.IsConnected, _appSettings.AutoCheckModUpdates, NexusSource);
+        }
     }
 
     /// <summary>Fire-and-forget debounced Nexus auto-check launched at the tail of a game load. Runs on
@@ -1679,9 +1723,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// active game actually has loose-root rows to identify. The capability check IS the flavor
     /// gate — no <c>#if FULL</c>: on STORE / zero-plugins the registry is empty, so this is false
     /// and the menu item is absent.</summary>
+    // The location clause is GONE (discovery branch): LooseIdentify.Candidates was widened in Core
+    // to propose an unidentified mod wherever it sits — a Bethesda Data folder, a UE Paks folder,
+    // loose-root. Gating the menu item on a loose-root row made that widening unreachable on every
+    // other game shape. Candidates still refuses loader rows, manual pins, and anything already
+    // identified, so an empty proposal set is handled downstream, not hidden here.
     public bool LooseIdentifyAvailable => NexusActionsAvailable
         && NexusSource is IModTextSearch
-        && _allRows.Any(r => r.Mod.Location == LooseRootListing.LooseRootLocation);
+        && _allRows.Count > 0;
     public Visibility LooseIdentifyVisibility => LooseIdentifyAvailable ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Whether the active game resolves a Nexus domain (stored, or by Steam app id). The
@@ -1713,7 +1762,13 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var search = catalog.SearchCatalogAsync(domain, query);
             var done = await Task.WhenAny(search, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
-            return done == search ? await search.ConfigureAwait(false) : System.Array.Empty<SourceSearchHit>();
+            if (done != search) return System.Array.Empty<SourceSearchHit>();
+            var hits = await search.ConfigureAwait(false);
+            // Growth is free (design intent, Task 7's ModNameIndexSource.Grow) — these hits were
+            // already fetched for the search view; fold them into the per-game name index so a later
+            // discovery sweep can identify an extracted copy without a network round-trip.
+            if (hits.Count > 0 && _ctx is { } ctx) _nameIndex.Grow(ctx.DataDir, hits);
+            return hits;
         }
         catch { return System.Array.Empty<SourceSearchHit>(); }
     }
@@ -1737,7 +1792,12 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var call = browse.BrowseCatalogAsync(new CatalogQuery(domain!, text, sort, category, offset, count));
             var done = await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
-            return done == call ? await call.ConfigureAwait(false) : CatalogPage.Empty;
+            if (done != call) return CatalogPage.Empty;
+            var page = await call.ConfigureAwait(false);
+            // Growth is free — these hits were already fetched for the browse view; fold them into the
+            // per-game name index so a later discovery sweep can identify an extracted copy for free.
+            if (page.Hits.Count > 0 && _ctx is { } ctx) _nameIndex.Grow(ctx.DataDir, page.Hits);
+            return page;
         }
         catch { return CatalogPage.Empty; }
     }
@@ -1976,13 +2036,86 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>Loose-root name-search identify, step 1 of 2 (review-first): gather the unidentified
-    /// loose-root rows (<see cref="LooseIdentify.Candidates"/> — loaders, manual matches, and
-    /// already-identified rows are excluded), name-search Nexus per row via the loaded
+    /// <summary>Name-search identify, step 1 of 2 (review-first): gather the unidentified rows in
+    /// ANY location — not just loose-root (<see cref="LooseIdentify.Candidates"/> — loaders, manual
+    /// matches, and already-identified rows are excluded), name-search Nexus per row via the loaded
     /// <see cref="IModTextSearch"/> source, and return the proposals for the window's review dialog.
     /// Null = gated out (the status line explains, including "no loose mods need identifying").
     /// NOTHING is written here — the only write path is <see cref="ApplyLooseIdentifyAsync"/> with
     /// the rows the user checked.</summary>
+    /// <summary>True when the active game has rows that are identified but still missing a
+    /// description or cover art — i.e. there is something for "Get details from Nexus" to do.</summary>
+    public bool MetadataEnrichmentAvailable => NexusActionsAvailable && _ctx is not null;
+
+    public Visibility MetadataEnrichmentVisibility =>
+        MetadataEnrichmentAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// Fill in descriptions and cover art for rows we identified but never fully described.
+    ///
+    /// <para>Needed because the two paths that PRODUCE an identification both leave these holes: a
+    /// name search returns no full description, and once a row is identified nothing revisits it —
+    /// <c>LooseIdentify.Candidates</c> skips identified rows by design, and the background update
+    /// poll only ever looks at mods with a NEW FILE upstream. A three-year-old mod would sit named
+    /// and blank forever. This sweep asks Nexus by mod id, which returns the full metadata, and
+    /// <c>NexusRefresh.Overlay</c> fills only the holes — anything already known is kept.</para>
+    /// </summary>
+    public async Task EnrichMetadataAsync()
+    {
+        if (_ctx is null) return;
+        var ctx = _ctx!;
+        if (NexusSource is not { } source) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        var domain = NexusDomains.Effective(ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
+
+        var byKey = Scanner.LoadMetadata(ctx);
+        var candidates = NexusRefresh.SelectEnrichmentCandidates(byKey.Values);
+        if (candidates.Count == 0) { StatusText = "Every identified mod already has its details."; return; }
+
+        IsBusy = true;
+        using var cts = new CancellationTokenSource();
+        _longOpCts = cts;
+        IsCancellable = true;
+        try
+        {
+            var progress = new Progress<NexusRefreshProgress>(p =>
+                StatusText = $"Getting details from Nexus — {p.Completed} of {p.Total}…");
+
+            var result = await NexusRefresh.RefreshAllAsync(
+                candidates, domain!, source, throttle: () => Task.Delay(120), progress: progress, ct: cts.Token);
+
+            // Map each refreshed meta back to its on-disk key by re-resolving the (deterministic)
+            // id — identity fields survive the refresh, so the lookup is exact. Same route the
+            // background poll uses; never a second persistence path.
+            var keyById = new Dictionary<int, string>();
+            foreach (var kv in byKey)
+                if (NexusRefresh.ResolveModId(kv.Value) is { } id)
+                    keyById[id] = kv.Key;
+
+            var writes = new List<(string, ModMeta)>();
+            foreach (var meta in result.Updated)
+                if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
+                    writes.Add((key, meta));
+
+            if (writes.Count > 0)
+            {
+                Scanner.WriteManyMeta(ctx, writes);
+                await ReloadModsAsync();
+            }
+
+            StatusText = (result.RateLimited, cts.IsCancellationRequested) switch
+            {
+                (true, _) => $"Nexus rate-limited us after {writes.Count} of {candidates.Count}. Run it again later to finish.",
+                (_, true) => $"Stopped after {writes.Count} of {candidates.Count}. Run it again to finish the rest.",
+                _ when writes.Count == 0 => "Nexus had no extra details for these mods.",
+                _ => $"Filled in details for {writes.Count} mod{(writes.Count == 1 ? "" : "s")}.",
+            };
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+    }
+
     public async Task<IReadOnlyList<LooseIdentifyProposal>?> ProposeLooseIdentifyAsync()
     {
         if (_ctx is null) return null;
@@ -1995,25 +2128,48 @@ public sealed partial class MainViewModel : ObservableObject
         if (candidates.Count == 0) { StatusText = "No loose mods need identifying."; return null; }
 
         IsBusy = true;
+        using var cts = new CancellationTokenSource();
+        _longOpCts = cts;
+        IsCancellable = true;
         try
         {
-            // LooseIdentify.ProposeAsync has NO cancellation, so the search delegate self-timeouts
-            // per call: a hung Nexus request yields "no hits" for that row after ~10s instead of
-            // blocking the whole batch forever. The abandoned call gets its fault observed on
-            // completion so a late failure never surfaces as an unobserved-task exception. Core's
-            // CleanQuery passes through untouched — it may carry trailing digits ("Zipliner 1" from
-            // CleanModName); that's NameMatch's contract, not noise for the App to re-clean.
-            return await LooseIdentify.ProposeAsync(candidates, async query =>
+            // Built on the UI thread on purpose: Progress<T> captures the current
+            // SynchronizationContext, so every report marshals back here and StatusText is only
+            // ever written from the UI thread even though the workers run concurrently.
+            var progress = new Progress<LooseIdentifyProgress>(p =>
+                StatusText = $"Searching Nexus — {p.Completed} of {p.Total}…");
+
+            // The search delegate still self-timeouts per call: a hung Nexus request yields "no
+            // hits" for that row after ~10s instead of stalling one of the workers forever. The
+            // abandoned call gets its fault observed on completion so a late failure never
+            // surfaces as an unobserved-task exception. Cancellation stops NEW rows immediately;
+            // rows already in flight finish (or time out), so Stop settles within ~10s worst case.
+            // Core's CleanQuery passes through untouched — that's NameMatch's contract, not noise
+            // for the App to re-clean.
+            var proposals = await LooseIdentify.ProposeAsync(candidates, async query =>
             {
                 var call = search.SearchAsync(domain!, query);
                 if (await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))) == call)
                     return await call;
                 _ = call.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
                 return Array.Empty<SourceSearchHit>();
-            });
+            }, LooseIdentify.DefaultConcurrency, progress, cts.Token);
+
+            if (proposals.Count == 0)
+            {
+                // Stopped before anything finished — say so rather than opening an empty dialog.
+                StatusText = cts.IsCancellationRequested
+                    ? "Stopped before anything was searched. Nothing changed."
+                    : "No matches found on Nexus for these mods.";
+                return null;
+            }
+
+            if (cts.IsCancellationRequested)
+                StatusText = $"Stopped after {proposals.Count} of {candidates.Count}. Review what was found, or run it again for the rest.";
+            return proposals;
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return null; }
-        finally { IsBusy = false; }
+        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
     }
 
     /// <summary>Loose-root name-search identify, step 2 of 2: persist ONLY the user-approved pairs.
@@ -2043,6 +2199,295 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
+    }
+
+    // Nexus md5 lookups are network calls against a per-day budget (2500/day). A pathological
+    // Downloads-folder-in-the-game-root case could otherwise turn one sweep into hundreds of calls;
+    // cap the archive md5 tier per run regardless of trigger (auto or manual) — candidates past the
+    // cap simply fall to tier 2 (name index) / tier 3 (unidentified), never blocked or dropped.
+    private const int DiscoveryMd5TierCap = 25;
+
+    /// <summary>Sweep this game's folder for mods the launcher didn't install, identify what we can,
+    /// and offer them for adoption. READ-ONLY until the user approves — adoption writes METADATA
+    /// ONLY, never a file (the first move is the user's first toggle, through the existing
+    /// move-to-holding path). Best evidence first: an archive candidate's Nexus md5 (exact,
+    /// authoritative) beats a per-game name-index hit, which beats "found, unidentified" — still
+    /// listed and adoptable, because visible-but-unnamed beats invisible. Never re-proposes a mod
+    /// the launcher already manages and already identified (manual match, a Nexus id, or any prior
+    /// source confidence) — the feature promises mods the launcher didn't install, not a second
+    /// opinion on the ones it did.
+    /// <paramref name="auto"/> true = the silent first-add run (says nothing when it finds nothing);
+    /// false = the "Find existing mods" menu item, which always reports back.</summary>
+    public async Task DiscoverExistingModsAsync(bool auto)
+    {
+        if (_ctx is null) return;
+        var ctx = _ctx!;
+
+        // Skip the launcher's own holding folders plus anything another manager has taken over.
+        // ctx.TakenOver is already the resolved, loaded set (Scanner.GameContext loads it once from
+        // taken-over.json) — reuse it instead of re-reading the file. It's ABSOLUTE paths
+        // (TakenOverStore.Add(dataDir, folderAbs)), but DiscoverySweep's skip-matching is RELATIVE to
+        // the swept root, so each entry is rebased against GameRoot via RelativeToGameRoot (also
+        // drops a path that resolves outside the root, or onto another drive entirely).
+        var skipFolders = new List<string> { "_626mods", "loose-disabled", "disabled" };
+        foreach (var takenOverAbs in ctx.TakenOver)
+            if (RelativeToGameRoot(takenOverAbs, ctx.GameRoot) is { } rel)
+                skipFolders.Add(rel);
+
+        // Sweep EVERY configured mod location, not just the first — ModLocator.Detect persists all
+        // existing candidate folders, so a UE4SS game can have both ~mods AND LogicMods at once.
+        // Hand-installed Blueprint mods sitting only in LogicMods would otherwise stay invisible,
+        // exactly the case this feature exists to catch. Each location's path can itself be
+        // absolute (Scanner.GameContext resolves it that way when Path.IsPathRooted), so rebase
+        // each one the same way as the taken-over folders. PaksRoot flags the loader-less UE-pak
+        // form (ModLocation.Form == "paks-root", e.g. Witchfire) where the mod folder IS
+        // Content/Paks itself — DiscoverySweep uses it to refuse the game's own shipped paks
+        // (PakClassifier.IsBaseGamePak), the one property this feature must never violate.
+        var modPaths = new List<DiscoverySweepModPath>();
+        foreach (var loc in ctx.Game.ModLocations)
+            if (RelativeToGameRoot(loc.Path, ctx.GameRoot) is { } rel)
+                modPaths.Add(new DiscoverySweepModPath(rel, loc.Form == "paks-root"));
+
+        var options = new DiscoverySweepOptions(
+            ModPaths: modPaths,
+            // The RAW registry entry, not a preset lookup and not ctx.Exts: the manifest ships
+            // per-game overrides (e.g. Cyberpunk 2077 -> ["archive"], not the "custom" preset's
+            // ["pak"]), and ctx.Exts is normalized empty->["pak"] (Scanner.cs), which would make
+            // EngineShaped fire wrongly for fromsoft's genuinely-empty, folder-based extension list.
+            // ctx.Game.FileExtensions is the exact value ctx.FileRe (and therefore Scanner.ModKeyFor)
+            // is built from — using anything else would let the sweep and the key formula disagree.
+            EngineExtensions: ctx.Game.FileExtensions,
+            SkipFolders: skipFolders);
+
+        // DiscoveryScanService.Sweep walks the whole game folder synchronously — keep it off the UI
+        // thread so a large, years-old install can't freeze the window.
+        var candidates = await Task.Run(() => _discovery.Sweep(ctx.GameRoot, options));
+        if (candidates.Count == 0)
+        {
+            if (!auto) StatusText = "No unmanaged mods found in this game's folder.";
+            return;
+        }
+
+        // Never re-propose a candidate whose best-guess key is already identified (manual match, a
+        // Nexus id, or any prior source confidence) — mirrors LooseIdentify.Candidates' exact rule
+        // for exactly the same reason: a name-index hit on an already md5-identified row would
+        // downgrade SourceConfidence from "md5" to "nameSearch" and could point endorse/update-check
+        // at the wrong mod page. The pre-filter key is a best guess (the real archive-contents key
+        // isn't known until identify + ArchiveModKeysFor below), which is fine — it only needs to
+        // catch the common EngineShaped case; a false negative here just means the tier logic below
+        // re-derives the same "already identified" outcome a step later, never a wrong write.
+        // File space -> mod-key space. The sweep finds FILES; the launcher lists MODS, and one mod
+        // is routinely several files (a UE mod ships pak + ucas + utoc, which Scanner folds onto a
+        // single key — see the outMap/mod.Files.Add grouping in Scanner's pak scan). Collapsing
+        // here is what makes the review dialog's "Adopt N mods" count mods instead of files.
+        candidates = DiscoverySweep.Deduplicate(candidates, c => DiscoveryBestGuessKey(c, ctx));
+
+        // Never re-offer a mod the launcher ALREADY lists. Adoption's promise is "this lists it so
+        // you can turn it on and off"; for a row that already exists and already toggles, that
+        // promise is met, and re-proposing it made a years-old install look like the sweep wanted
+        // to re-add the whole mod list. Naming an already-listed-but-unnamed row is a real job, but
+        // it belongs to LooseIdentify — which now reaches these rows on every game shape.
+        //
+        // EngineShaped ONLY, deliberately: its key IS Scanner.ModKeyFor, the exact formula behind
+        // Mod.Base, so the comparison is exact. An Archive's pre-filter key is a weak guess at its
+        // own filename (its real keys come from its CONTENTS at write time), so excluding archives
+        // on a stem collision would throw away the md5 tier's shot at an exact identification — the
+        // strongest evidence we have — to prevent a duplicate that IsAlreadyIdentified already
+        // catches at write time.
+        var rowKeys = _allRows.Select(r => r.Mod.Base).Where(k => !string.IsNullOrWhiteSpace(k));
+        var engineShaped = candidates.Where(c => c.Kind == DiscoveryKind.EngineShaped).ToList();
+        var keptEngineShaped = DiscoverySweep
+            .ExcludeKnownKeys(engineShaped, c => DiscoveryBestGuessKey(c, ctx), rowKeys)
+            .ToHashSet();
+        candidates = candidates
+            .Where(c => c.Kind != DiscoveryKind.EngineShaped || keptEngineShaped.Contains(c))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            if (!auto) StatusText = "Every mod in this game's folder is already in your list.";
+            return;
+        }
+
+        var existing = Scanner.LoadMetadata(ctx);
+        var unmanaged = candidates.Where(c => !IsAlreadyIdentified(existing, DiscoveryBestGuessKey(c, ctx))).ToList();
+        if (unmanaged.Count == 0)
+        {
+            if (!auto) StatusText = "No unmanaged mods found in this game's folder.";
+            return;
+        }
+
+        var domain = NexusDomains.Effective(ctx.Game);
+        var source = NexusSource;
+
+        // Ensure the per-game name index is warm BEFORE tier 2 reads it. MaybeSeedAsync is ALSO
+        // fired fire-and-forget from ReloadModsAsync's tail on every game load (general index
+        // freshness for catalog browse / a later manual run), but that race can't be trusted to
+        // finish before THIS run needs it — a brand-new game's index file doesn't exist yet, so an
+        // unseeded Load() would leave tier 2 dead on the very first, flagship auto-run. Awaited and
+        // non-fatal: MaybeSeedAsync already swallows its own failures, so a seed miss here just
+        // means tier 2 degrades to its already-supported "index empty" case.
+        await _nameIndex.MaybeSeedAsync(ctx.DataDir, ctx.Game.Id, domain, _nexus.IsConnected, _appSettings.AutoCheckModUpdates, source);
+        var index = _nameIndex.Load(ctx.DataDir);
+
+        // Degrade gracefully: no plugin loaded, signed out, or no Nexus domain for this game all
+        // collapse to "md5 tier unavailable" — the sweep still runs and falls to the name index /
+        // unidentified tiers below, never silently doing nothing.
+        var md5Available = _nexus.IsConnected && source is not null && !string.IsNullOrWhiteSpace(domain);
+        var md5Attempts = 0;
+
+        var proposals = new List<AdoptionProposal>(unmanaged.Count);
+        foreach (var candidate in unmanaged)
+        {
+            AdoptionProposal? proposal = null;
+
+            // Tier 1: archive md5 — Nexus hashes the PUBLISHED archive, so this only ever applies to
+            // Archive candidates (Md5Of returns null for anything else). Pass the FULL identify
+            // result into FromMd5 — AdoptionProposal.ToMeta() routes it through
+            // SourceMetadataMapper.FromIdentify so Version (and everything else that mapper
+            // populates) survives; hand-copying a subset here would leave Version null and light a
+            // false UPDATE chip on every md5-adopted mod.
+            if (md5Available && candidate.Kind == DiscoveryKind.Archive && md5Attempts < DiscoveryMd5TierCap)
+            {
+                md5Attempts++;
+                var md5 = await Task.Run(() => _discovery.Md5Of(ctx.GameRoot, candidate));
+                if (md5 is not null)
+                {
+                    try
+                    {
+                        var identify = await source!.IdentifyByHashAsync(domain!, md5);
+                        if (identify is not null) proposal = AdoptionProposal.FromMd5(candidate, identify);
+                    }
+                    catch { /* a miss / outage never blocks the sweep — fall through to tier 2 */ }
+                }
+            }
+
+            // Tier 2: per-game name index — the load-bearing tier for extracted mods.
+            if (proposal is null)
+            {
+                var hit = index.Match(candidate.FileName);
+                proposal = hit is not null ? AdoptionProposal.FromIndex(candidate, hit) : AdoptionProposal.Unidentified(candidate);
+            }
+
+            proposals.Add(proposal);
+        }
+
+        if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
+        var approved = await ReviewDiscoveries(proposals);
+        if (approved.Count == 0) { if (!auto) StatusText = "Nothing adopted."; return; }
+
+        // Adoption is metadata-only — no file is moved, renamed, or deleted. One atomic batch write
+        // through Scanner.WriteManyMeta, the same route ApplyLooseIdentifyAsync uses above; never a
+        // second persistence path. MergeMeta(existing, hit) — the proposal wins per field, existing
+        // enrichment (InstalledUtc, image, downloads…) survives, and a manual match still locks.
+        //
+        // A single proposal can expand to MULTIPLE write keys: an md5-identified archive's metadata
+        // belongs to whatever mod keys ITS CONTENTS install under (Scanner.ArchiveModKeysFor — same
+        // derivation Scanner.Md5IdentifyArchivesAsync uses), never the archive's own download
+        // filename (a real Nexus download like "FasterShips-42-1-0-1699999.zip" would never match
+        // the installed file's key). When an identified archive's contents don't map to any known
+        // mod key, it expands to zero writes rather than a wrong or inert fallback key.
+        var writes = new List<(string ModKey, ModMeta Meta)>();
+        // Tracked separately so the "nothing happened" status line (below) can say WHY instead of
+        // reusing one caption for two different outcomes: an archive whose contents don't map to
+        // any known mod key vs. every resolved key turning out to already be identified.
+        var anyZeroKeyProposal = false;
+        var anyAlreadyIdentifiedDrop = false;
+        foreach (var p in approved)
+        {
+            var meta = p.ToMeta();
+            var keys = await DiscoveryWriteKeysAsync(p, ctx);
+            if (keys.Count == 0) { anyZeroKeyProposal = true; continue; }
+            foreach (var key in keys)
+            {
+                // The candidate-level pre-filter above can't see this key for an archive proposal —
+                // ArchiveModKeysFor only resolves it here, at write time. Re-check it before writing:
+                // a stale leftover archive (an old v1.0 download still sitting next to a correctly
+                // identified, updated v2.0 install) would otherwise md5-identify successfully and
+                // overwrite the row's Version with the stale one (SourceMetadataMapper.FromIdentify
+                // sets Version = the archive's own version, and MergeMeta lets the "new" hit win),
+                // planting a permanent false UPDATE chip on a row that was correct before the sweep.
+                if (IsAlreadyIdentified(existing, key)) { anyAlreadyIdentifiedDrop = true; continue; }
+                writes.Add((key, Scanner.MergeMeta(existing.GetValueOrDefault(key) ?? new ModMeta(), meta)));
+            }
+        }
+
+        if (writes.Count == 0)
+        {
+            if (!auto)
+            {
+                StatusText = anyZeroKeyProposal && !anyAlreadyIdentifiedDrop
+                    ? "Nothing to adopt — the matched archive doesn't correspond to an installed file yet."
+                    : anyAlreadyIdentifiedDrop && !anyZeroKeyProposal
+                        ? "Nothing to adopt — those mods are already identified."
+                        : "Nothing to adopt.";
+            }
+            return;
+        }
+
+        Scanner.WriteManyMeta(ctx, writes);
+
+        var adoptedCount = writes.Select(w => w.ModKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        StatusText = adoptedCount == 1
+            ? "Adopted 1 mod. Your files were not moved."
+            : $"Adopted {adoptedCount} mods. Your files were not moved.";
+        await ReloadModsAsync();
+    }
+
+    /// <summary>True when <paramref name="key"/> already has an identity the sweep must never
+    /// overwrite — a manual match, a Nexus id, or any prior source confidence. Mirrors
+    /// <see cref="LooseIdentify.Candidates"/>'s exact predicate for the exact same reason: a weaker
+    /// tier (name-index or "found, unidentified") must never downgrade a stronger existing match.</summary>
+    private static bool IsAlreadyIdentified(IReadOnlyDictionary<string, ModMeta> existing, string key)
+        => existing.TryGetValue(key, out var meta) && (meta.IsManual || meta.NexusModId is not null || meta.SourceConfidence is not null);
+
+    /// <summary>The best-guess metadata key for a raw candidate BEFORE any tier has run — used only to
+    /// pre-filter already-identified rows out of the proposal list. An EngineShaped candidate's real
+    /// key is knowable up front (<see cref="Scanner.ModKeyFor"/>); everything else (Signature,
+    /// Archive) falls back to the extension-stripped filename, which is good enough for this filter's
+    /// job (a false negative here just costs a redundant tier-2/3 proposal, never a wrong write —
+    /// see <see cref="DiscoveryWriteKeysAsync"/> for the write-time key, which is authoritative).</summary>
+    private static string DiscoveryBestGuessKey(DiscoveryCandidate candidate, GameContext ctx)
+        => candidate.Kind == DiscoveryKind.EngineShaped
+            ? Scanner.ModKeyFor(candidate.FileName, ctx)
+            : Path.GetFileNameWithoutExtension(candidate.FileName);
+
+    /// <summary>The metadata key(s) an APPROVED proposal writes to. Computed at write time (not
+    /// propose time) so a from-md5 archive proposal can resolve its real content-derived keys only
+    /// for the rows the user actually approved. An <see cref="DiscoveryKind.EngineShaped"/> hit goes
+    /// through <see cref="Scanner.ModKeyFor"/> so the adopted title/author land on the exact row the
+    /// regular scan builds for that file. An md5-identified <see cref="DiscoveryKind.Archive"/> goes
+    /// through <see cref="Scanner.ArchiveModKeysFor"/> — the archive's CONTENTS, never its own
+    /// filename — and can legitimately return zero or several keys. Everything else (Signature, or an
+    /// Archive that only cleared tier 2/3) has no scanned row to align with yet, so it keys off the
+    /// extension-stripped filename as harmless bookkeeping.</summary>
+    private async Task<IReadOnlyList<string>> DiscoveryWriteKeysAsync(AdoptionProposal p, GameContext ctx)
+    {
+        if (p.Evidence == AdoptionEvidence.Md5 && p.Candidate.Kind == DiscoveryKind.Archive)
+        {
+            var abs = Path.Combine(ctx.GameRoot, p.Candidate.RelativePath);
+            return await Task.Run(() => Scanner.ArchiveModKeysFor(abs, ctx));
+        }
+        if (p.Candidate.Kind == DiscoveryKind.EngineShaped)
+            return new[] { Scanner.ModKeyFor(p.Candidate.FileName, ctx) };
+
+        return new[] { Path.GetFileNameWithoutExtension(p.Candidate.FileName) };
+    }
+
+    /// <summary>Rebase a registry-supplied path (which may be absolute OR relative — the same
+    /// ambiguity <see cref="Scanner.GameContext"/> resolves for <c>ModLocationCtx.Abs</c>) onto
+    /// "relative to <paramref name="gameRoot"/>, forward-slashed" — the shape
+    /// <see cref="DiscoverySweep"/>'s skip/mod-path matching expects. Null input, a path that
+    /// resolves outside the root, or a path on another drive (which makes
+    /// <see cref="Path.GetRelativePath(string,string)"/> hand back an absolute path unchanged) all
+    /// return null — the caller drops it rather than pass through something that would either never
+    /// match or match the wrong thing.</summary>
+    private static string? RelativeToGameRoot(string? path, string gameRoot)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        var abs = Path.IsPathRooted(path) ? path : Path.Combine(gameRoot, path);
+        var rel = Path.GetRelativePath(gameRoot, abs).Replace('\\', '/');
+        if (rel == "." || rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
+        return rel;
     }
 
     /// <summary>One-click endorse ⇄ abstain for a Nexus-identified row — the give-back half of the
@@ -2692,8 +3137,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Register a new game from the wizard, make it active, and load it. When the wizard already
     /// resolved a save folder (the "Add with AI" flow), <paramref name="resolvedSaveDir"/> is used directly
-    /// instead of re-running detection.</summary>
-    public async Task AddGameAsync(GameInput input, string? resolvedSaveDir = null)
+    /// instead of re-running detection. <paramref name="sweep"/> gates the silent first-add discovery
+    /// sweep — default on for the single-game paths; the batch add-game branch passes false so adding
+    /// N games from one Steam batch doesn't turn into N sequential recursive sweeps and up to N modal
+    /// review dialogs stacked under one busy state with no cancel. Batch callers should point the user
+    /// at More -> Find existing mods per game instead.</summary>
+    public async Task AddGameAsync(GameInput input, string? resolvedSaveDir = null, bool sweep = true)
     {
         IsBusy = true;
         try
@@ -2706,6 +3155,14 @@ public sealed partial class MainViewModel : ObservableObject
             if (saveDir is not null) _svc.SetSaveDir(entry.Id, saveDir);
             await LoadAsync();
             StatusText = $"Added {entry.GameName}.";
+
+            // Silent first-add sweep: LoadAsync just made the new game active (AddGame sets
+            // ActiveGameId), so _ctx is already this game's context. Auto = says nothing when it
+            // finds nothing; the review dialog (if anything wired it) still gates every write.
+            // DiscoverExistingModsAsync only overwrites StatusText when it actually has something to
+            // report (found-nothing and nothing-adopted stay silent under auto), so "Added {name}."
+            // above survives unless there's genuinely new information to show.
+            if (sweep) await DiscoverExistingModsAsync(auto: true);
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }

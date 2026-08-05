@@ -155,8 +155,12 @@ public class LooseIdentifyTests
         Assert.Equal(999, merged.NexusModId);
         Assert.Equal("nameSearch", merged.SourceConfidence);
         Assert.Equal(42, merged.EndorsementCount);
-        // …and the unrelated existing fields survive.
-        Assert.Equal("Detected: ASI plugin at game root", merged.Description);
+        // The hit's real summary REPLACES the launcher's own detection placeholder — that's the
+        // point of identifying: "Detected: ASI plugin at game root" describes how we found it,
+        // the Nexus summary describes what it is.
+        Assert.Equal("summary", merged.Description);
+        // …and fields this hit carries nothing for still survive (fill-only merge). This hit has
+        // no ThumbnailUrl and no DownloadCount, so prior enrichment stands.
         Assert.Equal("cover.png", merged.Image);
         Assert.Equal(5, merged.Downloads);
         Assert.Equal(installed, merged.InstalledUtc);
@@ -180,5 +184,201 @@ public class LooseIdentifyTests
         Assert.Equal(42, meta.EndorsementCount);
         Assert.Equal("nameSearch", meta.SourceConfidence);
         Assert.False(meta.IsManual);
+    }
+
+    // The name-search offer used to be loose-root only, so an unidentified mod in a Bethesda
+    // Data folder or a UE Paks folder could never be identified. Widening the scope must NOT
+    // weaken any other candidate rule.
+    [Fact]
+    public void Candidates_include_rows_outside_loose_root()
+    {
+        var rows = new List<Mod>
+        {
+            new() { Base = "SkyUI_5_2_SE", Name = "SkyUI_5_2_SE", Location = "Data", Class = "plugin" },
+            new() { Base = "FasterShips_P", Name = "FasterShips_P", Location = "Content/Paks/~mods", Class = "pak" },
+        };
+
+        var candidates = LooseIdentify.Candidates(rows, new Dictionary<string, ModMeta>());
+
+        Assert.Equal(2, candidates.Count);
+    }
+
+    [Fact]
+    public void Widening_does_not_weaken_the_other_candidate_rules()
+    {
+        var rows = new List<Mod>
+        {
+            new() { Base = "Manual", Name = "Manual", Location = "Data", Class = "plugin" },
+            new() { Base = "Identified", Name = "Identified", Location = "Data", Class = "plugin" },
+            new() { Base = "Loader", Name = "Loader", Location = "Data", Class = "loader" },
+        };
+        var meta = new Dictionary<string, ModMeta>
+        {
+            ["Manual"] = new() { IsManual = true },
+            ["Identified"] = new() { NexusModId = 42 },
+        };
+
+        Assert.Empty(LooseIdentify.Candidates(rows, meta));
+    }
+
+    // ---- ToMeta carries the WHOLE hit, not a hand-picked subset ----
+
+    // The row UI binds Description and Image (MainWindow.xaml thumbnail + description block), so a
+    // dropped Summary/ThumbnailUrl renders as a blank, picture-less row even on a perfect match.
+    [Fact]
+    public void ToMeta_keeps_the_description_and_the_thumbnail()
+    {
+        var hit = new SourceSearchHit("cyberpunk2077", 4159, "Equipment-EX", "psiberx",
+            "Expands the equipment system.", 4200, "https://nexusmods.com/cyberpunk2077/mods/4159")
+        {
+            ThumbnailUrl = "https://staticdelivery.nexusmods.com/thumb.jpg",
+            Category = "Gameplay",
+            DownloadCount = 990_000,
+        };
+
+        var meta = LooseIdentify.ToMeta(hit);
+
+        Assert.Equal("Equipment-EX", meta.Title);
+        Assert.Equal("Expands the equipment system.", meta.Description);
+        Assert.Equal("https://staticdelivery.nexusmods.com/thumb.jpg", meta.Image);
+        Assert.Equal("Gameplay", meta.Category);
+        Assert.Equal(990_000, meta.Downloads);
+        Assert.Equal("psiberx", meta.Author);
+        Assert.Equal(4159, meta.NexusModId);
+        Assert.Equal(4200, meta.EndorsementCount);
+        Assert.Equal("nameSearch", meta.SourceConfidence);
+    }
+
+    // A name match identifies WHICH mod, never which FILE is installed. Writing the published
+    // version to either side would light a false UPDATE chip on every identified row.
+    [Fact]
+    public void ToMeta_never_invents_version_state_from_a_name_match()
+    {
+        var hit = new SourceSearchHit("cyberpunk2077", 4159, "Equipment-EX", "psiberx", null, null, null)
+        {
+            Version = "2.1",
+        };
+
+        var meta = LooseIdentify.ToMeta(hit);
+
+        Assert.Null(meta.Version);
+        Assert.Null(meta.NexusLatestVersion);
+        Assert.False(new Mod { NexusLatestVersion = meta.NexusLatestVersion, Version = meta.Version }.UpdateAvailable);
+    }
+
+    // ---- ProposeAsync at real-library scale (a hand-modded Cyberpunk install is ~200 rows) ----
+
+    private static List<Mod> Many(int n) =>
+        Enumerable.Range(0, n).Select(i => Row($"Mod{i:D3}", "plugin")).ToList();
+
+    // Concurrency must not reshuffle the review dialog. Slowest-first ordering guarantees the
+    // results ARRIVE backwards, so a naive "append as they complete" implementation fails here.
+    [Fact]
+    public async Task Proposals_come_back_in_candidate_order_not_completion_order()
+    {
+        var rows = Many(12);
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, async query =>
+        {
+            var index = int.Parse(query.Replace("Mod", "").Trim());
+            await Task.Delay(5 * (12 - index)); // earlier rows finish LAST
+            return new[] { Hit(query) };
+        });
+
+        Assert.Equal(rows.Select(r => r.Base), proposals.Select(p => p.ModKey));
+    }
+
+    [Fact]
+    public async Task Never_exceeds_the_concurrency_cap()
+    {
+        var inFlight = 0;
+        var peak = 0;
+        var gate = new object();
+
+        await LooseIdentify.ProposeAsync(Many(40), async _ =>
+        {
+            lock (gate) { inFlight++; if (inFlight > peak) peak = inFlight; }
+            await Task.Delay(5);
+            lock (gate) { inFlight--; }
+            return Array.Empty<SourceSearchHit>();
+        }, maxConcurrency: 4);
+
+        Assert.True(peak <= 4, $"peak in-flight was {peak}, cap was 4");
+        Assert.True(peak > 1, "ran serially — the cap is not being used at all");
+    }
+
+    [Fact]
+    public async Task Progress_climbs_to_the_total()
+    {
+        var seen = new List<int>();
+        var gate = new object();
+        var progress = new Progress<LooseIdentifyProgress>(p => { lock (gate) seen.Add(p.Completed); });
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(20),
+            _ => Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>()),
+            progress: progress);
+
+        Assert.Equal(20, proposals.Count);
+        // Progress<T> marshals asynchronously, so wait for the last report rather than racing it.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (gate) { if (seen.Count >= 20) break; }
+            await Task.Delay(10);
+        }
+        lock (gate)
+        {
+            Assert.Equal(20, seen.Count);
+            Assert.Equal(20, seen.Max());   // reaches the total
+            Assert.Equal(20, seen.Distinct().Count()); // every step reported exactly once
+        }
+    }
+
+    // Cancelling keeps the work already done. Nothing here writes — every proposal is still
+    // review-gated — so throwing away 150 finished searches because the user stopped at 151 would
+    // be hostile.
+    [Fact]
+    public async Task Cancelling_returns_the_completed_proposals_instead_of_throwing()
+    {
+        using var cts = new CancellationTokenSource();
+        var done = 0;
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(200), async query =>
+        {
+            if (Interlocked.Increment(ref done) == 8) cts.Cancel();
+            await Task.Delay(1);
+            return new[] { Hit(query) };
+        }, maxConcurrency: 2, ct: cts.Token);
+
+        Assert.NotEmpty(proposals);
+        Assert.True(proposals.Count < 200, "cancellation did not stop the run");
+        // Whatever survived is still in candidate order, with no gaps in the returned list.
+        Assert.Equal(proposals.Select(p => p.ModKey).OrderBy(k => k, StringComparer.Ordinal), proposals.Select(p => p.ModKey));
+    }
+
+    // One row's search blowing up must not cost the other 193 their attempt.
+    [Fact]
+    public async Task A_throwing_search_only_costs_its_own_row()
+    {
+        var proposals = await LooseIdentify.ProposeAsync(Many(10), query =>
+            query.EndsWith("004", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("upstream blew up")
+                : Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit(query) }));
+
+        Assert.Equal(10, proposals.Count);
+        Assert.Null(proposals.Single(p => p.ModKey == "Mod004").Match);
+        Assert.Equal(9, proposals.Count(p => p.Match is not null));
+    }
+
+    [Fact]
+    public async Task Empty_candidate_list_does_no_work()
+    {
+        var calls = 0;
+
+        var proposals = await LooseIdentify.ProposeAsync(new List<Mod>(),
+            _ => { calls++; return Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>()); });
+
+        Assert.Empty(proposals);
+        Assert.Equal(0, calls);
     }
 }

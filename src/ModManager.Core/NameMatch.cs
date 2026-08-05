@@ -10,13 +10,23 @@ namespace ModManager.Core;
 /// </summary>
 public static partial class NameMatch
 {
-    [GeneratedRegex(@"\.(pak|ucas|utoc|esp|esl|esm|bsa|jar|dll|vpk|zip)$", RegexOptions.IgnoreCase)]
+    // Every extension a mod file actually wears in the wild. An extension missing here is NOT
+    // harmless: it survives as a token in the search query sent upstream, so it both pollutes the
+    // Jaccard score and degrades the search itself. "archive" (REDengine/Cyberpunk) was absent,
+    // which put a junk "archive" token on every query for a 194-mod library. The optional (\.xl)
+    // tail catches ArchiveXL's compound "Foo.archive.xl" sidecar in the same pass.
+    [GeneratedRegex(@"\.(pak|ucas|utoc|esp|esl|esm|bsa|jar|dll|vpk|zip|archive|reds|asi)(\.xl)?$", RegexOptions.IgnoreCase)]
     private static partial Regex ExtRe();
 
     [GeneratedRegex(@"_[Pp]$")]
     private static partial Regex PSuffixRe();
 
-    [GeneratedRegex(@"[._\-\s]+")]
+    // Load-order sigils count as separators, not name characters. Games that load a mod folder
+    // alphabetically get modded with brute-force prefixes — Cyberpunk's "#", "!", "###" and UE's
+    // "~" all exist to sort a file to the front, exactly like the "ZZZ.CF.JSON.AL_" shape this
+    // splitter already handled. Left in, they ride into the upstream search query ("###Mute Menu
+    // ..."), which is a worse query than the same name without them.
+    [GeneratedRegex(@"[._\-\s#!~]+")]
     private static partial Regex SplitRe();
 
     [GeneratedRegex(@"^(.)\1+$", RegexOptions.IgnoreCase)]
@@ -30,6 +40,12 @@ public static partial class NameMatch
 
     [GeneratedRegex(@"([a-z0-9])([A-Z])")]
     private static partial Regex CamelRe();
+
+    // Trailing digits glued to a word with no case boundary (FasterShips10, Fallout4) are the
+    // dominant real-world mod-name shape, not an edge case — split, don't drop, so token overlap
+    // still sees "ships" while a version/variant number never silently merges two different mods.
+    [GeneratedRegex(@"([a-zA-Z])(\d)")]
+    private static partial Regex LetterDigitRe();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WsRe();
@@ -53,13 +69,20 @@ public static partial class NameMatch
                 if (VersionRe().IsMatch(t)) return false;                                     // v2
                 return true;
             })
-            .Select(t => CamelRe().Replace(t, "$1 $2"));
+            .Select(t => LetterDigitRe().Replace(CamelRe().Replace(t, "$1 $2"), "$1 $2"));
         return WsRe().Replace(string.Join(" ", kept), " ").Trim();
     }
 
     private static List<string> Tokens(string? s) =>
         NonAlnumRe().Replace((s ?? "").ToLowerInvariant(), " ").Trim()
             .Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+    /// <summary>Public seam onto the SAME tokenizer <see cref="Jaccard"/>/<see cref="PickBestMatch{T}"/>
+    /// score with — for a caller that needs to know how many tokens a name/query breaks into
+    /// (e.g. to decide when Jaccard's fuzzy threshold is too permissive: a single shared token
+    /// against a two-token candidate scores exactly 0.5, clearing the default threshold). Not a
+    /// second tokenizer — same regex, same casing, same split.</summary>
+    public static IReadOnlyList<string> Tokenize(string? s) => Tokens(s);
 
     private static double Jaccard(IReadOnlyCollection<string> a, IReadOnlyCollection<string> b)
     {

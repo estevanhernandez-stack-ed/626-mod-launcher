@@ -1085,3 +1085,109 @@ switch instead of a box behind the whole cell.
 2. ON toggles show a tight amber aura around the track only.
 3. Regular buttons across dialogs hover glass (Close/Cancel etc.) — nothing
    flashes light grey anymore.
+
+---
+
+## feat/discovery-sweep — find what's already there
+
+> **STATUS — NEEDS LIVE SMOKE.** Core is fully unit-tested (1589 passing tests: sweep
+> boundaries + depth cap, three-tier classification, `ModNameIndex` merge/match/camelCase
+> round-trip, `AdoptionProposal.FromMd5/FromIndex/Unidentified`, `Scanner.ArchiveModKeysFor`,
+> already-identified exclusion). The VM orchestration (`MainViewModel.DiscoverExistingModsAsync`),
+> the seed/grow wiring on game load, and the review dialog are App wiring the test project can't
+> reach — verify on a real Windows machine. Nine review rounds on this plan caught three separate
+> bugs where the feature *looked* like it worked (ran, showed a status line, closed clean) but
+> wrote metadata nowhere — wrong file extensions swept (0 hits), archive candidates keyed by their
+> own download filename instead of their contents (dead write key), and the name index having zero
+> callers (tier 2 permanently dead). The items below are written to catch that failure class again,
+> not just to confirm the happy path animates.
+
+**Shipped:** Read-only sweep of the active game's folder (depth-capped, skips the launcher's own
+holding folders + anything Vortex-taken-over) classifying candidates into three kinds — signature
+files, engine-shaped files (matched via the game manifest's real `fileExtensions`, not a preset),
+and archives. Three evidence tiers, best first: an archive's Nexus md5 (exact, capped at **25**
+archive candidates per run so a Downloads-folder-sized game root can't blow the 2500/day Nexus
+budget) beats a per-game Nexus name-index hit, which beats "found, unidentified" — still listed
+and adoptable, because visible-but-unnamed beats invisible. Mods the launcher already identified
+(manual match, a Nexus id, or any prior source confidence) are excluded from proposals, both at
+the pre-filter (candidate's best-guess key) and again at write time (the archive's real
+content-derived keys, resolved only after approval) — a stale leftover archive can't overwrite a
+correctly-identified row's version. Review-before-adopt dialog: one row per proposal, pre-checked
+when identified, primary button reads a live count ("Adopt 3 mods") and disables at zero checked.
+Adoption writes **metadata only** through the existing `Scanner.WriteManyMeta` batch path — no
+file is moved, renamed, or deleted; the first file move is still the user's first toggle.
+
+The per-game Nexus name index (tier 2, the load-bearing tier for extracted/no-archive mods) now
+**seeds automatically**: on every game load, debounced ~24h per game (same stamp mechanism as the
+Nexus update poll), and gated on the **same "Check for mod updates automatically" setting**
+(Settings) the update poll uses — turn that off and the seed makes zero catalog calls, silently.
+It also **grows for free** from every catalog page browsed and every Nexus search run during
+normal use (no extra network calls). A fresh install / fresh game therefore identifies nothing by
+tier 2 until a seed has actually run — that's expected, not a bug; see item 1 below for how to
+tell the difference between "index legitimately empty" and "matching broken."
+
+Sweep trigger: single "Add game" auto-runs the sweep once, silently (says nothing when it finds
+nothing). **Batch add-game (multi-select from Steam) does NOT auto-sweep** — N games would
+otherwise mean N sequential recursive sweeps + N modal review dialogs stacked under one busy
+state with no cancel. The game's More menu → "Find existing mods…" is the sweep entry point for
+those, and for any manual re-run; it always reports back, even on nothing-found.
+
+**Smoke needed:**
+
+1. **Index-empty vs matching-broken, disambiguated.** Add a game fresh (or one that's never had
+   Nexus connected) and immediately run "Find existing mods" before any seed has had a chance to
+   run — or with "Check for mod updates automatically" (Settings) turned OFF. EXPECT: candidates
+   still appear (found, not silently dropped), every one reads "not identified," and they're still
+   checkable/adoptable. Confirm `<gameDataDir>\nexus-name-index.json` is absent or empty — that's
+   what "legitimately empty" looks like. Now turn the setting ON, reconnect Nexus, and switch away
+   from and back to the game (or wait past the 24h stamp / delete
+   `%LOCALAPPDATA%\ModManagerBuilder\last-nameindex-seed-<gameId>.txt` to force it) — re-run the
+   sweep and confirm previously-"not identified" candidates now resolve to real names. If they
+   still don't after a confirmed seed (file has entries), that's a real matching bug, not an empty
+   index.
+2. **Windrose (richest real case — years of hand-installed history): run "Find existing mods."**
+   Candidates appear, named where the index (or an md5 hit) knows them. Confirm **no game file**
+   (e.g. `eldenring.exe`, or Windrose's own executable) is ever listed as a candidate — the
+   classifier must never claim a game file. Confirm the review dialog's primary button reads
+   "Adopt N mods" matching the checked count, and toggling a row's checkbox updates that count live
+   and flips the button's enabled state at zero.
+3. **Adopt everything, then verify the write actually landed — the silent-no-op check.** After
+   Apply, confirm on disk that **not one file moved** (same folder listing, same file timestamps,
+   as before the sweep — the first toggle is still the first file move). Then confirm the adopted
+   mods **actually show up in the mod list** with their new names/metadata after the reload that
+   follows adoption (not just a status-line claim) — this is the exact failure class the review
+   rounds caught (feature ran, closed clean, wrote metadata nowhere). Also confirm
+   `<gameDataDir>\metadata.json` on disk actually changed (new entries / updated fields) for the
+   adopted rows.
+4. **Cancel the dialog** — nothing is adopted (status line, if any, says "Nothing adopted."),
+   `metadata.json` is byte-identical to before, mod list unchanged.
+5. **Md5 tier beats name-index tier.** Drop a known mod's ORIGINAL, unmodified Nexus archive into
+   the game folder (Nexus-connected) and re-run the sweep — that candidate's row should show
+   "Matched exactly by file hash," not a name-index match, even if the index also happens to know
+   the name. If you have 25+ archive candidates in one sweep, confirm the run doesn't hang or make
+   an excessive burst of calls — everything past the 25th archive candidate should fall through to
+   tier 2/3, not block the sweep.
+6. **Sign out of Nexus (or use the sealed build) and re-run.** The sweep still finds candidates and
+   lists them as "not identified," still checkable/adoptable — the feature must never silently do
+   nothing just because Nexus isn't available.
+7. **Already-identified mods are protected from downgrade.** Pick a mod that's already correctly
+   identified (has a Nexus id or `IsManual`/source confidence in `metadata.json`), then run "Find
+   existing mods" again. EXPECT: that mod's file(s) do NOT reappear as a new proposal — the sweep
+   excludes anything already identified rather than offering a redundant (and potentially weaker)
+   re-match. If you can arrange a stale duplicate archive (an old version of an already-identified
+   mod's download sitting loose in the folder) — confirm adopting the sweep's other proposals does
+   NOT touch that mod's existing `version`/metadata field.
+8. **Single "Add game" auto-sweeps; batch add does not.** Add one new game from Steam → confirm the
+   sweep runs automatically once and stays silent if it finds nothing (no dialog, no status-line
+   noise beyond "Added \<name\>."). Then add 2+ games at once via Steam multi-select → confirm
+   NO sweep runs and NO review dialog appears for any of them automatically; use More → "Find
+   existing mods…" on one of the batch-added games afterward to confirm the manual path still
+   works identically to the single-add path.
+
+**Why these matter:** every layer below the App wiring is unit-tested, but three separate
+review-round bugs on this exact feature were "ran fine, showed a status line, wrote nothing" —
+wrong extensions swept, archive candidates keyed to a dead write target, and a name index with no
+caller. Items 1, 3, and 7 target that failure class directly; the rest confirm the reversibility
+law (no file ever moves on adopt) and the two gates added late (md5 cap, batch-add opt-out) don't
+regress under a real Windows session with a real Nexus account.
+

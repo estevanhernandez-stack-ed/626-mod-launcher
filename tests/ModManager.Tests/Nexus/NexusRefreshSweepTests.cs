@@ -149,6 +149,99 @@ public class NexusRefreshSweepTests
         Assert.Equal("2.0", result.Updated.Single(m => m.NexusModId == 1).NexusLatestVersion);
     }
 
+    // ---------- SelectEnrichmentCandidates ----------
+
+    [Fact]
+    public void Enrichment_picks_identified_rows_with_holes_and_leaves_complete_ones_alone()
+    {
+        var metas = new[]
+        {
+            new ModMeta { Title = "no description", NexusModId = 1, Image = "a.jpg" },
+            new ModMeta { Title = "no image", NexusModId = 2, Description = "has one" },
+            new ModMeta { Title = "neither", NexusModId = 3 },
+            new ModMeta { Title = "complete", NexusModId = 4, Description = "has one", Image = "b.jpg" },
+            new ModMeta { Title = "not identified at all", Description = null },   // no id -> no fetch key
+        };
+
+        var picked = NexusRefresh.SelectEnrichmentCandidates(metas);
+
+        Assert.Equal(new[] { 1, 2, 3 }, picked.Select(m => m.NexusModId!.Value).ToArray());
+    }
+
+    // Whitespace is a hole too — a blank string renders as nothing on the row.
+    [Fact]
+    public void Enrichment_treats_blank_strings_as_missing()
+    {
+        var picked = NexusRefresh.SelectEnrichmentCandidates(new[]
+        {
+            new ModMeta { NexusModId = 1, Description = "   ", Image = "   " },
+        });
+
+        Assert.Single(picked);
+    }
+
+    // The distinction that makes this method exist: an update sweep only sees mods with a NEW FILE
+    // upstream, so a long-stable mod would never be enriched by SelectCandidates.
+    [Fact]
+    public void Enrichment_reaches_a_mod_that_no_update_sweep_would_ever_select()
+    {
+        var stable = new ModMeta { Title = "stable for years", NexusModId = 77 };
+
+        // Nothing in the recently-updated feed -> the update path picks nothing...
+        Assert.Empty(NexusRefresh.SelectCandidates(new[] { stable }, Array.Empty<SourceUpdateEntry>(), DateTime.UtcNow));
+        // ...but it still needs its description and picture.
+        Assert.Single(NexusRefresh.SelectEnrichmentCandidates(new[] { stable }));
+    }
+
+    [Fact]
+    public async Task RefreshAllAsync_stops_when_cancelled_and_keeps_what_it_finished()
+    {
+        var metas = Enumerable.Range(1, 20).Select(i => new ModMeta { NexusModId = i }).ToArray();
+        using var cts = new CancellationTokenSource();
+        var calls = 0;
+        var fake = new FakeSource(_ =>
+        {
+            if (Interlocked.Increment(ref calls) == 3) cts.Cancel();
+            return Task.FromResult<SourceModMetadata?>(new SourceModMetadata(1, 1L, "1.0", null, null, Description: "d"));
+        });
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "cyberpunk2077", fake, NoDelay, ct: cts.Token);
+
+        Assert.NotEmpty(result.Updated);
+        Assert.True(result.Updated.Count < 20, "cancellation did not stop the sweep");
+    }
+
+    // A name-search identify carries no description and no thumbnail, and nothing ever revisits an
+    // already-identified row — so without a fill on the poll those rows render blank forever even
+    // though every poll response contains the text and the image. Fill the HOLES only.
+    [Fact]
+    public async Task RefreshAllAsync_fills_a_missing_description_and_image_but_never_rewrites_them()
+    {
+        var metas = new[]
+        {
+            // Name-search identified: named, but no description/image/category yet.
+            new ModMeta { Title = "Equipment-EX", NexusModId = 1, SourceConfidence = "nameSearch" },
+            // Already enriched (or hand-curated): must survive verbatim.
+            new ModMeta { Title = "Curated", NexusModId = 2, Description = "mine", Image = "mine.png", Category = "Mine" },
+        };
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(10, 20L, "1.0", null, null,
+                Description: "from nexus", ImageUrl: "https://nexus/thumb.jpg", Category: "Gameplay")));
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "cyberpunk2077", fake, NoDelay);
+
+        var filled = result.Updated.Single(m => m.NexusModId == 1);
+        Assert.Equal("from nexus", filled.Description);
+        Assert.Equal("https://nexus/thumb.jpg", filled.Image);
+        Assert.Equal("Gameplay", filled.Category);
+        Assert.Equal("Equipment-EX", filled.Title); // identity still never restated
+
+        var untouched = result.Updated.Single(m => m.NexusModId == 2);
+        Assert.Equal("mine", untouched.Description);
+        Assert.Equal("mine.png", untouched.Image);
+        Assert.Equal("Mine", untouched.Category);
+    }
+
     [Fact]
     public async Task RefreshAllAsync_stops_on_rate_limit_and_returns_partial_progress()
     {

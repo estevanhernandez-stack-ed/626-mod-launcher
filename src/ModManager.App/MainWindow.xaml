@@ -11,10 +11,18 @@
     mc:Ignorable="d">
 
     <Grid x:Name="RootGrid" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
-          RequestedTheme="Dark" Background="{StaticResource ThemeBg}">
+          RequestedTheme="Dark" Background="{StaticResource ThemeBg}"
+          KeyboardAcceleratorPlacementMode="Hidden">
         <!-- Keyboard access (F-025): the shell's three verbs get accelerators. Handlers no-op
              (and leave the key unhandled) when the surface isn't present, so Esc and Ctrl+F/R
-             never steal from dialogs or the library home. -->
+             never steal from dialogs or the library home.
+
+             PlacementMode=Hidden because these are attached to the ROOT grid, not to a button.
+             WinUI auto-renders an accelerator tooltip for the element that owns them, so the
+             default (Auto) pops "Ctrl+F" whenever the pointer rests anywhere over the window
+             body — including the moment you park the mouse mid-list to scroll. The accelerators
+             still fire; only the unsolicited tip is suppressed. Per-control accelerators
+             elsewhere keep their tips, which is where a tip is actually useful. -->
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFilterAccelerator" />
             <KeyboardAccelerator Modifiers="Control" Key="R" Invoked="OnRefreshAccelerator" />
@@ -86,9 +94,22 @@
                                     <FontIcon Glyph="&#xE721;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Get details from Nexus…" Click="OnEnrichMetadata"
+                                            Visibility="{x:Bind ViewModel.MetadataEnrichmentVisibility, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Fill in descriptions and cover art for mods that are identified but still blank">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE946;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Find existing mods…" Click="OnFindExistingMods"
+                                            ToolTipService.ToolTip="Sweep this game's folder for mods you installed by hand — review before anything is added, nothing is moved">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE773;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
@@ -256,6 +277,12 @@
                 </StackPanel>
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" Foreground="{StaticResource ThemeAccent}"
                               VerticalAlignment="Bottom" Margin="10,0,0,6" />
+                <!-- Only appears for a long, stoppable run (the Nexus name-search sweep). Quick
+                     atomic file ops stay uninterruptible — see MainViewModel.IsCancellable. -->
+                <Button Content="Stop" Click="OnCancelLongOperation"
+                        Visibility="{x:Bind ViewModel.CancelVisibility, Mode=OneWay}"
+                        VerticalAlignment="Bottom" Margin="8,0,0,2" Padding="10,2"
+                        ToolTipService.ToolTip="Stop searching. Anything already found is kept for review." />
             </StackPanel>
 
             <!-- Load-order mode: reorder controls replace the normal bar -->

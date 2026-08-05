@@ -84,6 +84,15 @@ public sealed partial class MainWindow : Window
         // (disabling a loader-kind loose-root row); the window owns the dialog. Warn-and-proceed,
         // never a hard block — Cancel leaves the mod exactly as it was.
         ViewModel.ConfirmLooseLoaderDisable = ConfirmLooseLoaderDisableAsync;
+        // Discovery review-before-adopt is a view concern too (dialog + XamlRoot). The VM sweeps,
+        // classifies, and matches; Cancel (or an unwired delegate) means nothing gets adopted.
+        ViewModel.ReviewDiscoveries = async proposals =>
+        {
+            var dialog = new DiscoveryReviewDialog(proposals) { XamlRoot = Content.XamlRoot };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary
+                ? dialog.Approved
+                : Array.Empty<ModManager.Core.Discovery.AdoptionProposal>();
+        };
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
         ViewModel.PropertyChanged += (_, args) =>
@@ -619,8 +628,13 @@ public sealed partial class MainWindow : Window
         // the single-form path. Otherwise the existing single-game flow applies.
         if (dialog.BatchApproved.Count > 0)
         {
+            // sweep: false — a batch of N games would otherwise mean N sequential recursive discovery
+            // sweeps and up to N modal review dialogs stacked under one busy state with no cancel.
+            // Point at the manual re-run instead of running it N times unattended.
             foreach (var (input, resolvedSaveDir) in dialog.BatchApproved)
-                await ViewModel.AddGameAsync(input, resolvedSaveDir);
+                await ViewModel.AddGameAsync(input, resolvedSaveDir, sweep: false);
+            ViewModel.StatusText = $"Added {dialog.BatchApproved.Count} games. "
+                + "Use More -> Find existing mods on each to sweep for hand-installed mods.";
             return;
         }
 
@@ -1075,6 +1089,10 @@ public sealed partial class MainWindow : Window
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
 
+    // Manual re-run of the discovery sweep (the first-add run is automatic and silent-on-empty).
+    // The VM sweeps + classifies + matches; the review dialog is already wired via ReviewDiscoveries.
+    private async void OnFindExistingMods(object sender, RoutedEventArgs e) => await ViewModel.DiscoverExistingModsAsync(auto: false);
+
     // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
     private async void OnNexusBackfill(object sender, RoutedEventArgs e)
     {
@@ -1095,6 +1113,10 @@ public sealed partial class MainWindow : Window
     // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline
     // (candidates -> propose -> apply); the window owns the dialogs. Apply is the ONLY write path —
     // Cancel (or unchecking every row) writes nothing.
+    private void OnCancelLongOperation(object sender, RoutedEventArgs e) => ViewModel.CancelLongOperation();
+
+    private async void OnEnrichMetadata(object sender, RoutedEventArgs e) => await ViewModel.EnrichMetadataAsync();
+
     private async void OnLooseIdentify(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.ActiveGameHasNexusDomain)
