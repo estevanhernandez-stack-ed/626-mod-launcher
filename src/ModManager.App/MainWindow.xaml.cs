@@ -1151,32 +1151,6 @@ public sealed partial class MainWindow : Window
 
     private async void OnEnrichMetadata(object sender, RoutedEventArgs e) => await ViewModel.EnrichMetadataAsync();
 
-    private async void OnLooseIdentify(object sender, RoutedEventArgs e)
-    {
-        if (!ViewModel.ActiveGameHasNexusDomain)
-        {
-            var msg = new ContentDialog
-            {
-                Title = "No Nexus domain",
-                Content = "This game has no Nexus domain configured, so its mods can't be searched on "
-                          + "Nexus. Set the game's Nexus domain (its nexusmods.com URL slug) in the "
-                          + "game's registry entry, then try again.",
-                CloseButtonText = "OK",
-                XamlRoot = Content.XamlRoot,
-            };
-            ModManager.App.Services.DialogTheming.Apply(msg); // vibe-glow wave 1: popup-scope theme brushes
-            await msg.ShowAsync();
-            return;
-        }
-
-        var proposals = await ViewModel.ProposeLooseIdentifyAsync();
-        if (proposals is null) return; // gated out — the status line explains (incl. zero candidates)
-
-        var dialog = new LooseIdentifyDialog(proposals) { XamlRoot = Content.XamlRoot };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        await ViewModel.ApplyLooseIdentifyAsync(dialog.Approved(), proposals.Count);
-    }
-
     // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.
     private async void OnCoopHint(object sender, RoutedEventArgs e)
     {

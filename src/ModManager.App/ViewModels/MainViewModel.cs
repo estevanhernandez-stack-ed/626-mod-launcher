@@ -500,8 +500,6 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasReDeployedLocations));
             OnPropertyChanged(nameof(OwnedBannerVisibility));
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
-            OnPropertyChanged(nameof(LooseIdentifyAvailable));
-            OnPropertyChanged(nameof(LooseIdentifyVisibility));
             OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
             OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
             OnPropertyChanged(nameof(CatalogAvailable));
@@ -788,10 +786,6 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(EffectiveLaunchTarget));
             OnPropertyChanged(nameof(LaunchButtonLabel));
             OnPropertyChanged(nameof(CurrentLaunchMode));
-            // Loose-identify availability depends on the row set (any loose-root rows?) as well as
-            // the Nexus connection — recompute after every row rebuild / game switch.
-            OnPropertyChanged(nameof(LooseIdentifyAvailable));
-            OnPropertyChanged(nameof(LooseIdentifyVisibility));
             OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
             OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
             // Catalog browse shares loose-identify's inputs (Nexus connection + active game domain);
@@ -1733,22 +1727,6 @@ public sealed partial class MainViewModel : ObservableObject
     /// reconnect notice on startup.</summary>
     public bool NexusLegacyKeyDiscarded => _nexus.LegacyKeyWasDiscarded;
 
-    /// <summary>True when "Identify loose mods on Nexus…" should be shown: the Nexus surfaces are
-    /// live (source loaded + account connected), the loaded source can text-search (an older plugin
-    /// without <see cref="IModTextSearch"/> keeps loading — this action just stays hidden), and the
-    /// active game actually has loose-root rows to identify. The capability check IS the flavor
-    /// gate — no <c>#if FULL</c>: on STORE / zero-plugins the registry is empty, so this is false
-    /// and the menu item is absent.</summary>
-    // The location clause is GONE (discovery branch): LooseIdentify.Candidates was widened in Core
-    // to propose an unidentified mod wherever it sits — a Bethesda Data folder, a UE Paks folder,
-    // loose-root. Gating the menu item on a loose-root row made that widening unreachable on every
-    // other game shape. Candidates still refuses loader rows, manual pins, and anything already
-    // identified, so an empty proposal set is handled downstream, not hidden here.
-    public bool LooseIdentifyAvailable => NexusActionsAvailable
-        && NexusSource is IModTextSearch
-        && _allRows.Count > 0;
-    public Visibility LooseIdentifyVisibility => LooseIdentifyAvailable ? Visibility.Visible : Visibility.Collapsed;
-
     /// <summary>Whether the active game resolves a Nexus domain (stored, or by Steam app id). The
     /// window consults this before running loose-identify so the no-domain case gets a clear
     /// message dialog instead of a silent no-op.</summary>
@@ -1889,8 +1867,6 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     OnPropertyChanged(nameof(NexusActionsAvailable));
                     OnPropertyChanged(nameof(NexusActionsVisibility));
-                    OnPropertyChanged(nameof(LooseIdentifyAvailable));
-                    OnPropertyChanged(nameof(LooseIdentifyVisibility));
                     OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
                     OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
                     OnPropertyChanged(nameof(CatalogAvailable));
@@ -3023,8 +2999,6 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusActionsAvailable));
         OnPropertyChanged(nameof(NexusActionsVisibility));
         OnPropertyChanged(nameof(NexusUserFeaturesAvailable));
-        OnPropertyChanged(nameof(LooseIdentifyAvailable));
-        OnPropertyChanged(nameof(LooseIdentifyVisibility));
         OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
         OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
         OnPropertyChanged(nameof(CatalogAvailable));
