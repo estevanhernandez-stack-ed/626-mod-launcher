@@ -2116,33 +2116,6 @@ public sealed partial class MainViewModel : ObservableObject
         return writes.Count;
     }
 
-    /// <summary>The Advanced menu's entry into <see cref="SearchUnnamedRowsAsync"/> — it owns the
-    /// busy ring, the Stop button, and the cancellation source, exactly as
-    /// <see cref="EnrichMetadataAsync"/> does for its pass. The unified identify run owns those for
-    /// itself and calls the inner pass directly under ITS token, so one token governs the whole run
-    /// and no nested call can null out bookkeeping a longer-lived caller still depends on.</summary>
-    public async Task<IReadOnlyList<LooseIdentifyProposal>?> ProposeLooseIdentifyAsync()
-    {
-        if (_ctx is null) return null;
-        var ctx = _ctx!;
-
-        IsBusy = true;
-        using var cts = new CancellationTokenSource();
-        _longOpCts = cts;
-        IsCancellable = true;
-        try
-        {
-            // Built on the UI thread on purpose: Progress<T> captures the current
-            // SynchronizationContext, so every report marshals back here and StatusText is only
-            // ever written from the UI thread even though the workers run concurrently.
-            var progress = new Progress<LooseIdentifyProgress>(p =>
-                StatusText = $"Searching Nexus — {p.Completed} of {p.Total}…");
-            return await SearchUnnamedRowsAsync(ctx, progress, cts.Token);
-        }
-        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return null; }
-        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
-    }
-
     /// <summary>Name-search identify, step 1 of 2 (review-first): gather the unidentified rows in
     /// ANY location — not just loose-root (<see cref="LooseIdentify.Candidates"/> — loaders, manual
     /// matches, and already-identified rows are excluded), name-search Nexus per row via the loaded
@@ -2279,10 +2252,10 @@ public sealed partial class MainViewModel : ObservableObject
             var filled = 0;
             if (!cts.IsCancellationRequested) filled = await FillMissingDetailsAsync(ctx, cts.Token);
 
-            // Pass 4: name-search whatever is still unnamed. Called at the pass level, not through
-            // ProposeLooseIdentifyAsync — that wrapper owns busy/Stop state for its own Advanced
-            // menu entry, and letting it run here would both void this run's busy ring for
-            // everything after it and steer Stop at a token this run never checks.
+            // Pass 4: name-search whatever is still unnamed. Called directly at the pass level
+            // (SearchUnnamedRowsAsync), under THIS run's own token — a wrapper that owned its own
+            // busy/Stop state would void this run's busy ring for everything after it and steer
+            // Stop at a token this run never checks.
             var searchProgress = new Progress<LooseIdentifyProgress>(p =>
                 StatusText = $"Searching Nexus for names — {p.Completed} of {p.Total}…");
             IReadOnlyList<LooseIdentifyProposal> identifications = Array.Empty<LooseIdentifyProposal>();

@@ -1099,10 +1099,6 @@ public sealed partial class MainWindow : Window
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
 
-    // Manual re-run of the discovery sweep (the first-add run is automatic and silent-on-empty).
-    // The VM sweeps + classifies + matches; the review dialog is already wired via ReviewDiscoveries.
-    private async void OnFindExistingMods(object sender, RoutedEventArgs e) => await ViewModel.DiscoverExistingModsAsync(auto: false);
-
     // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
     private async void OnNexusBackfill(object sender, RoutedEventArgs e)
     {
