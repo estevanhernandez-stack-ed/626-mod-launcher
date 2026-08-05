@@ -146,10 +146,35 @@ the write paths (and their tests) untouched.
 - Not addressing the `.archive.xl` sidecar problem (backlog A3) or stale registrations (A1) — both
   independent, both still open.
 
-## Open question for the plan
+## Availability: guard, don't hide
 
-Whether the Advanced submenu items should be individually gated on availability (as
-`LooseIdentifyVisibility` is) or always shown and no-op with an explanatory status line. Gating is
-more correct, but this surface just produced a bug where a computed visibility property had no
-change notification and rendered permanently collapsed — so any gating added here ships with its
-notification sites and a test.
+Advanced items are **not** gated on transient state. They are always visible, and their existing
+precondition guards do the talking.
+
+The reasoning, since the opposite is the tempting default:
+
+- **The guards already exist and say more than absence does.** Every one of these paths opens with
+  checks that write a specific, actionable line — `"Connect Nexus first (toolbar -> Nexus)."`,
+  `"This game has no Nexus domain set."`. An item that *vanishes* because the user is signed out
+  teaches them nothing; they just cannot find something they remember. An item that is there and
+  explains itself on click names the next step.
+- **Gating duplicates the precondition into a second place that can drift** — the visibility
+  property and the guard must agree forever, and nothing enforces it.
+- **Its failure mode is silence.** This surface has already produced exactly that bug once: a
+  computed visibility property with no change notification evaluated `Collapsed` at startup and
+  never re-evaluated, so a shipped, working menu item was invisible in a clean build.
+
+The line worth drawing is transient vs permanent:
+
+| Condition | Treatment | Why |
+|---|---|---|
+| Signed out, no domain set, no rows yet | **Show**, guard explains | Temporary — it will work shortly, and the guard names the fix |
+| This game has no presence in that catalog at all | **Hide** | Permanent property of the game; the item can never do anything |
+
+Sign-in state comes and goes; a game's catalog presence does not.
+
+**Consequence for the plan:** `OnNexusBackfill` currently has *no* precondition guard — it opens
+the folder picker immediately, so a signed-out user can browse to a downloads folder and only then
+discover nothing can be matched. That item needs a guard added, checked before the picker opens.
+Any visibility binding this work does introduce ships with its `OnPropertyChanged` sites and a test
+that would fail if they were dropped.
