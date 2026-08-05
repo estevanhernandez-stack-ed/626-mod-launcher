@@ -67,6 +67,13 @@ public static partial class NameMatch
         NonAlnumRe().Replace((s ?? "").ToLowerInvariant(), " ").Trim()
             .Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
+    /// <summary>Public seam onto the SAME tokenizer <see cref="Jaccard"/>/<see cref="PickBestMatch{T}"/>
+    /// score with — for a caller that needs to know how many tokens a name/query breaks into
+    /// (e.g. to decide when Jaccard's fuzzy threshold is too permissive: a single shared token
+    /// against a two-token candidate scores exactly 0.5, clearing the default threshold). Not a
+    /// second tokenizer — same regex, same casing, same split.</summary>
+    public static IReadOnlyList<string> Tokenize(string? s) => Tokens(s);
+
     private static double Jaccard(IReadOnlyCollection<string> a, IReadOnlyCollection<string> b)
     {
         var setA = new HashSet<string>(a);

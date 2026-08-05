@@ -20,12 +20,12 @@ public sealed class DiscoveryScanService
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
             return Array.Empty<DiscoveryCandidate>();
 
-        var relative = new List<string>();
-        Walk(root, root, 0, relative);
-        return DiscoverySweep.Classify(relative, options);
+        var files = new List<SweptFile>();
+        Walk(root, root, 0, files);
+        return DiscoverySweep.Classify(files, options);
     }
 
-    private static void Walk(string root, string dir, int depth, List<string> into)
+    private static void Walk(string root, string dir, int depth, List<SweptFile> into)
     {
         if (depth > MaxDepth || into.Count >= MaxFiles) return;
         try
@@ -33,7 +33,14 @@ public sealed class DiscoveryScanService
             foreach (var file in Directory.EnumerateFiles(dir))
             {
                 if (into.Count >= MaxFiles) return;
-                into.Add(Path.GetRelativePath(root, file).Replace('\\', '/'));
+                var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
+                // Size feeds Classify's base-game-pak guard on a paks-root mod path. A file that
+                // vanishes between enumeration and this read (rare race) degrades to size 0 rather
+                // than aborting the walk — worst case it reads as "small enough to be a mod",
+                // exactly the shipping-name check's own conservative default already covers.
+                long size;
+                try { size = new FileInfo(file).Length; } catch { size = 0; }
+                into.Add(new SweptFile(rel, size));
             }
             foreach (var sub in Directory.EnumerateDirectories(dir))
                 Walk(root, sub, depth + 1, into);

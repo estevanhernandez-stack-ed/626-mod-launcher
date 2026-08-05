@@ -1,8 +1,10 @@
 namespace ModManager.Core.Discovery;
 
-/// <summary>One remembered mod: enough to name a file and credit its author, nothing more.
-/// Facts only — never mod content (never-bundle law).</summary>
-public sealed record ModNameIndexEntry(int ModId, string Name, string? Author, int? Endorsements);
+/// <summary>One remembered mod: enough to name a file, credit its author, and link its mod page —
+/// nothing more. Facts only — never mod content (never-bundle law). <paramref name="Url"/> is
+/// appended (not inserted) with a default so every existing positional construction keeps
+/// compiling; an old cached index file deserializes it as null harmlessly.</summary>
+public sealed record ModNameIndexEntry(int ModId, string Name, string? Author, int? Endorsements, string? Url = null);
 
 /// <summary>
 /// A per-game cache of mod names, used to identify extracted mods the launcher finds on disk.
@@ -35,12 +37,26 @@ public sealed record ModNameIndex(IReadOnlyList<ModNameIndexEntry> Entries)
     }
 
     /// <summary>Best known mod for a file name, or null when nothing clears the threshold.
-    /// Uses the SAME cleaning + scoring as loose-root identify so both surfaces agree.</summary>
+    /// Uses the SAME cleaning + scoring as loose-root identify so both surfaces agree.
+    ///
+    /// A single-token query is an exception: <see cref="NameMatch.PickBestMatch{T}"/>'s 0.5
+    /// Jaccard threshold lets a one-token query match ANY two-token candidate that shares that one
+    /// token (1/2 = 0.5, clears the bar) — fine under <c>LooseIdentify</c>, which only ever sees
+    /// loose-root non-loader rows, but discovery feeds this arbitrary filenames including vanilla
+    /// game files (<c>Data/Skyrim.esm</c> -&gt; query "Skyrim" would score exactly 0.5 against an
+    /// index entry "Skyrim Together" and come back pre-checked). Below two tokens, require EXACT
+    /// token-sequence equality instead of the shared fuzzy threshold — <see cref="NameMatch.PickBestMatch{T}"/>
+    /// itself is untouched (still used everywhere else, including two-token-plus queries here).</summary>
     public ModNameIndexEntry? Match(string fileName)
     {
         if (Entries.Count == 0) return null;
         var query = NameMatch.CleanModName(fileName);
         if (string.IsNullOrWhiteSpace(query)) return null;
+
+        var queryTokens = NameMatch.Tokenize(query);
+        if (queryTokens.Count < 2)
+            return Entries.FirstOrDefault(e => queryTokens.SequenceEqual(NameMatch.Tokenize(e.Name)));
+
         return NameMatch.PickBestMatch(query, Entries, e => e.Name);
     }
 }

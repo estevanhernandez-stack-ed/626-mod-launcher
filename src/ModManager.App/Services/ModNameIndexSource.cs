@@ -147,5 +147,5 @@ public sealed class ModNameIndexSource
     }
 
     private static ModNameIndexEntry ToEntry(SourceSearchHit hit)
-        => new(hit.ModId, hit.Name, hit.Author, hit.EndorsementCount);
+        => new(hit.ModId, hit.Name, hit.Author, hit.EndorsementCount, hit.Url);
 }

@@ -19,6 +19,7 @@ public sealed record AdoptionProposal(
     string? Title,
     string? Author,
     int? Endorsements,
+    string? Url = null,
     SourceIdentifyResult? Identify = null)
 {
     /// <summary>A leftover archive matched by md5 — exact, authoritative. Carries the full identify
@@ -27,11 +28,14 @@ public sealed record AdoptionProposal(
     /// silently dropping others (Version, Downloads, Url, ...).</summary>
     public static AdoptionProposal FromMd5(DiscoveryCandidate candidate, SourceIdentifyResult identify)
         => new(candidate, AdoptionEvidence.Md5, identify.Ref.ModId, identify.Metadata.Title,
-            identify.Metadata.Author, identify.Metadata.Endorsements, identify);
+            identify.Metadata.Author, identify.Metadata.Endorsements, identify.Metadata.ModUrl, identify);
 
-    /// <summary>An extracted mod matched by name against this game's index — a proposal, not a fact.</summary>
+    /// <summary>An extracted mod matched by name against this game's index — a proposal, not a fact.
+    /// Carries the entry's mod-page URL through so a name-index adoption gets a link the same way a
+    /// manual match / <c>LooseIdentify</c> hit does (<see cref="ModMeta.Url"/>) — an evidence tier
+    /// shouldn't yield a link one way and not the other.</summary>
     public static AdoptionProposal FromIndex(DiscoveryCandidate candidate, ModNameIndexEntry entry)
-        => new(candidate, AdoptionEvidence.NameIndex, entry.ModId, entry.Name, entry.Author, entry.Endorsements);
+        => new(candidate, AdoptionEvidence.NameIndex, entry.ModId, entry.Name, entry.Author, entry.Endorsements, entry.Url);
 
     /// <summary>Found, unidentified. Still worth adopting: visible and toggleable beats invisible.</summary>
     public static AdoptionProposal Unidentified(DiscoveryCandidate candidate)
@@ -55,6 +59,7 @@ public sealed record AdoptionProposal(
         {
             Title = Title,
             Author = Author,
+            Url = Url,
             NexusModId = ModId,
             EndorsementCount = Endorsements,
             SourceConfidence = Evidence switch

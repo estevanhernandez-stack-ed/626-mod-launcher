@@ -36,6 +36,18 @@ public class AdoptionProposalTests
         Assert.Equal(240, meta.EndorsementCount);
     }
 
+    // Final-review minor: the same evidence tier used to yield a mod-page link one way
+    // (LooseIdentify.ToMeta sets Url from the hit) and not the other (a name-index adoption
+    // dropped it on the floor). FromIndex now carries ModNameIndexEntry.Url through to ToMeta.
+    [Fact]
+    public void Index_evidence_carries_the_entrys_url_through_to_meta()
+    {
+        var proposal = AdoptionProposal.FromIndex(
+            Candidate(), new ModNameIndexEntry(1, "Faster Ships", "Kingtology", 240, "https://www.nexusmods.com/kingdomcome2/mods/1"));
+
+        Assert.Equal("https://www.nexusmods.com/kingdomcome2/mods/1", proposal.ToMeta().Url);
+    }
+
     [Fact]
     public void Md5_evidence_records_md5_confidence()
     {

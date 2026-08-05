@@ -2010,9 +2010,9 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>Loose-root name-search identify, step 1 of 2 (review-first): gather the unidentified
-    /// loose-root rows (<see cref="LooseIdentify.Candidates"/> — loaders, manual matches, and
-    /// already-identified rows are excluded), name-search Nexus per row via the loaded
+    /// <summary>Name-search identify, step 1 of 2 (review-first): gather the unidentified rows in
+    /// ANY location — not just loose-root (<see cref="LooseIdentify.Candidates"/> — loaders, manual
+    /// matches, and already-identified rows are excluded), name-search Nexus per row via the loaded
     /// <see cref="IModTextSearch"/> source, and return the proposals for the window's review dialog.
     /// Null = gated out (the status line explains, including "no loose mods need identifying").
     /// NOTHING is written here — the only write path is <see cref="ApplyLooseIdentifyAsync"/> with
@@ -2112,12 +2112,22 @@ public sealed partial class MainViewModel : ObservableObject
             if (RelativeToGameRoot(takenOverAbs, ctx.GameRoot) is { } rel)
                 skipFolders.Add(rel);
 
+        // Sweep EVERY configured mod location, not just the first — ModLocator.Detect persists all
+        // existing candidate folders, so a UE4SS game can have both ~mods AND LogicMods at once.
+        // Hand-installed Blueprint mods sitting only in LogicMods would otherwise stay invisible,
+        // exactly the case this feature exists to catch. Each location's path can itself be
+        // absolute (Scanner.GameContext resolves it that way when Path.IsPathRooted), so rebase
+        // each one the same way as the taken-over folders. PaksRoot flags the loader-less UE-pak
+        // form (ModLocation.Form == "paks-root", e.g. Witchfire) where the mod folder IS
+        // Content/Paks itself — DiscoverySweep uses it to refuse the game's own shipped paks
+        // (PakClassifier.IsBaseGamePak), the one property this feature must never violate.
+        var modPaths = new List<DiscoverySweepModPath>();
+        foreach (var loc in ctx.Game.ModLocations)
+            if (RelativeToGameRoot(loc.Path, ctx.GameRoot) is { } rel)
+                modPaths.Add(new DiscoverySweepModPath(rel, loc.Form == "paks-root"));
+
         var options = new DiscoverySweepOptions(
-            // The registry entry's mod-location path can itself be absolute (Scanner.GameContext
-            // resolves it that way when Path.IsPathRooted) — rebase it the same way as the taken-over
-            // folders, or an absolute ModPath silently never prefix-matches DiscoverySweep's
-            // relative-to-root candidate paths and EngineShaped detection never fires.
-            ModPath: RelativeToGameRoot(ctx.Game.ModLocations.FirstOrDefault()?.Path, ctx.GameRoot),
+            ModPaths: modPaths,
             // The RAW registry entry, not a preset lookup and not ctx.Exts: the manifest ships
             // per-game overrides (e.g. Cyberpunk 2077 -> ["archive"], not the "custom" preset's
             // ["pak"]), and ctx.Exts is normalized empty->["pak"] (Scanner.cs), which would make
@@ -2152,9 +2162,19 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var index = _nameIndex.Load(ctx.DataDir);
         var domain = NexusDomains.Effective(ctx.Game);
         var source = NexusSource;
+
+        // Ensure the per-game name index is warm BEFORE tier 2 reads it. MaybeSeedAsync is ALSO
+        // fired fire-and-forget from ReloadModsAsync's tail on every game load (general index
+        // freshness for catalog browse / a later manual run), but that race can't be trusted to
+        // finish before THIS run needs it — a brand-new game's index file doesn't exist yet, so an
+        // unseeded Load() would leave tier 2 dead on the very first, flagship auto-run. Awaited and
+        // non-fatal: MaybeSeedAsync already swallows its own failures, so a seed miss here just
+        // means tier 2 degrades to its already-supported "index empty" case.
+        await _nameIndex.MaybeSeedAsync(ctx.DataDir, ctx.Game.Id, domain, _nexus.IsConnected, _appSettings.AutoCheckModUpdates, source);
+        var index = _nameIndex.Load(ctx.DataDir);
+
         // Degrade gracefully: no plugin loaded, signed out, or no Nexus domain for this game all
         // collapse to "md5 tier unavailable" — the sweep still runs and falls to the name index /
         // unidentified tiers below, never silently doing nothing.
@@ -2213,10 +2233,17 @@ public sealed partial class MainViewModel : ObservableObject
         // the installed file's key). When an identified archive's contents don't map to any known
         // mod key, it expands to zero writes rather than a wrong or inert fallback key.
         var writes = new List<(string ModKey, ModMeta Meta)>();
+        // Tracked separately so the "nothing happened" status line (below) can say WHY instead of
+        // reusing one caption for two different outcomes: an archive whose contents don't map to
+        // any known mod key vs. every resolved key turning out to already be identified.
+        var anyZeroKeyProposal = false;
+        var anyAlreadyIdentifiedDrop = false;
         foreach (var p in approved)
         {
             var meta = p.ToMeta();
-            foreach (var key in await DiscoveryWriteKeysAsync(p, ctx))
+            var keys = await DiscoveryWriteKeysAsync(p, ctx);
+            if (keys.Count == 0) { anyZeroKeyProposal = true; continue; }
+            foreach (var key in keys)
             {
                 // The candidate-level pre-filter above can't see this key for an archive proposal —
                 // ArchiveModKeysFor only resolves it here, at write time. Re-check it before writing:
@@ -2225,14 +2252,21 @@ public sealed partial class MainViewModel : ObservableObject
                 // overwrite the row's Version with the stale one (SourceMetadataMapper.FromIdentify
                 // sets Version = the archive's own version, and MergeMeta lets the "new" hit win),
                 // planting a permanent false UPDATE chip on a row that was correct before the sweep.
-                if (IsAlreadyIdentified(existing, key)) continue;
+                if (IsAlreadyIdentified(existing, key)) { anyAlreadyIdentifiedDrop = true; continue; }
                 writes.Add((key, Scanner.MergeMeta(existing.GetValueOrDefault(key) ?? new ModMeta(), meta)));
             }
         }
 
         if (writes.Count == 0)
         {
-            if (!auto) StatusText = "Nothing to adopt — the matched archive doesn't correspond to an installed file yet.";
+            if (!auto)
+            {
+                StatusText = anyZeroKeyProposal && !anyAlreadyIdentifiedDrop
+                    ? "Nothing to adopt — the matched archive doesn't correspond to an installed file yet."
+                    : anyAlreadyIdentifiedDrop && !anyZeroKeyProposal
+                        ? "Nothing to adopt — those mods are already identified."
+                        : "Nothing to adopt.";
+            }
             return;
         }
 

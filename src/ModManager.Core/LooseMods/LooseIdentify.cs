@@ -2,16 +2,18 @@ using ModManager.Plugins.Abstractions;
 
 namespace ModManager.Core.LooseMods;
 
-/// <summary>One name-search proposal for a loose-root row: the cleaned query that was searched,
+/// <summary>One name-search proposal for a candidate row: the cleaned query that was searched,
 /// and the best hit (or null if nothing cleared <see cref="NameMatch.PickBestMatch{T}"/>'s
 /// threshold, or the search delegate threw for this row).</summary>
 public sealed record LooseIdentifyProposal(string ModKey, string CleanQuery, SourceSearchHit? Match);
 
 /// <summary>
-/// Name-search identify for loose-root mods (decima / Death Stranding 2 shape): loose files carry
-/// no embedded metadata (no md5-identify, no CurseForge fingerprint surface), so the only lead is
-/// the filename. This proposes a Nexus name-search match per unidentified loose-root row — pure
-/// Core, no plugin dependency at runtime: the App supplies the search as a delegate (typically
+/// Name-search identify for mods with no embedded metadata to lean on (no md5-identify hit, no
+/// CurseForge fingerprint surface) — loose files carry none of that, so the only lead is the
+/// filename. Originally loose-root only (decima / Death Stranding 2 shape); <see cref="Candidates"/>
+/// now offers this for an unidentified row in ANY location — a Bethesda Data folder, a UE Paks
+/// folder, wherever — since the filename-only problem isn't unique to loose-root. Pure Core, no
+/// plugin dependency at runtime: the App supplies the search as a delegate (typically
 /// <see cref="IModTextSearch.SearchAsync"/> on whatever source is active for the game), and the
 /// user approves/rejects each proposal before <see cref="ToMeta"/> is persisted. Mirrors the same
 /// review-before-write posture as fingerprint/md5 identify elsewhere in the launcher.
