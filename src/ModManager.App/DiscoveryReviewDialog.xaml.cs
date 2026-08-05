@@ -23,21 +23,35 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
         foreach (var proposal in proposals)
         {
             var identified = proposal.Evidence != AdoptionEvidence.None;
+            var loader = proposal.Candidate.Kind == DiscoveryKind.ProxyLoader;
             _rows.Add(new DiscoveryReviewRow
             {
                 Proposal = proposal,
-                Headline = identified
-                    ? $"{proposal.Candidate.FileName} — {proposal.Title}"
-                    : $"{proposal.Candidate.FileName} — not identified",
-                Detail = proposal.Evidence switch
+                // A loader is described as what it is rather than as an unidentified mod. Saying
+                // "not identified" about a version.dll implies we failed to name something nameable;
+                // we didn't — the name genuinely doesn't determine which loader it is.
+                Headline = (identified, loader) switch
                 {
-                    AdoptionEvidence.Md5 => $"Matched exactly by file hash. {proposal.Candidate.RelativePath}",
-                    AdoptionEvidence.NameIndex => $"Matched by name{(proposal.Author is null ? "" : $" · by {proposal.Author}")}. {proposal.Candidate.RelativePath}",
+                    (true, _) => $"{proposal.Candidate.FileName} — {proposal.Title}",
+                    (false, true) => $"{proposal.Candidate.FileName} — mod loader",
+                    _ => $"{proposal.Candidate.FileName} — not identified",
+                },
+                Detail = (proposal.Evidence, loader) switch
+                {
+                    (AdoptionEvidence.Md5, _) => $"Matched exactly by file hash. {proposal.Candidate.RelativePath}",
+                    (AdoptionEvidence.NameIndex, _) => $"Matched by name{(proposal.Author is null ? "" : $" · by {proposal.Author}")}. {proposal.Candidate.RelativePath}",
+                    (_, true) => $"Found at {proposal.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
                     _ => $"Found at {proposal.Candidate.RelativePath}. Adopt it to manage it anyway.",
                 },
                 Approve = identified,
             });
         }
+
+        // A sweep that found only loaders (Cyberpunk's bin/x64 proxies are the common case) gets
+        // copy that matches what's actually on screen — the stock blurb promises "mods you
+        // installed by hand", which describes none of them.
+        if (_rows.Count > 0 && _rows.All(r => r.Proposal.Candidate.Kind == DiscoveryKind.ProxyLoader))
+            Blurb.Text = "These are mod loaders — the piece other mods ride on. Adopting one tracks it here; your files are not moved.";
 
         RowList.ItemsSource = _rows;
         SyncPrimary();
@@ -49,10 +63,17 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
     private void OnRowClick(object sender, RoutedEventArgs e) => SyncPrimary();
 
     // The primary button carries the live count so "Adopt" always says exactly what it will write.
+    // Counts MODS, not files: one UE mod ships as a pak/ucas/utoc triplet, and the proposals were
+    // collapsed to mod-key space upstream (DiscoverySweep.Deduplicate) so this number matches the
+    // rows the mod list will actually gain. Says "loaders" when that's all that's checked.
     private void SyncPrimary()
     {
-        var n = _rows.Count(r => r.Approve);
-        PrimaryButtonText = $"Adopt {n} mod{(n == 1 ? "" : "s")}";
+        var approved = _rows.Where(r => r.Approve).ToList();
+        var n = approved.Count;
+        var noun = n > 0 && approved.All(r => r.Proposal.Candidate.Kind == DiscoveryKind.ProxyLoader)
+            ? "loader"
+            : "mod";
+        PrimaryButtonText = $"Adopt {n} {noun}{(n == 1 ? "" : "s")}";
         IsPrimaryButtonEnabled = n > 0;
     }
 }

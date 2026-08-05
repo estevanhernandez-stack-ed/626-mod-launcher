@@ -24,7 +24,8 @@
 
     <ScrollViewer MaxHeight="480" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
-            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
+            <!-- Text is re-set in the code-behind when the whole set is loaders (see Blurb). -->
+            <TextBlock x:Name="Blurb" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
                        FontSize="{StaticResource BodyFontSize}"
                        Text="These look like mods you already installed by hand. Adopting them lists them here so you can turn them on and off — your files are not moved." />
             <ItemsControl x:Name="RowList">

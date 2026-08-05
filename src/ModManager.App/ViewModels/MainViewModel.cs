@@ -2159,6 +2159,38 @@ public sealed partial class MainViewModel : ObservableObject
         // isn't known until identify + ArchiveModKeysFor below), which is fine — it only needs to
         // catch the common EngineShaped case; a false negative here just means the tier logic below
         // re-derives the same "already identified" outcome a step later, never a wrong write.
+        // File space -> mod-key space. The sweep finds FILES; the launcher lists MODS, and one mod
+        // is routinely several files (a UE mod ships pak + ucas + utoc, which Scanner folds onto a
+        // single key — see the outMap/mod.Files.Add grouping in Scanner's pak scan). Collapsing
+        // here is what makes the review dialog's "Adopt N mods" count mods instead of files.
+        candidates = DiscoverySweep.Deduplicate(candidates, c => DiscoveryBestGuessKey(c, ctx));
+
+        // Never re-offer a mod the launcher ALREADY lists. Adoption's promise is "this lists it so
+        // you can turn it on and off"; for a row that already exists and already toggles, that
+        // promise is met, and re-proposing it made a years-old install look like the sweep wanted
+        // to re-add the whole mod list. Naming an already-listed-but-unnamed row is a real job, but
+        // it belongs to LooseIdentify — which now reaches these rows on every game shape.
+        //
+        // EngineShaped ONLY, deliberately: its key IS Scanner.ModKeyFor, the exact formula behind
+        // Mod.Base, so the comparison is exact. An Archive's pre-filter key is a weak guess at its
+        // own filename (its real keys come from its CONTENTS at write time), so excluding archives
+        // on a stem collision would throw away the md5 tier's shot at an exact identification — the
+        // strongest evidence we have — to prevent a duplicate that IsAlreadyIdentified already
+        // catches at write time.
+        var rowKeys = _allRows.Select(r => r.Mod.Base).Where(k => !string.IsNullOrWhiteSpace(k));
+        var engineShaped = candidates.Where(c => c.Kind == DiscoveryKind.EngineShaped).ToList();
+        var keptEngineShaped = DiscoverySweep
+            .ExcludeKnownKeys(engineShaped, c => DiscoveryBestGuessKey(c, ctx), rowKeys)
+            .ToHashSet();
+        candidates = candidates
+            .Where(c => c.Kind != DiscoveryKind.EngineShaped || keptEngineShaped.Contains(c))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            if (!auto) StatusText = "Every mod in this game's folder is already in your list.";
+            return;
+        }
+
         var existing = Scanner.LoadMetadata(ctx);
         var unmanaged = candidates.Where(c => !IsAlreadyIdentified(existing, DiscoveryBestGuessKey(c, ctx))).ToList();
         if (unmanaged.Count == 0)

@@ -48,7 +48,23 @@ public class DiscoverySweepTests
         var found = DiscoverySweep.Classify(files, UeOptions());
 
         Assert.Equal(2, found.Count);
-        Assert.All(found, f => Assert.Equal(DiscoveryKind.Signature, f.Kind));
+        // A .asi is a mod riding on a loader; a bare proxy DLL IS the loader. Different kinds of
+        // thing, so they classify differently even though both clear the same safety line.
+        Assert.Equal(DiscoveryKind.ProxyLoader, found.Single(f => f.FileName == "dinput8.dll").Kind);
+        Assert.Equal(DiscoveryKind.Signature, found.Single(f => f.FileName == "Zipliner.asi").Kind);
+    }
+
+    // Cyberpunk's real shape: proxy loaders sit deep at bin/x64 and are unnameable in principle
+    // (the same version.dll ships as ASI Loader, Ultimate ASI Loader, and Cyber Engine Tweaks).
+    // They must still be FOUND — invisible infrastructure is worse than described infrastructure.
+    [Theory]
+    [InlineData("bin/x64/version.dll")]
+    [InlineData("bin/x64/winmm.dll")]
+    public void Proxy_loaders_are_found_and_classified_as_loaders(string path)
+    {
+        var one = Assert.Single(DiscoverySweep.Classify(Files(path), UeOptions()));
+
+        Assert.Equal(DiscoveryKind.ProxyLoader, one.Kind);
     }
 
     [Fact]
@@ -95,6 +111,16 @@ public class DiscoverySweepTests
         var files = Files("DINPUT8.DLL");
 
         var one = Assert.Single(DiscoverySweep.Classify(files, UeOptions()));
+        // ProxyLoader, not Signature: a bare proxy DLL is the loader itself. The point this test
+        // pins is that SHOUTING CASE still gets claimed at all — the safety line is case-blind.
+        Assert.Equal(DiscoveryKind.ProxyLoader, one.Kind);
+    }
+
+    [Fact]
+    public void Uppercase_asi_plugin_is_still_classified()
+    {
+        var one = Assert.Single(DiscoverySweep.Classify(Files("MODS/ZIPLINER.ASI"), UeOptions()));
+
         Assert.Equal(DiscoveryKind.Signature, one.Kind);
     }
 
@@ -213,5 +239,109 @@ public class DiscoverySweepTests
         var files = Files("Content/Paks/pakchunk0-Windows.pak"); // outside "Content/Paks/~mods"
 
         Assert.Empty(DiscoverySweep.Classify(files, UeOptions()));
+    }
+
+    // ---- Deduplicate: the sweep works in file space, the launcher in mod-key space ----
+
+    // Windrose, exactly as it came back from live smoke: ONE mod shipping as a pak/ucas/utoc
+    // triplet was proposed as THREE rows, so "Adopt 13 mods" was really about four mods.
+    [Fact]
+    public void Deduplicate_collapses_a_pak_ucas_utoc_triplet_to_one_mod()
+    {
+        var found = DiscoverySweep.Classify(Files(
+            "Content/Paks/~mods/0020__ExtendedBonfireRadius_3x_P.pak",
+            "Content/Paks/~mods/0020__ExtendedBonfireRadius_3x_P.ucas",
+            "Content/Paks/~mods/0020__ExtendedBonfireRadius_3x_P.utoc"), UeOptions());
+        Assert.Equal(3, found.Count); // three files on disk...
+
+        var mods = DiscoverySweep.Deduplicate(found, FakeModKey);
+
+        var one = Assert.Single(mods); // ...one mod in the review dialog
+        // The .pak is the representative: ordinal-first, and the file a user recognizes.
+        Assert.Equal("0020__ExtendedBonfireRadius_3x_P.pak", one.FileName);
+    }
+
+    [Fact]
+    public void Deduplicate_keeps_genuinely_different_mods_apart()
+    {
+        var found = DiscoverySweep.Classify(Files(
+            "Content/Paks/~mods/0020__ExtendedBonfireRadius_3x_P.pak",
+            "Content/Paks/~mods/0020__ExtendedBonfireRadius_3x_P.utoc",
+            "Content/Paks/~mods/0010__LootPickupRange_2x_P.pak",
+            "Content/Paks/~mods/0010__LootPickupRange_2x_P.utoc"), UeOptions());
+
+        var mods = DiscoverySweep.Deduplicate(found, FakeModKey);
+
+        Assert.Equal(2, mods.Count);
+    }
+
+    // An archive and an extracted mod sharing a stem are resolved by DIFFERENT evidence tiers
+    // (md5 vs name index), so collapsing them would silently discard one tier's shot at it.
+    [Fact]
+    public void Deduplicate_never_merges_across_kinds()
+    {
+        var found = DiscoverySweep.Classify(Files(
+            "Content/Paks/~mods/FasterShips_P.pak",
+            "Downloads/FasterShips.zip"), UeOptions());
+
+        var mods = DiscoverySweep.Deduplicate(found, _ => "same-key-for-everything");
+
+        Assert.Equal(2, mods.Count);
+    }
+
+    [Fact]
+    public void Deduplicate_groups_case_insensitively()
+    {
+        var found = DiscoverySweep.Classify(Files(
+            "Content/Paks/~mods/FasterShips_P.pak",
+            "Content/Paks/~mods/fastership_p.utoc"), UeOptions());
+
+        var mods = DiscoverySweep.Deduplicate(found, c => c.FileName.StartsWith("F") ? "K" : "k");
+
+        Assert.Single(mods);
+    }
+
+    // ---- ExcludeKnownKeys: never re-offer a mod the launcher already lists ----
+
+    [Fact]
+    public void Known_keys_are_excluded_so_listed_mods_are_never_re_proposed()
+    {
+        var found = DiscoverySweep.Classify(Files(
+            "Content/Paks/~mods/AlreadyListed_P.pak",
+            "Content/Paks/~mods/BrandNew_P.pak"), UeOptions());
+
+        var fresh = DiscoverySweep.ExcludeKnownKeys(found, FakeModKey, new[] { "AlreadyListed" });
+
+        var one = Assert.Single(fresh);
+        Assert.Equal("BrandNew_P.pak", one.FileName);
+    }
+
+    // Filename case is not a reliable signal on Windows — a case-sensitive caller collection must
+    // not be able to sneak an already-listed mod back into the proposals.
+    [Fact]
+    public void Known_key_exclusion_ignores_case()
+    {
+        var found = DiscoverySweep.Classify(Files("Content/Paks/~mods/AlreadyListed_P.pak"), UeOptions());
+
+        Assert.Empty(DiscoverySweep.ExcludeKnownKeys(found, FakeModKey, new[] { "alreadylisted" }));
+    }
+
+    [Fact]
+    public void Excluding_against_no_known_keys_keeps_everything()
+    {
+        var found = DiscoverySweep.Classify(Files("Content/Paks/~mods/BrandNew_P.pak"), UeOptions());
+
+        Assert.Single(DiscoverySweep.ExcludeKnownKeys(found, FakeModKey, Array.Empty<string>()));
+    }
+
+    // Stand-in for Scanner.ModKeyFor: strip extension, the NNNN__ load-order prefix, and the UE
+    // _P suffix. Mirrors the real formula's OUTPUT for these fixtures without needing a GameContext
+    // (the production callers pass Scanner.ModKeyFor itself).
+    private static string FakeModKey(DiscoveryCandidate c)
+    {
+        var name = System.IO.Path.GetFileNameWithoutExtension(c.FileName);
+        var underscores = name.IndexOf("__", StringComparison.Ordinal);
+        if (underscores >= 0) name = name[(underscores + 2)..];
+        return name.EndsWith("_P", StringComparison.OrdinalIgnoreCase) ? name[..^2] : name;
     }
 }

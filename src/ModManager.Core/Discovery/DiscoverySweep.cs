@@ -40,6 +40,14 @@ public static class DiscoverySweep
                 continue;
             }
 
+            // A bare proxy name is a LOADER, not a mod; a .asi is a mod that rides on one.
+            // Same safety line, different description downstream — see DiscoveryKind.ProxyLoader.
+            if (LooseModScan.ProxyNames.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+            {
+                found.Add(new DiscoveryCandidate(normalized, fileName, DiscoveryKind.ProxyLoader));
+                continue;
+            }
+
             if (IsSignature(fileName, extension))
             {
                 found.Add(new DiscoveryCandidate(normalized, fileName, DiscoveryKind.Signature));
@@ -59,13 +67,69 @@ public static class DiscoverySweep
         return found;
     }
 
+    /// <summary>
+    /// Collapse candidates that are the same MOD to one row. The sweep works in file space; the
+    /// launcher works in mod-key space, and one mod is routinely several files — a UE mod ships as
+    /// a <c>.pak</c> + <c>.ucas</c> + <c>.utoc</c> triplet that <c>Scanner.ModKeyFor</c> folds onto
+    /// a single key and the regular scan renders as a single row. Proposing per-file made one mod
+    /// look like three and inflated the review dialog's "Adopt N mods" count to the file count
+    /// instead of the mod count.
+    ///
+    /// Grouping is per (<see cref="DiscoveryCandidate.Kind"/>, key): an archive that happens to
+    /// share a stem with an extracted mod is DIFFERENT evidence and must stay its own row, since
+    /// the tiers resolve them by different means. The representative is the ordinal-first filename,
+    /// which is both deterministic and lands on the <c>.pak</c> of a UE triplet (p &lt; u) — the
+    /// primary file a user recognizes.
+    /// </summary>
+    public static IReadOnlyList<DiscoveryCandidate> Deduplicate(
+        IReadOnlyList<DiscoveryCandidate> candidates, Func<DiscoveryCandidate, string> keyOf)
+        => candidates
+            .GroupBy(c => (c.Kind, Key: keyOf(c)), TupleKeyComparer)
+            .Select(g => g.OrderBy(c => c.FileName, StringComparer.Ordinal).First())
+            .ToList();
+
+    /// <summary>
+    /// Drop candidates the launcher ALREADY has a row for. Adoption's promise is "this lists it so
+    /// you can turn it on and off" — for a mod that is already listed and already toggleable that
+    /// promise is met, so re-offering it is pure noise (and made a Windrose sweep read as though it
+    /// wanted to re-add the whole mod list).
+    ///
+    /// Naming an already-listed-but-unnamed row is a real job, but it belongs to
+    /// <c>LooseIdentify</c> ("Identify loose mods"), which reaches exactly these rows. Keeping the
+    /// two features disjoint is what stops the same mod appearing in both.
+    /// </summary>
+    public static IReadOnlyList<DiscoveryCandidate> ExcludeKnownKeys(
+        IReadOnlyList<DiscoveryCandidate> candidates,
+        Func<DiscoveryCandidate, string> keyOf,
+        IEnumerable<string> knownKeys)
+    {
+        // Built here rather than taken as a set so a caller passing a case-SENSITIVE collection
+        // can't silently defeat the exclusion — filename case is not a reliable signal on Windows.
+        var known = new HashSet<string>(knownKeys, StringComparer.OrdinalIgnoreCase);
+        return candidates.Where(c => !known.Contains(keyOf(c))).ToList();
+    }
+
+    private static readonly IEqualityComparer<(DiscoveryKind Kind, string Key)> TupleKeyComparer =
+        new KindKeyComparer();
+
+    private sealed class KindKeyComparer : IEqualityComparer<(DiscoveryKind Kind, string Key)>
+    {
+        public bool Equals((DiscoveryKind Kind, string Key) a, (DiscoveryKind Kind, string Key) b)
+            => a.Kind == b.Kind && StringComparer.OrdinalIgnoreCase.Equals(a.Key, b.Key);
+
+        public int GetHashCode((DiscoveryKind Kind, string Key) v)
+            => HashCode.Combine(v.Kind, StringComparer.OrdinalIgnoreCase.GetHashCode(v.Key));
+    }
+
     private static bool IsSkipped(string path, IReadOnlyList<string> skipFolders)
         => skipFolders.Any(folder =>
             path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase)
             || path.Contains("/" + folder + "/", StringComparison.OrdinalIgnoreCase));
 
+    // Proxy names are claimed earlier as ProxyLoader, so by here a signature means the .asi
+    // convention: a real mod, riding on whatever loader is installed. A game never ships one.
     private static bool IsSignature(string fileName, string extension)
-        => extension == "asi" || LooseModScan.ProxyNames.Contains(fileName, StringComparer.OrdinalIgnoreCase);
+        => extension == "asi";
 
     // Engine-typical extension AND inside ONE of this game's mod folders. Both halves are
     // required: the same .pak extension is a shipped game file one directory up. Checks every

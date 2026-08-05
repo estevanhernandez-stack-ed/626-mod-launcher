@@ -1,8 +1,18 @@
 namespace ModManager.Core.Discovery;
 
 /// <summary>Why a path was claimed as a possible mod. Drives how it is matched later:
-/// archives can be md5-identified; the rest fall to name matching.</summary>
-public enum DiscoveryKind { Signature, EngineShaped, Archive }
+/// archives can be md5-identified; the rest fall to name matching.
+///
+/// <see cref="ProxyLoader"/> is split out from <see cref="Signature"/> because the two are
+/// different KINDS OF THING, not different confidence levels. A bare proxy DLL (version.dll,
+/// winmm.dll, dinput8.dll) is a mod LOADER — infrastructure other mods ride on — while a
+/// <c>.asi</c> plugin is an actual mod that rides on one. Presenting a loader as a mod in an
+/// "already installed mods" list mis-describes it. It is also unnameable in principle: the same
+/// version.dll ships as ASI Loader, Ultimate ASI Loader, and Cyber Engine Tweaks, so the filename
+/// cannot disambiguate which one it is. Naming it would be exactly the false accusation the
+/// classifier's safety line forbids — so a loader is surfaced as found, described as a loader,
+/// and never guessed at.</summary>
+public enum DiscoveryKind { Signature, EngineShaped, Archive, ProxyLoader }
 
 /// <summary>One thing the sweep claims might be a mod. Paths are RELATIVE to the swept root,
 /// so Core never sees an absolute path (pure-core law).</summary>
