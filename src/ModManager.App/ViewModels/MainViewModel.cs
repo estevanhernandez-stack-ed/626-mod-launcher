@@ -1942,6 +1942,19 @@ public sealed partial class MainViewModel : ObservableObject
     /// refresh token) — this re-hits validate.json to refresh the display name + premium tag.</summary>
     public Task RefreshNexusAsync() => _oauth.RefreshIdentityAsync();
 
+    /// <summary>Precondition check for the downloads-folder backfill, run BEFORE the folder picker
+    /// opens. Mirrors <see cref="BackfillNexusAsync"/>'s own chain in the same order and with the
+    /// same wording — a check that drifts from the operation it guards is worse than no check,
+    /// because the user is told one thing and then fails on another. Writes the reason and returns
+    /// false when the operation cannot run; the caller simply returns.</summary>
+    public bool CanBackfillFromDownloads()
+    {
+        if (NexusSource is null || !_nexus.IsConnected) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return false; }
+        if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return false; }
+        if (!ActiveGameHasNexusDomain) { StatusText = "This game has no Nexus domain set."; return false; }
+        return true;
+    }
+
     /// <summary>Backfill metadata for already-installed mods by md5-matching the user's downloaded
     /// Nexus ARCHIVES (the only thing with the hash Nexus indexes). Each archive's match fills the
     /// metadata for every installed mod that came from it.</summary>
