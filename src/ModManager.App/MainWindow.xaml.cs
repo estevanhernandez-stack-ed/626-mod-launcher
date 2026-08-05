@@ -1102,6 +1102,14 @@ public sealed partial class MainWindow : Window
     // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
     private async void OnNexusBackfill(object sender, RoutedEventArgs e)
     {
+        // Explain before costing the user a picker round-trip. md5 matching is a Nexus call; with
+        // no connection there is nothing a folder of archives could be matched against.
+        if (!ViewModel.NexusActionsAvailable)
+        {
+            ViewModel.StatusText = "Connect Nexus first (toolbar -> Nexus).";
+            return;
+        }
+
         var picker = new FolderPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         picker.FileTypeFilter.Add("*");
