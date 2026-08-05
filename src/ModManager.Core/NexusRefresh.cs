@@ -8,6 +8,11 @@ namespace ModManager.Core;
 /// refreshed <see cref="ModMeta"/> entries (to persist). On a 429 mid-sweep, <see cref="RateLimited"/>
 /// is true and the counts/list reflect only the partial progress made before the throttle.
 /// </summary>
+/// <summary>How far a <see cref="NexusRefresh.RefreshAllAsync"/> sweep has got. Reported after each
+/// row settles; <paramref name="Completed"/> counts rows CONSIDERED (including ones skipped for
+/// having no resolvable mod id), so it always reaches <paramref name="Total"/> on a full run.</summary>
+public sealed record NexusRefreshProgress(int Completed, int Total);
+
 public sealed record NexusRefreshResult(
     int Refreshed,
     int UpdatesAvailable,
@@ -164,17 +169,41 @@ public static class NexusRefresh
     /// <see cref="NexusRefreshResult.RateLimited"/> signal — that flag stays owned by the stats
     /// sweep's own throttle.</para>
     /// </summary>
+    /// <summary>
+    /// Rows that are identified but still have holes a by-mod-id fetch can fill — no description,
+    /// or no cover image.
+    ///
+    /// <para>Distinct from <see cref="SelectCandidates"/> on purpose. That one answers "what might
+    /// have a NEWER FILE upstream", so it only ever returns mods listed in Nexus's recently-updated
+    /// feed — the right question for an update check and the wrong one entirely here. A mod that
+    /// hasn't shipped a file in three years still has a description and a picture we never stored,
+    /// and it would never appear in that feed, so an enrichment pass driven by update candidates
+    /// reaches almost nothing. A name-search identify writes neither field (the search response
+    /// carries no full description), so a library identified that way needs exactly this sweep.</para>
+    /// </summary>
+    public static IReadOnlyList<ModMeta> SelectEnrichmentCandidates(IEnumerable<ModMeta> metas)
+        => metas.Where(m => ResolveModId(m) is not null
+                            && (string.IsNullOrWhiteSpace(m.Description) || string.IsNullOrWhiteSpace(m.Image)))
+                .ToList();
+
     public static async Task<NexusRefreshResult> RefreshAllAsync(
-        IEnumerable<ModMeta> metas, string domain, IModSource source, Func<Task>? throttle = null)
+        IEnumerable<ModMeta> metas, string domain, IModSource source, Func<Task>? throttle = null,
+        IProgress<NexusRefreshProgress>? progress = null, CancellationToken ct = default)
     {
         var updated = new List<ModMeta>();
         int refreshed = 0, updatesAvailable = 0;
         bool rateLimited = false;
         bool first = true;
 
-        foreach (var meta in metas)
+        // Materialized so progress can name a total. Stays sequential and throttled — unlike the
+        // name search, this path is explicitly rate-limit-aware and must not be widened.
+        var all = metas.ToList();
+        var seen = 0;
+
+        foreach (var meta in all)
         {
-            if (ResolveModId(meta) is null) continue; // skip non-Nexus rows without a network call
+            if (ct.IsCancellationRequested) break; // partial progress is already accumulated
+            if (ResolveModId(meta) is null) { seen++; continue; } // skip non-Nexus rows without a network call
 
             // Throttle between (not before) calls so a one-item sweep pays no delay.
             if (!first && throttle is not null) await throttle();
@@ -190,6 +219,8 @@ public static class NexusRefresh
                 rateLimited = true;
                 break; // stop the sweep, return partial progress
             }
+
+            progress?.Report(new NexusRefreshProgress(++seen, all.Count));
 
             if (result is null) continue;
             refreshed++;

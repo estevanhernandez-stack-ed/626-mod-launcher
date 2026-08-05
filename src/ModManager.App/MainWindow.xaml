@@ -11,10 +11,18 @@
     mc:Ignorable="d">
 
     <Grid x:Name="RootGrid" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
-          RequestedTheme="Dark" Background="{StaticResource ThemeBg}">
+          RequestedTheme="Dark" Background="{StaticResource ThemeBg}"
+          KeyboardAcceleratorPlacementMode="Hidden">
         <!-- Keyboard access (F-025): the shell's three verbs get accelerators. Handlers no-op
              (and leave the key unhandled) when the surface isn't present, so Esc and Ctrl+F/R
-             never steal from dialogs or the library home. -->
+             never steal from dialogs or the library home.
+
+             PlacementMode=Hidden because these are attached to the ROOT grid, not to a button.
+             WinUI auto-renders an accelerator tooltip for the element that owns them, so the
+             default (Auto) pops "Ctrl+F" whenever the pointer rests anywhere over the window
+             body — including the moment you park the mouse mid-list to scroll. The accelerators
+             still fire; only the unsolicited tip is suppressed. Per-control accelerators
+             elsewhere keep their tips, which is where a tip is actually useful. -->
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFilterAccelerator" />
             <KeyboardAccelerator Modifiers="Control" Key="R" Invoked="OnRefreshAccelerator" />
@@ -84,6 +92,13 @@
                                             ToolTipService.ToolTip="Name-search Nexus for unidentified loose files — you review every match before anything is saved">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE721;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Get details from Nexus…" Click="OnEnrichMetadata"
+                                            Visibility="{x:Bind ViewModel.MetadataEnrichmentVisibility, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Fill in descriptions and cover art for mods that are identified but still blank">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE946;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">

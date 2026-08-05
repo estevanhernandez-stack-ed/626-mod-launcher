@@ -2043,6 +2043,79 @@ public sealed partial class MainViewModel : ObservableObject
     /// Null = gated out (the status line explains, including "no loose mods need identifying").
     /// NOTHING is written here — the only write path is <see cref="ApplyLooseIdentifyAsync"/> with
     /// the rows the user checked.</summary>
+    /// <summary>True when the active game has rows that are identified but still missing a
+    /// description or cover art — i.e. there is something for "Get details from Nexus" to do.</summary>
+    public bool MetadataEnrichmentAvailable => NexusActionsAvailable && _ctx is not null;
+
+    public Visibility MetadataEnrichmentVisibility =>
+        MetadataEnrichmentAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// Fill in descriptions and cover art for rows we identified but never fully described.
+    ///
+    /// <para>Needed because the two paths that PRODUCE an identification both leave these holes: a
+    /// name search returns no full description, and once a row is identified nothing revisits it —
+    /// <c>LooseIdentify.Candidates</c> skips identified rows by design, and the background update
+    /// poll only ever looks at mods with a NEW FILE upstream. A three-year-old mod would sit named
+    /// and blank forever. This sweep asks Nexus by mod id, which returns the full metadata, and
+    /// <c>NexusRefresh.Overlay</c> fills only the holes — anything already known is kept.</para>
+    /// </summary>
+    public async Task EnrichMetadataAsync()
+    {
+        if (_ctx is null) return;
+        var ctx = _ctx!;
+        if (NexusSource is not { } source) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        var domain = NexusDomains.Effective(ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
+
+        var byKey = Scanner.LoadMetadata(ctx);
+        var candidates = NexusRefresh.SelectEnrichmentCandidates(byKey.Values);
+        if (candidates.Count == 0) { StatusText = "Every identified mod already has its details."; return; }
+
+        IsBusy = true;
+        using var cts = new CancellationTokenSource();
+        _longOpCts = cts;
+        IsCancellable = true;
+        try
+        {
+            var progress = new Progress<NexusRefreshProgress>(p =>
+                StatusText = $"Getting details from Nexus — {p.Completed} of {p.Total}…");
+
+            var result = await NexusRefresh.RefreshAllAsync(
+                candidates, domain!, source, throttle: () => Task.Delay(120), progress: progress, ct: cts.Token);
+
+            // Map each refreshed meta back to its on-disk key by re-resolving the (deterministic)
+            // id — identity fields survive the refresh, so the lookup is exact. Same route the
+            // background poll uses; never a second persistence path.
+            var keyById = new Dictionary<int, string>();
+            foreach (var kv in byKey)
+                if (NexusRefresh.ResolveModId(kv.Value) is { } id)
+                    keyById[id] = kv.Key;
+
+            var writes = new List<(string, ModMeta)>();
+            foreach (var meta in result.Updated)
+                if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
+                    writes.Add((key, meta));
+
+            if (writes.Count > 0)
+            {
+                Scanner.WriteManyMeta(ctx, writes);
+                await ReloadModsAsync();
+            }
+
+            StatusText = (result.RateLimited, cts.IsCancellationRequested) switch
+            {
+                (true, _) => $"Nexus rate-limited us after {writes.Count} of {candidates.Count}. Run it again later to finish.",
+                (_, true) => $"Stopped after {writes.Count} of {candidates.Count}. Run it again to finish the rest.",
+                _ when writes.Count == 0 => "Nexus had no extra details for these mods.",
+                _ => $"Filled in details for {writes.Count} mod{(writes.Count == 1 ? "" : "s")}.",
+            };
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+    }
+
     public async Task<IReadOnlyList<LooseIdentifyProposal>?> ProposeLooseIdentifyAsync()
     {
         if (_ctx is null) return null;

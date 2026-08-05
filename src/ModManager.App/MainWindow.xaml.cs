@@ -1115,6 +1115,8 @@ public sealed partial class MainWindow : Window
     // Cancel (or unchecking every row) writes nothing.
     private void OnCancelLongOperation(object sender, RoutedEventArgs e) => ViewModel.CancelLongOperation();
 
+    private async void OnEnrichMetadata(object sender, RoutedEventArgs e) => await ViewModel.EnrichMetadataAsync();
+
     private async void OnLooseIdentify(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.ActiveGameHasNexusDomain)
