@@ -93,6 +93,16 @@ public sealed partial class MainWindow : Window
                 ? dialog.Approved
                 : Array.Empty<ModManager.Core.Discovery.AdoptionProposal>();
         };
+        // The unified identify run's single review — same view-owns-the-dialog split as above, but
+        // it returns BOTH approved sections. Cancel (or an unwired delegate) writes nothing at all.
+        ViewModel.ReviewIdentifyRun = async (adoptions, identifications) =>
+        {
+            var dialog = new IdentifyReviewDialog(adoptions, identifications) { XamlRoot = Content.XamlRoot };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return (Array.Empty<ModManager.Core.Discovery.AdoptionProposal>(),
+                        Array.Empty<(string, ModManager.Plugins.Abstractions.SourceSearchHit)>());
+            return (dialog.ApprovedAdoptions(), dialog.ApprovedIdentifications());
+        };
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
         ViewModel.PropertyChanged += (_, args) =>
@@ -1101,13 +1111,37 @@ public sealed partial class MainWindow : Window
         picker.FileTypeFilter.Add("*");
         var folder = await picker.PickSingleFolderAsync();
         if (folder is null) return;
-        // Recurse — a downloads folder usually nests archives in per-mod subfolders.
-        var archives = System.IO.Directory.GetFiles(folder.Path, "*.*", System.IO.SearchOption.AllDirectories)
-            .Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".7z", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        await ViewModel.BackfillNexusAsync(archives);
+        // Enumeration lives in the VM so this entry and the unified run's downloads pass share one
+        // definition of "an archive in a downloads folder".
+        await ViewModel.BackfillNexusAsync(MainViewModel.EnumerateDownloadArchives(folder.Path));
+    }
+
+    // One prompt before anything runs — the downloads folder is the only pass that needs input,
+    // and asking mid-run would interrupt a sweep the user is watching.
+    private async void OnIdentifyMyMods(object sender, RoutedEventArgs e)
+    {
+        var ask = new ContentDialog
+        {
+            Title = "Also check a downloads folder?",
+            Content = "If you have a folder of downloaded mod archives, we can match them exactly by file hash. "
+                      + "Otherwise we'll match by name, which is a good guess but still a guess.",
+            PrimaryButtonText = "Choose folder",
+            CloseButtonText = "Skip",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        ModManager.App.Services.DialogTheming.Apply(ask);
+
+        string? folder = null;
+        if (await ask.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var picker = new FolderPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            picker.FileTypeFilter.Add("*");
+            folder = (await picker.PickSingleFolderAsync())?.Path;
+        }
+
+        await ViewModel.IdentifyMyModsAsync(folder);
     }
 
     // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline

@@ -112,6 +112,11 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     public Func<IReadOnlyList<AdoptionProposal>, Task<IReadOnlyList<AdoptionProposal>>>? ReviewDiscoveries { get; set; }
 
+    /// <summary>Set by the view to show the unified review. Returns what the user approved in each
+    /// section. Null (unwired view) means the run proposes and writes nothing.</summary>
+    public Func<IReadOnlyList<AdoptionProposal>, IReadOnlyList<LooseIdentifyProposal>,
+        Task<(IReadOnlyList<AdoptionProposal> Adoptions, IReadOnlyList<(string ModKey, SourceSearchHit Hit)> Identifications)>>? ReviewIdentifyRun { get; set; }
+
     // FromSoft games whose mods are driven by a Mod Engine 2 config (not filesystem scans).
     private bool ConfigBacked => _ctx is not null && _me2.IsConfigBacked(_ctx.Game);
 
@@ -2056,6 +2061,23 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility MetadataEnrichmentVisibility =>
         MetadataEnrichmentAvailable ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>The Advanced menu's entry into <see cref="FillMissingDetailsAsync"/> — it owns the
+    /// busy ring, the Stop button, and the cancellation source, which the unified identify run owns
+    /// for itself when it composes the same pass. The pass itself lives in one place only.</summary>
+    public async Task EnrichMetadataAsync()
+    {
+        if (_ctx is null) return;
+        var ctx = _ctx!;
+
+        IsBusy = true;
+        using var cts = new CancellationTokenSource();
+        _longOpCts = cts;
+        IsCancellable = true;
+        try { await FillMissingDetailsAsync(ctx, cts.Token); }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+    }
+
     /// <summary>
     /// Fill in descriptions and cover art for rows we identified but never fully described.
     ///
@@ -2065,61 +2087,57 @@ public sealed partial class MainViewModel : ObservableObject
     /// poll only ever looks at mods with a NEW FILE upstream. A three-year-old mod would sit named
     /// and blank forever. This sweep asks Nexus by mod id, which returns the full metadata, and
     /// <c>NexusRefresh.Overlay</c> fills only the holes — anything already known is kept.</para>
+    ///
+    /// <para>NEVER PRODUCES A REVIEWABLE ROW, and that is the point. Every row it touches already
+    /// resolves to a Nexus mod id, so this is detail about an identity that is already established,
+    /// not a claim about WHICH mod something is. It runs unconditionally inside the unified run and
+    /// reports only through the status line — nothing it does reaches
+    /// <see cref="ReviewIdentifyRun"/>. Returns the number of rows filled so a caller can say so.</para>
     /// </summary>
-    public async Task EnrichMetadataAsync()
+    private async Task<int> FillMissingDetailsAsync(GameContext ctx, CancellationToken ct)
     {
-        if (_ctx is null) return;
-        var ctx = _ctx!;
-        if (NexusSource is not { } source) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
-        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return; }
+        if (NexusSource is not { } source) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return 0; }
+        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return 0; }
         var domain = NexusDomains.Effective(ctx.Game);
-        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return 0; }
 
         var byKey = Scanner.LoadMetadata(ctx);
         var candidates = NexusRefresh.SelectEnrichmentCandidates(byKey.Values);
-        if (candidates.Count == 0) { StatusText = "Every identified mod already has its details."; return; }
+        if (candidates.Count == 0) { StatusText = "Every identified mod already has its details."; return 0; }
 
-        IsBusy = true;
-        using var cts = new CancellationTokenSource();
-        _longOpCts = cts;
-        IsCancellable = true;
-        try
+        var progress = new Progress<NexusRefreshProgress>(p =>
+            StatusText = $"Getting details from Nexus — {p.Completed} of {p.Total}…");
+
+        var result = await NexusRefresh.RefreshAllAsync(
+            candidates, domain!, source, throttle: () => Task.Delay(120), progress: progress, ct: ct);
+
+        // Map each refreshed meta back to its on-disk key by re-resolving the (deterministic)
+        // id — identity fields survive the refresh, so the lookup is exact. Same route the
+        // background poll uses; never a second persistence path.
+        var keyById = new Dictionary<int, string>();
+        foreach (var kv in byKey)
+            if (NexusRefresh.ResolveModId(kv.Value) is { } id)
+                keyById[id] = kv.Key;
+
+        var writes = new List<(string, ModMeta)>();
+        foreach (var meta in result.Updated)
+            if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
+                writes.Add((key, meta));
+
+        if (writes.Count > 0)
         {
-            var progress = new Progress<NexusRefreshProgress>(p =>
-                StatusText = $"Getting details from Nexus — {p.Completed} of {p.Total}…");
-
-            var result = await NexusRefresh.RefreshAllAsync(
-                candidates, domain!, source, throttle: () => Task.Delay(120), progress: progress, ct: cts.Token);
-
-            // Map each refreshed meta back to its on-disk key by re-resolving the (deterministic)
-            // id — identity fields survive the refresh, so the lookup is exact. Same route the
-            // background poll uses; never a second persistence path.
-            var keyById = new Dictionary<int, string>();
-            foreach (var kv in byKey)
-                if (NexusRefresh.ResolveModId(kv.Value) is { } id)
-                    keyById[id] = kv.Key;
-
-            var writes = new List<(string, ModMeta)>();
-            foreach (var meta in result.Updated)
-                if (NexusRefresh.ResolveModId(meta) is { } id && keyById.TryGetValue(id, out var key))
-                    writes.Add((key, meta));
-
-            if (writes.Count > 0)
-            {
-                Scanner.WriteManyMeta(ctx, writes);
-                await ReloadModsAsync();
-            }
-
-            StatusText = (result.RateLimited, cts.IsCancellationRequested) switch
-            {
-                (true, _) => $"Nexus rate-limited us after {writes.Count} of {candidates.Count}. Run it again later to finish.",
-                (_, true) => $"Stopped after {writes.Count} of {candidates.Count}. Run it again to finish the rest.",
-                _ when writes.Count == 0 => "Nexus had no extra details for these mods.",
-                _ => $"Filled in details for {writes.Count} mod{(writes.Count == 1 ? "" : "s")}.",
-            };
+            Scanner.WriteManyMeta(ctx, writes);
+            await ReloadModsAsync();
         }
-        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+
+        StatusText = (result.RateLimited, ct.IsCancellationRequested) switch
+        {
+            (true, _) => $"Nexus rate-limited us after {writes.Count} of {candidates.Count}. Run it again later to finish.",
+            (_, true) => $"Stopped after {writes.Count} of {candidates.Count}. Run it again to finish the rest.",
+            _ when writes.Count == 0 => "Nexus had no extra details for these mods.",
+            _ => $"Filled in details for {writes.Count} mod{(writes.Count == 1 ? "" : "s")}.",
+        };
+        return writes.Count;
     }
 
     public async Task<IReadOnlyList<LooseIdentifyProposal>?> ProposeLooseIdentifyAsync()
@@ -2206,6 +2224,150 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
+
+    /// <summary>
+    /// The whole identify ladder behind one action. Passes run best-evidence-first; only identity
+    /// claims reach the review dialog.
+    ///
+    /// <para>APPLY ORDER IS LOAD-BEARING. Adoptions land first because an archive resolved by md5 is
+    /// an exact match, and its real write keys are only known after approval
+    /// (<c>Scanner.ArchiveModKeysFor</c>) — so a name-search proposal for the same row clears every
+    /// propose-time filter. Applying md5 first and filtering the name-search results through
+    /// <see cref="LooseIdentify.ExcludeKeys"/> is what stops a guess from overwriting a hash.</para>
+    /// </summary>
+    public async Task IdentifyMyModsAsync(string? downloadsFolder)
+    {
+        if (_ctx is null) return;
+        var ctx = _ctx!;
+
+        IsBusy = true;
+        using var cts = new CancellationTokenSource();
+        _longOpCts = cts;
+        IsCancellable = true;
+        try
+        {
+            // Pass 1 + 2: sweep the game folder and md5 what it found. Already tiered internally.
+            StatusText = "Looking through this game's folder…";
+            var adoptions = await BuildDiscoveryProposalsAsync(ctx, cts.Token);
+
+            // Pass 2b: the downloads folder the user pointed us at, if any. Exact matches.
+            if (!string.IsNullOrWhiteSpace(downloadsFolder) && !cts.IsCancellationRequested)
+            {
+                StatusText = "Matching your downloads folder…";
+                adoptions = await AddDownloadsFolderMatchesAsync(adoptions, downloadsFolder!, ctx, cts.Token);
+            }
+
+            // Pass 3: fill blanks on rows we already identified. NOT reviewable — we already know
+            // which mod these are; this only retrieves detail about it.
+            var filled = 0;
+            if (!cts.IsCancellationRequested) filled = await FillMissingDetailsAsync(ctx, cts.Token);
+
+            // Pass 4: name-search whatever is still unnamed. This one owns its own busy/Stop
+            // bookkeeping (it is also an Advanced menu entry), so it temporarily takes over
+            // _longOpCts: Stop pressed during pass 4 halts the SEARCH and hands back whatever
+            // settled, which is that pass's documented contract, and there is no later pass for the
+            // run's own token to guard anyway. The finally below restores the run's bookkeeping.
+            IReadOnlyList<LooseIdentifyProposal> identifications = Array.Empty<LooseIdentifyProposal>();
+            if (!cts.IsCancellationRequested)
+                identifications = await ProposeLooseIdentifyAsync() ?? Array.Empty<LooseIdentifyProposal>();
+
+            if (adoptions.Count == 0 && identifications.Count == 0)
+            {
+                StatusText = cts.IsCancellationRequested
+                    ? "Stopped. Nothing was changed."
+                    : filled > 0
+                        ? $"Nothing new to identify. Filled in details for {filled} mod{(filled == 1 ? "" : "s")}."
+                        : "Everything in this game's folder is already in your list and identified.";
+                return;
+            }
+
+            if (ReviewIdentifyRun is null) return; // unwired view -> nothing written
+            var (approvedAdoptions, approvedIdentifications) = await ReviewIdentifyRun(adoptions, identifications);
+
+            // Strongest first — see the apply-order note above.
+            var written = await ApplyDiscoveriesAsync(approvedAdoptions, adoptions.Count, ctx);
+            var safeIdentifications = LooseIdentify.ExcludeKeys(approvedIdentifications, written);
+            // Only call the name-search apply when it has something to write. Standalone it reports
+            // "No matches approved — nothing written." on an empty batch, which is right for the
+            // Advanced entry but would overwrite the adoption result the user just earned here.
+            if (safeIdentifications.Count > 0)
+                await ApplyLooseIdentifyAsync(safeIdentifications, identifications.Count);
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+    }
+
+    /// <summary>Pass 2b of the unified run: md5 the archives in a user-chosen downloads folder
+    /// against Nexus and fold the exact matches into the adoption proposals. Exact evidence, so
+    /// these ride the same reviewable path as the sweep's own md5 tier — nothing is written here.
+    ///
+    /// <para>The candidate's <c>RelativePath</c> carries the archive's ABSOLUTE path on purpose: a
+    /// downloads folder normally sits outside the game root (often on another drive), so there is no
+    /// relative form to give it. Both places that resolve a candidate back to disk —
+    /// <c>DiscoveryScanService.Md5Of</c> and <see cref="DiscoveryWriteKeysAsync"/> — go through
+    /// <c>Path.Combine(root, RelativePath)</c>, which hands back an already-rooted second argument
+    /// unchanged. These candidates never reach <c>DiscoverySweep</c>, whose skip/mod-path matching is
+    /// the only code that actually requires the relative form.</para></summary>
+    private async Task<IReadOnlyList<AdoptionProposal>> AddDownloadsFolderMatchesAsync(
+        IReadOnlyList<AdoptionProposal> existing, string folder, GameContext ctx, CancellationToken ct)
+    {
+        // Same gate as the sweep's tier 1: no plugin, signed out, or no domain all collapse to
+        // "md5 unavailable". Say so once and leave the other passes to carry the run.
+        var domain = NexusDomains.Effective(ctx.Game);
+        if (NexusSource is not { } source || !_nexus.IsConnected || string.IsNullOrWhiteSpace(domain))
+        {
+            StatusText = "Skipped the downloads folder — Nexus isn't connected.";
+            return existing;
+        }
+
+        var archives = EnumerateDownloadArchives(folder);
+        if (archives.Count == 0)
+        {
+            StatusText = "No .zip/.7z/.rar archives found in that folder.";
+            return existing;
+        }
+
+        // Never propose the same archive twice. A downloads folder pointed INSIDE the game root was
+        // already walked by pass 1, and the sweep's own copy carries the relative path the review
+        // dialog reads better. Filename is the right identity — it is the same file either way.
+        var seen = existing.Select(p => p.Candidate.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = new List<AdoptionProposal>();
+        var done = 0;
+        foreach (var path in archives)
+        {
+            if (ct.IsCancellationRequested) break;
+            done++;
+
+            var fileName = Path.GetFileName(path);
+            if (!seen.Add(fileName)) continue;
+
+            StatusText = $"Matching your downloads folder — {done} of {archives.Count}…";
+            var candidate = new DiscoveryCandidate(path, fileName, DiscoveryKind.Archive);
+            var md5 = await Task.Run(() => _discovery.Md5Of(ctx.GameRoot, candidate));
+            if (md5 is null) continue;
+
+            try
+            {
+                var identify = await source.IdentifyByHashAsync(domain!, md5);
+                if (identify is not null) added.Add(AdoptionProposal.FromMd5(candidate, identify));
+            }
+            catch { /* a miss / outage never blocks the run — the other passes still stand */ }
+        }
+
+        return added.Count == 0 ? existing : existing.Concat(added).ToList();
+    }
+
+    /// <summary>The archives inside a user-chosen downloads folder. One implementation, shared by
+    /// the unified run's downloads pass and the Advanced "match against my downloads folder" entry
+    /// in the window, so the two can never disagree about what counts as an archive.</summary>
+    public static IReadOnlyList<string> EnumerateDownloadArchives(string folder)
+        // Recurse — a downloads folder usually nests archives in per-mod subfolders.
+        => Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".7z", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
     // Nexus md5 lookups are network calls against a per-day budget (2500/day). A pathological
     // Downloads-folder-in-the-game-root case could otherwise turn one sweep into hundreds of calls;
