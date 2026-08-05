@@ -216,4 +216,123 @@ public class LooseIdentifyTests
 
         Assert.Empty(LooseIdentify.Candidates(rows, meta));
     }
+
+    // ---- ProposeAsync at real-library scale (a hand-modded Cyberpunk install is ~200 rows) ----
+
+    private static List<Mod> Many(int n) =>
+        Enumerable.Range(0, n).Select(i => Row($"Mod{i:D3}", "plugin")).ToList();
+
+    private static SourceSearchHit Hit(string name) =>
+        new("testgame", 1, name, "Author", null, null, null);
+
+    // Concurrency must not reshuffle the review dialog. Slowest-first ordering guarantees the
+    // results ARRIVE backwards, so a naive "append as they complete" implementation fails here.
+    [Fact]
+    public async Task Proposals_come_back_in_candidate_order_not_completion_order()
+    {
+        var rows = Many(12);
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, async query =>
+        {
+            var index = int.Parse(query.Replace("Mod", "").Trim());
+            await Task.Delay(5 * (12 - index)); // earlier rows finish LAST
+            return new[] { Hit(query) };
+        });
+
+        Assert.Equal(rows.Select(r => r.Base), proposals.Select(p => p.ModKey));
+    }
+
+    [Fact]
+    public async Task Never_exceeds_the_concurrency_cap()
+    {
+        var inFlight = 0;
+        var peak = 0;
+        var gate = new object();
+
+        await LooseIdentify.ProposeAsync(Many(40), async _ =>
+        {
+            lock (gate) { inFlight++; if (inFlight > peak) peak = inFlight; }
+            await Task.Delay(5);
+            lock (gate) { inFlight--; }
+            return Array.Empty<SourceSearchHit>();
+        }, maxConcurrency: 4);
+
+        Assert.True(peak <= 4, $"peak in-flight was {peak}, cap was 4");
+        Assert.True(peak > 1, "ran serially — the cap is not being used at all");
+    }
+
+    [Fact]
+    public async Task Progress_climbs_to_the_total()
+    {
+        var seen = new List<int>();
+        var gate = new object();
+        var progress = new Progress<LooseIdentifyProgress>(p => { lock (gate) seen.Add(p.Completed); });
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(20),
+            _ => Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>()),
+            progress: progress);
+
+        Assert.Equal(20, proposals.Count);
+        // Progress<T> marshals asynchronously, so wait for the last report rather than racing it.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (gate) { if (seen.Count >= 20) break; }
+            await Task.Delay(10);
+        }
+        lock (gate)
+        {
+            Assert.Equal(20, seen.Count);
+            Assert.Equal(20, seen.Max());   // reaches the total
+            Assert.Equal(20, seen.Distinct().Count()); // every step reported exactly once
+        }
+    }
+
+    // Cancelling keeps the work already done. Nothing here writes — every proposal is still
+    // review-gated — so throwing away 150 finished searches because the user stopped at 151 would
+    // be hostile.
+    [Fact]
+    public async Task Cancelling_returns_the_completed_proposals_instead_of_throwing()
+    {
+        using var cts = new CancellationTokenSource();
+        var done = 0;
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(200), async query =>
+        {
+            if (Interlocked.Increment(ref done) == 8) cts.Cancel();
+            await Task.Delay(1);
+            return new[] { Hit(query) };
+        }, maxConcurrency: 2, ct: cts.Token);
+
+        Assert.NotEmpty(proposals);
+        Assert.True(proposals.Count < 200, "cancellation did not stop the run");
+        // Whatever survived is still in candidate order, with no gaps in the returned list.
+        Assert.Equal(proposals.Select(p => p.ModKey).OrderBy(k => k, StringComparer.Ordinal), proposals.Select(p => p.ModKey));
+    }
+
+    // One row's search blowing up must not cost the other 193 their attempt.
+    [Fact]
+    public async Task A_throwing_search_only_costs_its_own_row()
+    {
+        var proposals = await LooseIdentify.ProposeAsync(Many(10), query =>
+            query.EndsWith("004", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("upstream blew up")
+                : Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit(query) }));
+
+        Assert.Equal(10, proposals.Count);
+        Assert.Null(proposals.Single(p => p.ModKey == "Mod004").Match);
+        Assert.Equal(9, proposals.Count(p => p.Match is not null));
+    }
+
+    [Fact]
+    public async Task Empty_candidate_list_does_no_work()
+    {
+        var calls = 0;
+
+        var proposals = await LooseIdentify.ProposeAsync(new List<Mod>(),
+            _ => { calls++; return Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>()); });
+
+        Assert.Empty(proposals);
+        Assert.Equal(0, calls);
+    }
 }

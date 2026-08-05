@@ -262,6 +262,12 @@
                 </StackPanel>
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" Foreground="{StaticResource ThemeAccent}"
                               VerticalAlignment="Bottom" Margin="10,0,0,6" />
+                <!-- Only appears for a long, stoppable run (the Nexus name-search sweep). Quick
+                     atomic file ops stay uninterruptible — see MainViewModel.IsCancellable. -->
+                <Button Content="Stop" Click="OnCancelLongOperation"
+                        Visibility="{x:Bind ViewModel.CancelVisibility, Mode=OneWay}"
+                        VerticalAlignment="Bottom" Margin="8,0,0,2" Padding="10,2"
+                        ToolTipService.ToolTip="Stop searching. Anything already found is kept for review." />
             </StackPanel>
 
             <!-- Load-order mode: reorder controls replace the normal bar -->

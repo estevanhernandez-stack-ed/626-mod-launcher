@@ -205,6 +205,27 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool isBusy;
 
+    /// <summary>True while a long operation is running that the user is allowed to stop. Drives the
+    /// Stop button beside the busy ring. Separate from <see cref="IsBusy"/> because most busy work
+    /// is a quick, atomic file op that must NOT be interruptible mid-flight — only a long,
+    /// read-only, resumable run (the Nexus name-search sweep) offers Stop.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CancelVisibility))]
+    private bool isCancellable;
+
+    public Visibility CancelVisibility => IsCancellable ? Visibility.Visible : Visibility.Collapsed;
+
+    private CancellationTokenSource? _longOpCts;
+
+    /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
+    /// nothing on its own — whatever finished is still handed to the review dialog for approval.</summary>
+    public void CancelLongOperation()
+    {
+        if (_longOpCts is null) return;
+        StatusText = "Stopping…";
+        _longOpCts.Cancel();
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LaunchHintVisibility))]
     private bool launchNeedsAttention;
@@ -2034,25 +2055,48 @@ public sealed partial class MainViewModel : ObservableObject
         if (candidates.Count == 0) { StatusText = "No loose mods need identifying."; return null; }
 
         IsBusy = true;
+        using var cts = new CancellationTokenSource();
+        _longOpCts = cts;
+        IsCancellable = true;
         try
         {
-            // LooseIdentify.ProposeAsync has NO cancellation, so the search delegate self-timeouts
-            // per call: a hung Nexus request yields "no hits" for that row after ~10s instead of
-            // blocking the whole batch forever. The abandoned call gets its fault observed on
-            // completion so a late failure never surfaces as an unobserved-task exception. Core's
-            // CleanQuery passes through untouched — it may carry trailing digits ("Zipliner 1" from
-            // CleanModName); that's NameMatch's contract, not noise for the App to re-clean.
-            return await LooseIdentify.ProposeAsync(candidates, async query =>
+            // Built on the UI thread on purpose: Progress<T> captures the current
+            // SynchronizationContext, so every report marshals back here and StatusText is only
+            // ever written from the UI thread even though the workers run concurrently.
+            var progress = new Progress<LooseIdentifyProgress>(p =>
+                StatusText = $"Searching Nexus — {p.Completed} of {p.Total}…");
+
+            // The search delegate still self-timeouts per call: a hung Nexus request yields "no
+            // hits" for that row after ~10s instead of stalling one of the workers forever. The
+            // abandoned call gets its fault observed on completion so a late failure never
+            // surfaces as an unobserved-task exception. Cancellation stops NEW rows immediately;
+            // rows already in flight finish (or time out), so Stop settles within ~10s worst case.
+            // Core's CleanQuery passes through untouched — that's NameMatch's contract, not noise
+            // for the App to re-clean.
+            var proposals = await LooseIdentify.ProposeAsync(candidates, async query =>
             {
                 var call = search.SearchAsync(domain!, query);
                 if (await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))) == call)
                     return await call;
                 _ = call.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
                 return Array.Empty<SourceSearchHit>();
-            });
+            }, LooseIdentify.DefaultConcurrency, progress, cts.Token);
+
+            if (proposals.Count == 0)
+            {
+                // Stopped before anything finished — say so rather than opening an empty dialog.
+                StatusText = cts.IsCancellationRequested
+                    ? "Stopped before anything was searched. Nothing changed."
+                    : "No matches found on Nexus for these mods.";
+                return null;
+            }
+
+            if (cts.IsCancellationRequested)
+                StatusText = $"Stopped after {proposals.Count} of {candidates.Count}. Review what was found, or run it again for the rest.";
+            return proposals;
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return null; }
-        finally { IsBusy = false; }
+        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
     }
 
     /// <summary>Loose-root name-search identify, step 2 of 2: persist ONLY the user-approved pairs.

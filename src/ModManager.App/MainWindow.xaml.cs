@@ -1113,6 +1113,8 @@ public sealed partial class MainWindow : Window
     // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline
     // (candidates -> propose -> apply); the window owns the dialogs. Apply is the ONLY write path —
     // Cancel (or unchecking every row) writes nothing.
+    private void OnCancelLongOperation(object sender, RoutedEventArgs e) => ViewModel.CancelLongOperation();
+
     private async void OnLooseIdentify(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.ActiveGameHasNexusDomain)
