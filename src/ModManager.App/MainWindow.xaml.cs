@@ -1144,9 +1144,8 @@ public sealed partial class MainWindow : Window
         await ViewModel.IdentifyMyModsAsync(folder);
     }
 
-    // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline
-    // (candidates -> propose -> apply); the window owns the dialogs. Apply is the ONLY write path —
-    // Cancel (or unchecking every row) writes nothing.
+    // The Stop button beside the busy ring. Cancellation is the VM's to own — the window only
+    // forwards the click.
     private void OnCancelLongOperation(object sender, RoutedEventArgs e) => ViewModel.CancelLongOperation();
 
     private async void OnEnrichMetadata(object sender, RoutedEventArgs e) => await ViewModel.EnrichMetadataAsync();

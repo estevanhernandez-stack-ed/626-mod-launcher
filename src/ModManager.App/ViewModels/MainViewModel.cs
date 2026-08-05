@@ -222,13 +222,23 @@ public sealed partial class MainViewModel : ObservableObject
 
     private CancellationTokenSource? _longOpCts;
 
+    /// <summary>True while <see cref="IdentifyMyModsAsync"/> is in flight. Guards that one run only —
+    /// a second concurrent run would fight it for <see cref="_longOpCts"/>, the busy ring, and the
+    /// review dialog. UI-thread only, so a plain bool is the whole mechanism.</summary>
+    private bool _identifyRunning;
+
     /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
     /// nothing on its own — whatever finished is still handed to the review dialog for approval.</summary>
     public void CancelLongOperation()
     {
-        if (_longOpCts is null) return;
+        var cts = _longOpCts;
+        if (cts is null) return;
         StatusText = "Stopping…";
-        _longOpCts.Cancel();
+        // The run that owns this source can finish and dispose it between the read above and the
+        // call below — Stop losing that race must be a no-op, not an error on screen. Only the
+        // disposed case is absorbed; anything else still surfaces.
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
     }
 
     [ObservableProperty]
@@ -500,8 +510,6 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasReDeployedLocations));
             OnPropertyChanged(nameof(OwnedBannerVisibility));
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
-            OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
-            OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
@@ -786,10 +794,9 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(EffectiveLaunchTarget));
             OnPropertyChanged(nameof(LaunchButtonLabel));
             OnPropertyChanged(nameof(CurrentLaunchMode));
-            OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
-            OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
-            // Catalog browse shares loose-identify's inputs (Nexus connection + active game domain);
-            // recompute it on every row rebuild / game switch too, or the button never appears on switch.
+            // The catalog surfaces gate on the Nexus connection plus the active game's domain, and a
+            // game switch changes both; recompute them on every row rebuild too, or the buttons never
+            // appear on switch.
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
@@ -1867,8 +1874,6 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     OnPropertyChanged(nameof(NexusActionsAvailable));
                     OnPropertyChanged(nameof(NexusActionsVisibility));
-                    OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
-                    OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
                     OnPropertyChanged(nameof(CatalogAvailable));
                     OnPropertyChanged(nameof(CatalogVisibility));
                     OnPropertyChanged(nameof(CatalogBrowseAvailable));
@@ -2044,13 +2049,6 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
-
-    /// <summary>True when the active game has rows that are identified but still missing a
-    /// description or cover art — i.e. there is something for "Get details from Nexus" to do.</summary>
-    public bool MetadataEnrichmentAvailable => NexusActionsAvailable && _ctx is not null;
-
-    public Visibility MetadataEnrichmentVisibility =>
-        MetadataEnrichmentAvailable ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>The Advanced menu's entry into <see cref="FillMissingDetailsAsync"/> — it owns the
     /// busy ring, the Stop button, and the cancellation source, which the unified identify run owns
@@ -2236,6 +2234,21 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task IdentifyMyModsAsync(string? downloadsFolder)
     {
         if (_ctx is null) return;
+
+        // The longest run in the app, behind a menu item nothing disables — the busy ring is 18px and
+        // easy to miss, so a second click is the expected mistake, not the exotic one. Two runs in
+        // flight would hand Stop only the second one's token, let the second's finally clear the busy
+        // and Stop state out from under the first, and end with both reaching ShowAsync — where the
+        // second throws "Only a single ContentDialog can be open at any time" and a whole run's
+        // proposals are discarded silently. Refuse the second run instead. Not a lock: this is the UI
+        // thread, and the only writer.
+        if (_identifyRunning)
+        {
+            StatusText = "Identify is already running — let it finish, or press Stop.";
+            return;
+        }
+        _identifyRunning = true;
+
         var ctx = _ctx!;
 
         IsBusy = true;
@@ -2352,7 +2365,7 @@ public sealed partial class MainViewModel : ObservableObject
             });
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+        finally { _identifyRunning = false; IsCancellable = false; _longOpCts = null; IsBusy = false; }
     }
 
     /// <summary>Pass 2b of the unified run: md5 the archives in a user-chosen downloads folder
@@ -2987,8 +3000,6 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusActionsAvailable));
         OnPropertyChanged(nameof(NexusActionsVisibility));
         OnPropertyChanged(nameof(NexusUserFeaturesAvailable));
-        OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
-        OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
         OnPropertyChanged(nameof(CatalogAvailable));
         OnPropertyChanged(nameof(CatalogVisibility));
         OnPropertyChanged(nameof(CatalogBrowseAvailable));

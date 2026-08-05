@@ -290,8 +290,10 @@ public class DesignLawTests
         var allow = new HashSet<string>
         {
             "CharactersEmpty", // SavesDialog: XAML fallback + conditional error override (F-027 fix shape)
-            "Blurb", // DiscoveryReviewDialog: XAML carries the mods blurb; code-behind overrides it
-                     // ONLY when every proposal is a ProxyLoader (same conditional-override shape).
+            "Blurb", // DiscoveryReviewDialog AND IdentifyReviewDialog: XAML carries the mods blurb;
+                     // code-behind overrides it ONLY when every proposal is a ProxyLoader (same
+                     // conditional-override shape). Both dialogs name it "Blurb" deliberately —
+                     // shared name, shared wording, so the two review surfaces can't drift.
         };
         var findings = new List<string>();
         foreach (var (path, xaml) in Sources("*.xaml"))

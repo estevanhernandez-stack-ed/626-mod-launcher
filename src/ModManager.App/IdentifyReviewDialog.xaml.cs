@@ -36,6 +36,10 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
             _new.Add(new IdentifyReviewRow
             {
                 Adoption = p,
+                // A loader is described as what it is rather than as an unidentified mod. Saying
+                // "not identified" about a version.dll implies we failed to name something nameable;
+                // we didn't — the name genuinely doesn't determine which loader it is. Wording is
+                // kept identical to DiscoveryReviewDialog so the two surfaces can't drift.
                 Headline = (identified, loader) switch
                 {
                     (true, _) => $"{p.Candidate.FileName} — {p.Title}",
@@ -46,7 +50,7 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
                 {
                     (AdoptionEvidence.Md5, _) => $"Exact match by file hash. {p.Candidate.RelativePath}",
                     (AdoptionEvidence.NameIndex, _) => $"Matched by name{(p.Author is null ? "" : $" · by {p.Author}")}. {p.Candidate.RelativePath}",
-                    (_, true) => $"Found at {p.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself.",
+                    (_, true) => $"Found at {p.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
                     _ => $"Found at {p.Candidate.RelativePath}. Adopt it to manage it anyway.",
                 },
                 Approve = identified,
@@ -67,6 +71,13 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
                     Detail = TrimSummary(p.Match.Summary),
                 });
         }
+
+        // A run whose whole result is loaders (Cyberpunk's bin/x64 proxies are the common case) gets
+        // copy that matches what's actually on screen. Same wording as DiscoveryReviewDialog on
+        // purpose — the two review surfaces say the same thing about the same finding.
+        if (_identified.Count == 0 && _new.Count > 0
+            && _new.All(r => r.Adoption!.Candidate.Kind == DiscoveryKind.ProxyLoader))
+            Blurb.Text = "These are mod loaders — the piece other mods ride on. Adopting one tracks it here; your files are not moved.";
 
         NewList.ItemsSource = _new;
         IdentifiedList.ItemsSource = _identified;
