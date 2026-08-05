@@ -1702,9 +1702,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// active game actually has loose-root rows to identify. The capability check IS the flavor
     /// gate — no <c>#if FULL</c>: on STORE / zero-plugins the registry is empty, so this is false
     /// and the menu item is absent.</summary>
+    // The location clause is GONE (discovery branch): LooseIdentify.Candidates was widened in Core
+    // to propose an unidentified mod wherever it sits — a Bethesda Data folder, a UE Paks folder,
+    // loose-root. Gating the menu item on a loose-root row made that widening unreachable on every
+    // other game shape. Candidates still refuses loader rows, manual pins, and anything already
+    // identified, so an empty proposal set is handled downstream, not hidden here.
     public bool LooseIdentifyAvailable => NexusActionsAvailable
         && NexusSource is IModTextSearch
-        && _allRows.Any(r => r.Mod.Location == LooseRootListing.LooseRootLocation);
+        && _allRows.Count > 0;
     public Visibility LooseIdentifyVisibility => LooseIdentifyAvailable ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Whether the active game resolves a Nexus domain (stored, or by Steam app id). The
