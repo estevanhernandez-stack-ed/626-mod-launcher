@@ -1946,10 +1946,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// opens. Mirrors <see cref="BackfillNexusAsync"/>'s own chain in the same order and with the
     /// same wording — a check that drifts from the operation it guards is worse than no check,
     /// because the user is told one thing and then fails on another. Writes the reason and returns
-    /// false when the operation cannot run; the caller simply returns.</summary>
+    /// false when the operation cannot run; the caller simply returns. The first check is deliberately
+    /// narrow (source null only) because disconnected and dark-window states have more accurate messages
+    /// on the next line via <see cref="NexusUserFeaturesAvailable"/>.</summary>
     public bool CanBackfillFromDownloads()
     {
-        if (NexusSource is null || !_nexus.IsConnected) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return false; }
+        if (NexusSource is null) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return false; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return false; }
         if (!ActiveGameHasNexusDomain) { StatusText = "This game has no Nexus domain set."; return false; }
         return true;
