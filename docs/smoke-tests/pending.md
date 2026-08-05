@@ -1206,49 +1206,90 @@ does sweep -> md5 -> fill-blanks -> name search, behind one review dialog with t
    Nexus signed out. EXPECT: `Identify my mods…` visible in BOTH; every Advanced item visible in
    both. This surface has already shipped a computed-visibility item that built fine and rendered
    permanently collapsed — absence is the regression to look for.
-2. **Guards explain rather than hide.** Signed out, click each Advanced item. EXPECT: a status line
+2. **The launcher-redetect rename didn't just change a label.** Open More and confirm the item
+   reads `Re-detect launchers & frameworks` (not the old `Re-scan mods & launchers`). Click it.
+   EXPECT: it still re-detects launch options and reports what it found — `Re-scan done — N launch
+   option(s) found` (plus `, Mod Engine 2 config linked.` when applicable), or `Re-scan done — no
+   mod launchers found.` when there's nothing new. Same handler behind a cosmetic rename, but it's
+   on the shipped list and nothing above has exercised it yet.
+3. **Guards explain rather than hide.** Signed out, click each Advanced item. EXPECT: a status line
    naming the fix ("Connect Nexus first (toolbar -> Nexus).") — and for
    `Match against my downloads folder…`, EXPECT that message with NO file picker appearing first.
    An item that vanishes when signed out teaches the user nothing; "guard, don't hide" means every
    item stays clickable and self-explains.
-3. **Both sections render, and the count is the sum.** On Cyberpunk (194 mods, ~98 identified), run
+4. **Both sections render, and the count is the sum.** On Cyberpunk (194 mods, ~98 identified), run
    `Identify my mods…` and choose a downloads folder. EXPECT both `NEW TO YOUR LIST` and
    `NOW IDENTIFIED` populated; the primary button reads `Apply N changes` where N equals the total
    checked across BOTH sections; unchecking in either section decrements it; it disables at zero.
-4. **The busy ring stays honest for the whole run — watch it, because nothing else will.** `IsBusy`
+5. **The downloads-folder cap doesn't go silent.** Point the downloads-folder picker at a folder
+   holding MORE than 100 archives (a real Downloads folder if it's that cluttered, or a temp folder
+   seeded with 100+ archive copies — either is fine, the count is what matters). Run
+   `Identify my mods…` with that folder. EXPECT the run completes rather than hanging or stalling;
+   EXPECT the status line explicitly names how many of how many it checked (the
+   "Matching your downloads folder — N of M…" progress line, and the note that follows it); EXPECT
+   that N never exceeds 100 (`DownloadsMd5Cap`). A truncated run that reports nothing reads as a
+   complete one — that silent-truncation failure is exactly what this item is hunting for.
+6. **A hash match wins, and the weaker guess never rides along.** Set up a mod that is BOTH
+   installed loose in the game folder AND has its original Nexus archive sitting in the
+   downloads folder you point the picker at. Run `Identify my mods…` on Cyberpunk with that
+   downloads folder. EXPECT that mod appears exactly ONCE across both review-dialog sections — not
+   once as an md5 match and again as a separate, weaker name-search row. Apply, then check that
+   mod's entry in `metadata.json`: EXPECT `sourceConfidence` reads `md5`, never `nameSearch`. This
+   is the one correctness property the whole branch exists to protect (`ApplyDiscoveriesAsync`
+   returns the keys it wrote so `LooseIdentify.ExcludeKeys` can filter the later, weaker pass) — a
+   silent regression here means a name guess quietly overwrites an exact file-hash match, and no
+   unit test can reach this because it's an App-layer ordering property that only shows up against
+   a live Nexus account.
+7. **The busy ring stays honest for the whole run — watch it, because nothing else will.** `IsBusy`
    is `[ObservableProperty]` state on the view model; it is unit-untestable, and it has regressed
    TWICE during this branch's fix rounds, caught only by code review, never by a test. During the
-   same full run as item 3, watch the ring continuously from the moment `Identify my mods…` starts
+   same full run as item 4, watch the ring continuously from the moment `Identify my mods…` starts
    until the review dialog opens — it must never drop, including across the fill-in-details pass
    (which internally reloads the mod list) and across the whole Nexus name search. After Apply,
    EXPECT the ring goes DOWN and stays down — a ring stuck on is the other failure mode. A human
    watching the ring for the full run is the only guard this behavior has.
-5. **An empty section disappears.** Run it again immediately. EXPECT the second run has little or
+8. **An empty section disappears.** Run it again immediately. EXPECT the second run has little or
    nothing to propose, and any section with zero rows hides its header too (no orphan
    `NOW IDENTIFIED` heading over empty space).
-6. **Fill-blanks does NOT appear in the dialog.** EXPECT no row anywhere reading like "added a
+9. **Fill-blanks does NOT appear in the dialog.** EXPECT no row anywhere reading like "added a
    description". Descriptions and cover art should simply BE there on the rows afterwards, with the
    count reported only in the status line.
-7. **Stop works mid-run and keeps what finished.** Start a run on Cyberpunk, hit Stop during the
-   `Searching Nexus — N of M…` phase. EXPECT the run ends, the review dialog still opens with what
-   completed (or a status line saying nothing finished), and the mod list is unchanged until Apply.
-8. **The status line never lies about what a stopped run did.** Two defects caught in review: a
-   stopped run claiming nothing happened when it had already written something, and a stopped run
-   claiming everything is already identified when the search that would have found more is the
-   thing that just got stopped. Run three separate stops on Cyberpunk — hit Stop during the folder
-   sweep, hit Stop during the fill-in-details pass, and hit Stop during the Nexus name search — and
-   for each, check the final status line against what actually happened (the mod list /
-   `metadata.json`, not just the words). EXPECT it never claims nothing happened when something was
-   written, and never claims everything is identified when a still-running search was the thing you
-   just cut off.
-9. **Nothing moved.** After applying, confirm the game folder listing and file timestamps are
-   unchanged. Metadata-only is the law; the first file move is still the user's first toggle.
-10. **The Advanced passes still work individually.** Run each one on its own and confirm it does its
-    single job and reports it.
+10. **Stop works mid-run and keeps what finished.** Start a run on Cyberpunk, hit Stop during the
+    `Searching Nexus — N of M…` phase. EXPECT the run ends, the review dialog still opens with what
+    completed (or a status line saying nothing finished), and the mod list is unchanged until Apply.
+11. **The status line never lies about what a stopped run did.** Two defects caught in review: a
+    stopped run claiming nothing happened when it had already written something, and a stopped run
+    claiming everything is already identified when the search that would have found more is the
+    thing that just got stopped. Run three separate stops on Cyberpunk — hit Stop during the folder
+    sweep, hit Stop during the fill-in-details pass, and hit Stop during the Nexus name search — and
+    for each, check the final status line against what actually happened (the mod list /
+    `metadata.json`, not just the words). EXPECT it never claims nothing happened when something was
+    written, and never claims everything is identified when a still-running search was the thing you
+    just cut off.
+12. **Nothing moved.** After applying, confirm the game folder listing and file timestamps are
+    unchanged. Metadata-only is the law; the first file move is still the user's first toggle.
+13. **The Advanced passes still work individually — each with its own concrete tell.**
+    - `Match against my downloads folder…`: pick a folder of archives. EXPECT
+      `Backfilled N mod(s) from M Nexus archive(s).` when at least one matches; with a folder whose
+      archives match nothing installed, EXPECT
+      `Scanned M archive(s) — no Nexus matches (must be the ORIGINAL Nexus archives for this
+      game).` — never silence, never a crash.
+    - `Refresh details from Nexus`: run it on a game where every identified mod already has a
+      description + cover art. EXPECT the status line reads
+      `Every identified mod already has its details.` and nothing changes. Run it where at least
+      one identified mod is missing details — EXPECT those rows gain a description/cover art (no
+      dialog, per item 9) and the count is on the status line.
+    - `Check CurseForge`: run it. EXPECT `Matched N of M on CurseForge` (plus
+      `, +K from Vortex/Nexus.` when Vortex-deployed mods resolved too) on a recognized game, or
+      `Couldn't resolve this game on CurseForge.` on one CurseForge doesn't know — either way, a
+      status line that says something true, never a silent no-op.
 
 **Why these matter:** every layer below the dialog is unit-tested, but the busy-ring lifecycle,
-the guard messaging over a WinUI menu-item visibility binding, and the honesty of the final status
-line under a mid-run Stop are App-VM behavior the test project can't reach. Items 4 and 8 target
-the two failure classes that review has already caught more than once on this exact branch —
-nothing says a live pass won't be the one that lets a third slip through.
+the guard messaging over a WinUI menu-item visibility binding, the downloads-folder cap's
+truncation reporting, the md5-beats-name-search apply ordering, and the honesty of the final status
+line under a mid-run Stop are all App-VM behavior the test project can't reach. Item 6 in
+particular is the single correctness property this whole branch exists to protect — it is
+Nexus-dependent and App-layer, so it can only be proven live. Items 5, 7, and 11 target failure
+classes that review has already caught on this exact branch — nothing says a live pass won't be
+the one that lets the next one slip through.
 
