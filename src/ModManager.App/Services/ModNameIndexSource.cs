@@ -19,6 +19,12 @@ public sealed class ModNameIndexSource
     private const int SeedTarget = 500;
     private const int PageSize = 50;
 
+    // Serializes the disk-touching critical section (Load/Merge/Save) — Grow runs from every
+    // catalog page browsed and every search, so overlapping calls are the expected case, not the
+    // exception. A simple lock is enough for a cache with brief contention; never held across an
+    // await (SeedAsync's network calls run unlocked — only its final Save is inside the gate).
+    private readonly object _gate = new();
+
     // Read-side only — AtomicJson.WriteJsonAtomic owns the write-side policy (its Options field is
     // private, so this can't reference it directly). Both are camelCase and therefore compatible;
     // this copy must stay in sync with AtomicJson's policy by hand. A third compatible copy lives in
@@ -72,9 +78,13 @@ public sealed class ModNameIndexSource
                 if (page.Hits.Count == 0) break;
                 index = ModNameIndex.Merge(index, page.Hits.Select(ToEntry));
             }
-            Save(dataDir, index);
         }
         catch { /* offline / rate-limited — keep whatever we already had */ }
+
+        // Persist regardless of where the loop stopped — a page-5-of-10 failure must not throw
+        // away the entries already merged from pages 1-4 and waste the network calls that fetched
+        // them. Only the disk cycle is locked; the network calls above already finished.
+        lock (_gate) { Save(dataDir, index); }
 
         return index;
     }
@@ -82,9 +92,13 @@ public sealed class ModNameIndexSource
     /// <summary>Fold hits the app saw during normal use into the index. Free — no extra calls.</summary>
     public ModNameIndex Grow(string dataDir, IEnumerable<SourceSearchHit> hits)
     {
-        var index = ModNameIndex.Merge(Load(dataDir), hits.Select(ToEntry));
-        Save(dataDir, index);
-        return index;
+        lock (_gate)
+        {
+            var index = Load(dataDir);
+            try { index = ModNameIndex.Merge(index, hits.Select(ToEntry)); Save(dataDir, index); }
+            catch { /* malformed hits — keep whatever we already had */ }
+            return index;
+        }
     }
 
     private static ModNameIndexEntry ToEntry(SourceSearchHit hit)
