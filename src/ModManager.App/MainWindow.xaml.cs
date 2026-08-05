@@ -628,8 +628,13 @@ public sealed partial class MainWindow : Window
         // the single-form path. Otherwise the existing single-game flow applies.
         if (dialog.BatchApproved.Count > 0)
         {
+            // sweep: false — a batch of N games would otherwise mean N sequential recursive discovery
+            // sweeps and up to N modal review dialogs stacked under one busy state with no cancel.
+            // Point at the manual re-run instead of running it N times unattended.
             foreach (var (input, resolvedSaveDir) in dialog.BatchApproved)
-                await ViewModel.AddGameAsync(input, resolvedSaveDir);
+                await ViewModel.AddGameAsync(input, resolvedSaveDir, sweep: false);
+            ViewModel.StatusText = $"Added {dialog.BatchApproved.Count} games. "
+                + "Use More -> Find existing mods on each to sweep for hand-installed mods.";
             return;
         }
 

@@ -1439,6 +1439,27 @@ public static class Scanner
         SaveMetadata(c, next);
     }
 
+    /// <summary>Public seam onto the archive -> mod-keys derivation <see cref="Md5IdentifyArchivesAsync"/>
+    /// uses internally: the mod keys an archive's CONTENTS would install under — extension-based via
+    /// <see cref="ZipModKeys"/>, catalog-based (fromsoft direct-inject) via
+    /// <see cref="DirectInject.MatchSignaturesInZip"/> — never the archive's own filename. A real Nexus
+    /// download is named like <c>FasterShips-42-1-0-1699999.zip</c>; keying metadata off that string
+    /// would land under a key the installed file's row never reads. Read-only (opens the archive,
+    /// never writes) and empty (not thrown) on any failure or when the contents don't map to a known
+    /// mod key. Callers that want the full identify+key+merge+save behavior in one call should use
+    /// <see cref="Md5IdentifyArchivesAsync"/> instead — this exists for callers (the discovery-adoption
+    /// review path) that must defer the write until after user approval.</summary>
+    public static IReadOnlyList<string> ArchiveModKeysFor(string zipPath, GameContext c)
+    {
+        try
+        {
+            if (c.Game.FileExtensions.Count > 0) return ZipModKeys(zipPath, c);
+            using var zip = Archive.Open(zipPath);
+            return DirectInject.MatchSignaturesInZip(zip.EntryNames);
+        }
+        catch { return Array.Empty<string>(); }
+    }
+
     // The distinct mod keys an archive contributes (its mod-classified entries -> base keys).
     private static IReadOnlyList<string> ZipModKeys(string zipPath, GameContext c)
     {

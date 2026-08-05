@@ -19,6 +19,23 @@ public sealed class ModNameIndexSource
     private const int SeedTarget = 500;
     private const int PageSize = 50;
 
+    // Same debounce window + per-game stamp convention as NexusUpdatePoll.MaybePollAsync — piggyback
+    // on the established mechanism instead of inventing a second one.
+    private static readonly TimeSpan SeedDebounce = TimeSpan.FromHours(24);
+
+    private static string SeedStampPath(string gameId) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ModManagerBuilder",
+        $"last-nameindex-seed-{Sanitize(gameId)}.txt");
+
+    // Game ids are slugs already, but keep the stamp filename safe regardless of what's in the id
+    // (mirrors NexusUpdatePoll.Sanitize).
+    private static string Sanitize(string id)
+    {
+        var chars = id.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray();
+        return new string(chars);
+    }
+
     // Serializes the disk-touching critical section (Load/Merge/Save) — Grow runs from every
     // catalog page browsed and every search, so overlapping calls are the expected case, not the
     // exception. A simple lock is enough for a cache with brief contention; never held across an
@@ -87,6 +104,30 @@ public sealed class ModNameIndexSource
         lock (_gate) { Save(dataDir, index); }
 
         return index;
+    }
+
+    /// <summary>Debounced seed for the active game — the ~24h gate <see cref="SeedAsync"/> itself
+    /// doesn't have (Task 7 shipped the seed with no caller ever gating or calling it; this closes
+    /// that gap). Mirrors <c>NexusUpdatePoll.MaybePollAsync</c>'s stamp mechanism exactly (same
+    /// window, same per-game stamp file convention under <c>%LOCALAPPDATA%\ModManagerBuilder</c>) so
+    /// the two auto-run-on-game-load checks share one throttling pattern. No-op (and does not touch
+    /// the stamp) when there's no source, no Nexus connection, or no domain for this game — comfort,
+    /// never load-bearing; every failure is swallowed the same way <see cref="SeedAsync"/> already
+    /// swallows its own.</summary>
+    public async Task MaybeSeedAsync(string dataDir, string gameId, string? gameDomain, bool nexusConnected, object? source)
+    {
+        try
+        {
+            if (!nexusConnected || source is null || string.IsNullOrWhiteSpace(gameDomain)) return;
+
+            var stampPath = SeedStampPath(gameId);
+            var last = NexusPollStamp.Read(stampPath);
+            if (!NexusPollStamp.ShouldPoll(last, DateTime.UtcNow, SeedDebounce)) return;
+
+            await SeedAsync(dataDir, gameDomain!, source);
+            NexusPollStamp.Write(stampPath, DateTime.UtcNow);
+        }
+        catch { /* comfort, not load-bearing — seeding failure never breaks the session */ }
     }
 
     /// <summary>Fold hits the app saw during normal use into the index. Free — no extra calls.</summary>
