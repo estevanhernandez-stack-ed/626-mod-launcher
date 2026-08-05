@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.Core.Discovery;
 
@@ -39,11 +40,21 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
         }
 
         RowList.ItemsSource = _rows;
-        IsPrimaryButtonEnabled = _rows.Count > 0;
+        SyncPrimary();
     }
 
     private void OnApply(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         => Approved = _rows.Where(r => r.Approve).Select(r => r.Proposal).ToList();
+
+    private void OnRowClick(object sender, RoutedEventArgs e) => SyncPrimary();
+
+    // The primary button carries the live count so "Adopt" always says exactly what it will write.
+    private void SyncPrimary()
+    {
+        var n = _rows.Count(r => r.Approve);
+        PrimaryButtonText = $"Adopt {n} mod{(n == 1 ? "" : "s")}";
+        IsPrimaryButtonEnabled = n > 0;
+    }
 }
 
 /// <summary>
