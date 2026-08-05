@@ -1,3 +1,6 @@
+using ModManager.Core.Plugins;
+using ModManager.Plugins.Abstractions;
+
 namespace ModManager.Core.Discovery;
 
 /// <summary>How strongly a discovered file was identified. Ordered best-first — this is what
@@ -15,12 +18,16 @@ public sealed record AdoptionProposal(
     int? ModId,
     string? Title,
     string? Author,
-    int? Endorsements)
+    int? Endorsements,
+    SourceIdentifyResult? Identify = null)
 {
-    /// <summary>A leftover archive matched by md5 — exact, authoritative.</summary>
-    public static AdoptionProposal FromMd5(
-        DiscoveryCandidate candidate, int modId, string? title, string? author, int? endorsements)
-        => new(candidate, AdoptionEvidence.Md5, modId, title, author, endorsements);
+    /// <summary>A leftover archive matched by md5 — exact, authoritative. Carries the full identify
+    /// result so <see cref="ToMeta"/> can route it through <see cref="SourceMetadataMapper.FromIdentify"/> —
+    /// the one writer for "md5-identify to ModMeta" — instead of hand-copying a subset of fields and
+    /// silently dropping others (Version, Downloads, Url, ...).</summary>
+    public static AdoptionProposal FromMd5(DiscoveryCandidate candidate, SourceIdentifyResult identify)
+        => new(candidate, AdoptionEvidence.Md5, identify.Ref.ModId, identify.Metadata.Title,
+            identify.Metadata.Author, identify.Metadata.Endorsements, identify);
 
     /// <summary>An extracted mod matched by name against this game's index — a proposal, not a fact.</summary>
     public static AdoptionProposal FromIndex(DiscoveryCandidate candidate, ModNameIndexEntry entry)
@@ -31,18 +38,30 @@ public sealed record AdoptionProposal(
         => new(candidate, AdoptionEvidence.None, null, null, null, null);
 
     /// <summary>The metadata to merge in on approval. Never sets <see cref="ModMeta.IsManual"/> —
-    /// an approved proposal is not a manual paste, so a stronger identify can still supersede it.</summary>
-    public ModMeta ToMeta() => new()
+    /// an approved proposal is not a manual paste, so a stronger identify can still supersede it.
+    /// The <see cref="AdoptionEvidence.Md5"/> branch delegates to <see cref="SourceMetadataMapper.FromIdentify"/>
+    /// so md5-adopted mods get every field that mapper populates (notably the installed <c>Version</c>,
+    /// without which the UPDATE chip reads a false positive on every one of them) — never hand-copied.</summary>
+    public ModMeta ToMeta()
     {
-        Title = Title,
-        Author = Author,
-        NexusModId = ModId,
-        EndorsementCount = Endorsements,
-        SourceConfidence = Evidence switch
+        if (Evidence == AdoptionEvidence.Md5 && Identify is not null)
         {
-            AdoptionEvidence.Md5 => "md5",
-            AdoptionEvidence.NameIndex => "nameSearch",
-            _ => null,
-        },
-    };
+            var meta = SourceMetadataMapper.FromIdentify(Identify);
+            meta.SourceConfidence = "md5";
+            return meta;
+        }
+
+        return new ModMeta
+        {
+            Title = Title,
+            Author = Author,
+            NexusModId = ModId,
+            EndorsementCount = Endorsements,
+            SourceConfidence = Evidence switch
+            {
+                AdoptionEvidence.NameIndex => "nameSearch",
+                _ => null,
+            },
+        };
+    }
 }
