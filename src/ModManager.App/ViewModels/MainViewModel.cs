@@ -2336,6 +2336,9 @@ public sealed partial class MainViewModel : ObservableObject
             return Array.Empty<AdoptionProposal>();
         }
 
+        // Pre-dialog snapshot for the PRE-FILTER only — deliberately not threaded into
+        // ApplyDiscoveriesAsync's own LoadMetadata read below. See that call's comment for why the
+        // two reads are intentionally separate rather than one shared snapshot.
         var existing = Scanner.LoadMetadata(ctx);
         var unmanaged = candidates.Where(c => !IsAlreadyIdentified(existing, DiscoveryBestGuessKey(c, ctx))).ToList();
         if (unmanaged.Count == 0)
@@ -2430,6 +2433,17 @@ public sealed partial class MainViewModel : ObservableObject
         // filename (a real Nexus download like "FasterShips-42-1-0-1699999.zip" would never match
         // the installed file's key). When an identified archive's contents don't map to any known
         // mod key, it expands to zero writes rather than a wrong or inert fallback key.
+        //
+        // Read AFTER review, not carried over from the propose phase (BuildDiscoveryProposalsAsync
+        // has its own, earlier LoadMetadata call for its pre-filter only — see there). Before this
+        // method existed, one `existing` snapshot taken pre-dialog was reused for this same
+        // already-identified re-check post-dialog, so the guard couldn't see anything written while
+        // the review dialog sat open on the UI dispatcher. Re-reading here narrows that window on
+        // purpose: the guard now sees anything written during the dialog, including — the reason
+        // this matters — an earlier pass of the same unified identify run (md5 adoptions apply
+        // before name-search matches; the name-search guard must observe what md5 just wrote, or
+        // LooseIdentify.ExcludeKeys' whole reason for existing is defeated). This is an intentional,
+        // signed-off behavior narrowing versus the pre-split code, not an equivalent refactor.
         var existing = Scanner.LoadMetadata(ctx);
         var writes = new List<(string ModKey, ModMeta Meta)>();
         // Tracked separately so the "nothing happened" status line (below) can say WHY instead of
