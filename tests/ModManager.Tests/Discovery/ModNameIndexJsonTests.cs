@@ -27,6 +27,10 @@ public class ModNameIndexJsonTests
         Assert.Contains("\"endorsements\"", json);
         Assert.DoesNotContain("\"ModId\"", json);
         Assert.DoesNotContain("\"Endorsements\"", json);
+        Assert.Contains("\"entries\"", json);
+        Assert.DoesNotContain("\"Entries\"", json);
+        Assert.DoesNotContain("\"Name\"", json);
+        Assert.DoesNotContain("\"Author\"", json);
 
         var back = JsonSerializer.Deserialize<ModNameIndex>(json, JsonOpts);
         Assert.NotNull(back);
