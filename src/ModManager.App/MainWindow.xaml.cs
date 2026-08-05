@@ -84,6 +84,15 @@ public sealed partial class MainWindow : Window
         // (disabling a loader-kind loose-root row); the window owns the dialog. Warn-and-proceed,
         // never a hard block — Cancel leaves the mod exactly as it was.
         ViewModel.ConfirmLooseLoaderDisable = ConfirmLooseLoaderDisableAsync;
+        // Discovery review-before-adopt is a view concern too (dialog + XamlRoot). The VM sweeps,
+        // classifies, and matches; Cancel (or an unwired delegate) means nothing gets adopted.
+        ViewModel.ReviewDiscoveries = async proposals =>
+        {
+            var dialog = new DiscoveryReviewDialog(proposals) { XamlRoot = Content.XamlRoot };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary
+                ? dialog.Approved
+                : Array.Empty<ModManager.Core.Discovery.AdoptionProposal>();
+        };
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
         ViewModel.PropertyChanged += (_, args) =>
@@ -1074,6 +1083,10 @@ public sealed partial class MainWindow : Window
     }
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
+
+    // Manual re-run of the discovery sweep (the first-add run is automatic and silent-on-empty).
+    // The VM sweeps + classifies + matches; the review dialog is already wired via ReviewDiscoveries.
+    private async void OnFindExistingMods(object sender, RoutedEventArgs e) => await ViewModel.DiscoverExistingModsAsync(auto: false);
 
     // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
     private async void OnNexusBackfill(object sender, RoutedEventArgs e)

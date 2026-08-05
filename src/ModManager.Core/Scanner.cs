@@ -153,6 +153,14 @@ public static class Scanner
         };
     }
 
+    /// <summary>Public seam onto <see cref="ModKey"/>: the exact filename -> mod-key formula the
+    /// md5 identify paths use (<see cref="Md5IdentifyAsync"/>, <see cref="ZipModKeys"/> via
+    /// <c>Variant.ParseVariant(ModKey(name, c)).Base</c>). App-side callers that need to write
+    /// metadata for a bare filename the regular scan will also see (e.g. the discovery-adoption
+    /// path) must key off this, not a hand-rolled extension strip — otherwise the written entry
+    /// lands under a key the row builder never looks up.</summary>
+    public static string ModKeyFor(string filename, GameContext c) => Variant.ParseVariant(ModKey(filename, c)).Base;
+
     private static IReadOnlyList<string> SafeReadFiles(string dir)
     {
         try { return Directory.GetFiles(dir).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList(); }

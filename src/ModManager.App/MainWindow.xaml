@@ -91,6 +91,12 @@
                                     <FontIcon Glyph="&#xE72C;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Find existing mods…" Click="OnFindExistingMods"
+                                            ToolTipService.ToolTip="Sweep this game's folder for mods you installed by hand — review before anything is added, nothing is moved">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE773;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem Text="Fetch metadata for all mods" Command="{x:Bind ViewModel.FetchMetadataCommand}"
                                             ToolTipService.ToolTip="Re-fetch metadata from CurseForge for every mod (best-effort).">

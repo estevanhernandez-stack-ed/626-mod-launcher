@@ -57,6 +57,10 @@ public partial class App : Application
                 services.AddSingleton<NexusUpdatePoll>();
                 services.AddSingleton<RemoteManifestSource>();
                 services.AddSingleton<RestorePointService>();
+                // Find-what's-already-there discovery: read-only sweep + the per-game Nexus name
+                // index it identifies against.
+                services.AddSingleton<Services.DiscoveryScanService>();
+                services.AddSingleton<Services.ModNameIndexSource>();
                 // The contribution sink loaded plugins register their mod sources into. Empty when no
                 // plugin loads (the Store SKU + the zero-plugins path) — every consumer tolerates empty.
                 services.AddSingleton<ModSourceRegistry>();
