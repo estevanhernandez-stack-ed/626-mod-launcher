@@ -66,5 +66,6 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `VanillaStash` vanilla-stash.json (`src/ModManager.Core/VanillaLaunch.cs`)
 - `NexusOAuthConfig` nexus-oauth-cache.json (`src/ModManager.Core/Nexus/NexusOAuthConfig.cs` — `JsonOpts`; written/read via `src/ModManager.App/Services/NexusOAuthConfigSource.cs`)
 - `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — hand-built camelCase JSON, atomic temp+rename; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs`)
+- `ModNameIndex` nexus-name-index.json (`src/ModManager.Core/Discovery/ModNameIndex.cs` — per-game Nexus name cache; written via `AtomicJson` by `ModNameIndexSource`)
 
 If you're adding a new on-disk shape and it isn't in this list, add it.
