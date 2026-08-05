@@ -497,6 +497,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
             OnPropertyChanged(nameof(LooseIdentifyAvailable));
             OnPropertyChanged(nameof(LooseIdentifyVisibility));
+            OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
+            OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
@@ -778,6 +780,8 @@ public sealed partial class MainViewModel : ObservableObject
             // the Nexus connection — recompute after every row rebuild / game switch.
             OnPropertyChanged(nameof(LooseIdentifyAvailable));
             OnPropertyChanged(nameof(LooseIdentifyVisibility));
+            OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
+            OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
             // Catalog browse shares loose-identify's inputs (Nexus connection + active game domain);
             // recompute it on every row rebuild / game switch too, or the button never appears on switch.
             OnPropertyChanged(nameof(CatalogAvailable));
@@ -1875,6 +1879,8 @@ public sealed partial class MainViewModel : ObservableObject
                     OnPropertyChanged(nameof(NexusActionsVisibility));
                     OnPropertyChanged(nameof(LooseIdentifyAvailable));
                     OnPropertyChanged(nameof(LooseIdentifyVisibility));
+                    OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
+                    OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
                     OnPropertyChanged(nameof(CatalogAvailable));
                     OnPropertyChanged(nameof(CatalogVisibility));
                     OnPropertyChanged(nameof(CatalogBrowseAvailable));
@@ -2672,6 +2678,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusUserFeaturesAvailable));
         OnPropertyChanged(nameof(LooseIdentifyAvailable));
         OnPropertyChanged(nameof(LooseIdentifyVisibility));
+        OnPropertyChanged(nameof(MetadataEnrichmentAvailable));
+        OnPropertyChanged(nameof(MetadataEnrichmentVisibility));
         OnPropertyChanged(nameof(CatalogAvailable));
         OnPropertyChanged(nameof(CatalogVisibility));
         OnPropertyChanged(nameof(CatalogBrowseAvailable));
