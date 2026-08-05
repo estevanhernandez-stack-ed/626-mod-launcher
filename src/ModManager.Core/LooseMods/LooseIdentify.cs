@@ -140,4 +140,18 @@ public static class LooseIdentify
         meta.SourceConfidence = "nameSearch";
         return meta;
     }
+
+    /// <summary>Drop approved name-search pairs whose key a STRONGER pass already wrote in this
+    /// run. An archive's md5 write keys come from its contents and resolve only at apply time
+    /// (<c>Scanner.ArchiveModKeysFor</c>), so a name-search proposal for the same row clears every
+    /// propose-time filter. The run applies md5 first and calls this before applying name-search
+    /// results — an exact hash match must never be replaced by a name guess.</summary>
+    public static IReadOnlyList<(string ModKey, SourceSearchHit Hit)> ExcludeKeys(
+        IReadOnlyList<(string ModKey, SourceSearchHit Hit)> approved, IEnumerable<string> alreadyWritten)
+    {
+        // Built here rather than taken as a set so a case-sensitive caller collection cannot
+        // silently defeat the exclusion — mod keys are compared case-insensitively everywhere else.
+        var written = new HashSet<string>(alreadyWritten, StringComparer.OrdinalIgnoreCase);
+        return approved.Where(a => !written.Contains(a.ModKey)).ToList();
+    }
 }

@@ -381,4 +381,40 @@ public class LooseIdentifyTests
         Assert.Empty(proposals);
         Assert.Equal(0, calls);
     }
+
+    // ---- ExcludeKeys: the strong pass wins inside a single run ----
+
+    // An archive's md5 write keys resolve only at apply time, so a name-search proposal for the
+    // same row survives every propose-time filter. Applying md5 first and filtering here is what
+    // stops a guess from overwriting an exact match.
+    [Fact]
+    public void Keys_already_written_by_a_stronger_pass_are_dropped()
+    {
+        var approved = new[]
+        {
+            ("EquipmentEx", Hit("Equipment-EX", 1)),
+            ("GoneAway", Hit("Gone Away", 2)),
+        };
+
+        var kept = LooseIdentify.ExcludeKeys(approved, new[] { "EquipmentEx" });
+
+        var one = Assert.Single(kept);
+        Assert.Equal("GoneAway", one.ModKey);
+    }
+
+    [Fact]
+    public void Key_exclusion_ignores_case()
+    {
+        var approved = new[] { ("EquipmentEx", Hit("Equipment-EX", 1)) };
+
+        Assert.Empty(LooseIdentify.ExcludeKeys(approved, new[] { "equipmentex" }));
+    }
+
+    [Fact]
+    public void Excluding_against_nothing_keeps_every_approved_pair()
+    {
+        var approved = new[] { ("A", Hit("A", 1)), ("B", Hit("B", 2)) };
+
+        Assert.Equal(2, LooseIdentify.ExcludeKeys(approved, Array.Empty<string>()).Count);
+    }
 }
