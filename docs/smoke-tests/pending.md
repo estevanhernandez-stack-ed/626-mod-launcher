@@ -1229,16 +1229,21 @@ does sweep -> md5 -> fill-blanks -> name search, behind one review dialog with t
    "Matching your downloads folder — N of M…" progress line, and the note that follows it); EXPECT
    that N never exceeds 100 (`DownloadsMd5Cap`). A truncated run that reports nothing reads as a
    complete one — that silent-truncation failure is exactly what this item is hunting for.
-6. **A hash match wins, and the weaker guess never rides along.** Set up a mod that is BOTH
-   installed loose in the game folder AND has its original Nexus archive sitting in the
-   downloads folder you point the picker at. Run `Identify my mods…` on Cyberpunk with that
-   downloads folder. EXPECT that mod appears exactly ONCE across both review-dialog sections — not
-   once as an md5 match and again as a separate, weaker name-search row. Apply, then check that
-   mod's entry in `metadata.json`: EXPECT `sourceConfidence` reads `md5`, never `nameSearch`. This
-   is the one correctness property the whole branch exists to protect (`ApplyDiscoveriesAsync`
-   returns the keys it wrote so `LooseIdentify.ExcludeKeys` can filter the later, weaker pass) — a
-   silent regression here means a name guess quietly overwrites an exact file-hash match, and no
-   unit test can reach this because it's an App-layer ordering property that only shows up against
+6. **A hash match wins at write time — the dialog itself will show the mod twice, and that's
+   correct.** Set up a mod that is BOTH installed loose in the game folder AND has its original
+   Nexus archive sitting in the downloads folder you point the picker at. Run
+   `Identify my mods…` on Cyberpunk with that downloads folder. EXPECT the review dialog to show
+   that mod as TWO pre-checked rows — one under `NEW TO YOUR LIST` (the md5 hit) and one under
+   `NOW IDENTIFIED` (the independent name-search guess). That double listing is NOT a bug: the two
+   passes propose independently on purpose, because filtering the archive out at propose time would
+   cost the md5 tier its shot at an exact identification. The real pass bar is what happens after
+   Apply — check that mod's entry in `metadata.json`: EXPECT exactly ONE entry, and EXPECT
+   `sourceConfidence` reads `md5`, never `nameSearch`. That's the one correctness property the whole
+   branch exists to protect (`ApplyDiscoveriesAsync` returns the keys it wrote so
+   `LooseIdentify.ExcludeKeys` can filter the weaker pass at write time) — a silent regression here
+   means a name guess quietly overwrites an exact file-hash match, and the `sourceConfidence` value
+   is the tell, not the row count in the dialog. No unit test can reach this because it's an
+   App-layer ordering property that only shows up against
    a live Nexus account.
 7. **The busy ring stays honest for the whole run — watch it, because nothing else will.** `IsBusy`
    is `[ObservableProperty]` state on the view model; it is unit-untestable, and it has regressed
