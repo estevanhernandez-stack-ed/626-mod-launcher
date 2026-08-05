@@ -110,15 +110,19 @@ public sealed class ModNameIndexSource
     /// doesn't have (Task 7 shipped the seed with no caller ever gating or calling it; this closes
     /// that gap). Mirrors <c>NexusUpdatePoll.MaybePollAsync</c>'s stamp mechanism exactly (same
     /// window, same per-game stamp file convention under <c>%LOCALAPPDATA%\ModManagerBuilder</c>) so
-    /// the two auto-run-on-game-load checks share one throttling pattern. No-op (and does not touch
-    /// the stamp) when there's no source, no Nexus connection, or no domain for this game — comfort,
-    /// never load-bearing; every failure is swallowed the same way <see cref="SeedAsync"/> already
-    /// swallows its own.</summary>
-    public async Task MaybeSeedAsync(string dataDir, string gameId, string? gameDomain, bool nexusConnected, object? source)
+    /// the two auto-run-on-game-load checks share one throttling pattern — including the SAME
+    /// <paramref name="autoCheckEnabled"/> setting <c>NexusUpdatePoll.MaybePollAsync</c> gates on
+    /// (<c>AppSettingsService.AutoCheckModUpdates</c>). A user who turned auto-check off shouldn't
+    /// have this seed still make up to 10 sequential catalog requests per game per day behind their
+    /// back — same preference, not a second toggle to discover. No-op (and does not touch the stamp)
+    /// when auto-check is off, or there's no source, no Nexus connection, or no domain for this game
+    /// — comfort, never load-bearing; every failure is swallowed the same way <see cref="SeedAsync"/>
+    /// already swallows its own.</summary>
+    public async Task MaybeSeedAsync(string dataDir, string gameId, string? gameDomain, bool nexusConnected, bool autoCheckEnabled, object? source)
     {
         try
         {
-            if (!nexusConnected || source is null || string.IsNullOrWhiteSpace(gameDomain)) return;
+            if (!autoCheckEnabled || !nexusConnected || source is null || string.IsNullOrWhiteSpace(gameDomain)) return;
 
             var stampPath = SeedStampPath(gameId);
             var last = NexusPollStamp.Read(stampPath);

@@ -782,8 +782,10 @@ public sealed partial class MainViewModel : ObservableObject
             // Same debounce shape, different payload: seed the per-game Nexus name index so the
             // discovery sweep's tier-2 match actually has something to match against. Task 7 shipped
             // SeedAsync with no caller ever gating or calling it — ModNameIndexSource.MaybeSeedAsync
-            // closes that gap using the exact NexusPollStamp mechanism MaybePollAsync uses.
-            _ = _nameIndex.MaybeSeedAsync(ctx.DataDir, ctx.Game.Id, NexusDomains.Effective(ctx.Game), _nexus.IsConnected, NexusSource);
+            // closes that gap using the exact NexusPollStamp mechanism MaybePollAsync uses, gated on
+            // the SAME AutoCheckModUpdates setting MaybePollAsync checks (a user who turned auto-check
+            // off shouldn't still get up to 10 catalog requests per game per day for this).
+            _ = _nameIndex.MaybeSeedAsync(ctx.DataDir, ctx.Game.Id, NexusDomains.Effective(ctx.Game), _nexus.IsConnected, _appSettings.AutoCheckModUpdates, NexusSource);
         }
     }
 
@@ -2215,7 +2217,17 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var meta = p.ToMeta();
             foreach (var key in await DiscoveryWriteKeysAsync(p, ctx))
+            {
+                // The candidate-level pre-filter above can't see this key for an archive proposal —
+                // ArchiveModKeysFor only resolves it here, at write time. Re-check it before writing:
+                // a stale leftover archive (an old v1.0 download still sitting next to a correctly
+                // identified, updated v2.0 install) would otherwise md5-identify successfully and
+                // overwrite the row's Version with the stale one (SourceMetadataMapper.FromIdentify
+                // sets Version = the archive's own version, and MergeMeta lets the "new" hit win),
+                // planting a permanent false UPDATE chip on a row that was correct before the sweep.
+                if (IsAlreadyIdentified(existing, key)) continue;
                 writes.Add((key, Scanner.MergeMeta(existing.GetValueOrDefault(key) ?? new ModMeta(), meta)));
+            }
         }
 
         if (writes.Count == 0)
