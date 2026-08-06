@@ -372,4 +372,47 @@ public class NexusRefreshSweepTests
         // wiped to null.
         Assert.True(result.Updated[0].Endorsed);   // preserved through the failed best-effort call
     }
+
+    // ---- A stats refresh must not destroy what it cannot see ----
+
+    // Nexus's per-user update flag arrives ONLY on a search hit. A stats refresh fetches by mod id
+    // and is never told it, so it must preserve it. Overlay rebuilds ModMeta from an explicit field
+    // list and WriteManyMeta replaces the on-disk entry wholesale, so a field missing from that list
+    // is silently erased — and the toolbar Refresh button runs this path over every identified row.
+    [Fact]
+    public async Task A_stats_refresh_preserves_the_nexus_update_flag()
+    {
+        var metas = new[] { new ModMeta { NexusModId = 1, NexusUpdateAvailable = true } };
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(10, 20L, "2.1", null, null)));
+
+        var result = await NexusRefresh.RefreshAllAsync(metas, "cyberpunk2077", fake, NoDelay);
+
+        Assert.True(result.Updated.Single().NexusUpdateAvailable);
+    }
+
+    // The general guard, so the NEXT field added to ModMeta cannot be dropped the same way: when the
+    // source reports nothing at all, a refresh has learned nothing and must therefore be an IDENTITY
+    // on the entry. Reflection over every property means a new one is covered the day it is added,
+    // without anyone remembering to extend a test.
+    [Fact]
+    public async Task A_refresh_that_learns_nothing_changes_nothing()
+    {
+        var original = new ModMeta
+        {
+            Title = "T", Description = "D", Author = "A", AuthorUrl = "AU", Url = "U", Source = "S",
+            Donate = "DO", Image = "I", Downloads = 5, CurseforgeId = 7, Category = "C",
+            IsManual = true, InstalledUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            SourceConfidence = "md5", EndorsementCount = 9, Version = "1.0", Available = true,
+            ContainsAdultContent = false, NexusModId = 1, NexusFileId = 2,
+            NexusLatestVersion = "1.0", Endorsed = true, NexusUpdateAvailable = true,
+        };
+        var fake = new FakeSource(_ => Task.FromResult<SourceModMetadata?>(
+            new SourceModMetadata(null, null, null, null, null)));
+
+        var back = (await NexusRefresh.RefreshAllAsync(new[] { original }, "d", fake, NoDelay)).Updated.Single();
+
+        foreach (var prop in typeof(ModMeta).GetProperties())
+            Assert.Equal(prop.GetValue(original), prop.GetValue(back));
+    }
 }

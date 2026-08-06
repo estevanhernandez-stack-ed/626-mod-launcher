@@ -286,6 +286,11 @@ public static class NexusRefresh
         NexusFileId = existing.NexusFileId,   // installed file — NOT the upstream latest
         Version = existing.Version,           // installed version — the "what you have" side
         Endorsed = existing.Endorsed,         // persisted user intent (like IsManual) — preserved, never recomputed-or-wiped
+        // Nexus's per-user update flag arrives ONLY on a search hit; a by-mod-id fetch is never told
+        // it. Preserved verbatim for the same reason as Endorsed — a refresh that was not told
+        // something must not conclude the opposite. Omitting it made this method erase the flag on
+        // every identified row, and the toolbar Refresh button runs this path over all of them.
+        NexusUpdateAvailable = existing.NexusUpdateAvailable,
 
         // live stats — refreshed from the fetched metadata
         EndorsementCount = dto.Endorsements ?? existing.EndorsementCount,
