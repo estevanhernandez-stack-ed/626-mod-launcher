@@ -151,49 +151,39 @@ public class NameMatchTests
         Assert.Empty(NameMatch.QueryLadder(null));
     }
 
-    // ---- Title coverage: the shape Jaccard is structurally bad at ----
-    // A filename that CONTAINS the mod's title plus extra words the title never had. Jaccard is
-    // symmetric, so every extra filename word counts against the mod it belongs to.
+    // ---- Verbose filenames stay UNMATCHED, deliberately ----
+    // A filename that contains a mod's title plus extra words the title never had scores badly on
+    // Jaccard, because Jaccard is symmetric and every extra word counts against the true owner. A
+    // title-coverage fallback was tried for this and REVERTED: measured against real data it
+    // attached the wrong mod to two of three files, because once you stop counting the extra words
+    // the true owner and a wrong sibling become indistinguishable — both are full token subsets of
+    // the filename, and only word ORDER separates them, which no set-based score can see.
     //
-    // The fixture here is synthetic ON PURPOSE. This rule was first written against six real
-    // "Apartment Cats" filenames whose true owner we had not yet confirmed, and the assertions
-    // encoded a wrong-mod attach as the goal. See docs/2026-08-05-backlog.md section C for the
-    // measured real case; a test must never assert a misattribution as correct.
+    // So this is the honest state: we match nothing here rather than match wrong. False silence is
+    // acceptable; false accusation is not. The contiguous-run rule that would resolve it is backlog
+    // C6, with the measurement and the evidence behind it.
 
     [Fact]
-    public void A_verbose_filename_still_finds_the_title_it_contains()
+    public void A_filename_that_buries_its_title_in_extra_words_is_left_unmatched()
     {
-        // The title is fully spoken by the filename; the extra words are the author's own suffix.
-        // Long enough that Jaccard rejects the true owner (3/7 = 0.43) — so this exercises the
-        // coverage path, not the primary rule.
+        // 3 shared of 7 union = 0.43 — below threshold, and correctly so: on real data the
+        // alternative accepted a sibling mod with the same score.
         var picked = NameMatch.PickBestMatch("Quiet Footsteps Redux Leather Boots Variant Extra",
             new[] { new Cand("Quiet Footsteps Redux"), new Cand("Loud Doors") }, c => c.Name);
-
-        Assert.Equal("Quiet Footsteps Redux", picked?.Name);
-    }
-
-    [Fact]
-    public void A_tie_on_coverage_is_not_a_match()
-    {
-        // Two candidates the query covers equally well (1.00 each), with Jaccard rejecting both
-        // (2/6 = 0.33) — the evidence does not choose, so neither wins.
-        var picked = NameMatch.PickBestMatch("Alpha Beta Gamma Delta Epsilon Zeta",
-            new[] { new Cand("Alpha Beta"), new Cand("Gamma Delta") }, c => c.Name);
 
         Assert.Null(picked);
     }
 
-    // A one-word title would score a perfect 1.00 against any query containing that word.
+    // Where the title is most of what the filename says, the ordinary rule still lands it — the
+    // revert costs us only the cases that were never safely decidable.
     [Fact]
-    public void A_single_word_title_can_never_win_on_coverage()
-        => Assert.Null(NameMatch.PickBestMatch("Alpha Beta Gamma Delta",
-            new[] { new Cand("Delta"), new Cand("Gamma") }, c => c.Name));
+    public void A_filename_that_mostly_IS_its_title_still_matches()
+    {
+        var picked = NameMatch.PickBestMatch("Quiet Footsteps Redux Boots",
+            new[] { new Cand("Quiet Footsteps Redux"), new Cand("Loud Doors") }, c => c.Name);
 
-    // One shared common word is not evidence either.
-    [Fact]
-    public void A_single_shared_token_can_never_win_on_coverage()
-        => Assert.Null(NameMatch.PickBestMatch("Alpha Beta Gamma Delta",
-            new[] { new Cand("Delta Everywhere") }, c => c.Name));
+        Assert.Equal("Quiet Footsteps Redux", picked?.Name);
+    }
 
     // The primary rule still governs whenever it can decide — coverage is a fallback, not a
     // replacement, so a clear Jaccard winner is never second-guessed.
