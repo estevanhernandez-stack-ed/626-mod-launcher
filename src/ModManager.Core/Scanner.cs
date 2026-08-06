@@ -176,6 +176,26 @@ public static class Scanner
     private static IReadOnlyList<string> ListPakFiles(string dir, GameContext c)
         => SafeReadFiles(dir).Where(n => c.FileRe.IsMatch(n)).ToList();
 
+    /// <summary>
+    /// Files that belong to <paramref name="modFile"/> rather than standing on their own: the whole
+    /// mod filename, then a dot, then more (<c>Foo.archive</c> owns <c>Foo.archive.xl</c>).
+    ///
+    /// <para>These wear an extension the game's config never lists, so they are invisible to
+    /// <see cref="ListPakFiles"/> — and invisible is the bug. <c>Mod.Files</c> is what disable moves
+    /// to holding, what uninstall deletes, and what load-order renames; a sidecar left out of it gets
+    /// stranded pointing at a file that moved, left behind as debris after an uninstall, and desynced
+    /// from its archive the moment a load-order prefix lands. ArchiveXL resolves a <c>.xl</c> BY its
+    /// archive's name, so the pairing has to survive all three.</para>
+    ///
+    /// <para>The match requires the full filename followed by a dot, never a bare prefix — otherwise
+    /// <c>Cool.archive</c> would adopt <c>CoolExtra.archive</c>, quietly swallowing a different mod
+    /// into this one's toggle.</para>
+    /// </summary>
+    internal static IEnumerable<string> SidecarsFor(string modFile, IReadOnlyList<string> allFiles)
+        => allFiles.Where(n => n.Length > modFile.Length
+                               && n[modFile.Length] == '.'
+                               && n.StartsWith(modFile, StringComparison.OrdinalIgnoreCase));
+
     // Pak files in a dir as (name, sizeBytes) — used by the paks-root branch to classify base vs mod.
     // Separate from ListPakFiles (name-only, relied on by other callers) so neither changes the other.
     private static IReadOnlyList<(string Name, long Size)> ListPakFilesWithSize(string dir, GameContext c)
@@ -266,6 +286,9 @@ public static class Scanner
                         .Select(p => p.Name)
                     : ListPakFiles(loc.Abs, c);
 
+                // Read the directory ONCE for sidecar matching — a sidecar wears an extension the
+                // game's config never lists, so it can't come from ListPakFiles.
+                var allInDir = SafeReadFiles(loc.Abs);
                 foreach (var f in pakFiles)
                 {
                     var k = ModKey(f, c);
@@ -279,6 +302,7 @@ public static class Scanner
                         outMap[k] = mod;
                     }
                     mod.Files.Add(f);
+                    foreach (var sidecar in SidecarsFor(f, allInDir)) mod.Files.Add(sidecar);
                 }
             }
         }
