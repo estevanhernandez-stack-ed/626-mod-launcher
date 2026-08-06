@@ -75,6 +75,11 @@ public static class ModUpdateSummary
             if (string.IsNullOrWhiteSpace(latest)) continue; // never polled (or blank) — doesn't count as checked
             checkedAny = true;
             if (latest == m.Version) continue; // up to date
+            // Unknown installed version: we polled this row (so it stays CHECKED above) but we cannot
+            // say it is behind. Mirrors Mod.UpdateAvailable — the chip and this badge read the same
+            // persisted fields and must never disagree. A name-search identify leaves Version null by
+            // design, so without this the badge counts every identified mod as pending.
+            if (string.IsNullOrWhiteSpace(m.Version)) continue;
 
             var modName = string.IsNullOrWhiteSpace(m.Title) ? key : m.Title;
             pending.Add(new PendingUpdate(gameId, gameName, key, modName, m.Version, latest,

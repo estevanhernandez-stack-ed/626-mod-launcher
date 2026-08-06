@@ -65,8 +65,20 @@ public sealed class Mod
     /// <para>A blank/whitespace latest counts as NOT fetched, not as a difference. A blank string is not a
     /// version, so claiming an update for it would put an UPDATE chip on a mod with nothing to update to —
     /// and it would disagree with <c>ModUpdateSummary</c>, which drives the library badge and the updates
-    /// view off the same persisted field. The chip and the badge must always agree.</para></summary>
-    public bool UpdateAvailable => !string.IsNullOrWhiteSpace(NexusLatestVersion) && NexusLatestVersion != Version;
+    /// view off the same persisted field. The chip and the badge must always agree.</para>
+    ///
+    /// <para>An unknown INSTALLED version is likewise not an update. A name-search identify deliberately
+    /// never writes <see cref="Version"/> — matching by name establishes WHICH mod this is, never which
+    /// FILE is on disk — and the by-mod-id enrichment pass then writes <see cref="NexusLatestVersion"/>.
+    /// Without this clause the comparison runs between a real upstream version and nothing, differs
+    /// always, and lights the chip on every identified row at once. Live smoke on a 98-mod library hit
+    /// exactly that, and the reason it survived is that "everything needs updating" is PLAUSIBLE to
+    /// someone returning to an old install — a false positive shaped like the truth never gets reported.
+    /// Not knowing what is installed is a reason to stay quiet, not a reason to claim a difference.</para></summary>
+    public bool UpdateAvailable =>
+        !string.IsNullOrWhiteSpace(NexusLatestVersion)
+        && !string.IsNullOrWhiteSpace(Version)
+        && NexusLatestVersion != Version;
 }
 
 /// <summary>A per-game metadata.json entry: the real title/credit/links for a mod base.</summary>
