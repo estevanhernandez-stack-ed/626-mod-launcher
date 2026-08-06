@@ -132,13 +132,59 @@ public static partial class NameMatch
         where T : class
     {
         var q = Tokens(query);
+        var list = (candidates ?? Enumerable.Empty<T>()).ToList();
         T? best = null;
         double bestScore = 0;
-        foreach (var c in candidates ?? Enumerable.Empty<T>())
+        foreach (var c in list)
         {
             var s = Jaccard(q, Tokens(name(c)));
             if (s > bestScore) { bestScore = s; best = c; }
         }
-        return bestScore >= threshold ? best : null;
+        if (bestScore >= threshold) return best;
+
+        return BestByTitleCoverage(q, list, name);
+    }
+
+    /// <summary>
+    /// Fallback for the shape Jaccard is structurally bad at: a filename that CONTAINS the mod's
+    /// title plus extra words the title never had.
+    ///
+    /// <para>Measured on a live library — <c>#ApartmentCatsCustoms_Glen_GreyTiger</c> against the
+    /// real title "Apartment Cats - The Glen" scores 0.43 Jaccard and is rejected, because
+    /// "Customs", "Grey" and "Tiger" all count against it. But the query covers 3 of the title's 4
+    /// words, and no other candidate comes close. Jaccard is symmetric and so penalises a verbose
+    /// filename; what we actually want to ask is "how much of this TITLE did the filename say?"</para>
+    ///
+    /// <para>Three guards, because this rule is deliberately more permissive than the primary one:
+    /// the winner must be STRICT (any tie means the evidence does not distinguish the candidates —
+    /// the same measurement rejected two genuinely ambiguous rows that Jaccard also rejected, and
+    /// they should stay rejected); it must share at least two tokens, so one common word can never
+    /// carry a match; and the title itself must be at least two tokens, or a mod called "Cats"
+    /// would score a perfect 1.00 against every query mentioning cats.</para>
+    /// </summary>
+    private static T? BestByTitleCoverage<T>(IReadOnlyCollection<string> q, List<T> candidates, Func<T, string?> name)
+        where T : class
+    {
+        const double CoverageFloor = 0.75;
+        const int MinShared = 2;
+
+        T? best = null;
+        double bestCoverage = 0;
+        var tied = false;
+
+        foreach (var c in candidates)
+        {
+            var title = new HashSet<string>(Tokens(name(c)));
+            if (title.Count < MinShared) continue;         // a one-word title is not evidence
+
+            var shared = q.Distinct().Count(title.Contains);
+            if (shared < MinShared) continue;
+
+            var coverage = (double)shared / title.Count;
+            if (coverage > bestCoverage) { bestCoverage = coverage; best = c; tied = false; }
+            else if (coverage == bestCoverage && best is not null) tied = true;
+        }
+
+        return !tied && bestCoverage >= CoverageFloor ? best : null;
     }
 }

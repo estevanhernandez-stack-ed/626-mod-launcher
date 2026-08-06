@@ -149,4 +149,68 @@ public class NameMatchTests
         Assert.Empty(NameMatch.QueryLadder("   "));
         Assert.Empty(NameMatch.QueryLadder(null));
     }
+
+    // ---- Title coverage: the shape Jaccard is structurally bad at ----
+    // A filename that CONTAINS the mod's title plus extra words the title never had. Jaccard is
+    // symmetric, so every extra filename word counts against the match. Measured live: these six
+    // real Apartment Cats titles vs the six real filenames on disk.
+
+    private static readonly Cand[] ApartmentCats =
+    {
+        new("Apartment Cats - Dogtown"), new("Apartment Cats - Custom Cats"),
+        new("Apartment Cats - Japantown"), new("Apartment Cats - Northside Motel"),
+        new("Apartment Cats - Corpo Plaza"), new("Apartment Cats - The Glen"),
+    };
+
+    [Theory]
+    [InlineData("#ApartmentCatsCustoms_Dogtown_Black", "Apartment Cats - Dogtown")]        // 0.60 jaccard, already passed
+    [InlineData("#ApartmentCatsCustoms_Corpo_BlackAndWhite", "Apartment Cats - Corpo Plaza")] // 0.38 jaccard, 0.75 coverage
+    [InlineData("#ApartmentCatsCustoms_Glen_GreyTiger", "Apartment Cats - The Glen")]      // 0.43 jaccard, 0.75 coverage
+    [InlineData("#ApartmentCatsCustoms_Motel_OrangeWhite", "Apartment Cats - Northside Motel")]
+    public void A_verbose_filename_still_finds_the_title_it_contains(string fileName, string expected)
+    {
+        var query = NameMatch.CleanModName(fileName);
+
+        Assert.Equal(expected, NameMatch.PickBestMatch(query, ApartmentCats, c => c.Name)?.Name);
+    }
+
+    // The two rows this same measurement CANNOT distinguish must stay rejected. Both tie three ways
+    // on coverage, so the evidence genuinely does not pick a winner — guessing would be worse than
+    // leaving them for the user.
+    [Theory]
+    [InlineData("#ApartmentCatsCustoms_Base")]                 // ties Dogtown / Custom Cats / Japantown
+    [InlineData("#ApartmentCatsCustoms_Japan_OrangeTiger")]     // "japan" is not "japantown"
+    public void A_tie_on_coverage_is_not_a_match(string fileName)
+        => Assert.Null(NameMatch.PickBestMatch(NameMatch.CleanModName(fileName), ApartmentCats, c => c.Name));
+
+    // A one-word title would score a perfect 1.00 against any query containing that word.
+    [Fact]
+    public void A_single_word_title_can_never_win_on_coverage()
+    {
+        var picked = NameMatch.PickBestMatch("Apartment Cats Customs Glen Grey Tiger",
+            new[] { new Cand("Cats"), new Cand("Tiger") }, c => c.Name);
+
+        Assert.Null(picked);
+    }
+
+    // One shared common word is not evidence either.
+    [Fact]
+    public void A_single_shared_token_can_never_win_on_coverage()
+    {
+        var picked = NameMatch.PickBestMatch("Apartment Cats Customs Glen Grey Tiger",
+            new[] { new Cand("Cats Everywhere") }, c => c.Name);
+
+        Assert.Null(picked);
+    }
+
+    // The primary rule still governs whenever it can decide — coverage is a fallback, not a
+    // replacement, so a clear Jaccard winner is never second-guessed.
+    [Fact]
+    public void A_clear_jaccard_winner_is_still_chosen_first()
+    {
+        var picked = NameMatch.PickBestMatch("Faster Ships",
+            new[] { new Cand("Faster Ships"), new Cand("Faster Ships Deluxe Overhaul Edition") }, c => c.Name);
+
+        Assert.Equal("Faster Ships", picked?.Name);
+    }
 }
