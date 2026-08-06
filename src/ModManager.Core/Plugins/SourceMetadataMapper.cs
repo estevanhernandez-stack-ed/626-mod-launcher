@@ -53,6 +53,9 @@ public static class SourceMetadataMapper
         Downloads = hit.DownloadCount,
         EndorsementCount = hit.EndorsementCount,
         NexusModId = hit.ModId,
+        // ONLY a search hit carries this — the by-mod-id metadata fetch does not. Dropping it
+        // here is what left rows silent about updates the browse cards were already showing.
+        NexusUpdateAvailable = hit.ViewerUpdateAvailable,
     };
 
     public static ModMeta Apply(ModMeta meta, SourceModMetadata dto)

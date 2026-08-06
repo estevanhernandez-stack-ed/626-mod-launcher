@@ -95,4 +95,104 @@ public class NameMatchTests
     [Fact]
     public void Widened_splitter_still_keeps_every_real_token()
         => Assert.Equal("Faster Ships", NameMatch.CleanModName("FasterShips_P.pak"));
+
+    // ---- QueryLadder: search broad, score narrow ----
+    // Live case, Cyberpunk: a filename carries every word its author used, and searching all of
+    // them upstream returns ZERO hits when several appear nowhere in the mod's title. Searching
+    // the leading two words returns it immediately. The ladder is about RETRIEVAL only — which
+    // candidates we get to score — and says nothing about which one is correct.
+
+    [Fact]
+    public void The_ladder_broadens_toward_the_words_a_title_actually_shares()
+    {
+        var query = NameMatch.CleanModName("#ApartmentCatsCustoms_Dogtown_Black.archive");
+        Assert.Equal("Apartment Cats Customs Dogtown Black", query);
+
+        var ladder = NameMatch.QueryLadder(query);
+
+        Assert.Equal(new[]
+        {
+            "Apartment Cats Customs Dogtown Black",  // as-is first — a precise name should win outright
+            "Apartment Cats Customs",
+            "Apartment Cats",                        // the rung that actually returns hits
+        }, ladder);
+    }
+
+    // The broadening is retrieval only. The last rung must still score against the FULL name, and
+    // that pairing has to clear the threshold — otherwise widening the search buys nothing.
+    [Fact]
+    public void The_full_name_still_scores_the_hit_that_the_broad_rung_retrieved()
+    {
+        var query = NameMatch.CleanModName("#QuietFootstepsRedux_Leather_Boots.archive");
+
+        var hit = NameMatch.PickBestMatch(query, new[]
+        {
+            new Cand("Quiet Footsteps Redux"),
+            new Cand("Something Entirely Else"),
+        }, c => c.Name);
+
+        Assert.Equal("Quiet Footsteps Redux", hit?.Name);
+    }
+
+    [Theory]
+    [InlineData("One Two Three Four Five", new[] { "One Two Three Four Five", "One Two Three", "One Two" })]
+    [InlineData("One Two Three Four", new[] { "One Two Three Four", "One Two Three", "One Two" })]
+    [InlineData("One Two Three", new[] { "One Two Three", "One Two" })]
+    [InlineData("One Two", new[] { "One Two" })]          // already at the floor
+    [InlineData("Solo", new[] { "Solo" })]                // one word: search it, never widen below two
+    public void The_ladder_never_repeats_a_rung_and_never_goes_below_two_words(string clean, string[] expected)
+        => Assert.Equal(expected, NameMatch.QueryLadder(clean));
+
+    [Fact]
+    public void An_empty_name_yields_no_search_at_all()
+    {
+        Assert.Empty(NameMatch.QueryLadder(""));
+        Assert.Empty(NameMatch.QueryLadder("   "));
+        Assert.Empty(NameMatch.QueryLadder(null));
+    }
+
+    // ---- Verbose filenames stay UNMATCHED, deliberately ----
+    // A filename that contains a mod's title plus extra words the title never had scores badly on
+    // Jaccard, because Jaccard is symmetric and every extra word counts against the true owner. A
+    // title-coverage fallback was tried for this and REVERTED: measured against real data it
+    // attached the wrong mod to two of three files, because once you stop counting the extra words
+    // the true owner and a wrong sibling become indistinguishable — both are full token subsets of
+    // the filename, and only word ORDER separates them, which no set-based score can see.
+    //
+    // So this is the honest state: we match nothing here rather than match wrong. False silence is
+    // acceptable; false accusation is not. The contiguous-run rule that would resolve it is backlog
+    // C6, with the measurement and the evidence behind it.
+
+    [Fact]
+    public void A_filename_that_buries_its_title_in_extra_words_is_left_unmatched()
+    {
+        // 3 shared of 7 union = 0.43 — below threshold, and correctly so: on real data the
+        // alternative accepted a sibling mod with the same score.
+        var picked = NameMatch.PickBestMatch("Quiet Footsteps Redux Leather Boots Variant Extra",
+            new[] { new Cand("Quiet Footsteps Redux"), new Cand("Loud Doors") }, c => c.Name);
+
+        Assert.Null(picked);
+    }
+
+    // Where the title is most of what the filename says, the ordinary rule still lands it — the
+    // revert costs us only the cases that were never safely decidable.
+    [Fact]
+    public void A_filename_that_mostly_IS_its_title_still_matches()
+    {
+        var picked = NameMatch.PickBestMatch("Quiet Footsteps Redux Boots",
+            new[] { new Cand("Quiet Footsteps Redux"), new Cand("Loud Doors") }, c => c.Name);
+
+        Assert.Equal("Quiet Footsteps Redux", picked?.Name);
+    }
+
+    // The primary rule still governs whenever it can decide — coverage is a fallback, not a
+    // replacement, so a clear Jaccard winner is never second-guessed.
+    [Fact]
+    public void A_clear_jaccard_winner_is_still_chosen_first()
+    {
+        var picked = NameMatch.PickBestMatch("Faster Ships",
+            new[] { new Cand("Faster Ships"), new Cand("Faster Ships Deluxe Overhaul Edition") }, c => c.Name);
+
+        Assert.Equal("Faster Ships", picked?.Name);
+    }
 }

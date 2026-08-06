@@ -69,6 +69,9 @@ public static partial class Metadata
             m.Category = e?.Category;
             m.Version = e?.Version;
             m.NexusLatestVersion = e?.NexusLatestVersion;
+            // Nexus's own per-user update flag. Outranks the version compare on the row —
+            // see Mod.UpdateAvailable for why an authoritative flag beats a string diff.
+            m.NexusUpdateAvailable = e?.NexusUpdateAvailable;
             m.Endorsed = e?.Endorsed;
             m.HasMeta = e is not null;
             if (e is null && m.Builtin && Ue4ssBuiltins.Lookup(m.Name) is { } b)

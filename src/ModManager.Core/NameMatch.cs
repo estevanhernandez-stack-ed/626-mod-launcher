@@ -73,6 +73,40 @@ public static partial class NameMatch
         return WsRe().Replace(string.Join(" ", kept), " ").Trim();
     }
 
+    /// <summary>
+    /// Progressively broader search queries for one cleaned mod name, widest match first.
+    ///
+    /// <para>SEARCH BROAD, SCORE NARROW. Upstream mod search wants a few central words; a filename
+    /// hands us every token the author used, including ones that appear nowhere in the mod's title.
+    /// Live example: the file <c>#ApartmentCatsCustoms_Dogtown_Black</c> cleans to
+    /// "Apartment Cats Customs Dogtown Black", which returns ZERO hits — while "apartment cat"
+    /// returns the mod. Neither "Customs" nor "Black" is in the title "Apartment Cats - Dogtown".</para>
+    ///
+    /// <para>The scoring was never the problem: that pair scores 0.6 against
+    /// <see cref="PickBestMatch{T}"/>'s 0.5 threshold and would have matched comfortably. We simply
+    /// never got a candidate to score. So the caller searches with these rungs and scores with the
+    /// FULL name — broadening the retrieval must never broaden the acceptance.</para>
+    ///
+    /// <para>Rungs are leading token prefixes (a mod name leads with its distinctive part), never
+    /// shorter than two tokens — a one-word search returns noise, and a spurious 0.5 is worse than
+    /// no match. Capped at three rungs: each one is an API call against the user's personal
+    /// key.</para>
+    /// </summary>
+    public static IReadOnlyList<string> QueryLadder(string? cleanName)
+    {
+        var words = (cleanName ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return Array.Empty<string>();
+
+        var rungs = new List<string> { string.Join(' ', words) };
+        foreach (var take in new[] { 3, 2 })
+        {
+            if (take >= words.Length) continue;   // never re-issue the full query
+            var rung = string.Join(' ', words.Take(take));
+            if (!rungs.Contains(rung, StringComparer.OrdinalIgnoreCase)) rungs.Add(rung);
+        }
+        return rungs;
+    }
+
     private static List<string> Tokens(string? s) =>
         NonAlnumRe().Replace((s ?? "").ToLowerInvariant(), " ").Trim()
             .Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -107,4 +141,5 @@ public static partial class NameMatch
         }
         return bestScore >= threshold ? best : null;
     }
+
 }

@@ -266,6 +266,83 @@ public class LooseIdentifyTests
         Assert.False(new Mod { NexusLatestVersion = meta.NexusLatestVersion, Version = meta.Version }.UpdateAvailable);
     }
 
+    // ---- The query ladder: retrieval broadens, acceptance does not ----
+
+    // The live Cyberpunk shape: the full cleaned name returns nothing upstream because several of
+    // the filename's words appear nowhere in the mod's title; a shorter rung finds it. This asserts
+    // RETRIEVAL — which rungs are issued and that a hit found late still comes back — not which mod
+    // is the correct owner. (The real Apartment Cats files turned out to belong to a single mod; see
+    // docs/2026-08-05-backlog.md section C. Fixture kept synthetic so no test claims otherwise.)
+    [Fact]
+    public async Task A_query_too_specific_to_hit_falls_back_to_a_broader_one()
+    {
+        var rows = new List<Mod> { Row("QuietFootstepsRedux_Leather_Boots", "plugin") };
+        var asked = new List<string>();
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, query =>
+        {
+            asked.Add(query);
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(
+                query == "Quiet Footsteps"
+                    ? new[] { Hit("Quiet Footsteps Redux", 7), Hit("Loud Doors", 9) }
+                    : Array.Empty<SourceSearchHit>());
+        });
+
+        Assert.Equal("Quiet Footsteps Redux", Assert.Single(proposals).Match?.Name);
+        Assert.Equal(new[]
+        {
+            "Quiet Footsteps Redux Leather Boots",
+            "Quiet Footsteps Redux",
+            "Quiet Footsteps",
+        }, asked);
+    }
+
+    // Broadening is a fallback, not a habit — a name that hits on the nose costs exactly one call.
+    [Fact]
+    public async Task A_query_that_hits_immediately_never_widens()
+    {
+        var rows = new List<Mod> { Row("SuperFasterShipsDeluxeEdition", "plugin") };
+        var asked = new List<string>();
+
+        await LooseIdentify.ProposeAsync(rows, query =>
+        {
+            asked.Add(query);
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit("Super Faster Ships Deluxe Edition", 1) });
+        });
+
+        Assert.Single(asked);
+    }
+
+    // Each rung is an API call against the user's personal key, so a hopeless row is bounded.
+    [Fact]
+    public async Task A_hopeless_query_costs_at_most_the_ladder()
+    {
+        var rows = new List<Mod> { Row("SuperFasterShipsDeluxeEdition", "plugin") };
+        var asked = new List<string>();
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, query =>
+        {
+            asked.Add(query);
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>());
+        });
+
+        Assert.Equal(3, asked.Count);
+        Assert.Null(Assert.Single(proposals).Match);
+    }
+
+    // Hits that score badly must not be laundered into a match by widening — the threshold is the
+    // acceptance rule and the ladder never touches it.
+    [Fact]
+    public async Task Broadening_retrieval_never_lowers_the_bar_for_accepting_a_hit()
+    {
+        var rows = new List<Mod> { Row("SuperFasterShipsDeluxeEdition", "plugin") };
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, _ =>
+            Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit("Totally Unrelated Thing", 3) }));
+
+        Assert.Null(Assert.Single(proposals).Match);
+    }
+
     // ---- ProposeAsync at real-library scale (a hand-modded Cyberpunk install is ~200 rows) ----
 
     private static List<Mod> Many(int n) =>
@@ -380,5 +457,79 @@ public class LooseIdentifyTests
 
         Assert.Empty(proposals);
         Assert.Equal(0, calls);
+    }
+
+    // ---- ExcludeKeys: the strong pass wins inside a single run ----
+
+    // An archive's md5 write keys resolve only at apply time, so a name-search proposal for the
+    // same row survives every propose-time filter. Applying md5 first and filtering here is what
+    // stops a guess from overwriting an exact match.
+    [Fact]
+    public void Keys_already_written_by_a_stronger_pass_are_dropped()
+    {
+        var approved = new[]
+        {
+            ("EquipmentEx", Hit("Equipment-EX", 1)),
+            ("GoneAway", Hit("Gone Away", 2)),
+        };
+
+        var kept = LooseIdentify.ExcludeKeys(approved, new[] { "EquipmentEx" });
+
+        var one = Assert.Single(kept);
+        Assert.Equal("GoneAway", one.ModKey);
+    }
+
+    [Fact]
+    public void Key_exclusion_ignores_case()
+    {
+        var approved = new[] { ("EquipmentEx", Hit("Equipment-EX", 1)) };
+
+        Assert.Empty(LooseIdentify.ExcludeKeys(approved, new[] { "equipmentex" }));
+    }
+
+    [Fact]
+    public void Excluding_against_nothing_keeps_every_approved_pair()
+    {
+        var approved = new[] { ("A", Hit("A", 1)), ("B", Hit("B", 2)) };
+
+        Assert.Equal(2, LooseIdentify.ExcludeKeys(approved, Array.Empty<string>()).Count);
+    }
+
+    // ---- A throttled key must not be reported as "no matches" ----
+
+    // The bare catch treated SourceRateLimitException like any other search failure: Match = null
+    // for that row, then carry on. Once the key is throttled every remaining row fails the same
+    // way, so the user is shown a dialog saying dozens of mods have no confident match — a false
+    // negative caused by throttling, presented as a finding. Stop the run instead and say why.
+    [Fact]
+    public async Task A_rate_limit_stops_the_run_rather_than_reporting_false_misses()
+    {
+        var calls = 0;
+        var limited = false;
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(60), _ =>
+        {
+            if (Interlocked.Increment(ref calls) > 5) throw new SourceRateLimitException();
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>());
+        }, maxConcurrency: 1, onRateLimited: () => limited = true);
+
+        Assert.True(limited, "the caller was never told it was throttled");
+        Assert.True(proposals.Count < 60, $"run continued past the limit ({proposals.Count} of 60 proposed)");
+    }
+
+    // Only the rate limit aborts. Any other failure is still that one row's problem.
+    [Fact]
+    public async Task An_ordinary_search_failure_still_does_not_abort_the_run()
+    {
+        var limited = false;
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(10), query =>
+            query.Contains("004", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("upstream blew up")
+                : Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit(query) }),
+            onRateLimited: () => limited = true);
+
+        Assert.False(limited);
+        Assert.Equal(10, proposals.Count);
     }
 }

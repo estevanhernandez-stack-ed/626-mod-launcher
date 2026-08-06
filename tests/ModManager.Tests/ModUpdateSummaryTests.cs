@@ -169,4 +169,173 @@ public class ModUpdateSummaryTests
         Assert.False(g2.Checked);
         Assert.Equal(0, g2.Count);
     }
+
+    // ---- An unknown installed version is not an update ----
+    // Found by live smoke on a 98-mod Cyberpunk library: every row wore an UPDATE chip. A
+    // name-search identify deliberately never writes Version (a name match says WHICH mod, never
+    // which FILE is installed), then the by-id enrichment pass writes NexusLatestVersion — so the
+    // comparison ran between a real upstream version and nothing, which always differs.
+    //
+    // The failure mode is what makes it dangerous: "everything needs updating" is PLAUSIBLE to a
+    // user returning to an old library, so a false positive here reads as truth and never gets
+    // reported. Acting on it re-downloads mods that were already current.
+
+    [Fact]
+    public void A_mod_with_no_installed_version_is_never_pending()
+    {
+        var c = Fixture("updatesummary-noinstalled-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            // Exactly the shape the identify-then-enrich path produces.
+            ["NameSearched"] = new() { NexusModId = 1, NexusLatestVersion = "2.1", Version = null },
+            ["BlankInstalled"] = new() { NexusModId = 2, NexusLatestVersion = "2.1", Version = "   " },
+            ["Genuine"] = new() { NexusModId = 3, NexusLatestVersion = "2.1", Version = "1.0" },
+        });
+
+        var g = ModUpdateSummary.ForGame(c.Game);
+
+        // Only the row whose installed version we actually know can be pending.
+        Assert.Equal(1, g.Count);
+        Assert.Equal("Genuine", g.Pending.Single().ModKey);
+    }
+
+    // We DID poll those rows, so the game still counts as checked — "unknown installed" is a gap in
+    // what we know about the mod, not a gap in whether we looked.
+    [Fact]
+    public void Polled_rows_still_count_as_checked_even_when_none_can_be_pending()
+    {
+        var c = Fixture("updatesummary-checkednopending-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["A"] = new() { NexusModId = 1, NexusLatestVersion = "2.1", Version = null },
+        });
+
+        var g = ModUpdateSummary.ForGame(c.Game);
+
+        Assert.True(g.Checked);
+        Assert.Equal(0, g.Count);
+    }
+
+    // ---- Nexus's own per-user flag outranks the version compare ----
+    // Nexus knows which FILE the user downloaded; we often do not. The browse cards were already
+    // showing "Update available" for mods whose rows had gone silent, because the flag arrives only
+    // on a search hit and we were discarding it.
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_nexus_flag_wins_over_an_impossible_version_compare(bool flag)
+    {
+        // Installed version unknown — the local compare can say nothing either way.
+        var mod = new Mod { Version = null, NexusLatestVersion = "2.1", NexusUpdateAvailable = flag };
+
+        Assert.Equal(flag, mod.UpdateAvailable);
+    }
+
+    [Fact]
+    public void The_nexus_flag_also_overrides_a_version_compare_that_would_say_otherwise()
+    {
+        // Versions match, so the compare would say "current" — but Nexus says an update exists
+        // (a newer FILE under the same version string is a real case).
+        var saysYes = new Mod { Version = "1.0", NexusLatestVersion = "1.0", NexusUpdateAvailable = true };
+        Assert.True(saysYes.UpdateAvailable);
+
+        // And the reverse: versions differ, but Nexus says the user is current.
+        var saysNo = new Mod { Version = "1.0", NexusLatestVersion = "2.1", NexusUpdateAvailable = false };
+        Assert.False(saysNo.UpdateAvailable);
+    }
+
+    [Fact]
+    public void Without_the_flag_the_version_compare_still_governs()
+    {
+        Assert.True(new Mod { Version = "1.0", NexusLatestVersion = "2.1" }.UpdateAvailable);
+        Assert.False(new Mod { Version = null, NexusLatestVersion = "2.1" }.UpdateAvailable);
+    }
+
+    // New persisted field: camelCase on disk and a real round trip (repo rule for every on-disk shape).
+    [Fact]
+    public void NexusUpdateAvailable_round_trips_as_camelCase()
+    {
+        var c = Fixture("updatesummary-roundtrip-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, NexusUpdateAvailable = true },
+        });
+
+        var json = File.ReadAllText(Path.Combine(c.DataDir, "metadata.json"));
+        Assert.Contains("\"nexusUpdateAvailable\"", json);
+        Assert.DoesNotContain("\"NexusUpdateAvailable\"", json);
+
+        Assert.True(Scanner.LoadMetadata(c)["K"].NexusUpdateAvailable);
+    }
+
+    // The badge must honour the SAME three-input rule as the chip, including the Nexus flag. Without
+    // this the two disagree in exactly the case the flag exists for: a name-search identify leaves
+    // Version null, so the chip lights from the flag while the badge — reading only the version
+    // compare — counts nothing, and the user opens an Updates view that is empty.
+    [Theory]
+    // flag absent: the version compare governs, as before
+    [InlineData(null, "2.1", null, false)]
+    [InlineData("1.0", "2.1", null, true)]
+    [InlineData("1.0", "1.0", null, false)]
+    // flag present: it outranks the compare, in BOTH directions
+    [InlineData(null, "2.1", true, true)]    // unknown installed — the case the flag exists for
+    [InlineData("1.0", "1.0", true, true)]   // versions match, Nexus still says behind
+    [InlineData("1.0", "2.1", false, false)] // versions differ, Nexus says current
+    [InlineData(null, null, true, true)]     // told, with no version information at all
+    public void Chip_and_badge_agree_including_the_nexus_flag(string? installed, string? latest, bool? flag, bool expected)
+    {
+        var mod = new Mod { Version = installed, NexusLatestVersion = latest, NexusUpdateAvailable = flag };
+        Assert.Equal(expected, mod.UpdateAvailable);
+
+        var c = Fixture("updatesummary-flagparity-" + Guid.NewGuid().ToString("N")[..8] + "-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, Version = installed, NexusLatestVersion = latest, NexusUpdateAvailable = flag },
+        });
+
+        Assert.Equal(expected, ModUpdateSummary.ForGame(c.Game).Count == 1);
+    }
+
+    // Being TOLD is a form of having looked: a row we have a flag for counts the game as checked
+    // even when no version was ever fetched, or "0 updates" would render as "never checked".
+    [Fact]
+    public void A_flag_with_no_versions_still_counts_the_game_as_checked()
+    {
+        var c = Fixture("updatesummary-flagchecked-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, NexusUpdateAvailable = false },
+        });
+
+        var g = ModUpdateSummary.ForGame(c.Game);
+
+        Assert.True(g.Checked);
+        Assert.Equal(0, g.Count);
+    }
+
+    // The chip and the badge read the same persisted fields and must never disagree — Mod.UpdateAvailable
+    // says so in its own doc comment. Pin them together so a fix to one can't drift from the other.
+    [Theory]
+    [InlineData(null, "2.1", false)]   // installed unknown -> cannot claim an update
+    [InlineData("", "2.1", false)]
+    [InlineData("   ", "2.1", false)]
+    [InlineData("1.0", "2.1", true)]   // both known and different -> genuine update
+    [InlineData("2.1", "2.1", false)]  // both known and equal -> current
+    [InlineData("1.0", null, false)]   // never polled
+    [InlineData("1.0", "   ", false)]  // blank upstream is the same as never polled
+    public void Chip_and_badge_agree_on_every_version_pairing(string? installed, string? latest, bool expected)
+    {
+        var mod = new Mod { Version = installed, NexusLatestVersion = latest };
+
+        Assert.Equal(expected, mod.UpdateAvailable);
+
+        var c = Fixture("updatesummary-parity-" + Guid.NewGuid().ToString("N")[..8] + "-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, Version = installed, NexusLatestVersion = latest },
+        });
+
+        Assert.Equal(expected, ModUpdateSummary.ForGame(c.Game).Count == 1);
+    }
 }

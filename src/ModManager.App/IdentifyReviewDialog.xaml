@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.IdentifyReviewDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ModManager.App"
+    PrimaryButtonText="Apply"
+    CloseButtonText="Cancel"
+    DefaultButton="Close"
+    AutomationProperties.Name="Identify my mods">
+
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="LIBRARY // IDENTIFY" FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       AutomationProperties.AccessibilityView="Raw"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Identify my mods" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
+    <ScrollViewer MaxHeight="480" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
+            <!-- Text is re-set in the code-behind when the whole set is loaders (see Blurb). -->
+            <TextBlock x:Name="Blurb" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}"
+                       FontSize="{StaticResource BodyFontSize}"
+                       Text="Here's what we found. No identity is saved until you apply, and no file is moved either way." />
+
+            <TextBlock x:Name="NewHeader" Text="NEW TO YOUR LIST" FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <ItemsControl x:Name="NewList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="local:IdentifyReviewRow">
+                        <Grid ColumnSpacing="{StaticResource SpaceS}" Padding="0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" IsChecked="{x:Bind Approve, Mode=TwoWay}"
+                                      AutomationProperties.Name="{x:Bind Headline}" VerticalAlignment="Top"
+                                      Click="OnRowClick" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="{x:Bind Headline}" TextWrapping="Wrap"
+                                           Foreground="{StaticResource ThemeInk}" />
+                                <TextBlock Text="{x:Bind Detail}" TextWrapping="Wrap"
+                                           FontSize="{StaticResource MetaFontSize}"
+                                           Foreground="{StaticResource ThemeInkDim}" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock x:Name="IdentifiedHeader" Text="NOW IDENTIFIED" FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <ItemsControl x:Name="IdentifiedList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="local:IdentifyReviewRow">
+                        <Grid ColumnSpacing="{StaticResource SpaceS}" Padding="0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" IsChecked="{x:Bind Approve, Mode=TwoWay}"
+                                      AutomationProperties.Name="{x:Bind Headline}" VerticalAlignment="Top"
+                                      Visibility="{x:Bind CheckboxVisibility}" Click="OnRowClick" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="{x:Bind Headline}" TextWrapping="Wrap"
+                                           Foreground="{StaticResource ThemeInk}" />
+                                <TextBlock Text="{x:Bind Detail}" TextWrapping="Wrap"
+                                           FontSize="{StaticResource MetaFontSize}"
+                                           Foreground="{StaticResource ThemeInkDim}"
+                                           Visibility="{x:Bind DetailVisibility}" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

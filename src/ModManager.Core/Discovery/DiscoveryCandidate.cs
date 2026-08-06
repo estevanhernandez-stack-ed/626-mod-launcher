@@ -14,8 +14,18 @@ namespace ModManager.Core.Discovery;
 /// and never guessed at.</summary>
 public enum DiscoveryKind { Signature, EngineShaped, Archive, ProxyLoader }
 
-/// <summary>One thing the sweep claims might be a mod. Paths are RELATIVE to the swept root,
-/// so Core never sees an absolute path (pure-core law).</summary>
+/// <summary>One thing the sweep claims might be a mod. For anything <see cref="DiscoverySweep"/>
+/// produced, <paramref name="RelativePath"/> is RELATIVE to the swept root — Core resolves nothing
+/// against the filesystem, and the sweep's own skip / mod-path matching REQUIRES the relative form.
+///
+/// <para>One caller legitimately supplies an ABSOLUTE path: the App's downloads-folder pass, where
+/// the user points at a folder that normally lives outside the game root (often on another drive),
+/// so no relative form exists. Those candidates are constructed in the App and never fed back
+/// through <see cref="DiscoverySweep"/>; the two places that resolve a candidate to disk are both
+/// App-side and both go through <c>Path.Combine(root, RelativePath)</c>, which returns an
+/// already-rooted second argument unchanged. Core still resolves nothing — it only carries the
+/// string and hands it to the UI to display. If you add a Core consumer that JOINS this path to a
+/// root or assumes it stays inside one, handle the rooted case explicitly.</para></summary>
 public sealed record DiscoveryCandidate(string RelativePath, string FileName, DiscoveryKind Kind);
 
 /// <summary>A file the caller enumerated during the sweep, relative to the swept root, with its

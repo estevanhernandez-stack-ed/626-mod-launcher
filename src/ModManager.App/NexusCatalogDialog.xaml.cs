@@ -12,7 +12,7 @@ namespace ModManager.App;
 /// (the SAME open-URL call the "Find mods" menu uses). No client-side filtering: adult/mature content is
 /// excluded server-side in the plugin, so the dialog just renders what it receives. States are simple —
 /// Initial → Loading → (results | Empty); SearchCatalogAsync never throws, so a real attempt with no hits
-/// is just Empty. Mirrors <see cref="LooseIdentifyDialog"/>'s ctor(VM) + ShowAsync pattern.
+/// is just Empty. Follows the repo's established ctor(VM) + ShowAsync dialog pattern.
 /// </summary>
 public sealed partial class NexusCatalogDialog : ContentDialog
 {

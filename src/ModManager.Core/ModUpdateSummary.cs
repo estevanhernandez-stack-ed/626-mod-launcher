@@ -4,7 +4,7 @@ namespace ModManager.Core;
 
 /// <summary>One mod with a newer version available on Nexus than what's installed.</summary>
 public sealed record PendingUpdate(string GameId, string GameName, string ModKey, string ModName,
-    string? InstalledVersion, string LatestVersion, int? NexusModId, string? NexusDomain);
+    string? InstalledVersion, string? LatestVersion, int? NexusModId, string? NexusDomain);
 
 /// <summary>What we know about one game's updates, from its already-persisted metadata.json alone.
 /// <see cref="Checked"/> = false means the game has never had a Nexus refresh — that is NOT the same
@@ -25,8 +25,9 @@ public sealed record GameUpdateSummary(string GameId, string GameName, bool Chec
 /// Refresh). This type only reports what's already on disk, so the Library badge and the cross-game
 /// Updates view can answer "what needs updating" without any new network traffic or file-system walk.
 ///
-/// The pending rule mirrors <see cref="Mod.UpdateAvailable"/> exactly (latest present and different
-/// from installed), with one addition: a blank (whitespace-only) <c>NexusLatestVersion</c> is treated
+/// The pending rule mirrors <see cref="Mod.UpdateAvailable"/> exactly — Nexus's own per-user flag
+/// when we have it, the installed-vs-latest compare when we do not, silence when neither is
+/// known — with one addition: a blank (whitespace-only) <c>NexusLatestVersion</c> is treated
 /// the same as null — never pending, and never enough on its own to flip <see cref="GameUpdateSummary.Checked"/>
 /// to true. That keeps a stray empty string from ever being misread as "this game was checked."
 /// </summary>
@@ -72,9 +73,22 @@ public static class ModUpdateSummary
         foreach (var (key, m) in meta)
         {
             var latest = m.NexusLatestVersion;
-            if (string.IsNullOrWhiteSpace(latest)) continue; // never polled (or blank) — doesn't count as checked
+            var polled = !string.IsNullOrWhiteSpace(latest);
+            // Being TOLD is a form of having looked. A row carrying Nexus's own per-user flag counts
+            // the game as checked even when no version was ever fetched — otherwise "0 updates"
+            // renders as "never checked", which is the exact honesty distinction this type exists for.
+            if (!polled && m.NexusUpdateAvailable is null) continue;
             checkedAny = true;
-            if (latest == m.Version) continue; // up to date
+
+            // MIRRORS Mod.UpdateAvailable EXACTLY — three inputs, same precedence. The chip and this
+            // badge read the same persisted fields, so a divergence shows the user an UPDATE chip and
+            // then an empty Updates view. Nexus's flag outranks the compare because Nexus knows which
+            // FILE the user downloaded and we often do not; the compare governs only when we were
+            // never told; and an unknown installed version can never be "behind", because not knowing
+            // what you have is a reason to stay quiet rather than a difference.
+            var behind = m.NexusUpdateAvailable
+                ?? (polled && !string.IsNullOrWhiteSpace(m.Version) && latest != m.Version);
+            if (!behind) continue;
 
             var modName = string.IsNullOrWhiteSpace(m.Title) ? key : m.Title;
             pending.Add(new PendingUpdate(gameId, gameName, key, modName, m.Version, latest,

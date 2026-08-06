@@ -227,8 +227,7 @@ Create `src/ModManager.App/IdentifyReviewDialog.xaml`:
     PrimaryButtonText="Apply"
     CloseButtonText="Cancel"
     DefaultButton="Close"
-    AutomationProperties.Name="Identify my mods"
-    PrimaryButtonClick="OnApply">
+    AutomationProperties.Name="Identify my mods">
 
     <ContentDialog.Title>
         <StackPanel Spacing="6">
@@ -394,7 +393,10 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
     public IReadOnlyList<(string ModKey, SourceSearchHit Hit)> ApprovedIdentifications()
         => _identified.Where(r => r.Approve && r.Hit is not null).Select(r => (r.ModKey, r.Hit!)).ToList();
 
-    private void OnApply(ContentDialog sender, ContentDialogButtonClickEventArgs args) { /* results read via the Approved* methods */ }
+    // No PrimaryButtonClick handler on purpose. DiscoveryReviewDialog needs one because it exposes
+    // its result as a PROPERTY that has to be snapshotted before the dialog closes; this dialog
+    // exposes METHODS, and the row lists outlive ShowAsync, so the caller reads them after the
+    // ContentDialogResult comes back. An empty handler here would be dead code.
 
     private void OnRowClick(object sender, RoutedEventArgs e)
     {

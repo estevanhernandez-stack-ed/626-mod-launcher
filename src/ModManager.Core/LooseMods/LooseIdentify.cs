@@ -82,7 +82,8 @@ public static class LooseIdentify
         Func<string, Task<IReadOnlyList<SourceSearchHit>>> search,
         int maxConcurrency = DefaultConcurrency,
         IProgress<LooseIdentifyProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action? onRateLimited = null)
     {
         if (candidates.Count == 0) return Array.Empty<LooseIdentifyProposal>();
 
@@ -91,6 +92,10 @@ public static class LooseIdentify
         var slots = new LooseIdentifyProposal?[candidates.Count];
         var next = -1;
         var completed = 0;
+        // Set by whichever worker meets the throttle first; read by all of them so the run winds
+        // down instead of every remaining row failing identically. 0/1 rather than bool so the
+        // notification can be raised exactly once via Interlocked.
+        var throttled = 0;
 
         async Task WorkerAsync()
         {
@@ -98,17 +103,40 @@ public static class LooseIdentify
             {
                 var index = Interlocked.Increment(ref next);
                 if (index >= candidates.Count || ct.IsCancellationRequested) return;
+                if (Volatile.Read(ref throttled) == 1) return;
 
                 var query = NameMatch.CleanModName(candidates[index].Base);
                 SourceSearchHit? match = null;
                 try
                 {
-                    var hits = await search(query).ConfigureAwait(false);
-                    match = NameMatch.PickBestMatch(query, hits, h => h.Name);
+                    // SEARCH BROAD, SCORE NARROW. A filename carries every word the author used,
+                    // including ones absent from the mod's title, and upstream search returns
+                    // nothing for a query like that — so the precise name is tried first and the
+                    // ladder only widens when it came back with nothing usable. Scoring always runs
+                    // against the FULL query, so widening what we RETRIEVE never widens what we
+                    // ACCEPT: a rung that pulls back fifty loosely-related mods still has to clear
+                    // PickBestMatch's threshold against the original name.
+                    foreach (var rung in NameMatch.QueryLadder(query))
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        var hits = await search(rung).ConfigureAwait(false);
+                        match = NameMatch.PickBestMatch(query, hits, h => h.Name);
+                        if (match is not null) break; // stop paying for calls the moment one lands
+                    }
+                }
+                catch (SourceRateLimitException)
+                {
+                    // NOT an ordinary failure. Treated as one, every remaining row comes back empty
+                    // and the review dialog tells the user dozens of mods have "no confident match"
+                    // — a false negative caused by throttling, presented as a finding. Stop the run
+                    // and let the caller say why; a row we never asked about must not be reported as
+                    // a row we asked about and got nothing for.
+                    if (Interlocked.Exchange(ref throttled, 1) == 0) onRateLimited?.Invoke();
+                    return;
                 }
                 catch
                 {
-                    // A throwing search delegate must never take down the whole run — this row
+                    // Any OTHER throwing search must never take down the whole run — this row
                     // simply gets no proposal; every other candidate still gets its own attempt.
                     match = null;
                 }
@@ -139,5 +167,19 @@ public static class LooseIdentify
         var meta = Plugins.SourceMetadataMapper.FromSearchHit(hit);
         meta.SourceConfidence = "nameSearch";
         return meta;
+    }
+
+    /// <summary>Drop approved name-search pairs whose key a STRONGER pass already wrote in this
+    /// run. An archive's md5 write keys come from its contents and resolve only at apply time
+    /// (<c>Scanner.ArchiveModKeysFor</c>), so a name-search proposal for the same row clears every
+    /// propose-time filter. The run applies md5 first and calls this before applying name-search
+    /// results — an exact hash match must never be replaced by a name guess.</summary>
+    public static IReadOnlyList<(string ModKey, SourceSearchHit Hit)> ExcludeKeys(
+        IReadOnlyList<(string ModKey, SourceSearchHit Hit)> approved, IEnumerable<string> alreadyWritten)
+    {
+        // Built here rather than taken as a set so a case-sensitive caller collection cannot
+        // silently defeat the exclusion — mod keys are compared case-insensitively everywhere else.
+        var written = new HashSet<string>(alreadyWritten, StringComparer.OrdinalIgnoreCase);
+        return approved.Where(a => !written.Contains(a.ModKey)).ToList();
     }
 }

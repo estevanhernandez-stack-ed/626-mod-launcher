@@ -35,7 +35,7 @@ namespace ModManager.App;
 public sealed partial class NexusModDetailDialog : ContentDialog
 {
     /// <summary>One prerequisite row. Public + plain properties because the template binds it with
-    /// <c>{Binding}</c> (the established dialog pattern here — see <see cref="LooseIdentifyDialog.Row"/>).
+    /// <c>{Binding}</c> (the established dialog pattern here — see <see cref="NexusCatalogDialog.Row"/>).
     /// A requirement can be EXTERNAL (not a Nexus mod at all, just an off-site URL), and it can arrive with
     /// no usable link and no notes — both render without breaking the list.</summary>
     public sealed class RequirementRow

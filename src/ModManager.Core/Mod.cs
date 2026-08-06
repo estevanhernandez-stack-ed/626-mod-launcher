@@ -59,14 +59,32 @@ public sealed class Mod
     public string? Version { get; set; }              // the installed version (what you have)
     public string? NexusLatestVersion { get; set; }   // current version on Nexus (what's available)
 
+    /// <summary>Nexus's own per-user "you have an update" flag (from ModMeta, via
+    /// Metadata.MergeMetadata). Null = never told. When present it OUTRANKS the version compare
+    /// below, because Nexus knows which file the user downloaded and we often do not.</summary>
+    public bool? NexusUpdateAvailable { get; set; }
+
     /// <summary>True when Nexus reports a different current version than the installed one. Computed,
     /// never trusted from disk: false when no latest was fetched or the versions match.
     ///
     /// <para>A blank/whitespace latest counts as NOT fetched, not as a difference. A blank string is not a
     /// version, so claiming an update for it would put an UPDATE chip on a mod with nothing to update to —
     /// and it would disagree with <c>ModUpdateSummary</c>, which drives the library badge and the updates
-    /// view off the same persisted field. The chip and the badge must always agree.</para></summary>
-    public bool UpdateAvailable => !string.IsNullOrWhiteSpace(NexusLatestVersion) && NexusLatestVersion != Version;
+    /// view off the same persisted field. The chip and the badge must always agree.</para>
+    ///
+    /// <para>An unknown INSTALLED version is likewise not an update. A name-search identify deliberately
+    /// never writes <see cref="Version"/> — matching by name establishes WHICH mod this is, never which
+    /// FILE is on disk — and the by-mod-id enrichment pass then writes <see cref="NexusLatestVersion"/>.
+    /// Without this clause the comparison runs between a real upstream version and nothing, differs
+    /// always, and lights the chip on every identified row at once. Live smoke on a 98-mod library hit
+    /// exactly that, and the reason it survived is that "everything needs updating" is PLAUSIBLE to
+    /// someone returning to an old install — a false positive shaped like the truth never gets reported.
+    /// Not knowing what is installed is a reason to stay quiet, not a reason to claim a difference.</para></summary>
+    public bool UpdateAvailable =>
+        NexusUpdateAvailable
+        ?? (!string.IsNullOrWhiteSpace(NexusLatestVersion)
+            && !string.IsNullOrWhiteSpace(Version)
+            && NexusLatestVersion != Version);
 }
 
 /// <summary>A per-game metadata.json entry: the real title/credit/links for a mod base.</summary>
@@ -115,4 +133,19 @@ public sealed class ModMeta
     /// endorse/abstain action's response or the bulk user-endorsements list, and must survive a rescan.
     /// Additive/nullable: metadata that predates this field has none.</summary>
     public bool? Endorsed { get; set; }
+
+    /// <summary>Nexus's OWN per-user "you have an update" flag, as reported on a search/browse hit.
+    /// Null = we were never told.
+    ///
+    /// <para>This is authoritative in a way the version compare cannot be. Nexus knows which FILE the
+    /// user downloaded; we frequently do not — a name-search identify establishes which MOD a row is
+    /// and never which file is installed, so <see cref="Version"/> stays null and no local comparison
+    /// is possible. Persisting the flag is what lets a row say "update available" for exactly the mods
+    /// the browse cards already say it for, instead of guessing from version strings we may not
+    /// have.</para>
+    ///
+    /// <para>It only ever arrives on <c>SourceSearchHit</c> — the by-mod-id metadata fetch used for
+    /// enrichment does not carry it — so it is written when a search result passes through, and left
+    /// alone otherwise.</para></summary>
+    public bool? NexusUpdateAvailable { get; set; }
 }

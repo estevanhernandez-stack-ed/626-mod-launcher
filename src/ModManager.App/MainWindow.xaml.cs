@@ -93,6 +93,16 @@ public sealed partial class MainWindow : Window
                 ? dialog.Approved
                 : Array.Empty<ModManager.Core.Discovery.AdoptionProposal>();
         };
+        // The unified identify run's single review — same view-owns-the-dialog split as above, but
+        // it returns BOTH approved sections. Cancel (or an unwired delegate) writes nothing at all.
+        ViewModel.ReviewIdentifyRun = async (adoptions, identifications) =>
+        {
+            var dialog = new IdentifyReviewDialog(adoptions, identifications) { XamlRoot = Content.XamlRoot };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return (Array.Empty<ModManager.Core.Discovery.AdoptionProposal>(),
+                        Array.Empty<(string, ModManager.Plugins.Abstractions.SourceSearchHit)>());
+            return (dialog.ApprovedAdoptions(), dialog.ApprovedIdentifications());
+        };
         // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
         // the banner visibility, re-collapse the area if the user already dismissed it this session.
         ViewModel.PropertyChanged += (_, args) =>
@@ -397,7 +407,9 @@ public sealed partial class MainWindow : Window
         {
             var familyOn = row.VariantOptions.Any(v => v.Enabled);
             if (sw.IsOn == familyOn) return; // re-entry / programmatic set - no-op
+            var family = row.Mod.Name;
             await ViewModel.ToggleFamilyAsync(row, sw.IsOn);
+            KeepRowInView(family); // same reload, same lost scroll position
             return;
         }
 
@@ -416,7 +428,34 @@ public sealed partial class MainWindow : Window
         }
 
         row.Enabled = sw.IsOn;
+        var toggled = row.Mod.Name;
         await ViewModel.ToggleAsync(row);
+        KeepRowInView(toggled);
+    }
+
+    /// <summary>
+    /// Put the row the user just toggled back under their eyes.
+    ///
+    /// <para>A toggle ends in a full reload, and the reload assigns a NEW ObservableCollection to
+    /// <c>Mods</c> — so the ListView gets a new ItemsSource and drops its scroll position to the
+    /// top. Invisible on a small library; on a 194-row one it throws the user back to the start of
+    /// the list on every single flip, which makes toggling several mods in a row miserable.</para>
+    ///
+    /// <para>Matched by mod name rather than by reference: the reload builds fresh
+    /// <c>ModRowViewModel</c> instances, so the object the caller held is not in the new collection.
+    /// A row that the active filter drops after toggling (say "enabled only") simply is not there —
+    /// no match, no scroll, which is the correct outcome rather than a special case.</para>
+    ///
+    /// <para>Queued rather than called inline: the new ItemsSource has not been laid out yet at the
+    /// moment the await returns, and ScrollIntoView against an unrealised list is a no-op.</para>
+    /// </summary>
+    private void KeepRowInView(string modName)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var again = ViewModel.Mods.FirstOrDefault(r => r.Mod.Name == modName);
+            if (again is not null) ModListView.ScrollIntoView(again);
+        });
     }
 
     // One level of a multi-variant family — toggle that specific variant independently.
@@ -1089,59 +1128,56 @@ public sealed partial class MainWindow : Window
 
     private async void OnRedetect(object sender, RoutedEventArgs e) => await ViewModel.RedetectActiveAsync();
 
-    // Manual re-run of the discovery sweep (the first-add run is automatic and silent-on-empty).
-    // The VM sweeps + classifies + matches; the review dialog is already wired via ReviewDiscoveries.
-    private async void OnFindExistingMods(object sender, RoutedEventArgs e) => await ViewModel.DiscoverExistingModsAsync(auto: false);
-
     // Backfill metadata for installed mods by md5-matching the user's downloaded Nexus archives.
     private async void OnNexusBackfill(object sender, RoutedEventArgs e)
     {
+        // Explain before costing the user a picker round-trip. Mirrors BackfillNexusAsync's own
+        // precondition chain so the pre-check and the operation can never disagree.
+        if (!ViewModel.CanBackfillFromDownloads()) return;
+
         var picker = new FolderPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         picker.FileTypeFilter.Add("*");
         var folder = await picker.PickSingleFolderAsync();
         if (folder is null) return;
-        // Recurse — a downloads folder usually nests archives in per-mod subfolders.
-        var archives = System.IO.Directory.GetFiles(folder.Path, "*.*", System.IO.SearchOption.AllDirectories)
-            .Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".7z", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        await ViewModel.BackfillNexusAsync(archives);
+        // Enumeration lives in the VM so this entry and the unified run's downloads pass share one
+        // definition of "an archive in a downloads folder".
+        await ViewModel.BackfillNexusAsync(MainViewModel.EnumerateDownloadArchives(folder.Path));
     }
 
-    // Review-first Nexus name-search identify for loose-root rows. The VM owns the pipeline
-    // (candidates -> propose -> apply); the window owns the dialogs. Apply is the ONLY write path —
-    // Cancel (or unchecking every row) writes nothing.
+    // One prompt before anything runs — the downloads folder is the only pass that needs input,
+    // and asking mid-run would interrupt a sweep the user is watching.
+    private async void OnIdentifyMyMods(object sender, RoutedEventArgs e)
+    {
+        var ask = new ContentDialog
+        {
+            Title = "Also check a downloads folder?",
+            Content = "If you have a folder of downloaded mod archives, we can match them exactly by file hash. "
+                      + "Otherwise we'll match by name, which is a good guess but still a guess.",
+            PrimaryButtonText = "Choose folder",
+            CloseButtonText = "Skip",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        ModManager.App.Services.DialogTheming.Apply(ask);
+
+        string? folder = null;
+        if (await ask.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var picker = new FolderPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            picker.FileTypeFilter.Add("*");
+            folder = (await picker.PickSingleFolderAsync())?.Path;
+        }
+
+        await ViewModel.IdentifyMyModsAsync(folder);
+    }
+
+    // The Stop button beside the busy ring. Cancellation is the VM's to own — the window only
+    // forwards the click.
     private void OnCancelLongOperation(object sender, RoutedEventArgs e) => ViewModel.CancelLongOperation();
 
     private async void OnEnrichMetadata(object sender, RoutedEventArgs e) => await ViewModel.EnrichMetadataAsync();
-
-    private async void OnLooseIdentify(object sender, RoutedEventArgs e)
-    {
-        if (!ViewModel.ActiveGameHasNexusDomain)
-        {
-            var msg = new ContentDialog
-            {
-                Title = "No Nexus domain",
-                Content = "This game has no Nexus domain configured, so its mods can't be searched on "
-                          + "Nexus. Set the game's Nexus domain (its nexusmods.com URL slug) in the "
-                          + "game's registry entry, then try again.",
-                CloseButtonText = "OK",
-                XamlRoot = Content.XamlRoot,
-            };
-            ModManager.App.Services.DialogTheming.Apply(msg); // vibe-glow wave 1: popup-scope theme brushes
-            await msg.ShowAsync();
-            return;
-        }
-
-        var proposals = await ViewModel.ProposeLooseIdentifyAsync();
-        if (proposals is null) return; // gated out — the status line explains (incl. zero candidates)
-
-        var dialog = new LooseIdentifyDialog(proposals) { XamlRoot = Content.XamlRoot };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        await ViewModel.ApplyLooseIdentifyAsync(dialog.Approved(), proposals.Count);
-    }
 
     // Flag: Seamless Co-op's files are present but its launcher is missing — co-op needs it.
     private async void OnCoopHint(object sender, RoutedEventArgs e)

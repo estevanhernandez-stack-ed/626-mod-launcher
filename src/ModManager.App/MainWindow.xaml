@@ -81,44 +81,27 @@
                                  Find mods on Nexus / CurseForge moved out of this menu into the MODS
                                  toolbar section (Find mods dropdown) — they're discovery actions, not
                                  game-options. The handler OnFindMods reads Tag and is reused there. -->
-                            <MenuFlyoutItem Text="Backfill metadata from Nexus archives…" Click="OnNexusBackfill"
-                                            ToolTipService.ToolTip="Point at your folder of downloaded Nexus .zip archives to fill metadata for installed mods">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE896;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Identify loose mods on Nexus…" Click="OnLooseIdentify"
-                                            Visibility="{x:Bind ViewModel.LooseIdentifyVisibility, Mode=OneWay}"
-                                            ToolTipService.ToolTip="Name-search Nexus for unidentified loose files — you review every match before anything is saved">
+                            <MenuFlyoutItem Text="Identify my mods…" Click="OnIdentifyMyMods"
+                                            ToolTipService.ToolTip="Locate mods already installed that this launcher isn't tracking yet, and name the ones it can't identify. Nothing is moved.">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE721;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Get details from Nexus…" Click="OnEnrichMetadata"
-                                            Visibility="{x:Bind ViewModel.MetadataEnrichmentVisibility, Mode=OneWay}"
-                                            ToolTipService.ToolTip="Fill in descriptions and cover art for mods that are identified but still blank">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE946;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Re-scan mods &amp; launchers" Click="OnRedetect">
+                            <MenuFlyoutItem Text="Re-detect launchers &amp; frameworks" Click="OnRedetect"
+                                            ToolTipService.ToolTip="Re-check which mod loaders and launch options this game has">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Find existing mods…" Click="OnFindExistingMods"
-                                            ToolTipService.ToolTip="Sweep this game's folder for mods you installed by hand — review before anything is added, nothing is moved">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE773;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Fetch metadata for all mods" Command="{x:Bind ViewModel.FetchMetadataCommand}"
-                                            ToolTipService.ToolTip="Re-fetch metadata from CurseForge for every mod (best-effort).">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8F1;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
+                            <MenuFlyoutSubItem Text="Advanced">
+                                <MenuFlyoutItem Text="Match against my downloads folder…" Click="OnNexusBackfill"
+                                                ToolTipService.ToolTip="Match installed mods against a folder of downloaded archives, by file hash." />
+                                <MenuFlyoutItem Text="Refresh details from Nexus" Click="OnEnrichMetadata"
+                                                ToolTipService.ToolTip="Re-fetch descriptions and cover art for mods we've already identified." />
+                                <MenuFlyoutItem Text="Check CurseForge" Command="{x:Bind ViewModel.FetchMetadataCommand}"
+                                                ToolTipService.ToolTip="Name-search CurseForge for every mod (best-effort)." />
+                            </MenuFlyoutSubItem>
                             <!-- 'Generate a theme with AI' moved into the THEME dropdown ("+ New theme…")
                                  so theme-related actions live in one place. -->
                             <MenuFlyoutSeparator />
