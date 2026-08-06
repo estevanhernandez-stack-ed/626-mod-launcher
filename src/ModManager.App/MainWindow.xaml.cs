@@ -407,7 +407,9 @@ public sealed partial class MainWindow : Window
         {
             var familyOn = row.VariantOptions.Any(v => v.Enabled);
             if (sw.IsOn == familyOn) return; // re-entry / programmatic set - no-op
+            var family = row.Mod.Name;
             await ViewModel.ToggleFamilyAsync(row, sw.IsOn);
+            KeepRowInView(family); // same reload, same lost scroll position
             return;
         }
 
@@ -426,7 +428,34 @@ public sealed partial class MainWindow : Window
         }
 
         row.Enabled = sw.IsOn;
+        var toggled = row.Mod.Name;
         await ViewModel.ToggleAsync(row);
+        KeepRowInView(toggled);
+    }
+
+    /// <summary>
+    /// Put the row the user just toggled back under their eyes.
+    ///
+    /// <para>A toggle ends in a full reload, and the reload assigns a NEW ObservableCollection to
+    /// <c>Mods</c> — so the ListView gets a new ItemsSource and drops its scroll position to the
+    /// top. Invisible on a small library; on a 194-row one it throws the user back to the start of
+    /// the list on every single flip, which makes toggling several mods in a row miserable.</para>
+    ///
+    /// <para>Matched by mod name rather than by reference: the reload builds fresh
+    /// <c>ModRowViewModel</c> instances, so the object the caller held is not in the new collection.
+    /// A row that the active filter drops after toggling (say "enabled only") simply is not there —
+    /// no match, no scroll, which is the correct outcome rather than a special case.</para>
+    ///
+    /// <para>Queued rather than called inline: the new ItemsSource has not been laid out yet at the
+    /// moment the await returns, and ScrollIntoView against an unrealised list is a no-op.</para>
+    /// </summary>
+    private void KeepRowInView(string modName)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var again = ViewModel.Mods.FirstOrDefault(r => r.Mod.Name == modName);
+            if (again is not null) ModListView.ScrollIntoView(again);
+        });
     }
 
     // One level of a multi-variant family — toggle that specific variant independently.
