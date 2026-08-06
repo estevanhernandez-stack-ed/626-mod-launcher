@@ -103,8 +103,20 @@ public static class LooseIdentify
                 SourceSearchHit? match = null;
                 try
                 {
-                    var hits = await search(query).ConfigureAwait(false);
-                    match = NameMatch.PickBestMatch(query, hits, h => h.Name);
+                    // SEARCH BROAD, SCORE NARROW. A filename carries every word the author used,
+                    // including ones absent from the mod's title, and upstream search returns
+                    // nothing for a query like that — so the precise name is tried first and the
+                    // ladder only widens when it came back with nothing usable. Scoring always runs
+                    // against the FULL query, so widening what we RETRIEVE never widens what we
+                    // ACCEPT: a rung that pulls back fifty loosely-related mods still has to clear
+                    // PickBestMatch's threshold against the original name.
+                    foreach (var rung in NameMatch.QueryLadder(query))
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        var hits = await search(rung).ConfigureAwait(false);
+                        match = NameMatch.PickBestMatch(query, hits, h => h.Name);
+                        if (match is not null) break; // stop paying for calls the moment one lands
+                    }
                 }
                 catch
                 {

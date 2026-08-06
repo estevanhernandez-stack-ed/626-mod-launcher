@@ -95,4 +95,58 @@ public class NameMatchTests
     [Fact]
     public void Widened_splitter_still_keeps_every_real_token()
         => Assert.Equal("Faster Ships", NameMatch.CleanModName("FasterShips_P.pak"));
+
+    // ---- QueryLadder: search broad, score narrow ----
+    // Live case, Cyberpunk: "#ApartmentCatsCustoms_Dogtown_Black" searched as its full cleaned name
+    // returns ZERO hits, because neither "Customs" nor "Black" appears in the real title
+    // "Apartment Cats - Dogtown". Searching "apartment cat" returns it immediately.
+
+    [Fact]
+    public void The_ladder_broadens_toward_the_words_a_title_actually_shares()
+    {
+        var query = NameMatch.CleanModName("#ApartmentCatsCustoms_Dogtown_Black.archive");
+        Assert.Equal("Apartment Cats Customs Dogtown Black", query);
+
+        var ladder = NameMatch.QueryLadder(query);
+
+        Assert.Equal(new[]
+        {
+            "Apartment Cats Customs Dogtown Black",  // as-is first — a precise name should win outright
+            "Apartment Cats Customs",
+            "Apartment Cats",                        // the rung that actually finds the mod
+        }, ladder);
+    }
+
+    // The broadening is retrieval only. The last rung must still score against the FULL name, and
+    // that pairing has to clear the threshold — otherwise widening the search buys nothing.
+    [Fact]
+    public void The_full_name_still_scores_the_hit_that_the_broad_rung_retrieved()
+    {
+        var query = NameMatch.CleanModName("#ApartmentCatsCustoms_Dogtown_Black.archive");
+
+        var hit = NameMatch.PickBestMatch(query, new[]
+        {
+            new Cand("Apartment Cats - Dogtown"),
+            new Cand("Giant Cat Plush for V's Apartment"),
+        }, c => c.Name);
+
+        Assert.Equal("Apartment Cats - Dogtown", hit?.Name);
+    }
+
+    [Theory]
+    [InlineData("One Two Three Four Five", new[] { "One Two Three Four Five", "One Two Three", "One Two" })]
+    [InlineData("One Two Three Four", new[] { "One Two Three Four", "One Two Three", "One Two" })]
+    [InlineData("One Two Three", new[] { "One Two Three", "One Two" })]
+    [InlineData("One Two", new[] { "One Two" })]          // already at the floor
+    [InlineData("Solo", new[] { "Solo" })]                // one word: search it, never widen below two
+    public void The_ladder_never_repeats_a_rung_and_never_goes_below_two_words(string clean, string[] expected)
+        => Assert.Equal(expected, NameMatch.QueryLadder(clean));
+
+    [Fact]
+    public void An_empty_name_yields_no_search_at_all()
+    {
+        Assert.Empty(NameMatch.QueryLadder(""));
+        Assert.Empty(NameMatch.QueryLadder("   "));
+        Assert.Empty(NameMatch.QueryLadder(null));
+    }
 }

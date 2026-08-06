@@ -266,6 +266,81 @@ public class LooseIdentifyTests
         Assert.False(new Mod { NexusLatestVersion = meta.NexusLatestVersion, Version = meta.Version }.UpdateAvailable);
     }
 
+    // ---- The query ladder: retrieval broadens, acceptance does not ----
+
+    // The live Cyberpunk case. The full cleaned name returns nothing upstream because neither
+    // "Customs" nor "Black" is in the real title "Apartment Cats - Dogtown"; the two-word rung
+    // finds it. Scoring still runs against the FULL name.
+    [Fact]
+    public async Task A_query_too_specific_to_hit_falls_back_to_a_broader_one()
+    {
+        var rows = new List<Mod> { Row("ApartmentCatsCustoms_Dogtown_Black", "plugin") };
+        var asked = new List<string>();
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, query =>
+        {
+            asked.Add(query);
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(
+                query == "Apartment Cats"
+                    ? new[] { Hit("Apartment Cats - Dogtown", 7), Hit("Giant Cat Plush for V's Apartment", 9) }
+                    : Array.Empty<SourceSearchHit>());
+        });
+
+        Assert.Equal("Apartment Cats - Dogtown", Assert.Single(proposals).Match?.Name);
+        Assert.Equal(new[]
+        {
+            "Apartment Cats Customs Dogtown Black",
+            "Apartment Cats Customs",
+            "Apartment Cats",
+        }, asked);
+    }
+
+    // Broadening is a fallback, not a habit — a name that hits on the nose costs exactly one call.
+    [Fact]
+    public async Task A_query_that_hits_immediately_never_widens()
+    {
+        var rows = new List<Mod> { Row("SuperFasterShipsDeluxeEdition", "plugin") };
+        var asked = new List<string>();
+
+        await LooseIdentify.ProposeAsync(rows, query =>
+        {
+            asked.Add(query);
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit("Super Faster Ships Deluxe Edition", 1) });
+        });
+
+        Assert.Single(asked);
+    }
+
+    // Each rung is an API call against the user's personal key, so a hopeless row is bounded.
+    [Fact]
+    public async Task A_hopeless_query_costs_at_most_the_ladder()
+    {
+        var rows = new List<Mod> { Row("SuperFasterShipsDeluxeEdition", "plugin") };
+        var asked = new List<string>();
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, query =>
+        {
+            asked.Add(query);
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>());
+        });
+
+        Assert.Equal(3, asked.Count);
+        Assert.Null(Assert.Single(proposals).Match);
+    }
+
+    // Hits that score badly must not be laundered into a match by widening — the threshold is the
+    // acceptance rule and the ladder never touches it.
+    [Fact]
+    public async Task Broadening_retrieval_never_lowers_the_bar_for_accepting_a_hit()
+    {
+        var rows = new List<Mod> { Row("SuperFasterShipsDeluxeEdition", "plugin") };
+
+        var proposals = await LooseIdentify.ProposeAsync(rows, _ =>
+            Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit("Totally Unrelated Thing", 3) }));
+
+        Assert.Null(Assert.Single(proposals).Match);
+    }
+
     // ---- ProposeAsync at real-library scale (a hand-modded Cyberpunk install is ~200 rows) ----
 
     private static List<Mod> Many(int n) =>
