@@ -25,7 +25,11 @@ public sealed class UpdateRow
         get
         {
             var installed = string.IsNullOrWhiteSpace(Pending.InstalledVersion) ? "unknown" : Pending.InstalledVersion!;
-            return $"{installed} → {Pending.LatestVersion}";
+            // The right-hand side can be unknown too. A row can be pending purely on Nexus's own
+            // per-user flag, which rides in on a search hit and carries no version — so we know the
+            // user is behind without ever having been told what they are behind of.
+            var latest = string.IsNullOrWhiteSpace(Pending.LatestVersion) ? "unknown" : Pending.LatestVersion!;
+            return $"{installed} → {latest}";
         }
     }
 }

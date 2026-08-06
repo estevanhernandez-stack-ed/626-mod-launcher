@@ -269,6 +269,51 @@ public class ModUpdateSummaryTests
         Assert.True(Scanner.LoadMetadata(c)["K"].NexusUpdateAvailable);
     }
 
+    // The badge must honour the SAME three-input rule as the chip, including the Nexus flag. Without
+    // this the two disagree in exactly the case the flag exists for: a name-search identify leaves
+    // Version null, so the chip lights from the flag while the badge — reading only the version
+    // compare — counts nothing, and the user opens an Updates view that is empty.
+    [Theory]
+    // flag absent: the version compare governs, as before
+    [InlineData(null, "2.1", null, false)]
+    [InlineData("1.0", "2.1", null, true)]
+    [InlineData("1.0", "1.0", null, false)]
+    // flag present: it outranks the compare, in BOTH directions
+    [InlineData(null, "2.1", true, true)]    // unknown installed — the case the flag exists for
+    [InlineData("1.0", "1.0", true, true)]   // versions match, Nexus still says behind
+    [InlineData("1.0", "2.1", false, false)] // versions differ, Nexus says current
+    [InlineData(null, null, true, true)]     // told, with no version information at all
+    public void Chip_and_badge_agree_including_the_nexus_flag(string? installed, string? latest, bool? flag, bool expected)
+    {
+        var mod = new Mod { Version = installed, NexusLatestVersion = latest, NexusUpdateAvailable = flag };
+        Assert.Equal(expected, mod.UpdateAvailable);
+
+        var c = Fixture("updatesummary-flagparity-" + Guid.NewGuid().ToString("N")[..8] + "-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, Version = installed, NexusLatestVersion = latest, NexusUpdateAvailable = flag },
+        });
+
+        Assert.Equal(expected, ModUpdateSummary.ForGame(c.Game).Count == 1);
+    }
+
+    // Being TOLD is a form of having looked: a row we have a flag for counts the game as checked
+    // even when no version was ever fetched, or "0 updates" would render as "never checked".
+    [Fact]
+    public void A_flag_with_no_versions_still_counts_the_game_as_checked()
+    {
+        var c = Fixture("updatesummary-flagchecked-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, NexusUpdateAvailable = false },
+        });
+
+        var g = ModUpdateSummary.ForGame(c.Game);
+
+        Assert.True(g.Checked);
+        Assert.Equal(0, g.Count);
+    }
+
     // The chip and the badge read the same persisted fields and must never disagree — Mod.UpdateAvailable
     // says so in its own doc comment. Pin them together so a fix to one can't drift from the other.
     [Theory]
