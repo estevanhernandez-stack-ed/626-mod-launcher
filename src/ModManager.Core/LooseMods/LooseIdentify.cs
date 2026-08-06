@@ -82,7 +82,8 @@ public static class LooseIdentify
         Func<string, Task<IReadOnlyList<SourceSearchHit>>> search,
         int maxConcurrency = DefaultConcurrency,
         IProgress<LooseIdentifyProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action? onRateLimited = null)
     {
         if (candidates.Count == 0) return Array.Empty<LooseIdentifyProposal>();
 
@@ -91,6 +92,10 @@ public static class LooseIdentify
         var slots = new LooseIdentifyProposal?[candidates.Count];
         var next = -1;
         var completed = 0;
+        // Set by whichever worker meets the throttle first; read by all of them so the run winds
+        // down instead of every remaining row failing identically. 0/1 rather than bool so the
+        // notification can be raised exactly once via Interlocked.
+        var throttled = 0;
 
         async Task WorkerAsync()
         {
@@ -98,6 +103,7 @@ public static class LooseIdentify
             {
                 var index = Interlocked.Increment(ref next);
                 if (index >= candidates.Count || ct.IsCancellationRequested) return;
+                if (Volatile.Read(ref throttled) == 1) return;
 
                 var query = NameMatch.CleanModName(candidates[index].Base);
                 SourceSearchHit? match = null;
@@ -118,9 +124,19 @@ public static class LooseIdentify
                         if (match is not null) break; // stop paying for calls the moment one lands
                     }
                 }
+                catch (SourceRateLimitException)
+                {
+                    // NOT an ordinary failure. Treated as one, every remaining row comes back empty
+                    // and the review dialog tells the user dozens of mods have "no confident match"
+                    // — a false negative caused by throttling, presented as a finding. Stop the run
+                    // and let the caller say why; a row we never asked about must not be reported as
+                    // a row we asked about and got nothing for.
+                    if (Interlocked.Exchange(ref throttled, 1) == 0) onRateLimited?.Invoke();
+                    return;
+                }
                 catch
                 {
-                    // A throwing search delegate must never take down the whole run — this row
+                    // Any OTHER throwing search must never take down the whole run — this row
                     // simply gets no proposal; every other candidate still gets its own attempt.
                     match = null;
                 }

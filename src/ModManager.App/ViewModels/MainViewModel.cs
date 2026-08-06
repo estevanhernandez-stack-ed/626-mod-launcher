@@ -2159,6 +2159,7 @@ public sealed partial class MainViewModel : ObservableObject
         // rows already in flight finish (or time out), so Stop settles within ~10s worst case.
         // Core's CleanQuery passes through untouched — that's NameMatch's contract, not noise
         // for the App to re-clean.
+        var rateLimited = false;
         var proposals = await LooseIdentify.ProposeAsync(candidates, async query =>
         {
             var call = search.SearchAsync(domain!, query);
@@ -2166,7 +2167,17 @@ public sealed partial class MainViewModel : ObservableObject
                 return await call;
             _ = call.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return Array.Empty<SourceSearchHit>();
-        }, LooseIdentify.DefaultConcurrency, progress, ct);
+        }, LooseIdentify.DefaultConcurrency, progress, ct, onRateLimited: () => rateLimited = true);
+
+        if (rateLimited)
+        {
+            // Say WHY. Every row we never reached would otherwise be listed as "no confident match",
+            // which reads as a finding about those mods rather than a fact about the connection.
+            StatusText = proposals.Count == 0
+                ? "Nexus rate-limited us before anything could be searched. Try again later."
+                : $"Nexus rate-limited us after {proposals.Count} of {candidates.Count}. Review what was found, then run it again later for the rest.";
+            return proposals.Count == 0 ? null : proposals;
+        }
 
         if (proposals.Count == 0)
         {

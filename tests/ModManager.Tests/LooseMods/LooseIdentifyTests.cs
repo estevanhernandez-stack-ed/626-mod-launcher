@@ -494,4 +494,42 @@ public class LooseIdentifyTests
 
         Assert.Equal(2, LooseIdentify.ExcludeKeys(approved, Array.Empty<string>()).Count);
     }
+
+    // ---- A throttled key must not be reported as "no matches" ----
+
+    // The bare catch treated SourceRateLimitException like any other search failure: Match = null
+    // for that row, then carry on. Once the key is throttled every remaining row fails the same
+    // way, so the user is shown a dialog saying dozens of mods have no confident match — a false
+    // negative caused by throttling, presented as a finding. Stop the run instead and say why.
+    [Fact]
+    public async Task A_rate_limit_stops_the_run_rather_than_reporting_false_misses()
+    {
+        var calls = 0;
+        var limited = false;
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(60), _ =>
+        {
+            if (Interlocked.Increment(ref calls) > 5) throw new SourceRateLimitException();
+            return Task.FromResult<IReadOnlyList<SourceSearchHit>>(Array.Empty<SourceSearchHit>());
+        }, maxConcurrency: 1, onRateLimited: () => limited = true);
+
+        Assert.True(limited, "the caller was never told it was throttled");
+        Assert.True(proposals.Count < 60, $"run continued past the limit ({proposals.Count} of 60 proposed)");
+    }
+
+    // Only the rate limit aborts. Any other failure is still that one row's problem.
+    [Fact]
+    public async Task An_ordinary_search_failure_still_does_not_abort_the_run()
+    {
+        var limited = false;
+
+        var proposals = await LooseIdentify.ProposeAsync(Many(10), query =>
+            query.Contains("004", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("upstream blew up")
+                : Task.FromResult<IReadOnlyList<SourceSearchHit>>(new[] { Hit(query) }),
+            onRateLimited: () => limited = true);
+
+        Assert.False(limited);
+        Assert.Equal(10, proposals.Count);
+    }
 }
