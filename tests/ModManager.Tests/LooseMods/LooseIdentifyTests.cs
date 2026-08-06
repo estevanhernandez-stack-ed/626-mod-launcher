@@ -268,30 +268,32 @@ public class LooseIdentifyTests
 
     // ---- The query ladder: retrieval broadens, acceptance does not ----
 
-    // The live Cyberpunk case. The full cleaned name returns nothing upstream because neither
-    // "Customs" nor "Black" is in the real title "Apartment Cats - Dogtown"; the two-word rung
-    // finds it. Scoring still runs against the FULL name.
+    // The live Cyberpunk shape: the full cleaned name returns nothing upstream because several of
+    // the filename's words appear nowhere in the mod's title; a shorter rung finds it. This asserts
+    // RETRIEVAL — which rungs are issued and that a hit found late still comes back — not which mod
+    // is the correct owner. (The real Apartment Cats files turned out to belong to a single mod; see
+    // docs/2026-08-05-backlog.md section C. Fixture kept synthetic so no test claims otherwise.)
     [Fact]
     public async Task A_query_too_specific_to_hit_falls_back_to_a_broader_one()
     {
-        var rows = new List<Mod> { Row("ApartmentCatsCustoms_Dogtown_Black", "plugin") };
+        var rows = new List<Mod> { Row("QuietFootstepsRedux_Leather_Boots", "plugin") };
         var asked = new List<string>();
 
         var proposals = await LooseIdentify.ProposeAsync(rows, query =>
         {
             asked.Add(query);
             return Task.FromResult<IReadOnlyList<SourceSearchHit>>(
-                query == "Apartment Cats"
-                    ? new[] { Hit("Apartment Cats - Dogtown", 7), Hit("Giant Cat Plush for V's Apartment", 9) }
+                query == "Quiet Footsteps"
+                    ? new[] { Hit("Quiet Footsteps Redux", 7), Hit("Loud Doors", 9) }
                     : Array.Empty<SourceSearchHit>());
         });
 
-        Assert.Equal("Apartment Cats - Dogtown", Assert.Single(proposals).Match?.Name);
+        Assert.Equal("Quiet Footsteps Redux", Assert.Single(proposals).Match?.Name);
         Assert.Equal(new[]
         {
-            "Apartment Cats Customs Dogtown Black",
-            "Apartment Cats Customs",
-            "Apartment Cats",
+            "Quiet Footsteps Redux Leather Boots",
+            "Quiet Footsteps Redux",
+            "Quiet Footsteps",
         }, asked);
     }
 
