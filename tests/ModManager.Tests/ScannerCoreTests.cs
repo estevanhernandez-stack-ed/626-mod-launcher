@@ -129,4 +129,67 @@ public class ScannerCoreTests
         Assert.Equal("both", written["Cool"]);
         Assert.Equal("sp", written["Audio"]);
     }
+
+    // ---- File extensions are normalised before they become a regex ----
+    // Live: Marvel's Spider-Man 2 was registered from the Add Game dialog with the extensions typed
+    // the way a human writes them — ".smpcmod", ".suit" — and those went straight into the file
+    // regex. "\.(.smpcmod)$" needs a dot, then ANY character, then "smpcmod", so a real file
+    // called Foo.smpcmod does not match and every mod for that game is invisible. Same silent
+    // failure as a wrong extension list, from a leading dot the user had no reason to omit.
+
+    private static GameContext WithExts(params string[] exts)
+    {
+        var root = TestSupport.TempDir("exts-");
+        var mods = Path.Combine(root, "mods");
+        Directory.CreateDirectory(mods);
+        return Scanner.GameContext(new GameEntry
+        {
+            Id = "x", GameName = "X", GameRoot = root,
+            DataDir = Path.Combine(root, "_626mods", "x"),
+            ModLocations = new[] { new ModLocation("mods", "mods", "mods") },
+            FileExtensions = exts, GroupingRule = "filename_no_ext",
+        });
+    }
+
+    [Theory]
+    [InlineData(".smpcmod", "Hero.smpcmod")]
+    [InlineData("smpcmod", "Hero.smpcmod")]      // already-clean form must keep working
+    [InlineData(".pak", "Cool.pak")]
+    public async Task A_leading_dot_on_an_extension_does_not_hide_every_mod(string ext, string fileName)
+    {
+        var c = WithExts(ext);
+        File.WriteAllText(Path.Combine(c.GameRoot, "mods", fileName), "x");
+
+        var mods = await Scanner.BuildModListAsync(c);
+
+        Assert.Single(mods);
+    }
+
+    // The extension is interpolated into a regex, so any metacharacter in it must be inert data.
+    // A "+" or "(" from a hand-typed entry would otherwise throw at context-build time and take the
+    // whole game with it.
+    [Fact]
+    public async Task A_regex_metacharacter_in_an_extension_is_treated_as_text()
+    {
+        var c = WithExts("c++mod");
+        File.WriteAllText(Path.Combine(c.GameRoot, "mods", "Thing.c++mod"), "x");
+
+        var mods = await Scanner.BuildModListAsync(c);
+
+        Assert.Single(mods);
+    }
+
+    // The wildcard was the actual mechanism of the live bug: prove the dot is literal now.
+    [Fact]
+    public async Task The_dot_in_an_extension_is_literal_not_a_wildcard()
+    {
+        var c = WithExts(".suit");
+        File.WriteAllText(Path.Combine(c.GameRoot, "mods", "Real.suit"), "x");
+        File.WriteAllText(Path.Combine(c.GameRoot, "mods", "Fake.Xsuit"), "x"); // matched by the buggy pattern
+
+        var mods = await Scanner.BuildModListAsync(c);
+
+        var one = Assert.Single(mods);
+        Assert.Equal("Real", one.Name);
+    }
 }

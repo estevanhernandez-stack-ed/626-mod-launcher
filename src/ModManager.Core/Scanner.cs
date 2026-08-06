@@ -43,7 +43,19 @@ public static class Scanner
         game ??= new GameEntry();
         var gameRoot = Path.GetFullPath(string.IsNullOrEmpty(game.GameRoot) ? "." : game.GameRoot);
         var dataDir = DataDirForGame(game);
-        var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" }).Select(e => e.ToLowerInvariant()).ToList();
+        // Normalise before this becomes a regex. A registration written by hand carries extensions
+        // the way a person types them — ".smpcmod", ".suit" — and interpolating that raw yields
+        // "\.(.smpcmod)$", where the inner dot is a WILDCARD: it demands a dot, then any character,
+        // then "smpcmod", so the real file Foo.smpcmod never matches and every mod for that game is
+        // invisible. Same silent, total failure as a wrong extension list, from a leading dot the
+        // user had no reason to leave off. Escaping is the other half — an extension is data, not
+        // pattern, so a "+" or "(" in one must never reach the engine as syntax.
+        var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" })
+            .Select(e => e.ToLowerInvariant().TrimStart('.'))
+            .Where(e => e.Length > 0)
+            .Select(Regex.Escape)
+            .ToList();
+        if (exts.Count == 0) exts.Add("pak"); // a list of nothing but dots is the same as none at all
         var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
         // Decima games are loose-root: mods land as loose files in the game root, listed + toggled by
         // LooseRootListing (catalog + by-nature), not the pak-file scanner. The engine decides the form
