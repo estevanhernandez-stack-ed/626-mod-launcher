@@ -216,6 +216,59 @@ public class ModUpdateSummaryTests
         Assert.Equal(0, g.Count);
     }
 
+    // ---- Nexus's own per-user flag outranks the version compare ----
+    // Nexus knows which FILE the user downloaded; we often do not. The browse cards were already
+    // showing "Update available" for mods whose rows had gone silent, because the flag arrives only
+    // on a search hit and we were discarding it.
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_nexus_flag_wins_over_an_impossible_version_compare(bool flag)
+    {
+        // Installed version unknown — the local compare can say nothing either way.
+        var mod = new Mod { Version = null, NexusLatestVersion = "2.1", NexusUpdateAvailable = flag };
+
+        Assert.Equal(flag, mod.UpdateAvailable);
+    }
+
+    [Fact]
+    public void The_nexus_flag_also_overrides_a_version_compare_that_would_say_otherwise()
+    {
+        // Versions match, so the compare would say "current" — but Nexus says an update exists
+        // (a newer FILE under the same version string is a real case).
+        var saysYes = new Mod { Version = "1.0", NexusLatestVersion = "1.0", NexusUpdateAvailable = true };
+        Assert.True(saysYes.UpdateAvailable);
+
+        // And the reverse: versions differ, but Nexus says the user is current.
+        var saysNo = new Mod { Version = "1.0", NexusLatestVersion = "2.1", NexusUpdateAvailable = false };
+        Assert.False(saysNo.UpdateAvailable);
+    }
+
+    [Fact]
+    public void Without_the_flag_the_version_compare_still_governs()
+    {
+        Assert.True(new Mod { Version = "1.0", NexusLatestVersion = "2.1" }.UpdateAvailable);
+        Assert.False(new Mod { Version = null, NexusLatestVersion = "2.1" }.UpdateAvailable);
+    }
+
+    // New persisted field: camelCase on disk and a real round trip (repo rule for every on-disk shape).
+    [Fact]
+    public void NexusUpdateAvailable_round_trips_as_camelCase()
+    {
+        var c = Fixture("updatesummary-roundtrip-");
+        Scanner.SaveMetadata(c, new Dictionary<string, ModMeta>
+        {
+            ["K"] = new() { NexusModId = 1, NexusUpdateAvailable = true },
+        });
+
+        var json = File.ReadAllText(Path.Combine(c.DataDir, "metadata.json"));
+        Assert.Contains("\"nexusUpdateAvailable\"", json);
+        Assert.DoesNotContain("\"NexusUpdateAvailable\"", json);
+
+        Assert.True(Scanner.LoadMetadata(c)["K"].NexusUpdateAvailable);
+    }
+
     // The chip and the badge read the same persisted fields and must never disagree — Mod.UpdateAvailable
     // says so in its own doc comment. Pin them together so a fix to one can't drift from the other.
     [Theory]

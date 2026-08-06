@@ -1227,6 +1227,7 @@ public static class Scanner
             NexusFileId = curated.NexusFileId ?? cf.NexusFileId,
             NexusLatestVersion = curated.NexusLatestVersion ?? cf.NexusLatestVersion,
             Endorsed = curated.Endorsed ?? cf.Endorsed,
+            NexusUpdateAvailable = curated.NexusUpdateAvailable ?? cf.NexusUpdateAvailable,
         };
     }
 
