@@ -66,6 +66,19 @@ public sealed record GameShape
     /// <summary>Plain-language findings, safe to show a user or hand an agent verbatim.</summary>
     public required IReadOnlyList<string> Notes { get; init; }
 
+    /// <summary>
+    /// Whether this registration's drift is provably costing the user something.
+    ///
+    /// <para>Nothing found, AND at least one declared location is not on disk. That pair is the shape
+    /// that actually hurt: a Cyberpunk registration looking for <c>pak</c> in a folder of
+    /// <c>.archive</c> files reported 194 mods as zero.</para>
+    ///
+    /// <para>Deliberately NOT "is it drifted". Drift is common and usually harmless — Elden Ring is
+    /// drifted and perfectly healthy, as is any loader-based install. A banner on every drift would
+    /// flag working games and train the user to dismiss the one case worth reading.</para>
+    /// </summary>
+    public bool NeedsAttention => ModCount == 0 && DeclaredLocations.Any(d => !d.Exists);
+
     public static GameShape Of(GameEntry game)
     {
         var ctx = Scanner.GameContext(game);

@@ -214,4 +214,54 @@ public class GameShapeTests
         var after = Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToArray();
         Assert.Equal(before, after);
     }
+
+    // ---- the banner predicate ----
+
+    // Drift is common and usually harmless: this is the live Elden Ring shape — a declared Mod Engine 2
+    // folder that does not exist, while eleven mods load fine by direct-inject. Firing a banner here
+    // would flag a working install and teach the user to dismiss the one case that matters.
+    [Fact]
+    public void A_healthy_drifted_game_does_not_need_attention()
+    {
+        var (game, root) = FromSoftGame();
+        LoaderWithDllMods(root, "SkipTheIntro", "RemoveVignette");
+
+        var shape = GameShape.Of(game);
+
+        Assert.Equal(LocationAlignment.Drifted, shape.Alignment);
+        Assert.True(shape.Managed);
+        Assert.False(shape.NeedsAttention);
+    }
+
+    // The shape that actually hurt: a Cyberpunk registration whose 194 .archive mods showed as zero.
+    // Nothing found AND the folder we were told to look in is not there.
+    [Fact]
+    public void No_mods_and_a_missing_declared_folder_needs_attention()
+    {
+        var (game, _) = FromSoftGame();   // declares "mod", which this fixture never creates
+
+        var shape = GameShape.Of(game);
+
+        Assert.Equal(0, shape.ModCount);
+        Assert.Contains(shape.DeclaredLocations, d => !d.Exists);
+        Assert.True(shape.NeedsAttention);
+    }
+
+    // An empty game whose folder IS there is just an empty game — nothing to report.
+    [Fact]
+    public void No_mods_but_a_folder_that_exists_does_not_need_attention()
+    {
+        var root = TestSupport.TempDir("shape-empty-ok-");
+        Directory.CreateDirectory(Path.Combine(root, "mods"));
+
+        var game = new GameEntry
+        {
+            Id = "empty-game", GameName = "Empty", GameRoot = root, Engine = "ue-pak",
+            FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
+            ModLocations = new[] { new ModLocation("mods", "mods", "mods") },
+            DataDir = Path.Combine(root, "_data"),
+        };
+
+        Assert.False(GameShape.Of(game).NeedsAttention);
+    }
 }
