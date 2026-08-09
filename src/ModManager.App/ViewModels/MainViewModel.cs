@@ -222,30 +222,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     private CancellationTokenSource? _longOpCts;
 
-    /// <summary>True while ANY long operation holds the slot below. UI-thread only, so a plain bool
-    /// is the whole mechanism.</summary>
-    private bool _longOpRunning;
-
-    /// <summary>What is holding the slot, for the refusal message. Naming the RUNNING operation is
-    /// the point — see <see cref="RefuseIfLongOpRunning"/>.</summary>
-    private string _longOpName = "";
+    /// <summary>The one long operation this window can be running. The DECISION — held, by whom,
+    /// and what to say when a second one asks — lives in Core where it is tested; what stays here is
+    /// only the WinUI state that decision governs.</summary>
+    private readonly LongOperationSlot _longOp = new();
 
     /// <summary>
-    /// Take the single long-operation slot — the busy ring, the Stop button, and the cancellation
-    /// source — or refuse and say so.
+    /// Take the slot along with the busy ring, the Stop button, and the cancellation source, or
+    /// refuse and say what is in the way.
     ///
-    /// <para>There is exactly ONE of each, so there can be exactly one owner. Guarding per-method
-    /// was the bug: "Identify my mods…" checked, "Refresh details from Nexus" did not, and the
-    /// Advanced items are deliberately always clickable (<i>guard, don't hide</i>). Starting the
-    /// second while the first ran handed Stop only the newcomer's token, and whichever finished
-    /// first cleared the busy state out from under the other — leaving a run with no ring and a
-    /// Stop button that cancelled something else.</para>
-    ///
-    /// <para>The flag is set LAST, after everything that can throw. <see cref="IsBusy"/> and
-    /// <see cref="IsCancellable"/> are <c>[ObservableProperty]</c> setters that raise
-    /// PropertyChanged synchronously into x:Bind handlers; a throw in that window with the flag
-    /// already set would latch the slot for the session and silently brick every long action until
-    /// restart. Claimed last, a throw leaves the slot free.</para>
+    /// <para>The slot is claimed LAST, after everything that can throw. <see cref="IsBusy"/> and
+    /// <see cref="IsCancellable"/> are <c>[ObservableProperty]</c> setters that raise PropertyChanged
+    /// synchronously into x:Bind handlers; a throw there with the slot already taken would strand it
+    /// for the session and silently disable every long action until restart. Claimed last, a throw
+    /// leaves it free.</para>
     /// </summary>
     private bool TryBeginLongOp(CancellationTokenSource cts, string what)
     {
@@ -253,40 +243,33 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         _longOpCts = cts;
         IsCancellable = true;
-        _longOpName = what;
-        _longOpRunning = true;
+        _longOp.TryClaim(what);
         return true;
     }
 
-    /// <summary>
-    /// Refuse a second long operation, naming the one ALREADY RUNNING.
-    ///
-    /// <para>Public because a caller may need to refuse BEFORE it asks the user anything. "Identify
-    /// my mods…" opens a downloads-folder prompt first, and the view model's own guard only runs
-    /// after that answer comes back — so without a pre-check the user answers a modal and is then
-    /// told it was never going to run. Call this first; <see cref="TryBeginLongOp"/> remains the
-    /// authority and re-checks.</para>
-    ///
-    /// <para>The message names the RUNNING operation, not the attempted one. Naming the attempted
-    /// one produces "Identify is already running" in response to clicking Identify, which reads as
-    /// a glitch rather than an explanation.</para>
-    /// </summary>
-    public bool RefuseIfLongOpRunning()
-    {
-        if (!_longOpRunning) return false;
-        StatusText = $"{_longOpName} is already running — let it finish, or press Stop.";
-        return true;
-    }
-
-    /// <summary>Release the slot. Belongs in the <c>finally</c> of whatever claimed it, so every
-    /// exit path — normal, cancelled, or thrown — hands it back.</summary>
+    /// <summary>Release the slot and the state it governs. Belongs in the <c>finally</c> of whatever
+    /// claimed it, so every exit — normal, cancelled, or thrown — hands it back.</summary>
     private void EndLongOp()
     {
-        _longOpRunning = false;
-        _longOpName = "";
+        _longOp.Release();
         IsCancellable = false;
         _longOpCts = null;
         IsBusy = false;
+    }
+
+    /// <summary>
+    /// Refuse a second long operation, naming the one already running.
+    ///
+    /// <para>Public because a caller may need to refuse BEFORE it asks the user anything. "Identify
+    /// my mods…" opens a downloads-folder prompt first, and <see cref="TryBeginLongOp"/> only runs
+    /// once that answer comes back — so without this the user answers a modal and is then told it
+    /// was never going to run. <see cref="TryBeginLongOp"/> remains the authority and re-checks.</para>
+    /// </summary>
+    public bool RefuseIfLongOpRunning()
+    {
+        if (!_longOp.IsHeld) return false;
+        StatusText = _longOp.RefusalMessage;
+        return true;
     }
 
     /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
