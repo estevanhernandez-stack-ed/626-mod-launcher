@@ -1344,6 +1344,17 @@ public sealed partial class MainWindow : Window
         _suppressVortexBanner = true;
     }
 
+    // Session-level dismiss, matching the Vortex banner: a later rescan may re-show it, which is
+    // acceptable — the alternative is a persisted "don't tell me" that outlives the problem.
+    private void OnDismissSetupBanner(object sender, RoutedEventArgs e)
+        => SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    private async void OnCheckSetup(object sender, RoutedEventArgs e)
+    {
+        // Body lands in Task 8, once GameSetupDialog exists.
+        await Task.CompletedTask;
+    }
+
     // If the row's folder is Vortex/MO2-owned (not yet taken over), offer to take it over first.
     // Returns true if the folder is now ours (taken over, or already ours / re-deployed), false if the
     // user declined — caller should abort the operation.

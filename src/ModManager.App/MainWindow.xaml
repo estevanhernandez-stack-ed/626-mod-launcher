@@ -408,6 +408,21 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Setup banner: shown only when drift is provably costing something (no mods found
+                     AND a declared folder that isn't there). Same grammar as the Vortex banners —
+                     statement of fact, one verb, a Dismiss. -->
+                <Border x:Name="SetupBanner"
+                        Visibility="{x:Bind ViewModel.SetupBannerVisibility, Mode=OneWay}"
+                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
+                        BorderThickness="0,0,0,1" Padding="12,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="No mods found here, and the folder this game is set to look in doesn't exist."
+                                   VerticalAlignment="Center" TextWrapping="Wrap" />
+                        <Button Content="Check setup" Click="OnCheckSetup" />
+                        <Button Content="Dismiss" Click="OnDismissSetupBanner" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Steam updated this game since we last recorded its build — installed mods may need rechecking.
                      Dismiss ("Mark as rechecked") re-baselines to the live build via the view-model. -->
                 <Border Visibility="{x:Bind ViewModel.SteamBuildWarningVisibility, Mode=OneWay}"

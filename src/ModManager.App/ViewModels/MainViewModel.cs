@@ -194,6 +194,16 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility OwnedBannerVisibility => HasOwnedLocations ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ReDeployedBannerVisibility => HasReDeployedLocations ? Visibility.Visible : Visibility.Collapsed;
 
+    // Drift that is provably costing something — nothing found AND a declared folder that is not
+    // there. See GameShape.NeedsAttention for why this is not "is it drifted": a banner on every
+    // drift would flag Elden Ring and every other loader-based install, all of them working fine.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SetupBannerVisibility))]
+    private bool setupNeedsAttention;
+
+    public Visibility SetupBannerVisibility =>
+        SetupNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Live "how to use" for an installed framework, read from its on-disk settings. The view
     /// calls this on a framework-button click and renders the lines in a toast.</summary>
     public static FrameworkUsageInfo FrameworkUsageFor(FrameworkInstallManifest m)
@@ -571,6 +581,7 @@ public sealed partial class MainViewModel : ObservableObject
             FrameworkRows.Clear();
             OwnedLocations.Clear();
             ReDeployedLocations.Clear();
+            SetupNeedsAttention = false; // collapse the setup banner when no game is active
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
@@ -854,6 +865,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasReDeployedLocations));
             OnPropertyChanged(nameof(OwnedBannerVisibility));
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
+
+            SetupNeedsAttention = _ctx is not null && GameShape.Of(_ctx.Game).NeedsAttention;
 
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
