@@ -165,7 +165,11 @@ public class DataDirMoveExecuteTests
         Assert.NotNull(result.Error);
         Assert.False(Directory.Exists(to));                                   // no half-built target
         Assert.Equal(3, Directory.GetFiles(from, "*", SearchOption.AllDirectories).Length);
+        // Counting proves "still there"; reading proves "still intact". This is THE reversibility test
+        // for the most dangerous operation on the branch, so it reads every byte back.
         Assert.Equal("content-of-a.txt", File.ReadAllText(Path.Combine(from, "a.txt")));
+        Assert.Equal("content-of-locked.txt", File.ReadAllText(Path.Combine(from, "locked.txt")));
+        Assert.Equal("content-of-c.txt", File.ReadAllText(Path.Combine(from, "c.txt")));
         Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(to)!, "*.moving-*"));   // staging cleaned
     }
 
