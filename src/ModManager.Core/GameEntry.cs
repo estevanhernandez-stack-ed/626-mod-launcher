@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ModManager.Core;
 
 /// <summary>One mod-file location under a game root (name/label/relative path + optional mirrors).</summary>
@@ -82,6 +84,32 @@ public sealed class GameEntry
 
     // The last time 626 (or a recency source) recorded this game being launched; null = unknown.
     public DateTime? LastLaunchedUtc { get; set; }
+
+    /// <summary>
+    /// Field names the user set DELIBERATELY, as their camelCase json names.
+    ///
+    /// <para>A stored value is ambiguous on its own: <c>["pak"]</c> might be a choice, or the engine
+    /// preset's default frozen in on the day the game was added. <see cref="RegistrationRefresh"/>
+    /// guesses between those with an untouched-preset-default heuristic, which is right for every
+    /// registration measured so far but cannot distinguish a deliberate choice that HAPPENS to equal
+    /// the default. This marker removes the guess for anything the user actually edits.</para>
+    ///
+    /// <para>Null means "not recorded", not "nothing is user-set" — every registration written before
+    /// the edit surface existed has no key, and must keep behaving exactly as it does today. That
+    /// back-compat is why this needed no migration, and why it was not worth adding during A1.</para>
+    ///
+    /// <para>Recorded for EVERY edited field; consulted today only for the two that self-heal. An
+    /// entry no rule reads yet is inert — a fact waiting for a reader. Whoever adds the next
+    /// self-healing field: check this before trusting the heuristic.</para>
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? UserSet { get; set; }
+
+    // The json field names, as constants, so a marker is never a typo that silently matches nothing.
+    public const string UserSetFileExtensions = "fileExtensions";
+    public const string UserSetGroupingRule = "groupingRule";
+    public const string UserSetModLocations = "modLocations";
+    public const string UserSetGameRoot = "gameRoot";
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>
