@@ -201,6 +201,94 @@ public class RegistrationChangeTests
         Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.FieldsToPin);
     }
 
+    // A pasted or half-typed folder is the likeliest user error a repair surface will ever see, and it
+    // is the most expensive one: a blank root makes Scanner.DataDirForGame fall back to ".", which
+    // yields a RELATIVE _626mods\<id> that resolves against the launcher's own working directory. The
+    // plan would then cheerfully report moving the user's only copy of their disabled mods into the
+    // launcher's install folder, with no blocker and CanSave true.
+    [Fact]
+    public void A_blank_game_folder_is_blocked_rather_than_planned()
+    {
+        var stored = Stored(Path.Combine(TestSupport.TempDir("rc-"), "ELDEN RING"));
+        Directory.CreateDirectory(stored.GameRoot);
+        TestSupport.Write(Path.Combine(Scanner.DataDirForGame(stored), "disabled", "SomeMod.dll"), "the only copy");
+
+        var proposed = Copy(stored);
+        proposed.GameRoot = "   ";
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.False(plan.CanSave);
+        Assert.NotEmpty(plan.Blockers);
+        Assert.Null(plan.DataDir);   // nothing aimed at the launcher's working directory
+    }
+
+    [Fact]
+    public void A_game_folder_that_does_not_exist_is_blocked_and_plans_no_move()
+    {
+        var stored = Stored(Path.Combine(TestSupport.TempDir("rc-"), "ELDEN RING"));
+        Directory.CreateDirectory(stored.GameRoot);
+        TestSupport.Write(Path.Combine(Scanner.DataDirForGame(stored), "disabled", "SomeMod.dll"), "the only copy");
+
+        var proposed = Copy(stored);
+        proposed.GameRoot = Path.Combine(TestSupport.TempDir("rc-new-"), "ELDNE RING");   // never created
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.False(plan.CanSave);
+        Assert.NotEmpty(plan.Blockers);
+        Assert.Null(plan.DataDir);   // a blocked plan never computes a move
+    }
+
+    // A field listed in FieldsToPin becomes userSet on save, and a pinned field permanently outranks
+    // manifest corrections for that game (Scanner.GameContext). AddGameDialog already rewrites the
+    // mod-path box when the engine dropdown changes, and EnginePresets.BuildGameEntry fills
+    // FileExtensions and GroupingRule from the preset whenever the input's are null — so an entry
+    // arriving from either path carries the NEW preset's values in three fields the user never typed.
+    // Pinning those would opt the game out of every future fix because someone touched a dropdown.
+    [Fact]
+    public void An_engine_change_does_not_pin_the_new_presets_own_defaults()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var uePak = EnginePresets.Presets["ue-pak"];
+        var proposed = Copy(stored);
+        proposed.Engine = "ue-pak";
+        proposed.FileExtensions = uePak.FileExtensions;
+        proposed.GroupingRule = uePak.GroupingRule;
+        proposed.ModLocations = new[] { new ModLocation("mods", "mods", uePak.ModPath) };
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        // The values really did change — the plan still says so honestly.
+        Assert.Contains(GameEntry.UserSetFileExtensions, plan.FieldsChanged);
+        Assert.Contains(GameEntry.UserSetGroupingRule, plan.FieldsChanged);
+        Assert.Contains(GameEntry.UserSetModLocations, plan.FieldsChanged);
+
+        // But none of them is a stated choice, so none of them gets pinned.
+        Assert.Empty(plan.FieldsToPin);
+        Assert.True(plan.CanSave);
+    }
+
+    // The other half of the same rule: dropping a pin the user actually earned would silently re-expose
+    // a deliberate choice to being overwritten by a manifest correction.
+    [Fact]
+    public void An_engine_change_still_pins_a_value_the_user_really_chose()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var uePak = EnginePresets.Presets["ue-pak"];
+        var proposed = Copy(stored);
+        proposed.Engine = "ue-pak";
+        proposed.FileExtensions = new[] { "smpcmod", "suit" };   // not the preset's, so a real choice
+        proposed.GroupingRule = uePak.GroupingRule;
+        proposed.ModLocations = new[] { new ModLocation("mods", "mods", uePak.ModPath) };
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(GameEntry.UserSetFileExtensions, plan.FieldsToPin);
+        Assert.DoesNotContain(GameEntry.UserSetGroupingRule, plan.FieldsToPin);
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.FieldsToPin);
+    }
+
     [Fact]
     public void Planning_writes_nothing()
     {

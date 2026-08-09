@@ -68,6 +68,20 @@ public class RegistrationRefreshTests
                 RegistrationRefresh.Extensions(stored, new[] { "pak", "ucas" }, new[] { "archive" }));
     }
 
+    // Stray whitespace is not a choice either, and RegistrationChange.SameExtensions already trims —
+    // so without a SHARED helper the two files disagree about the same concept. That disagreement ends
+    // self-healing silently: an edit dialog round-trips a text field into [" pak"], the planner reports
+    // NO change and pins NOTHING, and yet the untouched-default test now says customised. The manifest
+    // stops reaching the game, 194 mods go invisible again, and there is no marker to explain why.
+    [Fact]
+    public void Padding_does_not_count_as_customisation_either()
+    {
+        var effective = RegistrationRefresh.Extensions(
+            stored: new[] { " pak" }, presetDefault: new[] { "pak" }, manifest: new[] { "archive" });
+
+        Assert.Equal(new[] { "archive" }, effective);
+    }
+
     // A stored list that merely CONTAINS the preset's values is a customisation, not a snapshot.
     [Fact]
     public void A_superset_of_the_preset_default_is_a_customisation()

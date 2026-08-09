@@ -57,9 +57,21 @@ public static class RegistrationRefresh
     /// the extra entry is a real choice, so the whole list is treated as the user's.</para>
     /// </summary>
     private static bool IsUntouched(IReadOnlyList<string> stored, IReadOnlyList<string> presetDefault)
-    {
-        var a = new HashSet<string>(stored, StringComparer.OrdinalIgnoreCase);
-        var b = new HashSet<string>(presetDefault, StringComparer.OrdinalIgnoreCase);
-        return a.SetEquals(b);
-    }
+        => ExtensionSet(stored).SetEquals(ExtensionSet(presetDefault));
+
+    /// <summary>
+    /// One spelling of "the same extension list", shared with <c>RegistrationChange.SameExtensions</c>.
+    ///
+    /// <para>These two used to normalise the same concept differently — the planner trimmed, this file
+    /// did not — and the disagreement ended self-healing without a trace. An edit dialog round-trips a
+    /// text field into <c>[" pak"]</c>; the planner reports NO change and pins NOTHING, yet the
+    /// untouched-default test above now reads the list as customised, the manifest stops reaching the
+    /// game, and the 194-mods-showing-as-zero failure comes back with no marker to explain it. Two
+    /// callers, one helper.</para>
+    ///
+    /// <para>Leading dots are deliberately NOT stripped: the list is compared as the user stores it,
+    /// and <c>Scanner</c> normalises the dot case separately on its way to a regex.</para>
+    /// </summary>
+    internal static HashSet<string> ExtensionSet(IEnumerable<string> exts)
+        => new(exts.Select(e => e.Trim()), StringComparer.OrdinalIgnoreCase);
 }

@@ -3,7 +3,15 @@ namespace ModManager.Core;
 /// <summary>What saving an edit would actually do. Produced by <see cref="RegistrationChange.Plan"/>.</summary>
 public sealed record RegistrationChangePlan
 {
-    /// <summary>Field names (camelCase, matching the <c>GameEntry.UserSet*</c> constants) that differ.</summary>
+    /// <summary>
+    /// Field names (camelCase, matching the <c>GameEntry.UserSet*</c> constants) that differ.
+    ///
+    /// <para>The four pinnable fields only. This is NOT a full diff of the two entries: <c>gameName</c>,
+    /// <c>dataDir</c>, <c>saveDir</c>, and <c>ModLocation.Form</c> / <c>.Managed</c> / <c>.Mirrors</c>
+    /// are deliberately outside it because nothing self-heals them. A UI showing "what will change"
+    /// must render those itself — a rename yields an EMPTY list here, and that means "nothing gets
+    /// pinned", not "nothing happens".</para>
+    /// </summary>
     public required IReadOnlyList<string> FieldsChanged { get; init; }
 
     /// <summary>What the caller should write to <see cref="GameEntry.UserSet"/> on save — the fields
@@ -32,6 +40,18 @@ public sealed record RegistrationChangePlan
 /// until someone extracts them.</para>
 ///
 /// <para>Pure, and does no IO of its own beyond delegating to <see cref="DataDirMove.Plan"/>.</para>
+///
+/// <para>THE CALLER'S CONTRACT: <c>proposed</c> must carry only values the user actually stated. Every
+/// field this reports as changed lands in <see cref="RegistrationChangePlan.FieldsToPin"/>, becomes
+/// <c>userSet</c> on save, and from then on permanently outranks manifest corrections for that game
+/// (see <c>Scanner.GameContext</c>) — so a false pin silently opts the game out of every future fix,
+/// which is the exact failure this feature exists to prevent. An entry rebuilt through
+/// <c>EnginePresets.BuildGameEntry</c> (which fills <c>FileExtensions</c> and <c>GroupingRule</c> from
+/// the preset whenever the input's are null) or auto-filled from <c>preset.ModPath</c> the way
+/// <c>AddGameDialog.OnEngineChanged</c> rewrites its mod-path box will pin every auto-filled field.
+/// Pass what the user typed, not what a preset filled in for them. On an engine change this class
+/// defends itself as well — see the preset-default drop in <see cref="Plan"/> — but the contract is
+/// what keeps the other three-quarters of the surface honest.</para>
 /// </summary>
 public static class RegistrationChange
 {
@@ -54,8 +74,7 @@ public static class RegistrationChange
 
         // GroupingRule is a non-nullable string on GameEntry (defaults to ""), so no null guard here —
         // TreatWarningsAsErrors is on, and a dead ?? would not survive the build.
-        if (!string.Equals(stored.GroupingRule.Trim(), proposed.GroupingRule.Trim(),
-                StringComparison.OrdinalIgnoreCase))
+        if (!SameGrouping(stored.GroupingRule, proposed.GroupingRule))
             changed.Add(GameEntry.UserSetGroupingRule);
 
         if (!SameLocations(stored.ModLocations, proposed.ModLocations))
@@ -65,10 +84,22 @@ public static class RegistrationChange
             DataDirMove.Norm(stored.GameRoot), DataDirMove.Norm(proposed.GameRoot), StringComparison.OrdinalIgnoreCase);
         if (rootChanged) changed.Add(GameEntry.UserSetGameRoot);
 
+        // A blank root makes Scanner.DataDirForGame fall back to ".", which yields a RELATIVE
+        // _626mods\<id> that DataDirMove.Norm then resolves against the process working directory —
+        // so an unvalidated blank would produce a plan to move the user's ONLY copy of their disabled
+        // mods into the launcher's install folder, with CanSave true and no blocker. A pasted or
+        // half-typed folder is the likeliest error a repair surface will ever see.
+        if (string.IsNullOrWhiteSpace(proposed.GameRoot))
+            blockers.Add("A game folder is required — the launcher keeps this game's disabled mods "
+                         + "and installed tools next to it.");
+        else if (rootChanged && !Directory.Exists(proposed.GameRoot))
+            blockers.Add($"There is no folder at {proposed.GameRoot}.");
+
         // Changing the engine changes which preset defaults apply, so a field that reads as
         // "untouched" under one engine may read as customised under another — quietly altering
         // whether future manifest corrections reach this game. Report it; the user decides.
-        if (!string.Equals(stored.Engine ?? "", proposed.Engine ?? "", StringComparison.OrdinalIgnoreCase))
+        var engineChanged = !string.Equals(stored.Engine ?? "", proposed.Engine ?? "", StringComparison.OrdinalIgnoreCase);
+        if (engineChanged)
             notes.Add($"Changing the engine from '{stored.Engine}' to '{proposed.Engine}' changes which "
                       + "defaults this game is compared against, so it can change whether future "
                       + "definition updates reach it.");
@@ -82,27 +113,58 @@ public static class RegistrationChange
         }
 
         // Marks are additive. An edit to one field must never drop the mark on another — that would
-        // silently re-expose a deliberate choice to being overwritten by a manifest correction.
+        // silently re-expose a deliberate choice to being overwritten by a manifest correction. Every
+        // changed field is a candidate on top of what is already marked; the engine-change filter below
+        // is the only thing that may keep a candidate out.
         var pin = new List<string>(stored.UserSet ?? Array.Empty<string>());
         foreach (var f in changed)
-            if (!pin.Contains(f, StringComparer.OrdinalIgnoreCase)) pin.Add(f);
+            if (IsUserChoice(f) && !pin.Contains(f, StringComparer.OrdinalIgnoreCase)) pin.Add(f);
 
         return new RegistrationChangePlan
         {
             FieldsChanged = changed,
-            FieldsToPin = changed.Count == 0 ? (stored.UserSet ?? Array.Empty<string>()).ToList() : pin,
+            FieldsToPin = pin,
             DataDir = move,
             Blockers = blockers,
             Notes = notes,
         };
+
+        // A field whose proposed value is exactly the NEW engine preset's default, on an edit that
+        // changed the engine, is the PRESET speaking, not the user. Every path that produces such an
+        // entry auto-fills it — EnginePresets.BuildGameEntry fills FileExtensions and GroupingRule
+        // whenever the input's are null, and AddGameDialog.OnEngineChanged rewrites the mod-path box
+        // outright — so pinning it would permanently opt the game out of manifest corrections because
+        // someone touched a dropdown. A value that differs from the new preset's default is still the
+        // user's and is still pinned; over-pinning and under-pinning are equally damaging here.
+        bool IsUserChoice(string field)
+        {
+            if (!engineChanged
+                || proposed.Engine is null
+                || !EnginePresets.Presets.TryGetValue(proposed.Engine, out var preset))
+                return true;
+
+            return field switch
+            {
+                GameEntry.UserSetFileExtensions => !SameExtensions(proposed.FileExtensions, preset.FileExtensions),
+                GameEntry.UserSetGroupingRule => !SameGrouping(proposed.GroupingRule, preset.GroupingRule),
+                GameEntry.UserSetModLocations => !SameLocations(
+                    proposed.ModLocations, new[] { new ModLocation("mods", "mods", preset.ModPath) }),
+                _ => true,   // gameRoot has no preset default to be mistaken for
+            };
+        }
     }
 
+    // One spelling for a grouping-rule comparison, shared by the change test and the preset-default
+    // test so the two can never drift apart the way the extension sets once did.
+    private static bool SameGrouping(string a, string b)
+        => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
     // Trimmed, because " pak" and "pak" are the same extension and reading them as an edit would pin
-    // the field for good. Leading dots are deliberately NOT stripped: the list is compared as the user
-    // stores it, and Scanner normalises the dot case separately on its way to a regex.
+    // the field for good. RegistrationRefresh.ExtensionSet is the ONE spelling of that normalisation:
+    // when this file trimmed and RegistrationRefresh.IsUntouched did not, a cosmetic round-trip through
+    // a text field ended self-healing for the game while this planner reported nothing had changed.
     private static bool SameExtensions(IReadOnlyList<string> a, IReadOnlyList<string> b)
-        => new HashSet<string>(a.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase)
-            .SetEquals(new HashSet<string>(b.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase));
+        => RegistrationRefresh.ExtensionSet(a).SetEquals(RegistrationRefresh.ExtensionSet(b));
 
     /// <summary>
     /// One spelling for a relative mod path, so two ways of writing the same folder compare equal.
