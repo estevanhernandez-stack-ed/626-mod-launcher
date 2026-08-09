@@ -120,6 +120,12 @@ public static class DataDirMove
                     throw new IOException("The copy did not match the original: " + mismatch);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(plan.To)!);
+                // Plan guarantees the target is EMPTY if it exists at all (a non-empty one is refused
+                // outright, never merged). Removing the empty shell keeps the swap a rename instead of
+                // forcing a second copy — and without this, every move onto an existing empty folder
+                // fails on Windows even though Plan said it could proceed.
+                if (Directory.Exists(plan.To) && !Directory.EnumerateFileSystemEntries(plan.To).Any())
+                    Directory.Delete(plan.To);
                 Directory.Move(staging, plan.To);
             }
             catch
@@ -212,8 +218,10 @@ public sealed record DataDirMoveResult
     /// <summary>True when the data is at the target (or there was nothing to move).</summary>
     public required bool Moved { get; init; }
 
-    /// <summary>False when the move succeeded but the old copy could not be deleted — a duplicate on
-    /// disk, never a lost file.</summary>
+    /// <summary>Meaningful only when a move actually happened. False on a real move means the data is
+    /// safely at the target but the old copy could not be deleted — a duplicate on disk, never a lost
+    /// file. It is also false for a no-op (<see cref="DataDirMoveKind.Nothing"/>), where there is no
+    /// source and nothing was duplicated, so do not warn about a leftover copy on that alone.</summary>
     public required bool SourceRemoved { get; init; }
 
     /// <summary>Why the move did not happen, in the user's words, or null on success.</summary>

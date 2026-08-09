@@ -169,6 +169,54 @@ public class DataDirMoveExecuteTests
         Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(to)!, "*.moving-*"));   // staging cleaned
     }
 
+    // Plan blesses an existing EMPTY target (a non-empty one is refused outright), but an existing
+    // target also forces the copy path — and Directory.Move onto a path that already exists throws on
+    // Windows. Without the empty-shell removal in Execute, a move Plan reported as fine always failed.
+    // A folder picker hands back an existing folder, so this is the ordinary case, not an edge one.
+    [Fact]
+    public void An_existing_empty_target_is_filled_rather_than_failing()
+    {
+        var from = Src("a.txt", "sub/b.txt");
+        var to = TestSupport.TempDir("ddm-to-");   // exists, empty
+        var plan = DataDirMove.Plan(from, to);
+
+        Assert.True(plan.CanProceed);
+        Assert.Equal(DataDirMoveKind.CopyVerifyDelete, plan.Kind);   // an existing target forces the copy path
+
+        var result = DataDirMove.Execute(plan);
+
+        Assert.True(result.Moved);
+        Assert.Null(result.Error);
+        Assert.False(Directory.Exists(from));
+        Assert.Equal("content-of-a.txt", File.ReadAllText(Path.Combine(to, "a.txt")));
+        Assert.Equal("content-of-sub/b.txt", File.ReadAllText(Path.Combine(to, "sub", "b.txt")));
+        Assert.Equal(2, Directory.GetFiles(to, "*", SearchOption.AllDirectories).Length);
+    }
+
+    // Failing to delete the source is tidy-up failing, not the move failing. Reporting it as a failed
+    // move would invite a caller to retry onto a now-populated target, which Plan correctly refuses —
+    // so the user would be stuck. FileShare.Read is permissive enough for the copy to read the file
+    // and restrictive enough that deleting it afterwards cannot succeed.
+    [Fact]
+    public void A_source_that_cannot_be_deleted_is_still_a_successful_move()
+    {
+        var from = Src("a.txt", "sub/b.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        DataDirMoveResult result;
+        using (File.Open(Path.Combine(from, "a.txt"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            result = DataDirMove.Execute(forced);
+        }
+
+        Assert.True(result.Moved);
+        Assert.False(result.SourceRemoved);   // a duplicate on disk, never a lost file
+        Assert.Null(result.Error);
+        Assert.Equal("content-of-a.txt", File.ReadAllText(Path.Combine(to, "a.txt")));
+        Assert.Equal("content-of-sub/b.txt", File.ReadAllText(Path.Combine(to, "sub", "b.txt")));
+    }
+
     [Fact]
     public void A_refused_plan_is_never_executed()
     {
