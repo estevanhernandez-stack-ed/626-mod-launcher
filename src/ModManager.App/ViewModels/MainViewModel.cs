@@ -222,10 +222,82 @@ public sealed partial class MainViewModel : ObservableObject
 
     private CancellationTokenSource? _longOpCts;
 
-    /// <summary>True while <see cref="IdentifyMyModsAsync"/> is in flight. Guards that one run only —
-    /// a second concurrent run would fight it for <see cref="_longOpCts"/>, the busy ring, and the
-    /// review dialog. UI-thread only, so a plain bool is the whole mechanism.</summary>
-    private bool _identifyRunning;
+    /// <summary>The one long operation this window can be running. The DECISION — held, by whom,
+    /// and what to say when a second one asks — lives in Core where it is tested; what stays here is
+    /// only the WinUI state that decision governs.</summary>
+    private readonly LongOperationSlot _longOp = new();
+
+    /// <summary>Keeps an answer readable while a progress counter is running. See
+    /// <see cref="StatusHold"/> — a refusal written once loses to a ticker written constantly.</summary>
+    private readonly StatusHold _statusHold = new();
+
+    /// <summary>How long an answer owns the line. Long enough to read a sentence without feeling
+    /// stuck; the progress counter picks straight back up afterwards.</summary>
+    private static readonly TimeSpan AnswerHold = TimeSpan.FromSeconds(4);
+
+    /// <summary>A progress tick. Yields to an answer the user is still reading.</summary>
+    private void AmbientStatus(string text)
+    {
+        if (_statusHold.AmbientAllowed) StatusText = text;
+    }
+
+    /// <summary>An answer to something the user just did. Holds the line against ambient ticks.</summary>
+    private void AnswerStatus(string text)
+    {
+        StatusText = text;
+        _statusHold.Hold(AnswerHold);
+    }
+
+    /// <summary>
+    /// Take the slot along with the busy ring, the Stop button, and the cancellation source, or
+    /// refuse and say what is in the way.
+    ///
+    /// <para>The slot is claimed LAST, after everything that can throw. <see cref="IsBusy"/> and
+    /// <see cref="IsCancellable"/> are <c>[ObservableProperty]</c> setters that raise PropertyChanged
+    /// synchronously into x:Bind handlers; a throw there with the slot already taken would strand it
+    /// for the session and silently disable every long action until restart. Claimed last, a throw
+    /// leaves it free.</para>
+    /// </summary>
+    private bool TryBeginLongOp(CancellationTokenSource cts, string what)
+    {
+        if (RefuseIfLongOpRunning()) return false;
+        IsBusy = true;
+        _longOpCts = cts;
+        IsCancellable = true;
+        _longOp.TryClaim(what);
+        // A run actually starting supersedes whatever answer was on the line — including a refusal
+        // from a moment ago, which is now stale news about a slot that just changed hands.
+        _statusHold.Clear();
+        return true;
+    }
+
+    /// <summary>Release the slot and the state it governs. Belongs in the <c>finally</c> of whatever
+    /// claimed it, so every exit — normal, cancelled, or thrown — hands it back.</summary>
+    private void EndLongOp()
+    {
+        _longOp.Release();
+        IsCancellable = false;
+        _longOpCts = null;
+        IsBusy = false;
+    }
+
+    /// <summary>
+    /// Refuse a second long operation, naming the one already running.
+    ///
+    /// <para>Public because a caller may need to refuse BEFORE it asks the user anything. "Identify
+    /// my mods…" opens a downloads-folder prompt first, and <see cref="TryBeginLongOp"/> only runs
+    /// once that answer comes back — so without this the user answers a modal and is then told it
+    /// was never going to run. <see cref="TryBeginLongOp"/> remains the authority and re-checks.</para>
+    /// </summary>
+    public bool RefuseIfLongOpRunning()
+    {
+        if (!_longOp.IsHeld) return false;
+        // An ANSWER, not chatter: the run being refused is writing its own counter several times a
+        // second, and without the hold it erases this before it can be read — which is precisely how
+        // a working guard reads as a dead click.
+        AnswerStatus(_longOp.RefusalMessage);
+        return true;
+    }
 
     /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
     /// nothing on its own — whatever finished is still handed to the review dialog for approval.</summary>
@@ -2058,13 +2130,11 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         var ctx = _ctx!;
 
-        IsBusy = true;
         using var cts = new CancellationTokenSource();
-        _longOpCts = cts;
-        IsCancellable = true;
+        if (!TryBeginLongOp(cts, "Getting details")) return;
         try { await FillMissingDetailsAsync(ctx, cts.Token); }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+        finally { EndLongOp(); }
     }
 
     /// <summary>
@@ -2095,7 +2165,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (candidates.Count == 0) { StatusText = "Every identified mod already has its details."; return 0; }
 
         var progress = new Progress<NexusRefreshProgress>(p =>
-            StatusText = $"Getting details from Nexus — {p.Completed} of {p.Total}…");
+            AmbientStatus($"Getting details from Nexus — {p.Completed} of {p.Total}…"));
 
         var result = await NexusRefresh.RefreshAllAsync(
             candidates, domain!, source, throttle: () => Task.Delay(120), progress: progress, ct: ct);
@@ -2253,19 +2323,10 @@ public sealed partial class MainViewModel : ObservableObject
         // second throws "Only a single ContentDialog can be open at any time" and a whole run's
         // proposals are discarded silently. Refuse the second run instead. Not a lock: this is the UI
         // thread, and the only writer.
-        if (_identifyRunning)
-        {
-            StatusText = "Identify is already running — let it finish, or press Stop.";
-            return;
-        }
-        _identifyRunning = true;
-
         var ctx = _ctx!;
 
-        IsBusy = true;
         using var cts = new CancellationTokenSource();
-        _longOpCts = cts;
-        IsCancellable = true;
+        if (!TryBeginLongOp(cts, "Identify")) return;
         try
         {
             // Pass 1 + 2: sweep the game folder and md5 what it found. Already tiered internally.
@@ -2296,7 +2357,7 @@ public sealed partial class MainViewModel : ObservableObject
             // busy/Stop state would void this run's busy ring for everything after it and steer
             // Stop at a token this run never checks.
             var searchProgress = new Progress<LooseIdentifyProgress>(p =>
-                StatusText = $"Searching Nexus for names — {p.Completed} of {p.Total}…");
+                AmbientStatus($"Searching Nexus for names — {p.Completed} of {p.Total}…"));
             IReadOnlyList<LooseIdentifyProposal> identifications = Array.Empty<LooseIdentifyProposal>();
             // Null means the pass gated out or found nothing, and it has already written the SPECIFIC
             // reason (not connected / no domain / no loose mods need identifying / no matches). Keep
@@ -2376,7 +2437,7 @@ public sealed partial class MainViewModel : ObservableObject
             });
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { _identifyRunning = false; IsCancellable = false; _longOpCts = null; IsBusy = false; }
+        finally { EndLongOp(); }
     }
 
     /// <summary>Pass 2b of the unified run: md5 the archives in a user-chosen downloads folder
@@ -2427,7 +2488,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (!seen.Add(fileName)) continue;
             checkedCount++;
 
-            StatusText = $"Matching your downloads folder — {checkedCount} of {Math.Min(archives.Count, DownloadsMd5Cap)}…";
+            AmbientStatus($"Matching your downloads folder — {checkedCount} of {Math.Min(archives.Count, DownloadsMd5Cap)}…");
             var candidate = new DiscoveryCandidate(path, fileName, DiscoveryKind.Archive);
             var md5 = await Task.Run(() => _discovery.Md5Of(ctx.GameRoot, candidate));
             if (md5 is null) continue;

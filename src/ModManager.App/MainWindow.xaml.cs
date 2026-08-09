@@ -1149,6 +1149,11 @@ public sealed partial class MainWindow : Window
     // and asking mid-run would interrupt a sweep the user is watching.
     private async void OnIdentifyMyMods(object sender, RoutedEventArgs e)
     {
+        // Refuse BEFORE the prompt. The view model guards the slot too, but only once this handler
+        // hands control back to it — which is after the user has chosen a folder. Asking someone a
+        // question and then telling them it was never going to run is worse than not asking.
+        if (ViewModel.RefuseIfLongOpRunning()) return;
+
         var ask = new ContentDialog
         {
             Title = "Also check a downloads folder?",

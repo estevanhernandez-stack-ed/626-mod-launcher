@@ -1298,3 +1298,34 @@ Nexus-dependent and App-layer, so it can only be proven live. Items 5, 7, and 11
 classes that review has already caught on this exact branch — nothing says a live pass won't be
 the one that lets the next one slip through.
 
+
+## fix/one-long-op-slot — one owner for the busy ring and Stop
+
+**Shipped:** The busy ring, the Stop button, and the cancellation source are a single slot with a
+single owner. The DECISION — held, by whom, and what to say when a second operation asks — lives in
+`ModManager.Core.LongOperationSlot` and is unit-tested there (claim, refuse-while-held, release,
+re-claim, releasing what nobody holds, and the refusal naming the RUNNING operation rather than the
+attempted one). What is left to smoke is wiring.
+
+**Smoke needed — wiring only:**
+
+1. **The refusal reaches the screen, and names the right run.** With a long operation in flight,
+   trigger the other one. EXPECT a status line naming the operation that is RUNNING — "Identify is
+   already running — let it finish, or press Stop." — with the first run undisturbed, its ring still
+   up and its Stop button still present.
+2. **Identify refuses before it asks anything.** With a long operation in flight, click
+   `Identify my mods…`. EXPECT the refusal and NO downloads-folder prompt: the pre-check runs ahead
+   of the dialog, so the user is never asked a question that was already going to be ignored.
+3. **The slot is released on every exit.** After a run finishes normally, after one is stopped, and
+   after one errors, EXPECT the next long operation to start normally. A stranded slot silently
+   disables both actions until restart.
+
+**Getting a window to collide with.** Both operations can finish too fast to interrupt.
+`Refresh details from Nexus` returns immediately when every identified mod already has its details
+("Every identified mod already has its details."), and `Identify my mods…` ends in a modal review
+dialog that blocks the menu. On a fully-enriched library there is NO window and both runs correctly
+succeed — that is the guard having nothing to refuse, not the guard failing, and it is how this
+reads as broken when it is merely idle. Use a game with rows still lacking a description or cover
+art, or collide against an identify run with real searching to do (its status line counts
+"Searching Nexus — N of M").
+
