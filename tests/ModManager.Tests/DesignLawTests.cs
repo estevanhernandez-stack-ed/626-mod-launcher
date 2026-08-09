@@ -287,23 +287,50 @@ public class DesignLawTests
     public void Copy_law_no_dead_xaml_strings() // F-071 — the F-027 failure mode, mechanized
     {
         // Confirmed-legit conditional overrides go here WITH the reason, or they rot silently.
-        var allow = new HashSet<string>
+        // Keyed by (file, element) rather than element alone: a bare name exempts that element in
+        // EVERY dialog, so the next surface that happens to call a TextBlock "Blurb" would inherit
+        // an exemption nobody granted it — the rule silently stops applying to a file no one
+        // reviewed. Two dialogs deliberately share the name "Blurb", and each one says so here.
+        var allow = new HashSet<(string File, string Element)>
         {
-            "CharactersEmpty", // SavesDialog: XAML fallback + conditional error override (F-027 fix shape)
-            "Blurb", // DiscoveryReviewDialog AND IdentifyReviewDialog: XAML carries the mods blurb;
-                     // code-behind overrides it ONLY when every proposal is a ProxyLoader (same
-                     // conditional-override shape). Both dialogs name it "Blurb" deliberately —
-                     // shared name, shared wording, so the two review surfaces can't drift.
+            // SavesDialog: XAML fallback + conditional error override (the F-027 fix shape).
+            ("SavesDialog.xaml", "CharactersEmpty"),
+            // Both review dialogs carry the mods blurb in XAML and override it in code-behind ONLY
+            // when every proposal is a ProxyLoader — same conditional-override shape. The shared
+            // name is deliberate: shared name, shared wording, so the two surfaces cannot drift.
+            ("DiscoveryReviewDialog.xaml", "Blurb"),
+            ("IdentifyReviewDialog.xaml", "Blurb"),
         };
         var findings = new List<string>();
         foreach (var (path, xaml) in Sources("*.xaml"))
         {
             var cs = path + ".cs";
             if (!File.Exists(cs)) continue;
-            findings.AddRange(FindDeadXamlStrings(xaml, File.ReadAllText(cs), allow)
-                .Select(n => $"{Path.GetFileName(path)}: {n}"));
+            var file = Path.GetFileName(path);
+            findings.AddRange(FindDeadXamlStrings(xaml, File.ReadAllText(cs), new HashSet<string>())
+                .Where(n => !allow.Contains((file, n)))
+                .Select(n => $"{file}: {n}"));
         }
         Assert.Empty(findings);
+    }
+
+    // The allowlist is keyed by (file, element) so an exemption cannot leak to a file nobody
+    // reviewed. Prove both halves: the listed pair is excused, an identical element name in any
+    // OTHER file is not. Without this, the first future dialog to name a TextBlock "Blurb" would
+    // silently inherit an exemption — the rule would stop applying and no test would notice.
+    [Fact]
+    public void An_allowlisted_element_name_is_excused_only_in_the_file_it_was_granted_for()
+    {
+        var allow = new HashSet<(string File, string Element)> { ("DiscoveryReviewDialog.xaml", "Blurb") };
+        const string xaml = "<TextBlock x:Name=\"Blurb\" Text=\"literal\" />";
+        const string code = "Blurb.Text = \"other\";";
+
+        var raw = FindDeadXamlStrings(xaml, code, new HashSet<string>()).ToList();
+        Assert.Equal(new[] { "Blurb" }, raw); // the detector always reports it
+
+        Assert.DoesNotContain(raw, n => !allow.Contains(("DiscoveryReviewDialog.xaml", n)));  // granted
+        Assert.Equal(new[] { "Blurb" },
+            raw.Where(n => !allow.Contains(("SomeFutureDialog.xaml", n))).ToArray());      // not granted
     }
 
     [Fact]
