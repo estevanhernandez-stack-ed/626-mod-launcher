@@ -333,4 +333,53 @@ public class DataDirMoveExecuteTests
         Assert.Null(result.Error);
         Assert.False(Directory.Exists(to));
     }
+
+    // A multi-gigabyte move behind a bare spinner is indistinguishable from a hang, and the one thing
+    // the user must not do is kill the app mid-move.
+    [Fact]
+    public void A_copy_move_reports_progress_for_every_file()
+    {
+        var from = Src("a.txt", "sub/b.txt", "sub/deep/c.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+        var seen = new List<(int Copied, int Total)>();
+
+        var result = DataDirMove.Execute(forced, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+
+        Assert.True(result.Moved);
+        lock (seen)
+        {
+            Assert.NotEmpty(seen);
+            Assert.All(seen, p => Assert.Equal(3, p.Total));
+            Assert.Equal(3, seen.Max(p => p.Copied));
+        }
+    }
+
+    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies.
+    [Fact]
+    public void A_rename_reports_no_progress()
+    {
+        var from = Src("a.txt");
+        var to = Path.Combine(Path.GetDirectoryName(from)!, "renamed-" + Guid.NewGuid().ToString("N"));
+        var seen = new List<(int, int)>();
+
+        var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+
+        Assert.True(result.Moved);
+        lock (seen) Assert.Empty(seen);
+    }
+
+    // The default keeps every existing call site and all current tests compiling unchanged.
+    [Fact]
+    public void A_null_progress_callback_changes_nothing()
+    {
+        var from = Src("a.txt", "sub/b.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        var result = DataDirMove.Execute(forced, progress: null);
+
+        Assert.True(result.Moved);
+        Assert.Equal(2, Directory.GetFiles(to, "*", SearchOption.AllDirectories).Length);
+    }
 }

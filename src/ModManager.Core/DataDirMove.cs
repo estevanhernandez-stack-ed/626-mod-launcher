@@ -97,7 +97,7 @@ public static class DataDirMove
     /// remove the source at the very end is deliberately non-fatal: a harmless duplicate is a far
     /// better outcome than risking the surviving copy in order to tidy up.</para>
     /// </summary>
-    public static DataDirMoveResult Execute(DataDirMovePlan plan)
+    public static DataDirMoveResult Execute(DataDirMovePlan plan, IProgress<(int Copied, int Total)>? progress = null)
     {
         if (!plan.CanProceed)
             return new DataDirMoveResult { Moved = false, SourceRemoved = false, Error = plan.Refusal };
@@ -119,7 +119,7 @@ public static class DataDirMove
             try
             {
                 if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
-                SafeMove.CopyDirVerified(plan.From, staging);
+                CopyTreeReporting(plan.From, staging, plan.FileCount, progress);
                 if (!Verify(plan.From, staging, out var mismatch))
                     throw new IOException("The copy did not match the original: " + mismatch);
 
@@ -165,6 +165,29 @@ public static class DataDirMove
         catch (Exception e)
         {
             return new DataDirMoveResult { Moved = false, SourceRemoved = false, Error = e.Message };
+        }
+    }
+
+    /// <summary>
+    /// Copy the tree file by file, verifying each and reporting after each one.
+    ///
+    /// <para>Deliberately not <see cref="SafeMove.CopyDirVerified"/>, which is otherwise the same
+    /// guarantee: it offers no seam to report from, and a multi-gigabyte move behind a bare spinner
+    /// is indistinguishable from a hang — while killing the app mid-move is the one thing a user must
+    /// not do. Empty directories are recreated first so a folder the user's tools rely on does not
+    /// silently vanish; <see cref="Verify"/> only walks files and would not catch that.</para>
+    /// </summary>
+    private static void CopyTreeReporting(string from, string to, int total, IProgress<(int, int)>? progress)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var dir in Directory.GetDirectories(from, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
+
+        var copied = 0;
+        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+        {
+            SafeMove.CopyFileVerified(file, Path.Combine(to, Path.GetRelativePath(from, file)));
+            progress?.Report((++copied, total));
         }
     }
 
