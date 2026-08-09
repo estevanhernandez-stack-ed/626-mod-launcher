@@ -24,6 +24,7 @@ public class RegistrationChangeTests
         Id = g.Id, GameName = g.GameName, Engine = g.Engine, GameRoot = g.GameRoot,
         FileExtensions = g.FileExtensions, GroupingRule = g.GroupingRule,
         ModLocations = g.ModLocations, UserSet = g.UserSet,
+        SteamAppId = g.SteamAppId, RequiredLauncher = g.RequiredLauncher,
     };
 
     [Fact]
@@ -323,5 +324,76 @@ public class RegistrationChangeTests
 
         Assert.NotNull(plan.DataDir);   // the delegation really happened; the assertion below has teeth
         Assert.Equal(before, Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToArray());
+    }
+
+    // ---- changes that are real but carry no pin ----
+
+    // FieldsChanged is deliberately the four PINNABLE fields. Without a second list, renaming a game
+    // saves a real change while the consequences panel sits blank — the exact lie spec 1's final
+    // review warned about.
+    [Fact]
+    public void A_rename_is_reported_as_an_other_change_and_pins_nothing()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.GameName = "Elden Ring (Reforged)";
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(GameEntry.FieldGameName, plan.OtherChanges);
+        Assert.Empty(plan.FieldsChanged);
+        Assert.Empty(plan.FieldsToPin);
+        Assert.True(plan.CanSave);
+    }
+
+    [Fact]
+    public void Steam_id_and_required_launcher_are_other_changes()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.SteamAppId = "1245620";
+        proposed.RequiredLauncher = "ersc_launcher.exe";
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(GameEntry.FieldSteamAppId, plan.OtherChanges);
+        Assert.Contains(GameEntry.FieldRequiredLauncher, plan.OtherChanges);
+        Assert.Empty(plan.FieldsChanged);
+    }
+
+    // A pinnable field belongs in FieldsChanged and must NOT be duplicated into OtherChanges —
+    // a UI rendering both lists would show it twice and imply two separate consequences.
+    [Fact]
+    public void A_pinnable_change_is_never_duplicated_into_other_changes()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.ModLocations = new[] { new ModLocation("mods", "mods", "Game/mod") };
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(GameEntry.UserSetModLocations, plan.FieldsChanged);
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.OtherChanges);
+    }
+
+    [Fact]
+    public void An_engine_change_is_an_other_change_as_well_as_a_note()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.Engine = "ue-pak";
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(GameEntry.FieldEngine, plan.OtherChanges);
+        Assert.NotEmpty(plan.Notes);
+    }
+
+    [Fact]
+    public void An_unchanged_entry_reports_no_other_changes()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+
+        Assert.Empty(RegistrationChange.Plan(stored, Copy(stored)).OtherChanges);
     }
 }

@@ -110,6 +110,14 @@ public sealed class GameEntry
     public const string UserSetGroupingRule = "groupingRule";
     public const string UserSetModLocations = "modLocations";
     public const string UserSetGameRoot = "gameRoot";
+
+    // Field names for changes that are real but carry no pin — see RegistrationChangePlan.OtherChanges.
+    // The UserSet* constants above are field names too; they are the PINNABLE subset, and they carry
+    // that prefix because they are also what gets written into UserSet.
+    public const string FieldGameName = "gameName";
+    public const string FieldEngine = "engine";
+    public const string FieldSteamAppId = "steamAppId";
+    public const string FieldRequiredLauncher = "requiredLauncher";
 }
 
 /// <summary>The persisted registry of games plus the active selection.</summary>

@@ -15,6 +15,16 @@ public sealed record RegistrationChangePlan
     public required IReadOnlyList<string> FieldsChanged { get; init; }
 
     /// <summary>
+    /// Field names that changed but carry no pin and no data-dir move — they simply save.
+    ///
+    /// <para>Exists because <see cref="FieldsChanged"/> is deliberately the four PINNABLE fields, so a
+    /// rename or a Steam-id correction would otherwise save a real change while a UI bound to
+    /// <see cref="FieldsChanged"/> showed nothing. A field appears in one list or the other, never
+    /// both.</para>
+    /// </summary>
+    public required IReadOnlyList<string> OtherChanges { get; init; }
+
+    /// <summary>
     /// What the caller should write to <see cref="GameEntry.UserSet"/> on save: everything already
     /// marked, plus the fields changed here, MINUS any the engine change merely auto-filled.
     ///
@@ -111,6 +121,18 @@ public static class RegistrationChange
         else if (rootChanged && !Directory.Exists(proposed.GameRoot))
             blockers.Add($"There is no folder at {proposed.GameRoot}.");
 
+        // Real changes that carry no pin and no move. Kept separate from `changed` so the two lists
+        // stay disjoint: a UI renders both, and a field appearing twice would imply two consequences.
+        var other = new List<string>();
+        if (!string.Equals(stored.GameName, proposed.GameName, StringComparison.Ordinal))
+            other.Add(GameEntry.FieldGameName);
+        if (!string.Equals(stored.Engine ?? "", proposed.Engine ?? "", StringComparison.OrdinalIgnoreCase))
+            other.Add(GameEntry.FieldEngine);
+        if (!string.Equals(stored.SteamAppId ?? "", proposed.SteamAppId ?? "", StringComparison.Ordinal))
+            other.Add(GameEntry.FieldSteamAppId);
+        if (!string.Equals(stored.RequiredLauncher ?? "", proposed.RequiredLauncher ?? "", StringComparison.OrdinalIgnoreCase))
+            other.Add(GameEntry.FieldRequiredLauncher);
+
         // Changing the engine changes which preset defaults apply, so a field that reads as
         // "untouched" under one engine may read as customised under another — quietly altering
         // whether future manifest corrections reach this game. Report it; the user decides.
@@ -139,6 +161,7 @@ public static class RegistrationChange
         return new RegistrationChangePlan
         {
             FieldsChanged = changed,
+            OtherChanges = other,
             FieldsToPin = pin,
             DataDir = move,
             Blockers = blockers,
