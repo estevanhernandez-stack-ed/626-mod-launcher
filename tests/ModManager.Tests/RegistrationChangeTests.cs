@@ -162,6 +162,45 @@ public class RegistrationChangeTests
         Assert.Contains(GameEntry.UserSetGroupingRule, plan.FieldsToPin);
     }
 
+    // Over-pinning is as damaging as under-pinning, and invisible. This repo spells the SAME logical
+    // mod path both ways — EnginePresets and the manifest use forward slashes ("Content/Paks/~mods"),
+    // while ModLocations.UePakModLocation builds it with Path.Combine, which yields backslashes on
+    // Windows. If a cosmetic difference reads as "changed", saving pins modLocations, and a pinned
+    // field permanently outranks manifest corrections for that game (Scanner.GameContext) — which is
+    // exactly the "194 .archive mods showed as zero" failure this spec exists to fix.
+    [Fact]
+    public void Two_spellings_of_the_same_mod_path_are_not_a_change()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = new[] { new ModLocation("mods", "mods", "Content\\Paks\\~mods") };
+        var proposed = Copy(stored);
+        proposed.ModLocations = new[] { new ModLocation("mods", "mods", "Content/Paks/~mods") };
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Empty(plan.FieldsChanged);
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.FieldsToPin);
+    }
+
+    // A trailing separator is the same folder too, and extensions differing only by stray whitespace
+    // are the same list. Both over-pin the same way if they read as an edit.
+    [Fact]
+    public void A_trailing_separator_and_padded_extensions_are_not_a_change()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.FileExtensions = new[] { "pak", "ucas" };
+        stored.ModLocations = new[] { new ModLocation("mods", "mods", "mod") };
+        var proposed = Copy(stored);
+        proposed.FileExtensions = new[] { " pak", "ucas " };
+        proposed.ModLocations = new[] { new ModLocation("mods", "mods", "mod\\") };
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Empty(plan.FieldsChanged);
+        Assert.DoesNotContain(GameEntry.UserSetFileExtensions, plan.FieldsToPin);
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.FieldsToPin);
+    }
+
     [Fact]
     public void Planning_writes_nothing()
     {
@@ -172,6 +211,29 @@ public class RegistrationChangeTests
 
         RegistrationChange.Plan(stored, Copy(stored));
 
+        Assert.Equal(before, Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToArray());
+    }
+
+    // The unchanged case above never reaches DataDirMove.Plan at all, so on its own it proves nothing
+    // about the one branch that delegates outward. This is the riskier path: a real move plan gets
+    // built, over a populated data dir, and STILL nothing may be written until the user says so.
+    [Fact]
+    public void Planning_a_game_folder_change_writes_nothing_either()
+    {
+        var root = TestSupport.TempDir("rc-");
+        var stored = Stored(Path.Combine(root, "a", "ELDEN RING"));
+        Directory.CreateDirectory(stored.GameRoot);
+        TestSupport.Write(Path.Combine(Scanner.DataDirForGame(stored), "disabled", "SomeMod.dll"), "held file");
+
+        var proposed = Copy(stored);
+        proposed.GameRoot = Path.Combine(root, "b", "ELDEN RING");
+        Directory.CreateDirectory(proposed.GameRoot);
+
+        var before = Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToArray();
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.NotNull(plan.DataDir);   // the delegation really happened; the assertion below has teeth
         Assert.Equal(before, Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToArray());
     }
 }

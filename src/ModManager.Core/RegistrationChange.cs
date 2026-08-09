@@ -97,17 +97,41 @@ public static class RegistrationChange
         };
     }
 
+    // Trimmed, because " pak" and "pak" are the same extension and reading them as an edit would pin
+    // the field for good. Leading dots are deliberately NOT stripped: the list is compared as the user
+    // stores it, and Scanner normalises the dot case separately on its way to a regex.
     private static bool SameExtensions(IReadOnlyList<string> a, IReadOnlyList<string> b)
-        => new HashSet<string>(a, StringComparer.OrdinalIgnoreCase)
-            .SetEquals(new HashSet<string>(b, StringComparer.OrdinalIgnoreCase));
+        => new HashSet<string>(a.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase)
+            .SetEquals(new HashSet<string>(b.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// One spelling for a relative mod path, so two ways of writing the same folder compare equal.
+    ///
+    /// <para>This repo genuinely produces both: <see cref="EnginePresets"/> and the shipped manifest
+    /// use forward slashes ("Content/Paks/~mods"), while <c>ModLocations.UePakModLocation</c> builds
+    /// the same location with <c>Path.Combine</c>, which yields backslashes on Windows.</para>
+    ///
+    /// <para><c>DataDirMove.Norm</c> cannot be reused here: it calls <c>GetFullPath</c>, which would
+    /// resolve a RELATIVE mod path against the process working directory.</para>
+    /// </summary>
+    private static string NormRelative(string p)
+        => p.Replace('/', System.IO.Path.DirectorySeparatorChar)
+            .Replace('\\', System.IO.Path.DirectorySeparatorChar)
+            .TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
 
     // ModLocation is a positional record — ModLocation(string Name, string Label, string Path) — so
     // Name and Path are non-nullable. No ?? guards: TreatWarningsAsErrors is on and dead null-coalesce
     // on a non-nullable operand is exactly the kind of thing that breaks a build at the worst moment.
     // Label is deliberately not compared: it is display text, not part of where the mods are.
+    //
+    // The Path comparison is normalised for the reason gameRoot's is (see NormRelative). A cosmetic
+    // difference that reads as "changed" lands modLocations in FieldsToPin, and a pinned field
+    // permanently outranks manifest corrections for that game (Scanner.GameContext) — silently opting
+    // it out of the very fix this spec exists to deliver. Over-pinning is as damaging as under-pinning.
     private static bool SameLocations(IReadOnlyList<ModLocation> a, IReadOnlyList<ModLocation> b)
         => a.Count == b.Count
            && a.Zip(b).All(p =>
                string.Equals(p.First.Name, p.Second.Name, StringComparison.OrdinalIgnoreCase)
-               && string.Equals(p.First.Path, p.Second.Path, StringComparison.OrdinalIgnoreCase));
+               && string.Equals(NormRelative(p.First.Path), NormRelative(p.Second.Path),
+                   StringComparison.OrdinalIgnoreCase));
 }
