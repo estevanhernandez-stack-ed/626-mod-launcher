@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ModManager.Core.Manifest;
 using ModManager.Core.Plugins;
 using ModManager.Plugins.Abstractions;
 
@@ -43,6 +44,22 @@ public static class Scanner
         game ??= new GameEntry();
         var gameRoot = Path.GetFullPath(string.IsNullOrEmpty(game.GameRoot) ? "." : game.GameRoot);
         var dataDir = DataDirForGame(game);
+        // Let a corrected definition reach a game the user already added. The registration froze its
+        // engine preset's values the day it was created; the manifest has kept learning since, and
+        // without this nothing ever re-applies a correction — the exact failure that showed 194
+        // .archive mods on disk as zero mods, because the entry still said "pak". Read-only: the
+        // stored entry is never rewritten, so what the user chose stays visible and editable.
+        // See RegistrationRefresh for why the untouched-preset-default test is the safe rule.
+        var manifestEntry = EffectiveManifest.Current.Games.FirstOrDefault(g => g.Id == game.Id);
+        var preset = game.Engine is not null && EnginePresets.Presets.TryGetValue(game.Engine, out var ep)
+            ? ep : null;
+        var declaredExts = preset is null
+            ? game.FileExtensions
+            : RegistrationRefresh.Extensions(game.FileExtensions, preset.FileExtensions, manifestEntry?.FileExtensions);
+        var groupingRule = preset is null
+            ? game.GroupingRule
+            : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule);
+
         // Normalise before this becomes a regex. A registration written by hand carries extensions
         // the way a person types them — ".smpcmod", ".suit" — and interpolating that raw yields
         // "\.(.smpcmod)$", where the inner dot is a WILDCARD: it demands a dot, then any character,
@@ -50,7 +67,7 @@ public static class Scanner
         // invisible. Same silent, total failure as a wrong extension list, from a leading dot the
         // user had no reason to leave off. Escaping is the other half — an extension is data, not
         // pattern, so a "+" or "(" in one must never reach the engine as syntax.
-        var exts = (game.FileExtensions.Count > 0 ? game.FileExtensions : new[] { "pak" })
+        var exts = (declaredExts.Count > 0 ? declaredExts : new[] { "pak" })
             .Select(e => e.ToLowerInvariant().TrimStart('.'))
             .Where(e => e.Length > 0)
             .Select(Regex.Escape)
@@ -61,7 +78,7 @@ public static class Scanner
         // LooseRootListing (catalog + by-nature), not the pak-file scanner. The engine decides the form
         // so any decima game gets it however it was registered; an explicit loc.Form still wins.
         var defaultForm = game.Engine == "decima" ? "loose-root"
-            : game.GroupingRule == "by_folder" ? "folders"
+            : groupingRule == "by_folder" ? "folders"
             : "files";
         var locations = game.ModLocations.Select((loc, idx) => new ModLocationCtx(
             string.IsNullOrEmpty(loc.Name) ? "loc" + idx : loc.Name,
@@ -96,7 +113,7 @@ public static class Scanner
             FileRe = fileRe,
             Locations = locations,
             TakenOver = TakenOverStore.Load(dataDir),
-            GroupingRule = string.IsNullOrEmpty(game.GroupingRule) ? "filename_no_ext" : game.GroupingRule,
+            GroupingRule = string.IsNullOrEmpty(groupingRule) ? "filename_no_ext" : groupingRule,
             ScanSubfolders = string.IsNullOrEmpty(game.ScanSubfolders) ? "warn" : game.ScanSubfolders,
             HasGame = !string.IsNullOrEmpty(game.Id),
         };
