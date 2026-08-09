@@ -14,8 +14,20 @@ public sealed record RegistrationChangePlan
     /// </summary>
     public required IReadOnlyList<string> FieldsChanged { get; init; }
 
-    /// <summary>What the caller should write to <see cref="GameEntry.UserSet"/> on save — the fields
-    /// changed here, plus everything already marked. Marks are never dropped by an unrelated edit.</summary>
+    /// <summary>
+    /// What the caller should write to <see cref="GameEntry.UserSet"/> on save: everything already
+    /// marked, plus the fields changed here, MINUS any the engine change merely auto-filled.
+    ///
+    /// <para>THIS LIST CAN BE SHORTER THAN <see cref="FieldsChanged"/>. Do not assume the two nest.
+    /// On an engine change, a changed field whose proposed value equals the NEW preset's own default
+    /// is the preset speaking, not the user, and is deliberately not pinned — otherwise picking an
+    /// engine from a dropdown would silently opt the game out of every future manifest correction.
+    /// So a UI must bind its "what changed" list to <see cref="FieldsChanged"/> and its
+    /// "what gets locked in" list to this one; they are different questions.</para>
+    ///
+    /// <para>Marks are never dropped by an unrelated edit: an existing mark survives regardless of
+    /// which field this edit touched.</para>
+    /// </summary>
     public required IReadOnlyList<string> FieldsToPin { get; init; }
 
     /// <summary>The data-dir move this edit implies, or null when it implies none.</summary>
@@ -39,10 +51,14 @@ public sealed record RegistrationChangePlan
 /// <c>MainViewModel</c> (14 concrete service deps, unconstructible in tests) accumulate defects
 /// until someone extracts them.</para>
 ///
-/// <para>Pure, and does no IO of its own beyond delegating to <see cref="DataDirMove.Plan"/>.</para>
+/// <para>READS the filesystem — it checks that a proposed game folder exists, and delegates to
+/// <see cref="DataDirMove.Plan"/> to size the move — and WRITES nothing. Planning must never change
+/// an install: someone who reads the consequences and then clicks Cancel has to end up exactly where
+/// they started. <c>Planning_writes_nothing</c> holds that line.</para>
 ///
-/// <para>THE CALLER'S CONTRACT: <c>proposed</c> must carry only values the user actually stated. Every
-/// field this reports as changed lands in <see cref="RegistrationChangePlan.FieldsToPin"/>, becomes
+/// <para>THE CALLER'S CONTRACT: <c>proposed</c> must carry only values the user actually stated. A
+/// field this reports as changed normally lands in <see cref="RegistrationChangePlan.FieldsToPin"/>
+/// (the preset-default drop below is the one exception, so the two lists can differ), becomes
 /// <c>userSet</c> on save, and from then on permanently outranks manifest corrections for that game
 /// (see <c>Scanner.GameContext</c>) — so a false pin silently opts the game out of every future fix,
 /// which is the exact failure this feature exists to prevent. An entry rebuilt through

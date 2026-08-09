@@ -182,7 +182,17 @@ Not a general file-mover. Not reachable from intake. Not exposed to the MCP. One
 
 `RegistrationChange.Plan(GameEntry stored, GameEntry proposed) → RegistrationChangePlan`
 
-Pure, with no IO of its own beyond delegating to `DataDirMove.Plan`. It answers one question: *if
+Reads the filesystem — it checks that a proposed game folder exists, and delegates to
+`DataDirMove.Plan` to size the move — and writes nothing. Planning must never change an install:
+someone who reads the consequences and clicks Cancel ends up exactly where they started.
+
+**As built, `FieldsToPin` can be shorter than `FieldsChanged`.** On an engine change, a changed field
+whose proposed value equals the NEW preset's own default is the preset speaking, not the user, and is
+deliberately not pinned — otherwise picking an engine from a dropdown would silently opt the game out
+of every future manifest correction, which is the failure this whole feature exists to prevent. The
+two lists answer different questions: what changed, and what gets locked in.
+
+It answers one question: *if
 this edit is saved, what actually happens?*
 
 ```text
