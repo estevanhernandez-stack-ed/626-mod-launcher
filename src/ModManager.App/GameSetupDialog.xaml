@@ -48,7 +48,8 @@
                            x:Name="LivingInLabel" />
                 <TextBlock Grid.Row="2" Grid.Column="1" x:Name="LivingInText" TextWrapping="Wrap" />
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Set to look in" Foreground="{StaticResource ThemeInkDim}" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Set to look in" Foreground="{StaticResource ThemeInkDim}"
+                           x:Name="DeclaredLabel" />
                 <TextBlock Grid.Row="3" Grid.Column="1" x:Name="DeclaredText" TextWrapping="Wrap" />
             </Grid>
 

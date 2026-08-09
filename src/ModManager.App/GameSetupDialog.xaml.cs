@@ -58,8 +58,17 @@ public sealed partial class GameSetupDialog : ContentDialog
         LivingInText.Visibility = roots.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         LivingInText.Text = string.Join(", ", roots);
 
-        DeclaredText.Text = string.Join(", ", _shape.DeclaredLocations
-            .Select(d => d.Exists ? d.Path : d.Path + "  (this folder doesn't exist)"));
+        // Never collapsed, unlike the loader/content-root rows above: an empty declared-location
+        // list is exactly the condition this dialog exists to surface — a registration with
+        // nothing declared at all. Hiding the row would go silent on the case a caller reaching
+        // for this dialog is more likely than average to be looking at. "None declared." states
+        // the fact plainly; GameShape.Notes is the only place that gets to say whether it's a problem.
+        DeclaredLabel.Visibility = Visibility.Visible;
+        DeclaredText.Visibility = Visibility.Visible;
+        DeclaredText.Text = _shape.DeclaredLocations.Count > 0
+            ? string.Join(", ", _shape.DeclaredLocations
+                .Select(d => d.Exists ? d.Path : d.Path + "  (this folder doesn't exist)"))
+            : "None declared.";
 
         // Rendered verbatim: GameShape already states whether drift is a problem, and re-wording it
         // here would let the dialog and the MCP tool tell the user two different stories.
