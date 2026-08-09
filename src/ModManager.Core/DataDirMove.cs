@@ -85,6 +85,102 @@ public static class DataDirMove
         };
     }
 
+    /// <summary>
+    /// Carry out a plan. The ONLY method here that writes.
+    ///
+    /// <para>THE ORDERING IS THE SAFETY. The source is never removed until the target is verified in
+    /// place, so a failure at any point leaves the user exactly where they started. A failure to
+    /// remove the source at the very end is deliberately non-fatal: a harmless duplicate is a far
+    /// better outcome than risking the surviving copy in order to tidy up.</para>
+    /// </summary>
+    public static DataDirMoveResult Execute(DataDirMovePlan plan)
+    {
+        if (!plan.CanProceed)
+            return new DataDirMoveResult { Moved = false, SourceRemoved = false, Error = plan.Refusal };
+
+        if (plan.Kind == DataDirMoveKind.Nothing)
+            return new DataDirMoveResult { Moved = true, SourceRemoved = false, Error = null };
+
+        try
+        {
+            if (plan.Kind == DataDirMoveKind.Rename)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(plan.To)!);
+                Directory.Move(plan.From, plan.To);
+                return new DataDirMoveResult { Moved = true, SourceRemoved = true, Error = null };
+            }
+
+            // Stage beside the target so the swap into place is a rename, not a second long copy.
+            var staging = plan.To + ".moving-" + Environment.ProcessId;
+            try
+            {
+                if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+                CopyTree(plan.From, staging);
+                if (!Verify(plan.From, staging, out var mismatch))
+                    throw new IOException("The copy did not match the original: " + mismatch);
+
+                Directory.CreateDirectory(Path.GetDirectoryName(plan.To)!);
+                Directory.Move(staging, plan.To);
+            }
+            catch
+            {
+                // Roll back to untouched. The source has not been read destructively, so removing the
+                // staging tree puts the user exactly back where they started.
+                try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
+                catch { /* nothing further we can safely do */ }
+                throw;
+            }
+
+            // Tidy-up only. The data is already safe at the target, so a failure here must not be
+            // reported as a failed move — that would invite a caller to "retry" onto a populated target.
+            var sourceRemoved = true;
+            try { Directory.Delete(plan.From, recursive: true); }
+            catch { sourceRemoved = false; }
+
+            return new DataDirMoveResult { Moved = true, SourceRemoved = sourceRemoved, Error = null };
+        }
+        catch (Exception e)
+        {
+            return new DataDirMoveResult { Moved = false, SourceRemoved = false, Error = e.Message };
+        }
+    }
+
+    private static void CopyTree(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var dir in Directory.GetDirectories(from, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
+        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+            File.Copy(file, Path.Combine(to, Path.GetRelativePath(from, file)), overwrite: false);
+    }
+
+    /// <summary>
+    /// Same set of relative paths, same byte length for each.
+    ///
+    /// <para>That catches the failures that actually happen — a truncated copy, a file that did not
+    /// make it, a disk that filled. It deliberately does NOT hash contents: hashing gigabytes of
+    /// disabled mods would add minutes to every move to catch a class of silent corruption the
+    /// rename path does not have at all. Stated here rather than implied away, so no caller reads
+    /// "verify" as a guarantee this does not provide.</para>
+    /// </summary>
+    private static bool Verify(string from, string to, out string mismatch)
+    {
+        var a = Directory.GetFiles(from, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => Path.GetRelativePath(from, f), f => new FileInfo(f).Length, StringComparer.OrdinalIgnoreCase);
+        var b = Directory.GetFiles(to, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => Path.GetRelativePath(to, f), f => new FileInfo(f).Length, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (rel, len) in a)
+        {
+            if (!b.TryGetValue(rel, out var copied)) { mismatch = rel + " is missing."; return false; }
+            if (copied != len) { mismatch = rel + " is a different size."; return false; }
+        }
+        if (b.Count != a.Count) { mismatch = "the copy has extra files."; return false; }
+
+        mismatch = "";
+        return true;
+    }
+
     private static DataDirMovePlan Empty(string src, string dst) => new()
     {
         From = src, To = dst, Kind = DataDirMoveKind.Nothing, FileCount = 0, TotalBytes = 0,
@@ -108,4 +204,18 @@ public static class DataDirMove
         try { return Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
         catch { return p.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
     }
+}
+
+/// <summary>The outcome of a <see cref="DataDirMove.Execute"/> call.</summary>
+public sealed record DataDirMoveResult
+{
+    /// <summary>True when the data is at the target (or there was nothing to move).</summary>
+    public required bool Moved { get; init; }
+
+    /// <summary>False when the move succeeded but the old copy could not be deleted — a duplicate on
+    /// disk, never a lost file.</summary>
+    public required bool SourceRemoved { get; init; }
+
+    /// <summary>Why the move did not happen, in the user's words, or null on success.</summary>
+    public string? Error { get; init; }
 }
