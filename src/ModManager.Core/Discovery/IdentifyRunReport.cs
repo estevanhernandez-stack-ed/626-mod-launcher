@@ -5,35 +5,42 @@ namespace ModManager.Core.Discovery;
 /// state, nothing that touches disk — so the sentence the user reads is decided by a pure function
 /// with tests behind it.
 /// </summary>
-/// <param name="Adopted">Mod keys the adoption apply actually wrote. Not the count approved in the
-/// dialog: an approved archive whose contents map to no installed mod key writes nothing.</param>
-/// <param name="Named">Rows the name-search apply actually wrote. Not the size of the batch handed
-/// in — a refused apply writes zero.</param>
-/// <param name="Filled">Rows the fill-blanks pass wrote. It writes its partial batch when the user
-/// stops, which is why this is carried into every terminal line, cancelled or not.</param>
-/// <param name="DroppedNameMatches">Approved name matches that <see cref="LooseMods.LooseIdentify.ExcludeKeys"/>
-/// removed because an earlier pass in the same run already wrote that key.</param>
-/// <param name="Stopped">The user pressed Stop at some point during the run.</param>
-/// <param name="AdoptionNote">The adoption apply's own explanation, carried when it wrote nothing
-/// despite having approvals. It distinguishes three different zero-write reasons; a composed count
-/// would throw that away.</param>
-/// <param name="IdentifyNote">The name-search apply's own explanation, carried when it refused.</param>
-/// <param name="DownloadsNote">What the downloads-folder pass contributed, from
-/// <see cref="IdentifyRunReport.DownloadsFolderNote"/>.</param>
-/// <param name="NothingHappenedLine">What to say when no pass wrote anything and the run was not
-/// stopped. The caller supplies it because only the caller knows WHY nothing happened — a gated-out
-/// pass has already explained itself, and the run must not replace that with a claim it never
-/// tested.</param>
 public sealed record IdentifyRunOutcome
 {
+    /// <summary>Mod keys the adoption apply actually wrote. NOT the count approved in the dialog: an
+    /// approved archive whose contents map to no installed mod key writes nothing.</summary>
     public int Adopted { get; init; }
+
+    /// <summary>Rows the name-search apply actually wrote. Not the size of the batch handed in — a
+    /// refused apply writes zero.</summary>
     public int Named { get; init; }
+
+    /// <summary>Rows the fill-blanks pass wrote. It writes its partial batch when the user stops,
+    /// which is why this is carried into every terminal line, cancelled or not.</summary>
     public int Filled { get; init; }
+
+    /// <summary>Approved name matches that <see cref="LooseMods.LooseIdentify.ExcludeKeys"/> removed
+    /// because an earlier pass in the same run already wrote that key.</summary>
     public int DroppedNameMatches { get; init; }
+
+    /// <summary>The user pressed Stop at some point during the run.</summary>
     public bool Stopped { get; init; }
+
+    /// <summary>The adoption apply's own explanation, carried when it wrote nothing despite having
+    /// approvals. It distinguishes three different zero-write reasons; a composed count would throw
+    /// that away.</summary>
     public string? AdoptionNote { get; init; }
+
+    /// <summary>The name-search apply's own explanation, carried when it refused.</summary>
     public string? IdentifyNote { get; init; }
+
+    /// <summary>What the downloads-folder pass contributed, from
+    /// <see cref="IdentifyRunReport.DownloadsFolderNote"/>.</summary>
     public string? DownloadsNote { get; init; }
+
+    /// <summary>What to say when no pass wrote anything and the run was not stopped. The caller
+    /// supplies it because only the caller knows WHY nothing happened — a gated-out pass has already
+    /// explained itself, and the run must not replace that with a claim it never tested.</summary>
     public string? NothingHappenedLine { get; init; }
 }
 

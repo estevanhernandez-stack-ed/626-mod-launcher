@@ -1794,6 +1794,21 @@ public sealed partial class MainViewModel : ObservableObject
     /// dark window — the Settings "Connect Nexus account" button is disabled with a "finalizing" note.</summary>
     public bool NexusSignInConfigured => _oauth.Config.IsConfigured;
 
+    /// <summary>
+    /// The one line for "you are not signed in to Nexus".
+    ///
+    /// <para>Three different phrasings shipped, and they did not merely differ in wording — they
+    /// gave different DIRECTIONS. Four sites said "(toolbar -> Nexus)" and the only place a user can
+    /// actually connect is the Settings dialog's "Connect Nexus account" button, so following that
+    /// message led somewhere with nothing to click. A remedy that names the wrong place is worse
+    /// than no remedy: it spends the user's trust before it fails them.</para>
+    ///
+    /// <para>One constant, so a pre-check and the operation it guards cannot drift apart — the
+    /// property those two must agree on is now that they are the same string.</para>
+    /// </summary>
+    private const string NexusNotConnectedMessage =
+        "Nexus isn't connected. Connect your account in Settings → Nexus Mods.";
+
     /// <summary>Status message for a gated user-scoped action — distinguishes the dark window
     /// ("finalizing sign-in") from a plain disconnected state so the copy never tells the user to
     /// "connect" when connecting isn't yet possible.</summary>
@@ -2028,7 +2043,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// on the next line via <see cref="NexusUserFeaturesAvailable"/>.</summary>
     public bool CanBackfillFromDownloads()
     {
-        if (NexusSource is null) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return false; }
+        if (NexusSource is null) { StatusText = NexusNotConnectedMessage; return false; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return false; }
         if (!ActiveGameHasNexusDomain) { StatusText = "This game has no Nexus domain set."; return false; }
         return true;
@@ -2040,7 +2055,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task BackfillNexusAsync(IReadOnlyList<string> archives)
     {
         if (_ctx is null) return;
-        if (NexusSource is not { } source) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return; }
+        if (NexusSource is not { } source) { StatusText = NexusNotConnectedMessage; return; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         if (string.IsNullOrWhiteSpace(NexusDomains.Effective(_ctx.Game))) { StatusText = "This game has no Nexus domain set."; return; }
         if (archives.Count == 0) { StatusText = "No .zip/.7z/.rar archives found in that folder."; return; }
@@ -2075,7 +2090,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task RefreshNexusStatsAsync()
     {
         if (_ctx is null) return;
-        if (NexusSource is not { } source) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return; }
+        if (NexusSource is not { } source) { StatusText = NexusNotConnectedMessage; return; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -2155,8 +2170,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task<int> FillMissingDetailsAsync(GameContext ctx, CancellationToken ct)
     {
-        if (NexusSource is not { } source) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return 0; }
-        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return 0; }
+        if (NexusSource is not { } source) { StatusText = NexusNotConnectedMessage; return 0; }
+        if (!_nexus.IsConnected) { StatusText = NexusNotConnectedMessage; return 0; }
         var domain = NexusDomains.Effective(ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return 0; }
 
@@ -2214,8 +2229,8 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task<IReadOnlyList<LooseIdentifyProposal>?> SearchUnnamedRowsAsync(
         GameContext ctx, IProgress<LooseIdentifyProgress> progress, CancellationToken ct)
     {
-        if (NexusSource is not IModTextSearch search) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return null; }
-        if (!_nexus.IsConnected) { StatusText = "Connect Nexus first (toolbar -> Nexus)."; return null; }
+        if (NexusSource is not IModTextSearch search) { StatusText = NexusNotConnectedMessage; return null; }
+        if (!_nexus.IsConnected) { StatusText = NexusNotConnectedMessage; return null; }
         var domain = NexusDomains.Effective(ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return null; }
 
@@ -2909,7 +2924,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ToggleEndorseAsync(ModRowViewModel row)
     {
         if (_ctx is null) return;
-        if (NexusSource is not { } source) { StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods."; return; }
+        if (NexusSource is not { } source) { StatusText = NexusNotConnectedMessage; return; }
         if (!NexusUserFeaturesAvailable) { StatusText = NexusUnavailableMessage; return; }
         var domain = NexusDomains.Effective(_ctx.Game);
         if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return; }
@@ -2979,12 +2994,12 @@ public sealed partial class MainViewModel : ObservableObject
                 case ModSiteProvider.Nexus:
                     if (!_nexus.IsConnected)
                     {
-                        StatusText = "Connect Nexus first (Settings → Nexus Mods).";
+                        StatusText = NexusNotConnectedMessage;
                         return false;
                     }
                     if (NexusSource is not { } nexusSource)
                     {
-                        StatusText = "Nexus isn't connected. Connect your account in Settings → Nexus Mods.";
+                        StatusText = NexusNotConnectedMessage;
                         return false;
                     }
                     // Manual match is identity-authoritative: the user told us exactly which mod this is.
