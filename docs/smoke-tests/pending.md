@@ -1302,35 +1302,30 @@ the one that lets the next one slip through.
 ## fix/one-long-op-slot — one owner for the busy ring and Stop
 
 **Shipped:** The busy ring, the Stop button, and the cancellation source are a single slot with a
-single owner. `TryBeginLongOp` / `EndLongOp` claim and release it; both long operations —
-`Identify my mods…` and Advanced → `Refresh details from Nexus` — go through them. Previously only
-identify was guarded, so starting the other mid-run handed Stop the newcomer's token and let
-whichever finished first clear the busy state out from under the other.
+single owner. The DECISION — held, by whom, and what to say when a second operation asks — lives in
+`ModManager.Core.LongOperationSlot` and is unit-tested there (claim, refuse-while-held, release,
+re-claim, releasing what nobody holds, and the refusal naming the RUNNING operation rather than the
+attempted one). What is left to smoke is wiring.
 
-**Smoke needed:**
+**Smoke needed — wiring only:**
 
-1. **The second run is refused, and says so.** Start `Identify my mods…` on Cyberpunk (skip the
-   folder prompt). While it runs, open More → Advanced → `Refresh details from Nexus`. EXPECT the
-   status line to read "Identify is already running — let it finish, or press Stop.", the first run
-   to continue undisturbed, its ring to stay up, and its Stop button to remain. EXPECT no second
-   progress count to start.
-2. **And in the other order.** Start `Refresh details from Nexus`, then click `Identify my mods…`
-   while it runs. EXPECT "Getting details is already running — let it finish, or press Stop." and
-   the folder prompt NOT to appear — the refusal comes before anything asks the user for input.
+1. **The refusal reaches the screen, and names the right run.** With a long operation in flight,
+   trigger the other one. EXPECT a status line naming the operation that is RUNNING — "Identify is
+   already running — let it finish, or press Stop." — with the first run undisturbed, its ring still
+   up and its Stop button still present.
+2. **Identify refuses before it asks anything.** With a long operation in flight, click
+   `Identify my mods…`. EXPECT the refusal and NO downloads-folder prompt: the pre-check runs ahead
+   of the dialog, so the user is never asked a question that was already going to be ignored.
+3. **The slot is released on every exit.** After a run finishes normally, after one is stopped, and
+   after one errors, EXPECT the next long operation to start normally. A stranded slot silently
+   disables both actions until restart.
 
-   NOTE ON REPRODUCING THIS: on a library whose mods are already enriched, `Refresh details from
-   Nexus` finishes in milliseconds (`SelectEnrichmentCandidates` returns nothing, it reports "Every
-   identified mod already has its details" and releases the slot), so there is no window to collide
-   with and BOTH runs will correctly succeed. That is the guard having nothing to refuse, not the
-   guard failing. To get a real window, point it at a game with rows that still lack a description
-   or cover art — or run the check against `Identify my mods…`, which always takes seconds.
+**Getting a window to collide with.** Both operations can finish too fast to interrupt.
+`Refresh details from Nexus` returns immediately when every identified mod already has its details
+("Every identified mod already has its details."), and `Identify my mods…` ends in a modal review
+dialog that blocks the menu. On a fully-enriched library there is NO window and both runs correctly
+succeed — that is the guard having nothing to refuse, not the guard failing, and it is how this
+reads as broken when it is merely idle. Use a game with rows still lacking a description or cover
+art, or collide against an identify run with real searching to do (its status line counts
+"Searching Nexus — N of M").
 
-   The message must name the operation that is RUNNING, not the one you clicked. "Identify is
-   already running" in response to clicking Identify is the bug this wording replaced.
-3. **Stop still cancels the run that owns it.** With one long run in flight, press Stop. EXPECT that
-   run to wind down and report a stopped/partial line, and the ring to go down and stay down.
-4. **The slot is released on every exit.** After a run finishes normally, after one is stopped, and
-   after one errors (disconnect Nexus mid-run if you can force it), EXPECT a subsequent
-   `Identify my mods…` to start normally every time. A slot that stays claimed silently bricks both
-   long actions until restart — that is the failure this guard exists to prevent, and it cannot be
-   unit-tested because the flag lives on a WinUI view model.
