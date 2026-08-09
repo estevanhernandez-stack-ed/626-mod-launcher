@@ -222,10 +222,50 @@ public sealed partial class MainViewModel : ObservableObject
 
     private CancellationTokenSource? _longOpCts;
 
-    /// <summary>True while <see cref="IdentifyMyModsAsync"/> is in flight. Guards that one run only —
-    /// a second concurrent run would fight it for <see cref="_longOpCts"/>, the busy ring, and the
-    /// review dialog. UI-thread only, so a plain bool is the whole mechanism.</summary>
-    private bool _identifyRunning;
+    /// <summary>True while ANY long operation holds the slot below. UI-thread only, so a plain bool
+    /// is the whole mechanism.</summary>
+    private bool _longOpRunning;
+
+    /// <summary>
+    /// Take the single long-operation slot — the busy ring, the Stop button, and the cancellation
+    /// source — or refuse and say so.
+    ///
+    /// <para>There is exactly ONE of each, so there can be exactly one owner. Guarding per-method
+    /// was the bug: "Identify my mods…" checked, "Refresh details from Nexus" did not, and the
+    /// Advanced items are deliberately always clickable (<i>guard, don't hide</i>). Starting the
+    /// second while the first ran handed Stop only the newcomer's token, and whichever finished
+    /// first cleared the busy state out from under the other — leaving a run with no ring and a
+    /// Stop button that cancelled something else.</para>
+    ///
+    /// <para>The flag is set LAST, after everything that can throw. <see cref="IsBusy"/> and
+    /// <see cref="IsCancellable"/> are <c>[ObservableProperty]</c> setters that raise
+    /// PropertyChanged synchronously into x:Bind handlers; a throw in that window with the flag
+    /// already set would latch the slot for the session and silently brick every long action until
+    /// restart. Claimed last, a throw leaves the slot free.</para>
+    /// </summary>
+    private bool TryBeginLongOp(CancellationTokenSource cts, string what)
+    {
+        if (_longOpRunning)
+        {
+            StatusText = $"{what} is already running — let it finish, or press Stop.";
+            return false;
+        }
+        IsBusy = true;
+        _longOpCts = cts;
+        IsCancellable = true;
+        _longOpRunning = true;
+        return true;
+    }
+
+    /// <summary>Release the slot. Belongs in the <c>finally</c> of whatever claimed it, so every
+    /// exit path — normal, cancelled, or thrown — hands it back.</summary>
+    private void EndLongOp()
+    {
+        _longOpRunning = false;
+        IsCancellable = false;
+        _longOpCts = null;
+        IsBusy = false;
+    }
 
     /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
     /// nothing on its own — whatever finished is still handed to the review dialog for approval.</summary>
@@ -2058,13 +2098,11 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         var ctx = _ctx!;
 
-        IsBusy = true;
         using var cts = new CancellationTokenSource();
-        _longOpCts = cts;
-        IsCancellable = true;
+        if (!TryBeginLongOp(cts, "Getting details")) return;
         try { await FillMissingDetailsAsync(ctx, cts.Token); }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsCancellable = false; _longOpCts = null; IsBusy = false; }
+        finally { EndLongOp(); }
     }
 
     /// <summary>
@@ -2253,19 +2291,10 @@ public sealed partial class MainViewModel : ObservableObject
         // second throws "Only a single ContentDialog can be open at any time" and a whole run's
         // proposals are discarded silently. Refuse the second run instead. Not a lock: this is the UI
         // thread, and the only writer.
-        if (_identifyRunning)
-        {
-            StatusText = "Identify is already running — let it finish, or press Stop.";
-            return;
-        }
-        _identifyRunning = true;
-
         var ctx = _ctx!;
 
-        IsBusy = true;
         using var cts = new CancellationTokenSource();
-        _longOpCts = cts;
-        IsCancellable = true;
+        if (!TryBeginLongOp(cts, "Identify")) return;
         try
         {
             // Pass 1 + 2: sweep the game folder and md5 what it found. Already tiered internally.
@@ -2376,7 +2405,7 @@ public sealed partial class MainViewModel : ObservableObject
             });
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { _identifyRunning = false; IsCancellable = false; _longOpCts = null; IsBusy = false; }
+        finally { EndLongOp(); }
     }
 
     /// <summary>Pass 2b of the unified run: md5 the archives in a user-chosen downloads folder

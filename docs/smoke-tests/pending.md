@@ -1298,3 +1298,29 @@ Nexus-dependent and App-layer, so it can only be proven live. Items 5, 7, and 11
 classes that review has already caught on this exact branch — nothing says a live pass won't be
 the one that lets the next one slip through.
 
+
+## fix/one-long-op-slot — one owner for the busy ring and Stop
+
+**Shipped:** The busy ring, the Stop button, and the cancellation source are a single slot with a
+single owner. `TryBeginLongOp` / `EndLongOp` claim and release it; both long operations —
+`Identify my mods…` and Advanced → `Refresh details from Nexus` — go through them. Previously only
+identify was guarded, so starting the other mid-run handed Stop the newcomer's token and let
+whichever finished first clear the busy state out from under the other.
+
+**Smoke needed:**
+
+1. **The second run is refused, and says so.** Start `Identify my mods…` on Cyberpunk (skip the
+   folder prompt). While it runs, open More → Advanced → `Refresh details from Nexus`. EXPECT the
+   status line to read "Identify is already running — let it finish, or press Stop.", the first run
+   to continue undisturbed, its ring to stay up, and its Stop button to remain. EXPECT no second
+   progress count to start.
+2. **And in the other order.** Start `Refresh details from Nexus`, then click `Identify my mods…`
+   while it runs. EXPECT "Getting details is already running — let it finish, or press Stop." and
+   the folder prompt NOT to appear — the refusal comes before anything asks the user for input.
+3. **Stop still cancels the run that owns it.** With one long run in flight, press Stop. EXPECT that
+   run to wind down and report a stopped/partial line, and the ring to go down and stay down.
+4. **The slot is released on every exit.** After a run finishes normally, after one is stopped, and
+   after one errors (disconnect Nexus mid-run if you can force it), EXPECT a subsequent
+   `Identify my mods…` to start normally every time. A slot that stays claimed silently bricks both
+   long actions until restart — that is the failure this guard exists to prevent, and it cannot be
+   unit-tested because the flag lives on a WinUI view model.
