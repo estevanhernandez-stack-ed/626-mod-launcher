@@ -226,6 +226,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// is the whole mechanism.</summary>
     private bool _longOpRunning;
 
+    /// <summary>What is holding the slot, for the refusal message. Naming the RUNNING operation is
+    /// the point — see <see cref="RefuseIfLongOpRunning"/>.</summary>
+    private string _longOpName = "";
+
     /// <summary>
     /// Take the single long-operation slot — the busy ring, the Stop button, and the cancellation
     /// source — or refuse and say so.
@@ -245,15 +249,32 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private bool TryBeginLongOp(CancellationTokenSource cts, string what)
     {
-        if (_longOpRunning)
-        {
-            StatusText = $"{what} is already running — let it finish, or press Stop.";
-            return false;
-        }
+        if (RefuseIfLongOpRunning()) return false;
         IsBusy = true;
         _longOpCts = cts;
         IsCancellable = true;
+        _longOpName = what;
         _longOpRunning = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Refuse a second long operation, naming the one ALREADY RUNNING.
+    ///
+    /// <para>Public because a caller may need to refuse BEFORE it asks the user anything. "Identify
+    /// my mods…" opens a downloads-folder prompt first, and the view model's own guard only runs
+    /// after that answer comes back — so without a pre-check the user answers a modal and is then
+    /// told it was never going to run. Call this first; <see cref="TryBeginLongOp"/> remains the
+    /// authority and re-checks.</para>
+    ///
+    /// <para>The message names the RUNNING operation, not the attempted one. Naming the attempted
+    /// one produces "Identify is already running" in response to clicking Identify, which reads as
+    /// a glitch rather than an explanation.</para>
+    /// </summary>
+    public bool RefuseIfLongOpRunning()
+    {
+        if (!_longOpRunning) return false;
+        StatusText = $"{_longOpName} is already running — let it finish, or press Stop.";
         return true;
     }
 
@@ -262,6 +283,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void EndLongOp()
     {
         _longOpRunning = false;
+        _longOpName = "";
         IsCancellable = false;
         _longOpCts = null;
         IsBusy = false;

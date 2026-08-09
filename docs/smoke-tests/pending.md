@@ -1317,6 +1317,16 @@ whichever finished first clear the busy state out from under the other.
 2. **And in the other order.** Start `Refresh details from Nexus`, then click `Identify my mods…`
    while it runs. EXPECT "Getting details is already running — let it finish, or press Stop." and
    the folder prompt NOT to appear — the refusal comes before anything asks the user for input.
+
+   NOTE ON REPRODUCING THIS: on a library whose mods are already enriched, `Refresh details from
+   Nexus` finishes in milliseconds (`SelectEnrichmentCandidates` returns nothing, it reports "Every
+   identified mod already has its details" and releases the slot), so there is no window to collide
+   with and BOTH runs will correctly succeed. That is the guard having nothing to refuse, not the
+   guard failing. To get a real window, point it at a game with rows that still lack a description
+   or cover art — or run the check against `Identify my mods…`, which always takes seconds.
+
+   The message must name the operation that is RUNNING, not the one you clicked. "Identify is
+   already running" in response to clicking Identify is the bug this wording replaced.
 3. **Stop still cancels the run that owns it.** With one long run in flight, press Stop. EXPECT that
    run to wind down and report a stopped/partial line, and the ring to go down and stay down.
 4. **The slot is released on every exit.** After a run finishes normally, after one is stopped, and
