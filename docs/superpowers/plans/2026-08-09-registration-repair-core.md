@@ -985,8 +985,11 @@ public class RegistrationChangeTests
 
         var plan = RegistrationChange.Plan(stored, proposed);
 
-        Assert.Equal("elden-ring", proposed.Id);
+        // Assert on the PLANNER, not on the fixture: a rename must imply no data-dir move and no
+        // gameRoot change, because the data dir is keyed on (Id, GameRoot) and neither moved.
         Assert.Null(plan.DataDir);
+        Assert.DoesNotContain(GameEntry.UserSetGameRoot, plan.FieldsChanged);
+        Assert.Empty(plan.Blockers);
         Assert.True(plan.CanSave);
     }
 
