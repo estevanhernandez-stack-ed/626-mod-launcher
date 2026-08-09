@@ -106,4 +106,47 @@ public class RegistrationRefreshTests
 
         Assert.Equal(new[] { "pak" }, stored);
     }
+
+    // ---- the explicit marker beats the inference ----
+
+    // A1's one documented blind spot: a user who deliberately picks a value that happens to EQUAL the
+    // preset default is indistinguishable from one who never touched it, so the manifest overrides a
+    // real choice. The marker is the only signal in the system that is not an inference, so it wins.
+    [Fact]
+    public void A_marked_field_is_kept_even_when_it_equals_the_preset_default()
+    {
+        var effective = RegistrationRefresh.Extensions(
+            stored: new[] { "pak" }, presetDefault: new[] { "pak" },
+            manifest: new[] { "archive" }, userSet: true);
+
+        Assert.Equal(new[] { "pak" }, effective);
+    }
+
+    [Fact]
+    public void An_unmarked_field_still_self_heals()
+    {
+        var effective = RegistrationRefresh.Extensions(
+            stored: new[] { "pak" }, presetDefault: new[] { "pak" },
+            manifest: new[] { "archive" }, userSet: false);
+
+        Assert.Equal(new[] { "archive" }, effective);
+    }
+
+    [Fact]
+    public void A_marked_grouping_rule_is_kept_even_when_it_equals_the_preset_default()
+    {
+        Assert.Equal("filename_no_ext", RegistrationRefresh.Grouping(
+            "filename_no_ext", "filename_no_ext", "extension", userSet: true));
+
+        Assert.Equal("extension", RegistrationRefresh.Grouping(
+            "filename_no_ext", "filename_no_ext", "extension", userSet: false));
+    }
+
+    // The default keeps every pre-existing call site and all ten original tests behaving identically.
+    [Fact]
+    public void The_marker_defaults_to_absent()
+    {
+        Assert.Equal(new[] { "archive" },
+            RegistrationRefresh.Extensions(new[] { "pak" }, new[] { "pak" }, new[] { "archive" }));
+    }
 }

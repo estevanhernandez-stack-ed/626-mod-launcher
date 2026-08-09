@@ -28,15 +28,21 @@ namespace ModManager.Core;
 /// </summary>
 public static class RegistrationRefresh
 {
-    /// <summary>The extensions to actually scan with. See the type doc for why the untouched-default
-    /// test is the safe discriminator.</summary>
+    /// <summary>The extensions to actually scan with. <paramref name="userSet"/> is checked FIRST and
+    /// wins outright: it is the one signal here that is not an inference. The untouched-default test
+    /// stays underneath as the fallback for registrations that predate the marker.</summary>
     public static IReadOnlyList<string> Extensions(
-        IReadOnlyList<string> stored, IReadOnlyList<string> presetDefault, IReadOnlyList<string>? manifest)
-        => manifest is { Count: > 0 } && IsUntouched(stored, presetDefault) ? manifest : stored;
+        IReadOnlyList<string> stored, IReadOnlyList<string> presetDefault,
+        IReadOnlyList<string>? manifest, bool userSet = false)
+        => userSet ? stored
+         : manifest is { Count: > 0 } && IsUntouched(stored, presetDefault) ? manifest
+         : stored;
 
-    /// <summary>The grouping rule to actually group with. Same freeze, same rule.</summary>
-    public static string? Grouping(string? stored, string? presetDefault, string? manifest)
-        => !string.IsNullOrWhiteSpace(manifest)
+    /// <summary>The grouping rule to actually group with. Same freeze, same rule, same precedence.</summary>
+    public static string? Grouping(
+        string? stored, string? presetDefault, string? manifest, bool userSet = false)
+        => userSet ? stored
+         : !string.IsNullOrWhiteSpace(manifest)
            && string.Equals(stored?.Trim() ?? "", presetDefault?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
             ? manifest
             : stored;
