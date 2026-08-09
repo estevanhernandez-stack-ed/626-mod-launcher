@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.App.Services;
@@ -36,6 +37,14 @@ public sealed partial class GameSetupDialog : ContentDialog
         _repair = repair;
         _shape = repair.Shape(game);
         DialogTheming.Apply(this);   // popup-scope theme brushes
+
+        // Built before SeedFields so a field handler can never reach a null timer.
+        _previewTimer = DispatcherQueue.CreateTimer();
+        _previewTimer.Interval = TimeSpan.FromMilliseconds(250);
+        _previewTimer.IsRepeating = false;
+        _previewTimer.Tick += (_, _) => RenderPreview();
+        Closed += (_, _) => _previewTimer.Stop();   // never walk the disk for a dialog that is gone
+
         RenderDiagnosis();
         SeedFields();
     }
@@ -101,6 +110,13 @@ public sealed partial class GameSetupDialog : ContentDialog
         NameBox.Text = _game.GameName;
         FolderBox.Text = _game.GameRoot;
         ModPathBox.Text = _game.ModLocations.Count > 0 ? _game.ModLocations[0].Path : "";
+
+        // One box, possibly several locations. ModLocator.Detect adds every candidate folder that
+        // exists ("mods", "mods2", "mods3"…), and games really do carry three — Windrose declares
+        // ~mods, LogicMods, and the UE4SS folder, all holding mods. The diagnosis above lists all of
+        // them, so say plainly which one this box edits rather than let it read as covering the lot.
+        if (_game.ModLocations.Count > 1)
+            ModPathLabel.Text = $"Mod folder (the first of {_game.ModLocations.Count}; the others are unchanged)";
         ExtensionsBox.Text = string.Join(", ", _game.FileExtensions);
         GroupingBox.Text = _game.GroupingRule;
         SteamBox.Text = _game.SteamAppId ?? "";
@@ -129,7 +145,9 @@ public sealed partial class GameSetupDialog : ContentDialog
         picker.FileTypeFilter.Add("*");
         WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
         var folder = await picker.PickSingleFolderAsync();
-        if (folder is not null) { FolderBox.Text = folder.Path; Preview(); }
+        // No explicit Preview() — assigning Text raises TextChanged, which is already wired to it.
+        // Calling both ran the plan twice, and a plan is a directory walk (see _previewTimer).
+        if (folder is not null) FolderBox.Text = folder.Path;
     }
 
     private GameEntry BuildProposed()
@@ -137,6 +155,23 @@ public sealed partial class GameSetupDialog : ContentDialog
         var exts = ExtensionsBox.Text
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var loc = _game.ModLocations.Count > 0 ? _game.ModLocations[0] : new ModLocation("mods", "mods", "mods");
+        var first = loc with { Path = ModPathBox.Text.Trim() };
+
+        // EDIT THE FIRST LOCATION, CARRY THE REST. Rebuilding a single-element list would do two
+        // separate kinds of damage to a game with more than one declared location — and multi-location
+        // registrations are ordinary, not a corner case (ModLocator.Detect adds every folder that
+        // exists, as "mods" / "mods2" / "mods3").
+        //
+        // 1. Saving would DELETE locations 2..n. Every mod in those folders drops out of the
+        //    launcher's view and the per-location disable metadata keyed on "mods2" is orphaned.
+        // 2. RegistrationChange.SameLocations compares Count first, so 3-vs-1 always reads as
+        //    changed — landing modLocations in FieldsChanged, then FieldsToPin, then UserSet, and
+        //    permanently opting that game out of every future manifest correction to its mod paths.
+        //    Someone fixing a typo in the game name would trigger exactly the failure this feature
+        //    exists to prevent.
+        var locations = _game.ModLocations.Count > 1
+            ? new[] { first }.Concat(_game.ModLocations.Skip(1)).ToArray()
+            : new[] { first };
 
         return new GameEntry
         {
@@ -149,7 +184,7 @@ public sealed partial class GameSetupDialog : ContentDialog
             GameRoot = FolderBox.Text.Trim(),
             FileExtensions = exts,
             GroupingRule = GroupingBox.Text.Trim(),
-            ModLocations = new[] { loc with { Path = ModPathBox.Text.Trim() } },
+            ModLocations = locations,
             SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim(),
             LaunchUrl = _game.LaunchUrl,
             LaunchExe = _game.LaunchExe,
@@ -172,24 +207,78 @@ public sealed partial class GameSetupDialog : ContentDialog
         };
     }
 
+    /// <summary>
+    /// Coalesce keystrokes before re-planning.
+    ///
+    /// <para>A preview is not cheap. <c>RegistrationChange.Plan</c> plans the data-dir move whenever
+    /// the game root has changed, and <c>DataDirMove.Plan</c> does a <c>Directory.GetFiles</c> over
+    /// <c>AllDirectories</c> plus a <c>FileInfo.Length</c> per file — on the UI thread. Once the user
+    /// corrects the folder, "the root has changed" stays true for the rest of the session, so an
+    /// undebounced keystroke in ANY of the seven boxes re-walks <c>disabled\</c>,
+    /// <c>direct-disabled\</c>, <c>frameworks\*\disabled-proxy\</c> and <c>tools\</c> — thousands of
+    /// files and gigabytes for a well-used game.</para>
+    ///
+    /// <para>Coalescing here rather than caching the move plan because the walk happens INSIDE the
+    /// Core planner, which the App cannot reach into: the same call produces the field diff, the
+    /// blockers (a move refusal becomes one) and the move plan together. A dialog-side cache could
+    /// only avoid it by re-deriving which blocker came from where, which would put consequence
+    /// decisions back in the UI — the exact thing <c>RegistrationChange</c>'s doc forbids.</para>
+    /// </summary>
+    private readonly DispatcherQueueTimer _previewTimer;
+
     private void Preview()
     {
         if (_seeding) return;
+        _previewTimer.Stop();
+        _previewTimer.Start();
+    }
 
+    private void RenderPreview()
+    {
         var plan = _repair.Preview(_game, BuildProposed());
         var lines = new List<string>();
 
+        // THE LOCK-IN VERB BELONGS TO FieldsToPin, NOT FieldsChanged. The two answer different
+        // questions and FieldsToPin can be SHORTER: on an engine change Core drops a changed field
+        // whose value equals the newly-picked preset's own default, because that is the preset
+        // speaking rather than the user. Binding the promise to FieldsChanged makes this panel state
+        // the opposite of what saving does — repair a Skyrim registration added as "custom" by
+        // picking bethesda and typing that preset's own Data / esp,esl,esm,bsa, and both fields are
+        // reported as locked in while Core locks in neither.
+        //
+        // A field that was ALREADY pinned before this edit is not locked in BY this edit either; it
+        // was locked in whenever the user last set it. It changed, and it saves.
+        var pinning = new HashSet<string>(plan.FieldsToPin, StringComparer.OrdinalIgnoreCase);
+        var alreadyPinned = new HashSet<string>(
+            _game.UserSet ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+
         foreach (var f in plan.FieldsChanged)
-            lines.Add($"lock in your {Human(f)}, so future definition updates leave it alone");
+            lines.Add(pinning.Contains(f) && !alreadyPinned.Contains(f)
+                ? $"lock in your {Human(f)}, so future definition updates leave it alone"
+                : $"update the {Human(f)}");
+
+        // Kept a separate loop over a separate list on purpose: OtherChanges is what merely saves,
+        // FieldsChanged is what can get locked in. Merging them would lose that distinction.
         foreach (var f in plan.OtherChanges)
             lines.Add($"update the {Human(f)}");
+
         if (plan.DataDir is { } move)
             lines.Add($"ask whether to move this game's launcher data ({move.FileCount} files) from {move.From}");
-        foreach (var n in plan.Notes)
-            lines.Add(n);
 
-        ConsequencesText.Text = lines.Count > 0 ? "• " + string.Join("\n• ", lines) : "";
-        ConsequencesPanel.Visibility = lines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var hasLines = lines.Count > 0;
+        ConsequencesHeading.Visibility = hasLines ? Visibility.Visible : Visibility.Collapsed;
+        ConsequencesText.Visibility = hasLines ? Visibility.Visible : Visibility.Collapsed;
+        ConsequencesText.Text = hasLines ? "• " + string.Join("\n• ", lines) : "";
+
+        // Notes are advisories about the edit, not consequences of saving, and they arrive as full
+        // sentences — bulleted under "Saving will:" they produced "Saving will: • Changing the engine
+        // from 'custom' to 'bethesda' changes which defaults…", which is not a sentence.
+        var hasNotes = plan.Notes.Count > 0;
+        NotesHeading.Visibility = hasNotes ? Visibility.Visible : Visibility.Collapsed;
+        NotesText.Visibility = hasNotes ? Visibility.Visible : Visibility.Collapsed;
+        NotesText.Text = string.Join(" ", plan.Notes);
+
+        ConsequencesPanel.Visibility = hasLines || hasNotes ? Visibility.Visible : Visibility.Collapsed;
 
         BlockerText.Text = string.Join(" ", plan.Blockers);
         BlockerText.Visibility = plan.Blockers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;

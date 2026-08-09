@@ -76,7 +76,11 @@
                     <ComboBox x:Name="EngineBox" HorizontalAlignment="Stretch"
                               SelectionChanged="OnEngineChanged" DisplayMemberPath="Label" />
 
-                    <TextBlock Text="Mod folder (relative to the game folder)" Foreground="{StaticResource ThemeInkDim}" />
+                    <!-- Label text is restated in SeedFields when the game declares more than one mod
+                         location: this box edits the FIRST one, and the read-only half above renders
+                         all of them, so an unqualified "Mod folder" would read as covering all three. -->
+                    <TextBlock x:Name="ModPathLabel" Text="Mod folder (relative to the game folder)"
+                               Foreground="{StaticResource ThemeInkDim}" />
                     <TextBox x:Name="ModPathBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="File extensions (comma separated)" Foreground="{StaticResource ThemeInkDim}" />
@@ -97,8 +101,15 @@
                             Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
                             BorderThickness="1" Padding="10" CornerRadius="0">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Saving will:" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ConsequencesHeading" Text="Saving will:" FontWeight="SemiBold" />
                             <TextBlock x:Name="ConsequencesText" TextWrapping="Wrap" />
+
+                            <!-- Notes are advisories about the edit, not things saving does, and they
+                                 arrive as full sentences. Bulleted under "Saving will:" they read as
+                                 broken grammar, so they get their own heading below the list. -->
+                            <TextBlock x:Name="NotesHeading" Text="Also worth knowing:" FontWeight="SemiBold"
+                                       Margin="0,4,0,0" Visibility="Collapsed" />
+                            <TextBlock x:Name="NotesText" TextWrapping="Wrap" Visibility="Collapsed" />
                         </StackPanel>
                     </Border>
 
