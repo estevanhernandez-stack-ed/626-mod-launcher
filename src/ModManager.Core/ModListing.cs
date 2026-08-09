@@ -14,16 +14,50 @@ public static class ModListing
     public static IReadOnlyList<Mod> Resolve(GameEntry game)
     {
         var ctx = Scanner.GameContext(game);
-        // Order is load-bearing: ME2 config wins over loose direct-inject files (mirrors MainViewModel).
-        // A loose-root game lists through LooseRootListing (catalog + by-nature), not the pak-file
-        // scanner — decided by the ONE predicate (LooseRootListing.Applies, form-derived), the same
-        // one the App's toggle lane consults, so listing and toggling can never route differently.
-        var looseRoot = LooseRootListing.Applies(ctx);
-        IReadOnlyList<Mod> raw =
-            ModEngine2Listing.IsConfigBacked(game) ? ModEngine2Listing.List(game)
-            : DirectInjectListing.Applies(game)    ? DirectInjectListing.List(game)
-            : looseRoot                            ? LooseRootListing.List(game)
-            : Scanner.ListClassified(ctx);
+        IReadOnlyList<Mod> raw = MechanismFor(game, ctx) switch
+        {
+            ListingMechanism.ModEngine2   => ModEngine2Listing.List(game),
+            ListingMechanism.DirectInject => DirectInjectListing.List(game),
+            ListingMechanism.LooseRoot    => LooseRootListing.List(game),
+            _                             => Scanner.ListClassified(ctx),
+        };
         return Metadata.MergeMetadata(raw, Scanner.LoadMetadata(ctx));
     }
+
+    /// <summary>
+    /// Which listing lane a game actually resolves through.
+    ///
+    /// <para>Order is load-bearing: ME2 config wins over loose direct-inject files (mirrors
+    /// MainViewModel). A loose-root game lists through <see cref="LooseRootListing"/> (catalog +
+    /// by-nature), not the pak-file scanner — decided by the ONE predicate
+    /// (<see cref="LooseRootListing.Applies"/>, form-derived), the same one the App's toggle lane
+    /// consults, so listing and toggling can never route differently.</para>
+    ///
+    /// <para>Named and exposed because the mechanism is itself an ANSWER, not just a branch: a
+    /// registration can declare a Mod Engine 2 <c>mod</c> folder while every real mod arrives by
+    /// direct-inject, and nothing could report that mismatch while the dispatch was an anonymous
+    /// chain of ternaries. <see cref="Discovery.GameShape"/> reads it so the shape report and the
+    /// mod list can never disagree about how a game is being read.</para>
+    /// </summary>
+    public static ListingMechanism MechanismFor(GameEntry game, GameContext? ctx = null)
+    {
+        ctx ??= Scanner.GameContext(game);
+        return ModEngine2Listing.IsConfigBacked(game) ? ListingMechanism.ModEngine2
+             : DirectInjectListing.Applies(game)      ? ListingMechanism.DirectInject
+             : LooseRootListing.Applies(ctx)          ? ListingMechanism.LooseRoot
+             : ListingMechanism.Scanner;
+    }
+}
+
+/// <summary>How a game's mods are actually found — see <see cref="ModListing.MechanismFor"/>.</summary>
+public enum ListingMechanism
+{
+    /// <summary>Mod Engine 2 config-backed: the toml names the mods, not the folder.</summary>
+    ModEngine2,
+    /// <summary>Loose files injected at the play folder (DLLs, ReShade, loader-backed subfolders).</summary>
+    DirectInject,
+    /// <summary>Loose files at the game root, catalog + by-nature classified (Decima and friends).</summary>
+    LooseRoot,
+    /// <summary>The pak-file scanner over the declared mod locations.</summary>
+    Scanner,
 }

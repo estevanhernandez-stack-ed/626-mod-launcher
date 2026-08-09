@@ -1,0 +1,258 @@
+using ModManager.Core.LooseMods;
+
+namespace ModManager.Core.Discovery;
+
+/// <summary>
+/// What a registration CLAIMS about a game, versus where its mods actually are.
+///
+/// <para>The launcher has always known both halves and never put them side by side. An agent (or a
+/// user reading a dialog) could ask "what mods are installed?" and "what does the registration say?"
+/// but had no way to ask the only question that matters when something looks wrong: <i>do those two
+/// agree?</i></para>
+///
+/// <para>Measured, and the reason this type exists: an Elden Ring registration declares a Mod Engine
+/// 2 <c>mod</c> folder that does not exist on disk, while all eleven of its mods resolve through
+/// direct-inject under <c>Game\</c>. Both facts were already reachable — <c>get_mod_context</c>
+/// reported the declared path, <c>list_mods</c> reported the mods — and put together they read as a
+/// broken install. Nothing was broken. The mods load fine; the registration simply describes a
+/// mechanism this install does not use. Reconstructing that by hand took a dozen filesystem probes
+/// and still landed on the wrong conclusion, because <c>mod</c> and <c>mods</c> are different
+/// folders and a truncated directory listing hid the second one.</para>
+///
+/// <para>WHAT "ORGANIZED" IS NOT. A direct-inject mod is DEFINED by living loose at the play folder
+/// root — <c>dinput8.dll</c> is a loader, <c>reshade-shaders</c> is read from the root by name.
+/// Flagging those as untidy would push a user to "fix" an install by breaking it. So this type never
+/// judges tidiness. It reports <see cref="Alignment"/>: whether the mods were found where the
+/// registration said to look. Drift is a description, not a defect — a drifted game can be perfectly
+/// healthy, and usually is.</para>
+///
+/// <para>Read-only, like every discovery surface: computes from the same <see cref="ModListing"/>
+/// the app and the MCP already use, writes nothing, and never repairs what it finds.</para>
+/// </summary>
+public sealed record GameShape
+{
+    public required string GameId { get; init; }
+
+    /// <summary>Is the launcher finding anything at all for this game.</summary>
+    public required bool Managed { get; init; }
+
+    public required int ModCount { get; init; }
+
+    /// <summary>How the mods were actually listed. The single most clarifying field: it names the
+    /// lane, so a declared-path mismatch reads as "different mechanism" rather than "missing files."</summary>
+    public required ListingMechanism Mechanism { get; init; }
+
+    /// <summary>The registration's game root, as resolved.</summary>
+    public required string GameRoot { get; init; }
+
+    /// <summary>Where loose files actually resolve. For a game with a <c>Game\</c> subfolder (Elden
+    /// Ring) this is NOT the game root, which is exactly the trap: mod paths reported relative to it
+    /// look wrong when measured from the root. Null when the mechanism does not use one.</summary>
+    public string? PlayFolder { get; init; }
+
+    public required IReadOnlyList<DeclaredLocation> DeclaredLocations { get; init; }
+
+    /// <summary>Where the mods really live, as directories relative to <see cref="PlayFolder"/> (or
+    /// the game root), with a count each. The empty string means "loose at that root."</summary>
+    public required IReadOnlyList<ContentRoot> ContentRoots { get; init; }
+
+    /// <summary>Mods that are themselves loaders (Elden Mod Loader, script extenders). Worth calling
+    /// out separately: a loader explains why sibling files load from a folder the registration never
+    /// mentions, which otherwise looks like drift with no cause.</summary>
+    public required IReadOnlyList<string> Loaders { get; init; }
+
+    public required LocationAlignment Alignment { get; init; }
+
+    /// <summary>Plain-language findings, safe to show a user or hand an agent verbatim.</summary>
+    public required IReadOnlyList<string> Notes { get; init; }
+
+    public static GameShape Of(GameEntry game)
+    {
+        var ctx = Scanner.GameContext(game);
+        var mechanism = ModListing.MechanismFor(game, ctx);
+        var mods = ModListing.Resolve(game);
+
+        // Loose lanes resolve against the play folder; the scanner resolves against its declared
+        // locations. Reporting content paths against the wrong root is the whole failure this fixes.
+        var playFolder = mechanism is ListingMechanism.DirectInject or ListingMechanism.LooseRoot
+            ? DirectInjectListing.PlayFolder(game.GameRoot)
+            : null;
+        var contentBase = playFolder ?? ctx.GameRoot;
+
+        var declared = ctx.Locations.Select(l => new DeclaredLocation
+        {
+            Name = l.Name,
+            Path = game.ModLocations.FirstOrDefault(m => m.Name == l.Name)?.Path ?? l.Name,
+            Absolute = l.Abs,
+            Exists = !string.IsNullOrEmpty(l.Abs) && Directory.Exists(l.Abs),
+        }).ToList();
+
+        // A mod's files are relative to the lane that found it: the play folder for the loose lanes,
+        // but the mod's own declared LOCATION for the scanner. Resolving every file against one base
+        // is precisely the mistake this type exists to stop — it puts a correctly-placed pak at the
+        // game root and reports a tidy install as drifted.
+        var roots = mods
+            .SelectMany(m =>
+            {
+                var b = BaseFor(m, playFolder, declared, ctx.GameRoot);
+                var files = m.Files.Count > 0 ? m.Files : new List<string> { m.Name };
+                return files.Select(f => AbsoluteDirOf(b, f));
+            })
+            .GroupBy(d => d, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ContentRoot
+            {
+                RelativePath = RelativeOrEmpty(contentBase, g.Key),
+                Absolute = g.Key,
+                FileCount = g.Count(),
+                InsideDeclared = declared.Any(d => IsInside(g.Key, d.Absolute)),
+            })
+            .OrderByDescending(r => r.FileCount)
+            .ToList();
+
+        var loaders = mods.Where(m => m.IsLoader).Select(m => m.DisplayName is { Length: > 0 } d ? d : m.Name).ToList();
+
+        var alignment =
+            mods.Count == 0                     ? LocationAlignment.NoMods
+            : roots.All(r => r.InsideDeclared)  ? LocationAlignment.Aligned
+            : roots.Any(r => r.InsideDeclared)  ? LocationAlignment.Partial
+            :                                     LocationAlignment.Drifted;
+
+        return new GameShape
+        {
+            GameId = game.Id,
+            Managed = mods.Count > 0,
+            ModCount = mods.Count,
+            Mechanism = mechanism,
+            GameRoot = ctx.GameRoot,
+            PlayFolder = playFolder,
+            DeclaredLocations = declared,
+            ContentRoots = roots,
+            Loaders = loaders,
+            Alignment = alignment,
+            Notes = BuildNotes(mechanism, declared, roots, loaders, alignment, playFolder, ctx.GameRoot),
+        };
+    }
+
+    // Plain sentences, not codes. These get read by a person as often as by an agent, and the whole
+    // point is to end the guessing — so each note says what is true AND whether it is a problem.
+    private static List<string> BuildNotes(
+        ListingMechanism mechanism, List<DeclaredLocation> declared, List<ContentRoot> roots,
+        List<string> loaders, LocationAlignment alignment, string? playFolder, string gameRoot)
+    {
+        var notes = new List<string>();
+
+        foreach (var d in declared.Where(d => !d.Exists))
+            notes.Add($"Declared mod location '{d.Path}' does not exist on disk ({d.Absolute}).");
+
+        if (playFolder is not null && !PathEquals(playFolder, gameRoot))
+            notes.Add($"Mods resolve under the play folder '{playFolder}', not the game root — paths "
+                      + "reported relative to the root will look wrong.");
+
+        if (loaders.Count > 0)
+            notes.Add($"Loader present: {string.Join(", ", loaders)} — sibling mods load from its folder, "
+                      + "which the registration does not need to declare.");
+
+        notes.Add(alignment switch
+        {
+            LocationAlignment.NoMods  => "No mods detected for this game.",
+            LocationAlignment.Aligned => "Mods are where the registration says they are.",
+            LocationAlignment.Partial => "Some mods are outside every declared location.",
+            _ => $"No mod is inside a declared location — all {roots.Sum(r => r.FileCount)} file(s) were "
+                 + $"found by the {Describe(mechanism)} lane instead. This is drift, not damage: the mods "
+                 + "load normally; the registration simply describes a mechanism this install does not use.",
+        });
+
+        return notes;
+    }
+
+    private static string Describe(ListingMechanism m) => m switch
+    {
+        ListingMechanism.ModEngine2   => "Mod Engine 2 config",
+        ListingMechanism.DirectInject => "direct-inject",
+        ListingMechanism.LooseRoot    => "loose-root",
+        _                             => "scanner",
+    };
+
+    /// <summary>Which root a mod's file paths are relative to — the lane that found it decides.</summary>
+    private static string BaseFor(Mod m, string? playFolder, List<DeclaredLocation> declared, string gameRoot)
+    {
+        if (playFolder is not null) return playFolder;
+        var loc = declared.FirstOrDefault(d => string.Equals(d.Name, m.Location, StringComparison.OrdinalIgnoreCase));
+        return loc is not null && loc.Absolute.Length > 0 ? loc.Absolute : gameRoot;
+    }
+
+    private static string AbsoluteDirOf(string baseDir, string relPath)
+    {
+        var rel = (relPath ?? "").Replace('/', Path.DirectorySeparatorChar);
+        var full = Norm(Path.Combine(baseDir, rel));
+        var dir = Path.GetDirectoryName(full);
+        return string.IsNullOrEmpty(dir) ? Norm(baseDir) : dir;
+    }
+
+    /// <summary>The content dir as the caller would say it — relative to the base they think in,
+    /// empty for "loose at that root", and absolute if it somehow escapes the base entirely.</summary>
+    private static string RelativeOrEmpty(string baseDir, string absDir)
+    {
+        if (PathEquals(baseDir, absDir)) return "";
+        try
+        {
+            var rel = Path.GetRelativePath(Norm(baseDir), absDir);
+            return rel == "." ? "" : rel.StartsWith("..", StringComparison.Ordinal) ? absDir : rel;
+        }
+        catch { return absDir; }
+    }
+
+    private static bool PathEquals(string? a, string? b)
+        => string.Equals(Norm(a), Norm(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Containment with a separator boundary, so <c>...\mods</c> is never read as being
+    /// inside <c>...\mod</c> — the exact pair that makes this game hard to reason about by hand.</summary>
+    private static bool IsInside(string? child, string? parent)
+    {
+        var c = Norm(child);
+        var p = Norm(parent);
+        if (c.Length == 0 || p.Length == 0) return false;
+        if (string.Equals(c, p, StringComparison.OrdinalIgnoreCase)) return true;
+        return c.StartsWith(p + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string Norm(string? p)
+    {
+        if (string.IsNullOrWhiteSpace(p)) return "";
+        try { return Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
+        catch { return p.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
+    }
+}
+
+/// <summary>A mod location the registration declares, and whether it is actually there.</summary>
+public sealed record DeclaredLocation
+{
+    public required string Name { get; init; }
+    /// <summary>The relative path as stored in the registration (e.g. <c>mod</c>).</summary>
+    public required string Path { get; init; }
+    public required string Absolute { get; init; }
+    public required bool Exists { get; init; }
+}
+
+/// <summary>A directory mods were actually found in.</summary>
+public sealed record ContentRoot
+{
+    /// <summary>Relative to the play folder (or game root). Empty string means loose at that root.</summary>
+    public required string RelativePath { get; init; }
+    public required string Absolute { get; init; }
+    public required int FileCount { get; init; }
+    public required bool InsideDeclared { get; init; }
+}
+
+/// <summary>Whether mods were found where the registration said to look. Drift is a description, not
+/// a defect — see <see cref="GameShape"/>.</summary>
+public enum LocationAlignment
+{
+    NoMods,
+    /// <summary>Every content root sits inside a declared location.</summary>
+    Aligned,
+    /// <summary>Some content is inside a declared location, some is not.</summary>
+    Partial,
+    /// <summary>Nothing is inside a declared location — a different mechanism is doing the work.</summary>
+    Drifted,
+}
