@@ -10,7 +10,9 @@ namespace ModManager.Core;
 public static class SafeMove
 {
     // Windows HRESULT for ERROR_SHARING_VIOLATION (0x20). Intentional — this launcher targets Windows only.
-    private const int HrSharingViolation = unchecked((int)0x80070020);
+    // Internal rather than private so DataDirMove can recognise the same failure and say "close the
+    // game" in its own words; two copies of a magic number is how one of them ends up wrong.
+    internal const int HrSharingViolation = unchecked((int)0x80070020);
 
     public static void Move(string src, string dest)
     {

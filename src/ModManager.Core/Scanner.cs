@@ -53,12 +53,16 @@ public static class Scanner
         var manifestEntry = EffectiveManifest.Current.Games.FirstOrDefault(g => g.Id == game.Id);
         var preset = game.Engine is not null && EnginePresets.Presets.TryGetValue(game.Engine, out var ep)
             ? ep : null;
+        // A marked field is a choice the user stated outright; it outranks the untouched-default
+        // inference below it. Null UserSet means "not recorded" — the pre-marker path, unchanged.
+        var userSetExts = game.UserSet?.Contains(GameEntry.UserSetFileExtensions, StringComparer.OrdinalIgnoreCase) == true;
+        var userSetGrouping = game.UserSet?.Contains(GameEntry.UserSetGroupingRule, StringComparer.OrdinalIgnoreCase) == true;
         var declaredExts = preset is null
             ? game.FileExtensions
-            : RegistrationRefresh.Extensions(game.FileExtensions, preset.FileExtensions, manifestEntry?.FileExtensions);
+            : RegistrationRefresh.Extensions(game.FileExtensions, preset.FileExtensions, manifestEntry?.FileExtensions, userSetExts);
         var groupingRule = preset is null
             ? game.GroupingRule
-            : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule);
+            : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule, userSetGrouping);
 
         // Normalise before this becomes a regex. A registration written by hand carries extensions
         // the way a person types them — ".smpcmod", ".suit" — and interpolating that raw yields

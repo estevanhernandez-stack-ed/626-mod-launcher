@@ -28,15 +28,21 @@ namespace ModManager.Core;
 /// </summary>
 public static class RegistrationRefresh
 {
-    /// <summary>The extensions to actually scan with. See the type doc for why the untouched-default
-    /// test is the safe discriminator.</summary>
+    /// <summary>The extensions to actually scan with. <paramref name="userSet"/> is checked FIRST and
+    /// wins outright: it is the one signal here that is not an inference. The untouched-default test
+    /// stays underneath as the fallback for registrations that predate the marker.</summary>
     public static IReadOnlyList<string> Extensions(
-        IReadOnlyList<string> stored, IReadOnlyList<string> presetDefault, IReadOnlyList<string>? manifest)
-        => manifest is { Count: > 0 } && IsUntouched(stored, presetDefault) ? manifest : stored;
+        IReadOnlyList<string> stored, IReadOnlyList<string> presetDefault,
+        IReadOnlyList<string>? manifest, bool userSet = false)
+        => userSet ? stored
+         : manifest is { Count: > 0 } && IsUntouched(stored, presetDefault) ? manifest
+         : stored;
 
-    /// <summary>The grouping rule to actually group with. Same freeze, same rule.</summary>
-    public static string? Grouping(string? stored, string? presetDefault, string? manifest)
-        => !string.IsNullOrWhiteSpace(manifest)
+    /// <summary>The grouping rule to actually group with. Same freeze, same rule, same precedence.</summary>
+    public static string? Grouping(
+        string? stored, string? presetDefault, string? manifest, bool userSet = false)
+        => userSet ? stored
+         : !string.IsNullOrWhiteSpace(manifest)
            && string.Equals(stored?.Trim() ?? "", presetDefault?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
             ? manifest
             : stored;
@@ -51,9 +57,21 @@ public static class RegistrationRefresh
     /// the extra entry is a real choice, so the whole list is treated as the user's.</para>
     /// </summary>
     private static bool IsUntouched(IReadOnlyList<string> stored, IReadOnlyList<string> presetDefault)
-    {
-        var a = new HashSet<string>(stored, StringComparer.OrdinalIgnoreCase);
-        var b = new HashSet<string>(presetDefault, StringComparer.OrdinalIgnoreCase);
-        return a.SetEquals(b);
-    }
+        => ExtensionSet(stored).SetEquals(ExtensionSet(presetDefault));
+
+    /// <summary>
+    /// One spelling of "the same extension list", shared with <c>RegistrationChange.SameExtensions</c>.
+    ///
+    /// <para>These two used to normalise the same concept differently — the planner trimmed, this file
+    /// did not — and the disagreement ended self-healing without a trace. An edit dialog round-trips a
+    /// text field into <c>[" pak"]</c>; the planner reports NO change and pins NOTHING, yet the
+    /// untouched-default test above now reads the list as customised, the manifest stops reaching the
+    /// game, and the 194-mods-showing-as-zero failure comes back with no marker to explain it. Two
+    /// callers, one helper.</para>
+    ///
+    /// <para>Leading dots are deliberately NOT stripped: the list is compared as the user stores it,
+    /// and <c>Scanner</c> normalises the dot case separately on its way to a regex.</para>
+    /// </summary>
+    internal static HashSet<string> ExtensionSet(IEnumerable<string> exts)
+        => new(exts.Select(e => e.Trim()), StringComparer.OrdinalIgnoreCase);
 }
