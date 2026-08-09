@@ -7,6 +7,7 @@
     PrimaryButtonText="Save"
     CloseButtonText="Close"
     DefaultButton="Close"
+    PrimaryButtonClick="OnSave"
     IsPrimaryButtonEnabled="False">
 
     <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title. -->
@@ -56,7 +57,55 @@
             <!-- The verdict, in the launcher's own words (GameShape.Notes). -->
             <TextBlock x:Name="VerdictText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" />
 
-            <!-- Task 7 inserts the "Edit setup…" Expander here. -->
+            <Expander x:Name="EditExpander" Header="Edit setup…" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Game name" Foreground="{StaticResource ThemeInkDim}" />
+                    <TextBox x:Name="NameBox" TextChanged="OnFieldChanged" />
+
+                    <TextBlock Text="Game folder" Foreground="{StaticResource ThemeInkDim}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="FolderBox" Grid.Column="0" TextChanged="OnFieldChanged" />
+                        <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse…" Click="OnBrowse" />
+                    </Grid>
+
+                    <TextBlock Text="Engine" Foreground="{StaticResource ThemeInkDim}" />
+                    <ComboBox x:Name="EngineBox" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnEngineChanged" DisplayMemberPath="Label" />
+
+                    <TextBlock Text="Mod folder (relative to the game folder)" Foreground="{StaticResource ThemeInkDim}" />
+                    <TextBox x:Name="ModPathBox" TextChanged="OnFieldChanged" />
+
+                    <TextBlock Text="File extensions (comma separated)" Foreground="{StaticResource ThemeInkDim}" />
+                    <TextBox x:Name="ExtensionsBox" TextChanged="OnFieldChanged" />
+
+                    <TextBlock Text="Grouping rule" Foreground="{StaticResource ThemeInkDim}" />
+                    <TextBox x:Name="GroupingBox" TextChanged="OnFieldChanged" />
+
+                    <TextBlock Text="Steam App ID" Foreground="{StaticResource ThemeInkDim}" />
+                    <TextBox x:Name="SteamBox" TextChanged="OnFieldChanged" />
+
+                    <TextBlock Text="Required launcher (relative to the game folder)" Foreground="{StaticResource ThemeInkDim}" />
+                    <TextBox x:Name="LauncherBox" TextChanged="OnFieldChanged" />
+
+                    <!-- Consequences, live. FieldsChanged and OtherChanges answer different questions,
+                         so they are rendered as separate lines rather than one merged list. -->
+                    <Border x:Name="ConsequencesPanel" Visibility="Collapsed"
+                            Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
+                            BorderThickness="1" Padding="10" CornerRadius="0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Saving will:" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ConsequencesText" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="BlockerText" TextWrapping="Wrap"
+                               Foreground="{StaticResource ThemeDanger}" Visibility="Collapsed" />
+                </StackPanel>
+            </Expander>
 
         </StackPanel>
     </ScrollViewer>
