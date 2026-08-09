@@ -2226,6 +2226,59 @@ public sealed partial class MainViewModel : ObservableObject
     /// progress line; build it on the UI thread (Progress&lt;T&gt; captures the current
     /// SynchronizationContext, which is what keeps StatusText a UI-thread-only write while the
     /// search workers run concurrently).</summary>
+    /// <summary>
+    /// Give the swept candidates the same name search the existing rows get.
+    ///
+    /// <para>Returns the proposal list with every unidentified, non-loader candidate that matched
+    /// upgraded from <see cref="AdoptionEvidence.None"/> to <see cref="AdoptionEvidence.NameSearch"/>.
+    /// A miss leaves the proposal exactly as it was — still adoptable, still listed, because visible
+    /// and unnamed beats invisible.</para>
+    ///
+    /// <para>Gated exactly like the row search: no source, no connection, or no domain means the
+    /// proposals come back untouched rather than annotated with a guess.</para>
+    /// </summary>
+    private async Task<IReadOnlyList<AdoptionProposal>> NameSweptCandidatesAsync(
+        IReadOnlyList<AdoptionProposal> proposals, GameContext ctx, CancellationToken ct)
+    {
+        var worth = AdoptionProposal.WorthSearching(proposals).ToList();
+        if (worth.Count == 0) return proposals;
+        if (NexusSource is not IModTextSearch search || !_nexus.IsConnected) return proposals;
+        var domain = NexusDomains.Effective(ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) return proposals;
+
+        var named = new Dictionary<string, SourceSearchHit>(StringComparer.OrdinalIgnoreCase);
+        var done = 0;
+        foreach (var p in worth)
+        {
+            if (ct.IsCancellationRequested) break;
+            AmbientStatus($"Naming what we found — {++done} of {worth.Count}…");
+
+            var query = NameMatch.CleanModName(p.Candidate.FileName);
+            try
+            {
+                // Same ladder as the row search: the precise name first, widening only when nothing
+                // came back. Scoring always against the FULL query, so retrieval widens and
+                // acceptance does not.
+                foreach (var rung in NameMatch.QueryLadder(query))
+                {
+                    if (ct.IsCancellationRequested) break;
+                    var hits = await search.SearchAsync(domain!, rung);
+                    if (NameMatch.PickBestMatch(query, hits, h => h.Name) is { } hit)
+                    { named[p.Candidate.RelativePath] = hit; break; }
+                }
+            }
+            catch (SourceRateLimitException) { break; } // throttled: stop asking, keep what we have
+            catch { /* this candidate stays unnamed; the rest still get their turn */ }
+        }
+
+        return named.Count == 0
+            ? proposals
+            : proposals.Select(p => named.TryGetValue(p.Candidate.RelativePath, out var hit)
+                    ? AdoptionProposal.FromSearch(p.Candidate, hit)
+                    : p)
+                .ToList();
+    }
+
     private async Task<IReadOnlyList<LooseIdentifyProposal>?> SearchUnnamedRowsAsync(
         GameContext ctx, IProgress<LooseIdentifyProgress> progress, CancellationToken ct)
     {
@@ -2384,6 +2437,13 @@ public sealed partial class MainViewModel : ObservableObject
                 var found = await SearchUnnamedRowsAsync(ctx, searchProgress, cts.Token);
                 if (found is null) searchNote = StatusText;
                 else identifications = found;
+
+                // Swept files are not rows yet, so the pass above — which searches _allRows — never
+                // sees them. Without this they are proposed as "not identified", adopted, become
+                // rows, and only a SECOND run names them, with nothing telling the user that a
+                // second run was worth doing. Same tier, same ladder, same review gate.
+                if (!cts.IsCancellationRequested)
+                    adoptions = await NameSweptCandidatesAsync(adoptions, ctx, cts.Token);
             }
 
             var stopped = cts.IsCancellationRequested;
