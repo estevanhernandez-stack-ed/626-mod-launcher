@@ -227,6 +227,27 @@ public sealed partial class MainViewModel : ObservableObject
     /// only the WinUI state that decision governs.</summary>
     private readonly LongOperationSlot _longOp = new();
 
+    /// <summary>Keeps an answer readable while a progress counter is running. See
+    /// <see cref="StatusHold"/> — a refusal written once loses to a ticker written constantly.</summary>
+    private readonly StatusHold _statusHold = new();
+
+    /// <summary>How long an answer owns the line. Long enough to read a sentence without feeling
+    /// stuck; the progress counter picks straight back up afterwards.</summary>
+    private static readonly TimeSpan AnswerHold = TimeSpan.FromSeconds(4);
+
+    /// <summary>A progress tick. Yields to an answer the user is still reading.</summary>
+    private void AmbientStatus(string text)
+    {
+        if (_statusHold.AmbientAllowed) StatusText = text;
+    }
+
+    /// <summary>An answer to something the user just did. Holds the line against ambient ticks.</summary>
+    private void AnswerStatus(string text)
+    {
+        StatusText = text;
+        _statusHold.Hold(AnswerHold);
+    }
+
     /// <summary>
     /// Take the slot along with the busy ring, the Stop button, and the cancellation source, or
     /// refuse and say what is in the way.
@@ -244,6 +265,9 @@ public sealed partial class MainViewModel : ObservableObject
         _longOpCts = cts;
         IsCancellable = true;
         _longOp.TryClaim(what);
+        // A run actually starting supersedes whatever answer was on the line — including a refusal
+        // from a moment ago, which is now stale news about a slot that just changed hands.
+        _statusHold.Clear();
         return true;
     }
 
@@ -268,7 +292,10 @@ public sealed partial class MainViewModel : ObservableObject
     public bool RefuseIfLongOpRunning()
     {
         if (!_longOp.IsHeld) return false;
-        StatusText = _longOp.RefusalMessage;
+        // An ANSWER, not chatter: the run being refused is writing its own counter several times a
+        // second, and without the hold it erases this before it can be read — which is precisely how
+        // a working guard reads as a dead click.
+        AnswerStatus(_longOp.RefusalMessage);
         return true;
     }
 
@@ -2138,7 +2165,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (candidates.Count == 0) { StatusText = "Every identified mod already has its details."; return 0; }
 
         var progress = new Progress<NexusRefreshProgress>(p =>
-            StatusText = $"Getting details from Nexus — {p.Completed} of {p.Total}…");
+            AmbientStatus($"Getting details from Nexus — {p.Completed} of {p.Total}…"));
 
         var result = await NexusRefresh.RefreshAllAsync(
             candidates, domain!, source, throttle: () => Task.Delay(120), progress: progress, ct: ct);
@@ -2330,7 +2357,7 @@ public sealed partial class MainViewModel : ObservableObject
             // busy/Stop state would void this run's busy ring for everything after it and steer
             // Stop at a token this run never checks.
             var searchProgress = new Progress<LooseIdentifyProgress>(p =>
-                StatusText = $"Searching Nexus for names — {p.Completed} of {p.Total}…");
+                AmbientStatus($"Searching Nexus for names — {p.Completed} of {p.Total}…"));
             IReadOnlyList<LooseIdentifyProposal> identifications = Array.Empty<LooseIdentifyProposal>();
             // Null means the pass gated out or found nothing, and it has already written the SPECIFIC
             // reason (not connected / no domain / no loose mods need identifying / no matches). Keep
@@ -2461,7 +2488,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (!seen.Add(fileName)) continue;
             checkedCount++;
 
-            StatusText = $"Matching your downloads folder — {checkedCount} of {Math.Min(archives.Count, DownloadsMd5Cap)}…";
+            AmbientStatus($"Matching your downloads folder — {checkedCount} of {Math.Min(archives.Count, DownloadsMd5Cap)}…");
             var candidate = new DiscoveryCandidate(path, fileName, DiscoveryKind.Archive);
             var md5 = await Task.Run(() => _discovery.Md5Of(ctx.GameRoot, candidate));
             if (md5 is null) continue;
