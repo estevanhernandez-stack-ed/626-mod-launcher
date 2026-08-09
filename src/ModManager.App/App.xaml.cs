@@ -61,6 +61,8 @@ public partial class App : Application
                 // index it identifies against.
                 services.AddSingleton<Services.DiscoveryScanService>();
                 services.AddSingleton<Services.ModNameIndexSource>();
+                // Registration repair: previews what an edit would do and applies it, move-before-write.
+                services.AddSingleton<Services.RegistrationRepairService>();
                 // The contribution sink loaded plugins register their mod sources into. Empty when no
                 // plugin loads (the Store SKU + the zero-plugins path) — every consumer tolerates empty.
                 services.AddSingleton<ModSourceRegistry>();
