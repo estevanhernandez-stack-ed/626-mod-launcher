@@ -111,6 +111,8 @@ public sealed partial class MainWindow : Window
                 && (args.PropertyName == nameof(MainViewModel.OwnedBannerVisibility)
                     || args.PropertyName == nameof(MainViewModel.ReDeployedBannerVisibility)))
                 VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+            if (_suppressSetupBanner && args.PropertyName == nameof(MainViewModel.SetupBannerVisibility))
+                SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
             // The storefront is scoped to one game. Switching games from the title-bar switcher while it
             // is open would leave it labelled for the game you just left, so close it instead.
             if (args.PropertyName == nameof(MainViewModel.ActiveGame))
@@ -1330,6 +1332,11 @@ public sealed partial class MainWindow : Window
     // Session-level dismiss for the Vortex banner area (set from the Dismiss button).
     private bool _suppressVortexBanner;
 
+    // Session-level dismiss for the setup banner (set from its Dismiss button). Same shape as
+    // _suppressVortexBanner: the x:Bind is OneWay to the VM, so a raw Visibility write here would
+    // just be overwritten the next time SetupBannerVisibility changes — the flag is what survives.
+    private bool _suppressSetupBanner;
+
     // "Take them over" / "Take over again" — take over every Vortex-owned + re-deployed location
     // for the active game, then rescan (the VM flips the banners off when nothing's owned anymore).
     private async void OnTakeOverGame(object sender, RoutedEventArgs e)
@@ -1347,7 +1354,10 @@ public sealed partial class MainWindow : Window
     // Session-level dismiss, matching the Vortex banner: a later rescan may re-show it, which is
     // acceptable — the alternative is a persisted "don't tell me" that outlives the problem.
     private void OnDismissSetupBanner(object sender, RoutedEventArgs e)
-        => SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+    {
+        SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        _suppressSetupBanner = true;
+    }
 
     private async void OnCheckSetup(object sender, RoutedEventArgs e)
     {
