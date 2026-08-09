@@ -151,31 +151,23 @@ public class NameMatchTests
         Assert.Empty(NameMatch.QueryLadder(null));
     }
 
-    // ---- Verbose filenames stay UNMATCHED, deliberately ----
-    // A filename that contains a mod's title plus extra words the title never had scores badly on
-    // Jaccard, because Jaccard is symmetric and every extra word counts against the true owner. A
-    // title-coverage fallback was tried for this and REVERTED: measured against real data it
-    // attached the wrong mod to two of three files, because once you stop counting the extra words
-    // the true owner and a wrong sibling become indistinguishable — both are full token subsets of
-    // the filename, and only word ORDER separates them, which no set-based score can see.
-    //
-    // So this is the honest state: we match nothing here rather than match wrong. False silence is
-    // acceptable; false accusation is not. The contiguous-run rule that would resolve it is backlog
-    // C6, with the measurement and the evidence behind it.
+    // ---- A verbose filename now resolves, via the run rule ----
+    // This used to be a documented limitation: Jaccard is symmetric, so every extra word in a
+    // filename counted against the mod it belongs to, and a title-coverage fallback tried for it
+    // attached the wrong mod on real data and was reverted. The contiguous-run rule closes it from
+    // the other direction — not by ignoring the extra words, but by requiring the title to be
+    // SPELLED OUT in order, which a sibling mod cannot do.
 
     [Fact]
-    public void A_filename_that_buries_its_title_in_extra_words_is_left_unmatched()
+    public void A_filename_that_buries_its_title_in_extra_words_still_resolves()
     {
-        // 3 shared of 7 union = 0.43 — below threshold, and correctly so: on real data the
-        // alternative accepted a sibling mod with the same score.
+        // 3 shared of 7 union = 0.43 Jaccard — under threshold — but the title is an unbroken run.
         var picked = NameMatch.PickBestMatch("Quiet Footsteps Redux Leather Boots Variant Extra",
             new[] { new Cand("Quiet Footsteps Redux"), new Cand("Loud Doors") }, c => c.Name);
 
-        Assert.Null(picked);
+        Assert.Equal("Quiet Footsteps Redux", picked?.Name);
     }
 
-    // Where the title is most of what the filename says, the ordinary rule still lands it — the
-    // revert costs us only the cases that were never safely decidable.
     [Fact]
     public void A_filename_that_mostly_IS_its_title_still_matches()
     {
@@ -195,4 +187,88 @@ public class NameMatchTests
 
         Assert.Equal("Faster Ships", picked?.Name);
     }
+
+    // ---- The contiguous-run rule (backlog C6) ----
+    // A variant file is its parent's title PLUS a suffix. A SIBLING mod shares words but breaks the
+    // run. Jaccard and coverage both discard word order, which is why both kept choosing siblings —
+    // measured live, the shipped matcher attached the wrong mod to three of these six files.
+    //
+    // Every case below is real: six files that all ship from ONE Nexus mod page, "Apartment Cats -
+    // Custom Cats", scored against that page and the five sibling mods the user does NOT have.
+
+    private static readonly Cand[] ApartmentCats =
+    {
+        new("Apartment Cats - Custom Cats"),      // <- the true owner of all six files
+        new("Apartment Cats - Dogtown"), new("Apartment Cats - Corpo Plaza"),
+        new("Apartment Cats - The Glen"), new("Apartment Cats - Northside Motel"),
+        new("Apartment Cats - Japantown"),
+    };
+
+    [Theory]
+    [InlineData("#ApartmentCatsCustoms_Base")]
+    [InlineData("#ApartmentCatsCustoms_Dogtown_Black")]
+    [InlineData("#ApartmentCatsCustoms_Corpo_BlackAndWhite")]
+    [InlineData("#ApartmentCatsCustoms_Glen_GreyTiger")]
+    [InlineData("#ApartmentCatsCustoms_Japan_OrangeTiger")]
+    [InlineData("#ApartmentCatsCustoms_Motel_OrangeWhite")]
+    public void A_variant_file_matches_its_parent_not_a_sibling(string fileName)
+    {
+        var picked = NameMatch.PickBestMatch(NameMatch.CleanModName(fileName), ApartmentCats, c => c.Name);
+
+        Assert.Equal("Apartment Cats - Custom Cats", picked?.Name);
+    }
+
+    // The answer must come from evidence, not from where the candidate happened to sit in the list.
+    // An earlier attempt at this rule passed only because the true owner was first in the array;
+    // reversing the candidates flipped it to a wrong mod.
+    [Fact]
+    public void The_answer_does_not_depend_on_candidate_order()
+    {
+        var query = NameMatch.CleanModName("#ApartmentCatsCustoms_Dogtown_Black");
+        var reversed = ApartmentCats.Reverse().ToArray();
+
+        Assert.Equal(NameMatch.PickBestMatch(query, ApartmentCats, c => c.Name)?.Name,
+                     NameMatch.PickBestMatch(query, reversed, c => c.Name)?.Name);
+    }
+
+    // Real matches from the same live run — the rule must not cost us any of them.
+    [Theory]
+    [InlineData("Slaught-O-Matic Platinum Semi-Auto", "Slaught-O-Matic Platinum", "Slaught-O-Matic Chrome")]
+    [InlineData("VehicleSummonTweaksDismiss", "Vehicle Summon Tweaks", "Vehicle Combat Tweaks")]
+    [InlineData("LootIconsExtensionLight", "Loot Icons Extension", "Loot Filter")]
+    public void A_real_variant_still_finds_its_parent(string fileName, string expected, string distractor)
+    {
+        var picked = NameMatch.PickBestMatch(NameMatch.CleanModName(fileName),
+            new[] { new Cand(distractor), new Cand(expected) }, c => c.Name);
+
+        Assert.Equal(expected, picked?.Name);
+    }
+
+    // Slaught-O-Matic is the case that proves both sides must be cleaned the same way: CleanModName
+    // drops the short all-caps "O" from the query, so a candidate still carrying it could never
+    // align. Pin the symmetry directly rather than only through the case that revealed it.
+    [Fact]
+    public void Both_sides_are_normalised_the_same_way_before_matching()
+    {
+        var picked = NameMatch.PickBestMatch(NameMatch.CleanModName("Slaught-O-Matic Platinum Semi-Auto"),
+            new[] { new Cand("Slaught-O-Matic Platinum") }, c => c.Name);
+
+        Assert.NotNull(picked);
+    }
+
+    // Sharing a prefix is not owning the file. "Apartment Cats" leads every one of these titles and
+    // must never be enough on its own.
+    [Fact]
+    public void A_shared_prefix_alone_never_wins()
+    {
+        var picked = NameMatch.PickBestMatch("Apartment Cats Something Entirely Different",
+            new[] { new Cand("Apartment Cats - Dogtown"), new Cand("Apartment Cats - Japantown") }, c => c.Name);
+
+        Assert.Null(picked);
+    }
+
+    [Fact]
+    public void An_unrelated_candidate_is_still_refused()
+        => Assert.Null(NameMatch.PickBestMatch("Quiet Footsteps Redux",
+            new[] { new Cand("Totally Unrelated Thing") }, c => c.Name));
 }

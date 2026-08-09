@@ -107,6 +107,22 @@ public static partial class NameMatch
         return rungs;
     }
 
+    /// <summary>Fold a trailing plural so <c>customs</c> and <c>custom</c> are one token. Used ONLY
+    /// by the contiguous-run matcher: a run must survive an author writing the singular in a filename
+    /// and the plural in the title ("ApartmentCatsCustoms" vs "Apartment Cats - Custom Cats"), and
+    /// without it the run breaks on that one word and the true owner loses to a sibling.
+    ///
+    /// <para>Deliberately naive and deliberately NOT applied to <see cref="Jaccard"/>: a stemmer that
+    /// conflates real words would change every score in the app, and the measurement that justified
+    /// this change only ever tested folding inside the run.</para>
+    ///
+    /// <para>Only a trailing <c>s</c> comes off, only when the word survives it and does not end in
+    /// <c>ss</c> — so <c>boss</c>, <c>less</c> and <c>gas</c> are left alone.</para></summary>
+    private static string Singular(string token) =>
+        token.Length > 3 && token[^1] == 's' && token[^2] != 's' ? token[..^1] : token;
+
+    private static List<string> RunTokens(string? s) => Tokens(CleanModName(s)).Select(Singular).ToList();
+
     private static List<string> Tokens(string? s) =>
         NonAlnumRe().Replace((s ?? "").ToLowerInvariant(), " ").Trim()
             .Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -131,10 +147,16 @@ public static partial class NameMatch
     public static T? PickBestMatch<T>(string query, IEnumerable<T>? candidates, Func<T, string?> name, double threshold = 0.5)
         where T : class
     {
+        var list = (candidates ?? Enumerable.Empty<T>()).ToList();
+
+        // A title that the filename SPELLS OUT, in order, is the strongest evidence available and is
+        // checked first — see BestByContiguousRun.
+        if (BestByContiguousRun(query, list, name) is { } spelled) return spelled;
+
         var q = Tokens(query);
         T? best = null;
         double bestScore = 0;
-        foreach (var c in candidates ?? Enumerable.Empty<T>())
+        foreach (var c in list)
         {
             var s = Jaccard(q, Tokens(name(c)));
             if (s > bestScore) { bestScore = s; best = c; }
@@ -142,4 +164,63 @@ public static partial class NameMatch
         return bestScore >= threshold ? best : null;
     }
 
+    /// <summary>
+    /// The candidate whose whole title the filename spells out, in order, as an unbroken run.
+    ///
+    /// <para>A variant file is its parent's title PLUS a suffix; a SIBLING mod shares words but
+    /// breaks the run. That distinction is invisible to Jaccard and to coverage, because both throw
+    /// word order away — which is why both kept choosing siblings. Measured on six real files that
+    /// all ship from one Nexus page, the shipped matcher attached the wrong mod to three of them:</para>
+    ///
+    /// <code>
+    /// "Apartment Cats Customs Dogtown Black"  contains  "Apartment Cats Custom(s)"  unbroken
+    ///                                         does NOT  "Apartment Cats Dogtown"    (customs intervenes)
+    /// </code>
+    ///
+    /// <para>Both sides go through <see cref="CleanModName"/> first. Without that the comparison is
+    /// asymmetric — the query has its short all-caps tokens filtered and a raw title does not, so
+    /// "Slaught-O-Matic Platinum" could never align with a query already missing that "O".</para>
+    ///
+    /// <para>Longest run wins, ties refuse. A tie means the filename spells out two titles equally
+    /// well and the evidence does not choose; guessing there is how a wrong identity gets attached,
+    /// which is the failure this repo fears most. Runs shorter than two words are ignored — one
+    /// shared word is a coincidence, not a spelling-out.</para>
+    /// </summary>
+    private static T? BestByContiguousRun<T>(string query, List<T> candidates, Func<T, string?> name)
+        where T : class
+    {
+        const int MinRun = 2;
+
+        var q = RunTokens(query);
+        T? best = null;
+        var bestRun = 0;
+        var tied = false;
+
+        foreach (var c in candidates)
+        {
+            var run = RunLength(q, RunTokens(name(c)));
+            if (run < MinRun) continue;
+            if (run > bestRun) { bestRun = run; best = c; tied = false; }
+            else if (run == bestRun) tied = true;
+        }
+        return tied ? null : best;
+    }
+
+    /// <summary>How many of <paramref name="title"/>'s distinct tokens appear consecutively, in
+    /// order, inside <paramref name="query"/> — or 0 if they never do. Distinct because a title that
+    /// repeats a word ("Apartment Cats - Custom Cats") still names one run.</summary>
+    private static int RunLength(IReadOnlyList<string> query, IEnumerable<string> title)
+    {
+        var want = new List<string>();
+        foreach (var t in title) if (!want.Contains(t)) want.Add(t);
+        if (want.Count == 0) return 0;
+
+        for (var i = 0; i + want.Count <= query.Count; i++)
+        {
+            var all = true;
+            for (var j = 0; j < want.Count && all; j++) all = query[i + j] == want[j];
+            if (all) return want.Count;
+        }
+        return 0;
+    }
 }
