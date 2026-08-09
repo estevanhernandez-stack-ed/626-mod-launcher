@@ -195,10 +195,10 @@ public static class DataDirMove
     /// Same set of relative paths, same byte length for each — a second pass over the SOURCE, taken
     /// after the copy has finished.
     ///
-    /// <para>WHY THIS IS NOT REDUNDANT with <see cref="SafeMove.CopyDirVerified"/>, which already
-    /// checks every file's size as it copies it: that check can only cover files the copy actually
-    /// saw. <c>CopyDirVerified</c> enumerates each directory just before copying it, so a file that
-    /// lands in — or grows in — an already-copied folder while the copy is still running is never
+    /// <para>WHY THIS IS NOT REDUNDANT with <see cref="CopyTreeReporting"/>, which already checks
+    /// every file's size as it copies it: that check can only cover files the copy actually saw.
+    /// <c>CopyTreeReporting</c> enumerates the whole tree once up front, so a file that lands in — or
+    /// grows in — the source after that snapshot was taken, while the copy is still running, is never
     /// enumerated and therefore never verified. It is also never copied. Without this pass that file
     /// goes to the target missing (or short) and then the source is deleted, which is a permanently
     /// lost user file: the data dir holds the ONLY copy. Re-reading the source at the end catches it

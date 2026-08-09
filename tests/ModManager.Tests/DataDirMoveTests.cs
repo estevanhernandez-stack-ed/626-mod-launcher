@@ -335,7 +335,9 @@ public class DataDirMoveExecuteTests
     }
 
     // A multi-gigabyte move behind a bare spinner is indistinguishable from a hang, and the one thing
-    // the user must not do is kill the app mid-move.
+    // the user must not do is kill the app mid-move. Progress<T> dispatches via SynchronizationContext
+    // (captured context, or the thread pool otherwise) — always asynchronously — so the assertions
+    // must wait for the callbacks to actually land, not just lock the list they land in.
     [Fact]
     public void A_copy_move_reports_progress_for_every_file()
     {
@@ -347,15 +349,15 @@ public class DataDirMoveExecuteTests
         var result = DataDirMove.Execute(forced, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
 
         Assert.True(result.Moved);
-        lock (seen)
-        {
-            Assert.NotEmpty(seen);
-            Assert.All(seen, p => Assert.Equal(3, p.Total));
-            Assert.Equal(3, seen.Max(p => p.Copied));
-        }
+        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
+                    "progress callbacks did not arrive within 5s");
+        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
     }
 
-    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies.
+    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies. A
+    // bare Assert.Empty right after Execute returns would pass even against an implementation that DID
+    // tick on the rename path, since Progress<T> dispatch is asynchronous — give it a drain window
+    // first so the test can actually fail against the behaviour it exists to forbid.
     [Fact]
     public void A_rename_reports_no_progress()
     {
@@ -366,6 +368,7 @@ public class DataDirMoveExecuteTests
         var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
 
         Assert.True(result.Moved);
+        SpinWait.SpinUntil(() => { lock (seen) return seen.Count > 0; }, TimeSpan.FromSeconds(1));
         lock (seen) Assert.Empty(seen);
     }
 
@@ -381,5 +384,22 @@ public class DataDirMoveExecuteTests
 
         Assert.True(result.Moved);
         Assert.Equal(2, Directory.GetFiles(to, "*", SearchOption.AllDirectories).Length);
+    }
+
+    // CopyTreeReporting's own doc comment states the load-bearing case: Verify walks GetFiles only, so
+    // a vanished empty directory is uncaught — and the source is deleted immediately afterwards. That
+    // guarantee lived in a private helper covered by nothing; this pins it down.
+    [Fact]
+    public void An_empty_subdirectory_survives_a_copy_move()
+    {
+        var from = Src("a.txt");
+        Directory.CreateDirectory(Path.Combine(from, "empty-sub"));
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        var result = DataDirMove.Execute(forced);
+
+        Assert.True(result.Moved);
+        Assert.True(Directory.Exists(Path.Combine(to, "empty-sub")));
     }
 }
