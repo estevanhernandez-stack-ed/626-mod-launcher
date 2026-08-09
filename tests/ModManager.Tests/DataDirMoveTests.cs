@@ -83,6 +83,61 @@ public class DataDirMovePlanTests
         Assert.Equal(DataDirMoveKind.Rename, DataDirMove.Plan(from, to).Kind);
     }
 
+    // The old private HasRoom compared raw bytes, so a move that exactly filled the disk was blessed
+    // and left the user with zero free space. SpaceCheck adds the headroom, and the refusal has to
+    // name the real numbers — "not enough space" with no figures gives the user nothing to act on.
+    [Fact]
+    public void A_space_refusal_names_what_the_move_needs_and_what_is_free()
+    {
+        var payload = 40L << 30;                                        // 40 GiB of disabled mods
+        var space = SpaceCheck.Evaluate(@"D:\", payload, 2L << 30);     // only 2 GiB free
+        Assert.False(space.Ok);
+
+        var refusal = DataDirMove.SpaceRefusal(payload, space);
+
+        Assert.NotNull(refusal);
+        Assert.Contains(@"D:\", refusal);
+        Assert.Contains(Mb(payload), refusal);                  // what you asked to move
+        Assert.Contains(Mb(space.RequiredBytes), refusal);      // what it actually needs, headroom included
+        Assert.Contains(Mb(2L << 30), refusal);                 // what is really there
+        Assert.EndsWith(".", refusal);
+    }
+
+    // Headroom is the whole point of routing through SpaceCheck: a payload that fits byte-for-byte
+    // still leaves the user with a full disk, and the old raw-byte check waved it through.
+    [Fact]
+    public void A_move_that_only_just_fits_is_refused_for_want_of_headroom()
+    {
+        var payload = 40L << 30;
+        var space = SpaceCheck.Evaluate(@"D:\", payload, payload);      // fits exactly, nothing spare
+
+        Assert.NotNull(DataDirMove.SpaceRefusal(payload, space));
+    }
+
+    // Unknowable free space is NOT a reason to refuse — the behaviour the old HasRoom catch had, kept
+    // deliberately. SpaceCheck reports a network share or an unreadable volume as AvailableBytes = -1
+    // and not-Ok; refusing on that would block every legitimate move to a NAS.
+    [Fact]
+    public void Unreadable_free_space_is_not_a_refusal()
+    {
+        var space = new SpaceCheck.Result(false, 40L << 30, -1, @"\\nas\share");
+
+        Assert.Null(DataDirMove.SpaceRefusal(40L << 30, space));
+    }
+
+    [Fact]
+    public void Ample_free_space_is_not_a_refusal()
+    {
+        var payload = 1L << 20;
+        var space = SpaceCheck.Evaluate(@"D:\", payload, 500L << 30);
+
+        Assert.Null(DataDirMove.SpaceRefusal(payload, space));
+    }
+
+    // Formatted here rather than asserting literals, so the assertions do not hinge on the machine's
+    // group separator.
+    private static string Mb(long bytes) => $"{bytes / 1024.0 / 1024.0:N0} MB";
+
     // Plan is inspection only. If planning could write, a user clicking Cancel would already have
     // changed their install.
     [Fact]
@@ -171,6 +226,36 @@ public class DataDirMoveExecuteTests
         Assert.Equal("content-of-locked.txt", File.ReadAllText(Path.Combine(from, "locked.txt")));
         Assert.Equal("content-of-c.txt", File.ReadAllText(Path.Combine(from, "c.txt")));
         Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(to)!, "*.moving-*"));   // staging cleaned
+    }
+
+    // Moving a game's data dir is exactly when that game might be running, so a file in use is the
+    // likeliest failure this path will ever see. The user needs "close the game", not the raw Win32
+    // sentence with a full path in it — which tells them nothing they can act on.
+    [Fact]
+    public void A_file_in_use_asks_you_to_close_the_game_rather_than_reporting_a_raw_io_error()
+    {
+        var from = Src("a.txt", "locked.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        DataDirMoveResult result;
+        using (File.Open(Path.Combine(from, "locked.txt"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = DataDirMove.Execute(forced);
+        }
+
+        var error = result.Error ?? "";
+        Assert.False(result.Moved);
+        Assert.Contains("in use", error);
+        Assert.Contains("Close the game", error);
+        Assert.DoesNotContain("locked.txt", error);   // the raw IOException names the file; this is not it
+        Assert.EndsWith(".", error);
+
+        // The refusal changes the words, never the reversibility: staging gone, source untouched.
+        Assert.False(Directory.Exists(to));
+        Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(to)!, "*.moving-*"));
+        Assert.Equal("content-of-a.txt", File.ReadAllText(Path.Combine(from, "a.txt")));
+        Assert.Equal("content-of-locked.txt", File.ReadAllText(Path.Combine(from, "locked.txt")));
     }
 
     // Plan blesses an existing EMPTY target (a non-empty one is refused outright), but an existing

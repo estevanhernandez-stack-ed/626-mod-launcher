@@ -72,12 +72,16 @@ public static class DataDirMove
 
         // A rename needs no free space; a copy needs the whole thing on the far side before anything
         // is removed from this one. Checking here means we refuse before writing a single byte.
-        if (kind == DataDirMoveKind.CopyVerifyDelete && !HasRoom(dst, bytes))
-            return new DataDirMovePlan
-            {
-                From = src, To = dst, Kind = kind, FileCount = files.Length, TotalBytes = bytes,
-                Refusal = $"There is not enough free space to move {Mb(bytes)} to that drive.",
-            };
+        if (kind == DataDirMoveKind.CopyVerifyDelete)
+        {
+            var refusal = SpaceRefusal(bytes, SpaceCheck.Require(dst, bytes));
+            if (refusal is not null)
+                return new DataDirMovePlan
+                {
+                    From = src, To = dst, Kind = kind, FileCount = files.Length, TotalBytes = bytes,
+                    Refusal = refusal,
+                };
+        }
 
         return new DataDirMovePlan
         {
@@ -115,7 +119,7 @@ public static class DataDirMove
             try
             {
                 if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
-                CopyTree(plan.From, staging);
+                SafeMove.CopyDirVerified(plan.From, staging);
                 if (!Verify(plan.From, staging, out var mismatch))
                     throw new IOException("The copy did not match the original: " + mismatch);
 
@@ -145,29 +149,42 @@ public static class DataDirMove
 
             return new DataDirMoveResult { Moved = true, SourceRemoved = sourceRemoved, Error = null };
         }
+        // Moving a game's data dir is precisely when that game might be running, so a file held open
+        // is the likeliest failure this path will ever see — and the raw Win32 sentence ("the process
+        // cannot access the file '<long path>'") tells the user nothing they can act on. The rollback
+        // above has already run by the time this is reached; only the words change.
+        catch (IOException e) when (e.HResult == SafeMove.HrSharingViolation)
+        {
+            return new DataDirMoveResult
+            {
+                Moved = false, SourceRemoved = false,
+                Error = "One of these files is in use, so nothing was moved. Close the game and any "
+                        + "tool that has its folder open, then try again.",
+            };
+        }
         catch (Exception e)
         {
             return new DataDirMoveResult { Moved = false, SourceRemoved = false, Error = e.Message };
         }
     }
 
-    private static void CopyTree(string from, string to)
-    {
-        Directory.CreateDirectory(to);
-        foreach (var dir in Directory.GetDirectories(from, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
-        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
-            File.Copy(file, Path.Combine(to, Path.GetRelativePath(from, file)), overwrite: false);
-    }
-
     /// <summary>
-    /// Same set of relative paths, same byte length for each.
+    /// Same set of relative paths, same byte length for each — a second pass over the SOURCE, taken
+    /// after the copy has finished.
     ///
-    /// <para>That catches the failures that actually happen — a truncated copy, a file that did not
-    /// make it, a disk that filled. It deliberately does NOT hash contents: hashing gigabytes of
-    /// disabled mods would add minutes to every move to catch a class of silent corruption the
-    /// rename path does not have at all. Stated here rather than implied away, so no caller reads
-    /// "verify" as a guarantee this does not provide.</para>
+    /// <para>WHY THIS IS NOT REDUNDANT with <see cref="SafeMove.CopyDirVerified"/>, which already
+    /// checks every file's size as it copies it: that check can only cover files the copy actually
+    /// saw. <c>CopyDirVerified</c> enumerates each directory just before copying it, so a file that
+    /// lands in — or grows in — an already-copied folder while the copy is still running is never
+    /// enumerated and therefore never verified. It is also never copied. Without this pass that file
+    /// goes to the target missing (or short) and then the source is deleted, which is a permanently
+    /// lost user file: the data dir holds the ONLY copy. Re-reading the source at the end catches it
+    /// while rolling back is still free.</para>
+    ///
+    /// <para>It deliberately does NOT hash contents: hashing gigabytes of disabled mods would add
+    /// minutes to every move to catch a class of silent corruption the rename path does not have at
+    /// all. Stated here rather than implied away, so no caller reads "verify" as a guarantee this
+    /// does not provide.</para>
     /// </summary>
     private static bool Verify(string from, string to, out string mismatch)
     {
@@ -192,14 +209,23 @@ public static class DataDirMove
         From = src, To = dst, Kind = DataDirMoveKind.Nothing, FileCount = 0, TotalBytes = 0,
     };
 
-    private static bool HasRoom(string dst, long bytes)
+    /// <summary>
+    /// The space decision and its words in one place, so a test can hold both to account without
+    /// needing a full disk. Null means proceed.
+    ///
+    /// <para><see cref="SpaceCheck"/> asks for headroom (the payload plus the larger of 10% or 1 GB),
+    /// not a byte-for-byte fit — a move that exactly fills the volume "succeeds" and leaves the user
+    /// with a game and no room to launch it.</para>
+    ///
+    /// <para>Unknowable free space is NOT a refusal. <see cref="SpaceCheck.Require"/> reports a share
+    /// or a volume DriveInfo cannot read as not-Ok with <c>AvailableBytes = -1</c>; refusing on that
+    /// would block every legitimate move to a NAS. Let the copy report a real failure instead.</para>
+    /// </summary>
+    internal static string? SpaceRefusal(long payloadBytes, SpaceCheck.Result space)
     {
-        try
-        {
-            var root = Path.GetPathRoot(Path.GetFullPath(dst));
-            return string.IsNullOrEmpty(root) || new DriveInfo(root).AvailableFreeSpace >= bytes;
-        }
-        catch { return true; }   // unknowable free space is not a reason to refuse; the copy will say
+        if (space.Ok || space.AvailableBytes < 0) return null;
+        return $"Moving {Mb(payloadBytes)} to {space.VolumeRoot} needs {Mb(space.RequiredBytes)} free, "
+               + $"and there is {Mb(space.AvailableBytes)}. Free up some space and try again.";
     }
 
     private static string Mb(long bytes) => $"{bytes / 1024.0 / 1024.0:N0} MB";
