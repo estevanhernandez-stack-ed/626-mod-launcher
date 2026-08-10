@@ -9,8 +9,9 @@ namespace ModManager.Tests;
 //   ctx.Game.FileExtensions — the RAW stored registration value. May be a stale preset snapshot.
 //   ctx.DeclaredExts        — the RESOLVED value (RegistrationRefresh applied). What ctx.FileRe,
 //                             and therefore Scanner.ModKeyFor, is built from.
-//   ctx.Exts                — DeclaredExts normalised for a regex: empty->["pak"], lowercased,
-//                             dots trimmed, Regex.Escape'd. Unusable as a plain comparison list.
+//   ctx.Exts                — DeclaredExts with the regex build's empty->["pak"] substitution
+//                             applied. The extensions themselves, never a regex-escaped copy —
+//                             the escaping happens at the FileRe interpolation (A7).
 //
 // Consumers that must agree with the scanner's key formula have to read the middle one. Reading the
 // raw value lets a manifest correction reach the scanner but not them; reading ctx.Exts invents a
@@ -116,11 +117,13 @@ public class GameContextDeclaredExtsTests : IDisposable
         Assert.Matches(ctx.FileRe, "mod.dll");           // and the regex followed the feed
     }
 
-    // Escaping is the other reason ctx.Exts cannot stand in for a comparison list: an extension is
-    // data, not pattern, so Scanner escapes it on the way to the regex. A plain Contains against the
-    // escaped form misses the extension the user actually stored.
+    // Escaping is the regex's alone, applied at the FileRe interpolation. So an extension holding a
+    // regex metacharacter survives UNESCAPED in both lists, and a plain equality comparison against
+    // either one still finds the extension the user actually stored — the substitution is the only
+    // thing separating them. ctx.Exts used to carry the escaped copy, and every Intake.ClassifyDrop
+    // site paid for it: a real foo.mod+pak classified as skip. (A7.)
     [Fact]
-    public void The_resolved_list_is_unescaped_where_Exts_is_escaped()
+    public void Both_lists_carry_the_extension_unescaped_because_only_the_regex_escapes()
     {
         EffectiveManifest.SetRemote(null);
         var game = new GameEntry
@@ -135,7 +138,11 @@ public class GameContextDeclaredExtsTests : IDisposable
         var ctx = Scanner.GameContext(game);
 
         Assert.Equal(new[] { "mod+pak" }, ctx.DeclaredExts);
-        Assert.Equal(new[] { @"mod\+pak" }, ctx.Exts);
+        Assert.Equal(new[] { "mod+pak" }, ctx.Exts);
+
+        // ...and the escaping still happened where it belongs: the regex treats "+" as data.
+        Assert.Matches(ctx.FileRe, "Foo.mod+pak");
+        Assert.DoesNotMatch(ctx.FileRe, "Foo.modddpak");
     }
 
     // A hand-written registration carries extensions the way a person types them — Scanner's regex

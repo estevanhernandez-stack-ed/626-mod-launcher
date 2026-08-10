@@ -90,13 +90,18 @@ public static class Scanner
             .Select(e => e.ToLowerInvariant().TrimStart('.'))
             .Where(e => e.Length > 0)
             .ToList();
-        // Escaping is the regex reader's alone — an extension is data, not pattern, so a "+" or "("
-        // must never reach the engine as syntax. It is also exactly why the escaped form can't be
-        // the shared value: a comparison against it would miss the extension the user stored.
-        var exts = (scanExts.Count > 0 ? scanExts : (IReadOnlyList<string>)new[] { "pak" })
-            .Select(Regex.Escape)
-            .ToList();
-        var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
+        // Declaring nothing means "pak" to EVERY reader, not just the regex. A registration with no
+        // extensions — the GameEntry default, so any hand-written or quick-added entry that omits the
+        // field — is a pak game as far as FileRe, ModKeyFor and the listing lane are concerned. Intake
+        // reads the same value so it cannot become the one reader that disagrees; a mod the launcher
+        // lists must be a mod the launcher accepts.
+        var exts = scanExts.Count > 0 ? scanExts : new List<string> { "pak" };
+        // Escaping is the REGEX's alone, applied here at the point of use. An extension is data, not
+        // pattern, so a "+" or "(" must never reach the engine as syntax — but the escaped spelling is
+        // wrong for everyone else: Intake.ClassifyDrop compares c.Exts to a filename's extension by
+        // literal equality, and a stored "mod\+pak" matches no file on earth. Escape for the regex,
+        // keep the extensions themselves in the context. (A7.)
+        var fileRe = new Regex(@"\.(" + string.Join("|", exts.Select(Regex.Escape)) + ")$", RegexOptions.IgnoreCase);
         // Decima games are loose-root: mods land as loose files in the game root, listed + toggled by
         // LooseRootListing (catalog + by-nature), not the pak-file scanner. The engine decides the form
         // so any decima game gets it however it was registered; an explicit loc.Form still wins.
