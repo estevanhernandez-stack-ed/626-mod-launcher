@@ -1,4 +1,5 @@
 using ModManager.Core;
+using ModManager.Core.Discovery;
 using ModManager.Core.Manifest;
 
 namespace ModManager.Tests;
@@ -135,5 +136,65 @@ public class GameContextDeclaredExtsTests : IDisposable
 
         Assert.Equal(new[] { "mod+pak" }, ctx.DeclaredExts);
         Assert.Equal(new[] { @"mod\+pak" }, ctx.Exts);
+    }
+
+    // A hand-written registration carries extensions the way a person types them — Scanner's regex
+    // build anticipates exactly this and names ".smpcmod" / ".suit" in its own comment. The regex
+    // trims the dot, so the scan side matches; the sweep compares against DiscoverySweep.Extension's
+    // output, which is lowercase and dot-LESS. If the two sides normalise differently the sweep goes
+    // blind again on a registration the scanner reads perfectly — the same disagreement A5 closes,
+    // arriving through a different input. So DeclaredExts is the single normalised list BOTH readers
+    // derive from, and this test crosses the real boundary to prove it.
+    [Fact]
+    public void A_leading_dot_does_not_split_the_sweep_from_the_scan_regex()
+    {
+        EffectiveManifest.SetRemote(null);
+        var game = new GameEntry
+        {
+            Id = "cyberpunk-2077",
+            GameName = "Cyberpunk 2077",
+            Engine = "custom",
+            GameRoot = TestSupport.TempDir("declared-exts-"),
+            FileExtensions = new[] { ".Archive" }, // dotted AND mixed-case, as typed by hand
+        };
+
+        var ctx = Scanner.GameContext(game);
+
+        Assert.Matches(ctx.FileRe, "Whatever.archive"); // the scan side matches...
+
+        // ...and so does the sweep side, wired exactly the way MainViewModel wires it.
+        var options = new DiscoverySweepOptions(
+            ModPaths: new[] { new DiscoverySweepModPath("archive/pc/mod", PaksRoot: false) },
+            EngineExtensions: ctx.DeclaredExts,
+            SkipFolders: Array.Empty<string>());
+
+        var found = DiscoverySweep.Classify(
+            new[] { new SweptFile("archive/pc/mod/Whatever.archive", 1024) }, options);
+
+        var one = Assert.Single(found);
+        Assert.Equal(DiscoveryKind.EngineShaped, one.Kind);
+
+        // ...because both read the one normalised list.
+        Assert.Equal(new[] { "archive" }, ctx.DeclaredExts);
+    }
+
+    // The stated intent at the regex build ("a list of nothing but dots is the same as none at all")
+    // now holds for DeclaredExts too, so the emptiness question the two Scanner branches ask gets the
+    // same answer as the regex build's. A list that normalises to nothing declares no extensions.
+    [Fact]
+    public void A_list_of_nothing_but_dots_declares_no_extensions()
+    {
+        EffectiveManifest.SetRemote(null);
+        var ctx = Scanner.GameContext(new GameEntry
+        {
+            Id = "dots-only",
+            GameName = "Dots Only",
+            Engine = "custom",
+            GameRoot = TestSupport.TempDir("declared-exts-"),
+            FileExtensions = new[] { "." },
+        });
+
+        Assert.Empty(ctx.DeclaredExts);
+        Assert.Equal(new[] { "pak" }, ctx.Exts); // the regex build's fallback, unchanged
     }
 }

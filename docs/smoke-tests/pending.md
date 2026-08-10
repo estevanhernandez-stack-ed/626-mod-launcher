@@ -1184,6 +1184,26 @@ those, and for any manual re-run; it always reports back, even on nothing-found.
    existing mods…" on one of the batch-added games afterward to confirm the manual path still
    works identically to the single-add path.
 
+9. **A stale registration sweeps what the scanner shows (A5 — the only crossing of the
+   `MainViewModel` → `DiscoverySweep` boundary).** The sweep took its engine extensions from the RAW
+   registration while the scanner took them from the manifest-corrected one, so a stale entry made
+   the launcher list a game's mods and "Identify my mods" swear none existed. **Setup is deliberate
+   — a repaired registration will not reproduce it.** Close the launcher, back up
+   `%APPDATA%\ModManagerBuilder\games.json`, then in the `cyberpunk-2077` entry set
+   `"fileExtensions": ["pak"]` (the `custom` preset's frozen default; the correct value is
+   `["archive"]`). Check the same entry has no `"userSet"` array containing `"fileExtensions"` — if
+   it does, drop that one string, or the launcher correctly refuses the manifest and nothing
+   reproduces. Reopen and run More → **Identify my mods…** (older builds: *Find existing mods…*).
+   EXPECT: the `.archive` files under `archive\pc\mod` appear as candidates — named or "not
+   identified" is equally fine, their PRESENCE is the whole assertion. Before the fix this found
+   **nothing** while the mod list showed all ~194 mods; that contradiction is the signature. Then
+   repeat with `"fileExtensions": [".archive"]` — a leading dot, the way a hand-repair plausibly
+   types it — and confirm candidates still appear. Restore `["archive"]` when done. **Why it
+   matters:** no automated test crosses this boundary. The Core tests prove the resolved list is
+   correct, and prove `DiscoverySweep.Classify` classifies correctly when handed it; only this step
+   proves the view-model actually hands it over. This is the one site of the three A5 touched that
+   was broken in the field — the other two were latent.
+
 **Why these matter:** every layer below the App wiring is unit-tested, but three separate
 review-round bugs on this exact feature were "ran fine, showed a status line, wrote nothing" —
 wrong extensions swept, archive candidates keyed to a dead write target, and a name index with no

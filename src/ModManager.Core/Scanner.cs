@@ -64,19 +64,28 @@ public static class Scanner
             ? game.GroupingRule
             : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule, userSetGrouping);
 
-        // Normalise before this becomes a regex. A registration written by hand carries extensions
-        // the way a person types them — ".smpcmod", ".suit" — and interpolating that raw yields
-        // "\.(.smpcmod)$", where the inner dot is a WILDCARD: it demands a dot, then any character,
-        // then "smpcmod", so the real file Foo.smpcmod never matches and every mod for that game is
-        // invisible. Same silent, total failure as a wrong extension list, from a leading dot the
-        // user had no reason to leave off. Escaping is the other half — an extension is data, not
-        // pattern, so a "+" or "(" in one must never reach the engine as syntax.
-        var exts = (declaredExts.Count > 0 ? declaredExts : new[] { "pak" })
+        // ONE spelling of "the extensions this game scans with", because there is more than one
+        // reader. A registration written by hand carries extensions the way a person types them —
+        // ".smpcmod", ".suit" — and interpolating that raw into a regex yields "\.(.smpcmod)$",
+        // where the inner dot is a WILDCARD: it demands a dot, then any character, then "smpcmod",
+        // so the real file Foo.smpcmod never matches and every mod for that game is invisible. Same
+        // silent, total failure as a wrong extension list, from a leading dot the user had no reason
+        // to leave off. A list of nothing but dots is the same as no list at all, so it drops out.
+        //
+        // The regex is NOT the only consumer: the discovery sweep compares this against a filename's
+        // extension, and DiscoverySweep.Extension yields lowercase and dot-less. Normalising here —
+        // once, into the value BOTH read — is what stops the two from drifting apart on an input one
+        // of them happened to handle. A dotted registration used to scan perfectly and sweep blind.
+        var scanExts = declaredExts
             .Select(e => e.ToLowerInvariant().TrimStart('.'))
             .Where(e => e.Length > 0)
+            .ToList();
+        // Escaping is the regex reader's alone — an extension is data, not pattern, so a "+" or "("
+        // must never reach the engine as syntax. It is also exactly why the escaped form can't be
+        // the shared value: a comparison against it would miss the extension the user stored.
+        var exts = (scanExts.Count > 0 ? scanExts : (IReadOnlyList<string>)new[] { "pak" })
             .Select(Regex.Escape)
             .ToList();
-        if (exts.Count == 0) exts.Add("pak"); // a list of nothing but dots is the same as none at all
         var fileRe = new Regex(@"\.(" + string.Join("|", exts) + ")$", RegexOptions.IgnoreCase);
         // Decima games are loose-root: mods land as loose files in the game root, listed + toggled by
         // LooseRootListing (catalog + by-nature), not the pak-file scanner. The engine decides the form
@@ -113,7 +122,7 @@ public static class Scanner
             MetadataPath = Path.Combine(dataDir, "metadata.json"),
             LoadOrderPath = Path.Combine(dataDir, "loadorder.json"),
             SaveDir = string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
-            DeclaredExts = declaredExts,
+            DeclaredExts = scanExts,
             Exts = exts,
             FileRe = fileRe,
             Locations = locations,
