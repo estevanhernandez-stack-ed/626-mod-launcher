@@ -128,24 +128,33 @@ public sealed class RegistrationRepairService
             // THE OLD COPY MAY STILL BE THERE. CopyVerifyDelete reports SourceRemoved false when the
             // source could not be deleted — a file held open, which is the likeliest failure here since
             // the game may be running — and the reverse plan then refuses outright rather than merge
-            // two data folders. Nothing is broken in that case: a complete copy sits exactly where the
-            // unchanged registration points. Telling the user their mods are orphaned when they are not
-            // is worse than saying nothing, because someone acting on it by hand would break a working
-            // install.
+            // two data folders. Telling the user their mods are orphaned when a copy sits exactly where
+            // the unchanged registration points is worse than saying nothing.
+            //
+            // But DO NOT CALL THE LEFTOVER A SPARE. Directory.Delete(recursive) removes children one at
+            // a time, so a lock hit partway leaves the SOURCE partially deleted while the target is the
+            // tree that was verified complete. Both halves of this compound failure — the write throwing
+            // and the delete failing — have the same likeliest cause, the game running, so they arrive
+            // together. Naming either copy disposable here can point the user at deleting the only
+            // complete one. Name which is which and let them compare.
             return new RepairSaveOutcome(false, sourceSurvived
-                ? "Your settings could not be saved, so nothing about this game changed. Its launcher "
-                  + $"data is still at {movedFrom}, which is where this game expects it — there is "
-                  + $"nothing to fix. A spare copy was left at {movedTo}; you can delete it."
+                ? "Your settings could not be saved, so nothing about this game changed, and its "
+                  + $"launcher data is still at {movedFrom} where this game expects to find it. The "
+                  + $"copy at {movedTo} is the one that was verified complete, so compare the two "
+                  + "before you remove either."
                 : "Your settings could not be saved, and the launcher data could not be moved back. "
                   + $"It is at {movedTo}; this game still expects it at {movedFrom}.");
         }
 
         // A move that could not delete the old copy is still a successful move — the data is at the
-        // target and verified. Saying nothing would leave a full duplicate of the user's disabled mods
-        // on the old volume with no hint it is there.
+        // target and verified. Saying nothing would leave a duplicate of the user's disabled mods on
+        // the old volume with no hint it is there. It is NOT called a spare: the recursive delete
+        // removes children one at a time, so what survives a lock partway through may be a partial
+        // tree, and "spare copy" invites treating it as a second complete one.
         return new RepairSaveOutcome(true, sourceSurvived
-            ? "Saved. The old launcher data folder could not be removed, so a spare copy is still at "
-              + $"{movedFrom}; you can delete it."
+            ? $"Saved. The old launcher data folder at {movedFrom} could not be removed and may be "
+              + $"partly deleted; this game now reads its data from {movedTo}, which was verified "
+              + "complete, so check the old folder before you remove it."
             : "Saved.");
     }
 

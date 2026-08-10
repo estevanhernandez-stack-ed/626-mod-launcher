@@ -1424,8 +1424,10 @@ unit test at all. Steps 12 and 13 are the only coverage its failure branches get
     deny-write ACL applied while the copy is running is the only route anyone has thought of), expect
     the launcher data to be put BACK at the old path with progress ticking, and a message saying
     nothing was changed. If the old copy could not be deleted during the forward move, expect instead
-    a message saying the data is still where the game expects it and a spare copy was left behind —
-    NOT an orphan warning.
+    a message saying the data is still where the game expects it, naming the other copy as the one
+    that was verified complete and asking you to compare the two before removing either — NOT an
+    orphan warning, and NOT an invitation to delete one of them. The recursive delete removes children
+    one at a time, so the surviving old folder may be partial while the target is whole.
 14. **Cancel on the move confirm abandons the whole edit.** Change the game name AND the game folder,
     save, then press Cancel on the move-or-pin confirm. Expect no change to `games.json` at all —
     including the rename. The confirm says so; check that it does. *Why it matters:* under a "Move
