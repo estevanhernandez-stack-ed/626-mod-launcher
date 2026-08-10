@@ -142,6 +142,18 @@ public static class RegistrationChange
                       + "defaults this game is compared against, so it can change whether future "
                       + "definition updates reach it.");
 
+        // A game folder is not the only place the old folder is written down. ModEngineConfig is an
+        // ABSOLUTE path and ModEngine2Listing.Applies gates on File.Exists of it, so correcting a
+        // FromSoft game's folder can silently drop it out of the Mod Engine 2 lane; a LaunchTarget of
+        // kind "exe" whose Target is already rooted is fired as-is, so Launch would start the game in
+        // the old location. Neither is rewritten here ON PURPOSE — the obvious repair, re-running
+        // detection, overwrites ModLocations and would clobber the mod folder the user just typed,
+        // re-opening the false-pin hazard this whole surface exists to close. So: say it, and let the
+        // user reach for Re-detect deliberately.
+        if (changed.Contains(GameEntry.UserSetGameRoot))
+            notes.Add("Changing the game folder does not re-check how this game launches. Use "
+                      + "Re-detect afterwards if the Launch button stops working.");
+
         DataDirMovePlan? move = null;
         if (rootChanged && blockers.Count == 0)
         {
@@ -186,8 +198,13 @@ public static class RegistrationChange
             {
                 GameEntry.UserSetFileExtensions => !SameExtensions(proposed.FileExtensions, preset.FileExtensions),
                 GameEntry.UserSetGroupingRule => !SameGrouping(proposed.GroupingRule, preset.GroupingRule),
-                GameEntry.UserSetModLocations => !SameLocations(
-                    proposed.ModLocations, new[] { new ModLocation("mods", "mods", preset.ModPath) }),
+                // PATH ONLY, never the name. SameLocations compares Name as well, and a registration's
+                // first location is named whatever the manifest or ModLocator called it — "~mods",
+                // "paks", "loc0". Comparing the name here meant any game not using the literal name
+                // "mods" could never be recognised as sitting on the preset default, so an engine
+                // change always pinned modLocations and permanently opted that game out of future
+                // mod-path corrections — while the panel truthfully promised exactly that.
+                GameEntry.UserSetModLocations => !IsPresetDefaultPath(proposed.ModLocations, preset.ModPath),
                 _ => true,   // gameRoot has no preset default to be mistaken for
             };
         }
@@ -229,6 +246,14 @@ public static class RegistrationChange
     // difference that reads as "changed" lands modLocations in FieldsToPin, and a pinned field
     // permanently outranks manifest corrections for that game (Scanner.GameContext) — silently opting
     // it out of the very fix this spec exists to deliver. Over-pinning is as damaging as under-pinning.
+    /// <summary>Whether a proposed location list is exactly the engine preset's own default folder —
+    /// one location, at the preset's path. Compared on PATH ALONE: the name is whatever the manifest
+    /// or <c>ModLocator</c> assigned, and has nothing to do with whether the user chose this folder.</summary>
+    private static bool IsPresetDefaultPath(IReadOnlyList<ModLocation> proposed, string presetModPath)
+        => proposed.Count == 1
+           && string.Equals(NormRelative(proposed[0].Path), NormRelative(presetModPath),
+               StringComparison.OrdinalIgnoreCase);
+
     private static bool SameLocations(IReadOnlyList<ModLocation> a, IReadOnlyList<ModLocation> b)
         => a.Count == b.Count
            && a.Zip(b).All(p =>

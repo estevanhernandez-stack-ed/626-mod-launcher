@@ -290,6 +290,63 @@ public class RegistrationChangeTests
         Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.FieldsToPin);
     }
 
+    // THE NAME IS NOT PART OF THE QUESTION. A registration's first location is named whatever the
+    // manifest or ModLocator called it — "~mods", "paks", "loc0" — and only the PATH says whether the
+    // folder is the preset's own default. Comparing the name too meant any game whose first location
+    // was not literally named "mods" could never be recognised as sitting on the default, so an engine
+    // change always pinned modLocations and permanently opted that game out of future mod-path
+    // corrections — while the dialog truthfully promised exactly that, which is worse.
+    [Fact]
+    public void A_preset_default_path_is_recognised_whatever_the_location_is_named()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = new[] { new ModLocation("~mods", "Paks", "mod") };
+        var uePak = EnginePresets.Presets["ue-pak"];
+        var proposed = Copy(stored);
+        proposed.Engine = "ue-pak";
+        proposed.FileExtensions = uePak.FileExtensions;
+        proposed.GroupingRule = uePak.GroupingRule;
+        // Same non-"mods" name the stored entry carries, now pointing at the preset's own folder.
+        proposed.ModLocations = new[] { new ModLocation("~mods", "Paks", uePak.ModPath) };
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(GameEntry.UserSetModLocations, plan.FieldsChanged);   // it really did change
+        Assert.Empty(plan.FieldsToPin);                                      // but the preset said it
+    }
+
+    // Changing a game folder does NOT rewrite ModEngineConfig (an absolute path that ModEngine2Listing
+    // gates on File.Exists) or a LaunchTarget whose exe Target is already rooted — so a corrected
+    // FromSoft folder can silently drop out of the Mod Engine 2 lane and leave Launch firing an
+    // executable in the old location. Re-running detection would fix those AND overwrite ModLocations,
+    // clobbering the mod folder the user just typed. So the planner says it instead.
+    [Fact]
+    public void Changing_the_game_folder_says_it_does_not_re_check_how_the_game_launches()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.GameRoot = TestSupport.TempDir("rc-new-");
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Contains(plan.Notes, n => n.Contains("Re-detect", StringComparison.Ordinal));
+        Assert.True(plan.CanSave);
+    }
+
+    // The other half: an edit that leaves the folder alone must not carry the advice. A note on every
+    // save is a note nobody reads by the third one.
+    [Fact]
+    public void An_edit_that_leaves_the_game_folder_alone_carries_no_launch_note()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.GameName = "Elden Ring";
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.DoesNotContain(plan.Notes, n => n.Contains("Re-detect", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Planning_writes_nothing()
     {

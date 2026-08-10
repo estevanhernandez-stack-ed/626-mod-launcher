@@ -105,6 +105,25 @@ public sealed class GameEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? UserSet { get; set; }
 
+    /// <summary>
+    /// A field-for-field copy of this entry.
+    ///
+    /// <para>WHY THIS EXISTS AND WHY IT IS <c>MemberwiseClone</c>. An editor that proposes a change
+    /// has to hand the planner a WHOLE entry — the fields the user typed plus every field they did
+    /// not — and the obvious way to build one is a hand-written object initialiser naming all 27
+    /// properties. That is correct exactly once: the 28th property added later is silently dropped
+    /// from every registration edit, so renaming a game would quietly clear its
+    /// <c>nexusGameDomain</c> or its <c>autoBackupOnLaunch</c>, with no compiler error and no failing
+    /// test. This branch already caught that bug once in a test helper. <c>MemberwiseClone</c> copies
+    /// whatever the type has, so a new field cannot be forgotten.</para>
+    ///
+    /// <para>SHALLOW, and that is fine here: every collection property on this type is an
+    /// <c>IReadOnlyList</c> that callers REPLACE rather than mutate in place, so the copy sharing a
+    /// list instance with the original is not observable. Anything that starts mutating one in place
+    /// has to revisit this.</para>
+    /// </summary>
+    public GameEntry CloneShallow() => (GameEntry)MemberwiseClone();
+
     // The json field names, as constants, so a marker is never a typo that silently matches nothing.
     public const string UserSetFileExtensions = "fileExtensions";
     public const string UserSetGroupingRule = "groupingRule";
