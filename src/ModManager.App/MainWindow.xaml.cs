@@ -1361,8 +1361,41 @@ public sealed partial class MainWindow : Window
 
     private async void OnCheckSetup(object sender, RoutedEventArgs e)
     {
-        // Body lands in Task 8, once GameSetupDialog exists.
-        await Task.CompletedTask;
+        var game = ViewModel.ActiveContextPublic?.Game;
+        if (game is null) return;
+
+        var repair = App.AppHost.Services.GetRequiredService<Services.RegistrationRepairService>();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dialog = new GameSetupDialog(hwnd, game, repair) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+
+        if (dialog.Proposed is not { } proposed) return;
+
+        // The move-or-pin decision, and the save, happen HERE rather than inside the dialog: WinUI 3
+        // permits one ContentDialog per XamlRoot, so a confirm cannot open while the setup dialog is up.
+        var move = true;
+        if (dialog.MoveDataDirRequested is { } plan)
+        {
+            var confirm = new ContentDialog
+            {
+                Title = "Move this game's launcher data?",
+                Content = $"You changed the game folder. This game's launcher data — disabled mods, "
+                          + $"profiles, saves, installed tools — is {plan.FileCount} files at {plan.From}.\n\n"
+                          + "Move it next to the new folder, or leave it where it is. Leaving it works "
+                          + "fine; nothing is lost either way.",
+                PrimaryButtonText = "Move it",
+                SecondaryButtonText = "Leave it",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Secondary,
+                XamlRoot = Content.XamlRoot,
+            };
+            Services.DialogTheming.Apply(confirm);
+            var answer = await confirm.ShowAsync();
+            if (answer == ContentDialogResult.None) return;      // Cancel: change nothing
+            move = answer == ContentDialogResult.Primary;
+        }
+
+        await ViewModel.SaveRegistrationAsync(repair, game, proposed, move);
     }
 
     // If the row's folder is Vortex/MO2-owned (not yet taken over), offer to take it over first.

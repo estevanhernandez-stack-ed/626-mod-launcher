@@ -105,6 +105,12 @@
                             <!-- 'Generate a theme with AI' moved into the THEME dropdown ("+ New theme…")
                                  so theme-related actions live in one place. -->
                             <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Check setup…" Click="OnCheckSetup"
+                                            ToolTipService.ToolTip="See what this game's setup says, next to what the launcher actually found.">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE713;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE74D;" />

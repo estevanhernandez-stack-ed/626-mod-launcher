@@ -3691,6 +3691,32 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>Apply a registration edit, then reload. The service owns the ordering that makes a
+    /// failure recoverable; this method owns only the busy state and the status line.
+    ///
+    /// <para>The service arrives as a PARAMETER rather than a constructor dependency or a service-
+    /// locator lookup. This constructor already takes 14 concrete services and is the reason nothing
+    /// here can be tested; a fifteenth would make that worse, and a locator call would hide the
+    /// dependency entirely. MainWindow has already resolved it — let it hand it over.</para></summary>
+    public async Task SaveRegistrationAsync(
+        Services.RegistrationRepairService repair, GameEntry stored, GameEntry proposed, bool moveDataDir)
+    {
+        IsBusy = true;
+        try
+        {
+            // Per-file ticks, no Stop: a data-dir move must not be interruptible mid-flight, and the
+            // staging-then-swap design is exactly what makes that safe.
+            var progress = new Progress<(int Copied, int Total)>(p =>
+                AmbientStatus($"Moving launcher data: {p.Copied} of {p.Total} files."));
+
+            var outcome = await repair.SaveAsync(stored, proposed, moveDataDir, progress);
+            AnswerStatus(outcome.Message);
+            if (outcome.Saved) await LoadAsync();
+        }
+        catch (Exception e) { AnswerStatus(ErrorRemedy.Describe(e)); }
+        finally { IsBusy = false; }
+    }
+
     /// <summary>Permanently uninstall a mod (deletes files). Gated by a confirm dialog in the view.</summary>
     public async Task UninstallAsync(ModRowViewModel row)
     {
