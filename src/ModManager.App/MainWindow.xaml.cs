@@ -1364,6 +1364,11 @@ public sealed partial class MainWindow : Window
         var game = ViewModel.ActiveContextPublic?.Game;
         if (game is null) return;
 
+        // Refuse here, before the dialog, rather than after the user has filled one in — the save
+        // re-checks and is the authority. Chiefly this catches re-opening during a data-dir move,
+        // which has no Stop and leaves the window looking idle.
+        if (ViewModel.RefuseIfBusy()) return;
+
         var repair = App.AppHost.Services.GetRequiredService<Services.RegistrationRepairService>();
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dialog = new GameSetupDialog(hwnd, game, repair) { XamlRoot = Content.XamlRoot };

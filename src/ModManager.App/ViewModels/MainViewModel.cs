@@ -309,6 +309,25 @@ public sealed partial class MainViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// Refuse a second run while anything is still working, naming what is in the way when it has a
+    /// name.
+    ///
+    /// <para>Wider than <see cref="RefuseIfLongOpRunning"/>, which reads only the cancellable-long-op
+    /// slot. An operation that must NOT be interruptible never claims that slot — it cannot, since
+    /// claiming it lights the Stop button — so it is invisible to that check and needs this one.</para>
+    ///
+    /// <para>Public for the same reason its sibling is: the view has to refuse BEFORE it opens a
+    /// dialog, not after the user has filled one in.</para>
+    /// </summary>
+    public bool RefuseIfBusy()
+    {
+        if (RefuseIfLongOpRunning()) return true;   // it has a name — use it
+        if (!IsBusy) return false;
+        AnswerStatus("Something else is still running. Give it a moment, then try again.");
+        return true;
+    }
+
     /// <summary>Stop the running long operation. Safe at any moment: the run it cancels writes
     /// nothing on its own — whatever finished is still handed to the review dialog for approval.</summary>
     public void CancelLongOperation()
@@ -3701,6 +3720,11 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task SaveRegistrationAsync(
         Services.RegistrationRepairService repair, GameEntry stored, GameEntry proposed, bool moveDataDir)
     {
+        // A move runs for minutes behind an apparently-idle window with no Stop, so re-clicking is
+        // exactly what someone will do — and a second run's first act is to delete the first run's
+        // staging folder (the path is deterministic), which fails run #1 with a verify error. Nothing
+        // is lost, but it is a baffling failure on the one operation that cannot be stopped.
+        if (RefuseIfBusy()) return;
         IsBusy = true;
         try
         {
@@ -3710,8 +3734,14 @@ public sealed partial class MainViewModel : ObservableObject
                 AmbientStatus($"Moving launcher data: {p.Copied} of {p.Total} files."));
 
             var outcome = await repair.SaveAsync(stored, proposed, moveDataDir, progress);
-            AnswerStatus(outcome.Message);
+            // Reload FIRST, answer SECOND. LoadAsync ends in UpdateStatus, which assigns StatusText
+            // directly, and the answer hold only defers AmbientStatus callers — not direct assignment.
+            // Answering first means "Saved." is erased by "N of M enabled" before it can be read, on
+            // the longest and riskiest operation in the app. RemoveActiveGameAsync orders it this way
+            // for the same reason. Only a save that happened reloads; the failure paths answer without
+            // one, which is why their message survives already.
             if (outcome.Saved) await LoadAsync();
+            AnswerStatus(outcome.Message);
         }
         catch (Exception e) { AnswerStatus(ErrorRemedy.Describe(e)); }
         finally { IsBusy = false; }
