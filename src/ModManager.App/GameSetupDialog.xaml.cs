@@ -154,8 +154,9 @@ public sealed partial class GameSetupDialog : ContentDialog
     {
         var exts = ExtensionsBox.Text
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var typedPath = ModPathBox.Text.Trim();
         var loc = _game.ModLocations.Count > 0 ? _game.ModLocations[0] : new ModLocation("mods", "mods", "mods");
-        var first = loc with { Path = ModPathBox.Text.Trim() };
+        var first = loc with { Path = typedPath };
 
         // EDIT THE FIRST LOCATION, CARRY THE REST. Rebuilding a single-element list would do two
         // separate kinds of damage to a game with more than one declared location — and multi-location
@@ -184,7 +185,20 @@ public sealed partial class GameSetupDialog : ContentDialog
             GameRoot = FolderBox.Text.Trim(),
             FileExtensions = exts,
             GroupingRule = GroupingBox.Text.Trim(),
-            ModLocations = locations,
+            // NO STORED LOCATION AND A BLANK BOX MEANS NO LOCATION — not an invented one. This is the
+            // same count-first failure as the multi-location case above, at the other end: proposing
+            // [("mods", "mods", "")] against a stored [] makes SameLocations read 0-vs-1 as changed on
+            // ANY edit, so renaming the game would pin modLocations, permanently opting it out of
+            // future manifest corrections to a mod folder the user never typed — and the panel would
+            // promise exactly that in words. It would also save a location with an empty path at the
+            // game root. "None declared." is this dialog's headline case (see RenderDiagnosis), so it
+            // is the one that had to be right.
+            //
+            // A typed path with no stored location is the opposite: a real edit, a real proposal,
+            // legitimately pinned, because the user did state it.
+            ModLocations = _game.ModLocations.Count == 0 && typedPath.Length == 0
+                ? Array.Empty<ModLocation>()
+                : locations,
             SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim(),
             LaunchUrl = _game.LaunchUrl,
             LaunchExe = _game.LaunchExe,
