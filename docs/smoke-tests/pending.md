@@ -1329,3 +1329,60 @@ reads as broken when it is merely idle. Use a game with rows still lacking a des
 art, or collide against an identify run with real searching to do (its status line counts
 "Searching Nexus — N of M").
 
+---
+
+## PR (feat/registration-repair-ui) — registration repair surfaces (2026-08-09)
+
+**Shipped:** `Check setup…` in the More menu and a conditional banner, both opening one
+`GAME // SETUP` dialog that renders `GameShape` read-only with eight editable fields behind an
+expander; a move-or-pin confirm for the data dir; `RegistrationRepairService` owning the save order.
+
+**Core tests cover** the banner predicate, the two change lists, the progress callback, and every
+failure path in `DataDirMove.Execute` including a source file held open. **What they can't cover:**
+the App layer is headless-untestable. These steps check that the UI tells the truth about what Core
+already decided.
+
+**Smoke steps:**
+
+1. **Elden Ring reads as healthy.** More → `Check setup…`. Expect: "11 mods", "Loaded by Elden Mod
+   Loader", "Living in mods", "Set to look in mod (this folder doesn't exist)", and a verdict saying
+   the mods load normally and this is drift, not damage. No banner anywhere. *Why it matters:* the
+   dialog must not imply a repair on a working install — that is the failure mode the whole
+   diagnose-first shape exists to avoid.
+2. **The banner appears only when it should.** Temporarily point a test game's mod folder at a
+   non-existent path with no mods present; expect the banner. `Dismiss` collapses it for the session.
+   Switch away and back; a rescan may re-show it, which is acceptable.
+3. **Save is disabled when it should be.** Open the expander and change nothing — Save stays
+   disabled. Blank the game folder — Save stays disabled and the blocker text appears in danger
+   colour. Restore it — Save enables.
+4. **A rename shows a consequence.** Change only the game name. Expect "update the game name" under
+   "Saving will:" and NO pin line. Save, and confirm the title bar and library row update. *Why it
+   matters:* `FieldsChanged` excludes `gameName`, so a blank panel here would mean `OtherChanges` is
+   not wired.
+5. **A real data-dir move.** Change the game folder to a path on another drive. Expect the move-or-pin
+   confirm naming the real file count and source path. Choose "Move it" and watch the status line tick
+   per file. Afterwards: the mods still list, and the data dir exists at the new location and not the
+   old.
+6. **Pin moves nothing.** Same again, choosing "Leave it". Expect no progress ticks, the mods still
+   listing, and `games.json` carrying an explicit `dataDir` pointing at the original location.
+7. **Cancel is inert.** Open the dialog, type into several fields, press Close. Expect no change to
+   `games.json` and no change on disk.
+8. **A game with several declared mod folders.** Windrose on this machine has THREE
+   (`R5\Content\Paks\~mods`, `R5\Content\Paks\LogicMods`, and the UE4SS mods folder), all holding
+   mods. Open `Check setup…` on it, confirm the mod-folder label says it is editing the first of
+   three, change nothing else, save, and confirm all three survive in `games.json` and all 30 mods
+   still list. *Why it matters:* the editor rebuilds the location list from one text box, and an
+   earlier revision silently dropped locations 2 and 3 — which would also have permanently pinned the
+   mod path and opted the game out of future definition updates.
+9. **A registration with no declared mod folder.** Confirm the diagnosis reads `None declared.`,
+   then rename the game and save. *Why it matters:* the empty case has to save no mod location at
+   all — inventing one would pin the field and write a location at the game root.
+10. **An engine change that fills in preset defaults.** Change a game's engine and set its mod path
+    and extensions to the new preset's own defaults. Confirm the consequences panel says "update the
+    …" and NOT "lock in your …". *Why it matters:* a value equal to the preset's default is the preset
+    speaking, not the user, and promising to lock it in would be the dialog stating the opposite of
+    what happens.
+11. **The status line after a save.** Confirm the outcome message is still readable after the list
+    reloads. *Why it matters:* the reload writes the status line directly and an earlier revision let
+    it overwrite the confirmation of the riskiest operation in the app.
+
