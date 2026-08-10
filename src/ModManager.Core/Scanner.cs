@@ -39,6 +39,16 @@ public static class Scanner
         return Path.Combine(Path.GetDirectoryName(gameRoot) ?? ".", "_626mods", id);
     }
 
+    /// <summary>
+    /// Where a stored <see cref="ModLocation"/> path (or mirror) lands, given an already-resolved game
+    /// root. The ONE place that rule is written down: <see cref="GameContext"/> builds every
+    /// <c>ModLocationCtx.Abs</c> with it, and any caller that needs to match a stored location back to
+    /// a context one must resolve through the same function or the two can silently disagree — which
+    /// is how a location whose name the context substituted stopped reading as declared.
+    /// </summary>
+    public static string LocationAbs(string gameRoot, string path)
+        => Path.IsPathRooted(path) ? path : Path.Combine(gameRoot, path);
+
     public static GameContext GameContext(GameEntry? game)
     {
         game ??= new GameEntry();
@@ -87,8 +97,8 @@ public static class Scanner
         var locations = game.ModLocations.Select((loc, idx) => new ModLocationCtx(
             string.IsNullOrEmpty(loc.Name) ? "loc" + idx : loc.Name,
             string.IsNullOrEmpty(loc.Label) ? (string.IsNullOrEmpty(loc.Name) ? "Location " + idx : loc.Name) : loc.Label,
-            Path.IsPathRooted(loc.Path) ? loc.Path : Path.Combine(gameRoot, loc.Path),
-            loc.Mirrors.Select(m => Path.IsPathRooted(m) ? m : Path.Combine(gameRoot, m)).ToList(),
+            LocationAbs(gameRoot, loc.Path),
+            loc.Mirrors.Select(m => LocationAbs(gameRoot, m)).ToList(),
             idx == 0)
         {
             Form = string.IsNullOrEmpty(loc.Form) ? defaultForm : loc.Form,

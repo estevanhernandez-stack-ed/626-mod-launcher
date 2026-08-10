@@ -381,6 +381,35 @@ public class GameShapeTests
         Assert.Contains(shape.Notes, n => n.Contains("The launcher's own", StringComparison.Ordinal));
     }
 
+    // A hand-edited registry can leave a location's name blank, and Scanner.GameContext substitutes
+    // "loc0" for it — a fallback that exists precisely because registries get hand-edited, which is
+    // this whole feature's audience. Matching stored-to-context by NAME therefore missed, the location
+    // read as launcher-derived, and the banner went quiet on exactly the shape it exists for: nothing
+    // found, and the folder the registration names is not on disk. The absolute path is the key that
+    // survives the substitution.
+    [Fact]
+    public void A_stored_location_with_no_name_is_still_declared_by_the_registration()
+    {
+        var root = TestSupport.TempDir("shape-noname-");
+        var game = new GameEntry
+        {
+            Id = "noname-game", GameName = "No Name", GameRoot = root, Engine = "ue-pak",
+            FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
+            ModLocations = new[] { new ModLocation("", "", "mods") },   // never created on disk
+            DataDir = Path.Combine(root, "_data"),
+        };
+
+        var shape = GameShape.Of(game);
+
+        var declared = Assert.Single(shape.DeclaredLocations);
+        Assert.True(declared.Declared);
+        Assert.Equal("mods", declared.Path);        // the stored path, not the substituted label
+        Assert.False(declared.Exists);
+        Assert.Equal(0, shape.ModCount);
+        Assert.True(shape.NeedsAttention);
+        Assert.True(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
+    }
+
     // FrameworkRegistry.List reads <dataDir>/frameworks/<id>/install.json — camelCase on disk, like
     // every file this launcher writes.
     private static void WriteUe4ssManifest(string dataDir, string installPath)

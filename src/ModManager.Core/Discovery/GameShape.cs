@@ -109,11 +109,19 @@ public sealed record GameShape
     /// to the registration puts a label ("ue4ss-mods") in a path slot under a heading that says the
     /// game is "set to look in" it. It is not: the launcher added it. Derived entries carry their
     /// absolute path instead, and every reader renders them as what they are.</para>
+    ///
+    /// <para>MATCHED ON PATH, NOT NAME. <c>Scanner.GameContext</c> substitutes "loc0" for a stored
+    /// location whose <c>Name</c> is empty — a fallback that exists because hand-edited registries do
+    /// exactly that, and hand-edited registries are this feature's whole audience. Matching by name
+    /// missed every one of them, so the location read as launcher-derived and the banner went silent
+    /// on the one shape it exists for: nothing found, and the folder the registration names is not on
+    /// disk. Both sides resolve through <c>Scanner.LocationAbs</c> so they cannot disagree.</para>
     /// </summary>
     private static List<DeclaredLocation> DeclaredFor(GameContext ctx)
         => ctx.Locations.Select(l =>
         {
-            var stored = ctx.Game.ModLocations.FirstOrDefault(m => m.Name == l.Name);
+            var stored = ctx.Game.ModLocations.FirstOrDefault(
+                m => PathEquals(Scanner.LocationAbs(ctx.GameRoot, m.Path), l.Abs));
             return new DeclaredLocation
             {
                 Name = l.Name,
