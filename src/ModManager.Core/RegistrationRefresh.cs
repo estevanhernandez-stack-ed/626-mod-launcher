@@ -69,8 +69,9 @@ public static class RegistrationRefresh
     /// game, and the 194-mods-showing-as-zero failure comes back with no marker to explain it. Two
     /// callers, one helper.</para>
     ///
-    /// <para>Leading dots are deliberately NOT stripped: the list is compared as the user stores it,
-    /// and <c>Scanner</c> normalises the dot case separately on its way to a regex.</para>
+    /// <para>Leading dots are deliberately NOT stripped: the list is compared as the user stores it.
+    /// <c>Scanner</c> strips them afterwards, once, into <c>GameContext.DeclaredExts</c> — the value
+    /// both the scan regex and the discovery sweep read.</para>
     /// </summary>
     internal static HashSet<string> ExtensionSet(IEnumerable<string> exts)
         => new(exts.Select(e => e.Trim()), StringComparer.OrdinalIgnoreCase);

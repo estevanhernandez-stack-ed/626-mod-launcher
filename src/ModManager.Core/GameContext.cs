@@ -50,10 +50,11 @@ public sealed class GameContext
     /// what a mod even is.</description></item>
     /// <item><description><see cref="Exts"/> is this list taken the last two steps to a regex: an
     /// empty list is replaced with <c>["pak"]</c>, and every entry is <c>Regex.Escape</c>d. Both
-    /// steps make it unusable for comparison — the substitution claims a pak engine for the
-    /// folder-based engines (smapi / fromsoft / decima) that genuinely have no extensions, and the
-    /// escaping means a plain <c>Contains</c> misses any extension holding a regex
-    /// metacharacter.</description></item>
+    /// steps make it the wrong answer to "does this game scan that extension" — the substitution
+    /// claims a pak engine for the folder-based engines (smapi / fromsoft / decima) that genuinely
+    /// have no extensions, and the escaping means a plain <c>Contains</c> misses any extension
+    /// holding a regex metacharacter. The intake sites compare against it anyway, deliberately and
+    /// with a known cost; see the note on <see cref="Exts"/>.</description></item>
     /// </list>
     ///
     /// <para>Empty is meaningful here and is preserved: it is how a folder-based, catalog-driven
@@ -62,8 +63,16 @@ public sealed class GameContext
     public required IReadOnlyList<string> DeclaredExts { get; init; }
 
     /// <summary><see cref="DeclaredExts"/> taken the last two steps to <see cref="FileRe"/> — an
-    /// empty list substituted with <c>["pak"]</c>, then every entry regex-escaped. Never compare
-    /// against this; compare against <see cref="DeclaredExts"/>, which it is derived from.</summary>
+    /// empty list substituted with <c>["pak"]</c>, then every entry regex-escaped.
+    ///
+    /// <para>Prefer <see cref="DeclaredExts"/> for any comparison. The exception, and it is a real
+    /// one: the intake sites pass this to <c>Intake.ClassifyDrop</c>, which DOES compare it by
+    /// equality. They do that for the empty→<c>["pak"]</c> substitution, which they genuinely need
+    /// and <see cref="DeclaredExts"/> does not carry — so the escaping rides along as a known,
+    /// latent wrong answer for any extension holding a regex metacharacter (a game declaring
+    /// <c>mod+pak</c> gets <c>["mod\+pak"]</c> here, and a real <c>foo.mod+pak</c> classifies as
+    /// skip). Backlogged as A7; do not "fix" those sites by swapping in
+    /// <see cref="DeclaredExts"/>, which would break the substitution they rely on.</para></summary>
     public required IReadOnlyList<string> Exts { get; init; }
     public required Regex FileRe { get; init; }
     public required IReadOnlyList<ModLocationCtx> Locations { get; init; }

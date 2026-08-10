@@ -27,8 +27,14 @@ public static class ModTools
             gameId = game.Id,
             gameRoot = c.GameRoot,
             dataDir = c.DataDir,
-            fileExtensions = game.FileExtensions,
-            groupingRule = game.GroupingRule,
+            // RESOLVED, not stored — every other field here comes from `c`, and this tool's contract
+            // is "the resolved mod context". A stale registration stores the engine preset's frozen
+            // default while the manifest has since corrected it; reporting the stored list would tell
+            // an agent this game scans ["pak"] while the scanner is keying on ["archive"], and the
+            // agent would reason about the wrong file type entirely. Call get_game_shape for the
+            // declared-vs-actual picture; this field answers "what does the launcher look for".
+            fileExtensions = c.DeclaredExts,
+            groupingRule = c.GroupingRule,
             modLocations = c.Locations.Select(l => new
             {
                 name = l.Name,

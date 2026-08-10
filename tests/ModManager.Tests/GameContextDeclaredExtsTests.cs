@@ -162,7 +162,9 @@ public class GameContextDeclaredExtsTests : IDisposable
 
         Assert.Matches(ctx.FileRe, "Whatever.archive"); // the scan side matches...
 
-        // ...and so does the sweep side, wired exactly the way MainViewModel wires it.
+        // ...and so does the sweep side. Only the extension list is wired the way MainViewModel
+        // wires it — ModPaths and SkipFolders are fixtures, since the extension list is what is
+        // under test here.
         var options = new DiscoverySweepOptions(
             ModPaths: new[] { new DiscoverySweepModPath("archive/pc/mod", PaksRoot: false) },
             EngineExtensions: ctx.DeclaredExts,
