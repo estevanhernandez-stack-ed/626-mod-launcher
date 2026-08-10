@@ -300,6 +300,10 @@ public class DesignLawTests
             // name is deliberate: shared name, shared wording, so the two surfaces cannot drift.
             ("DiscoveryReviewDialog.xaml", "Blurb"),
             ("IdentifyReviewDialog.xaml", "Blurb"),
+            // GameSetupDialog: the mod-folder label. The XAML literal is what a single-location game
+            // shows; SeedFields overrides it ONLY when the game declares more than one location, to
+            // say which of them the single box edits. Same conditional-override shape as above.
+            ("GameSetupDialog.xaml", "ModPathLabel"),
         };
         var findings = new List<string>();
         foreach (var (path, xaml) in Sources("*.xaml"))

@@ -333,4 +333,94 @@ public class DataDirMoveExecuteTests
         Assert.Null(result.Error);
         Assert.False(Directory.Exists(to));
     }
+
+    // A multi-gigabyte move behind a bare spinner is indistinguishable from a hang, and the one thing
+    // the user must not do is kill the app mid-move. Progress<T> dispatches via SynchronizationContext
+    // (captured context, or the thread pool otherwise) — always asynchronously — so the assertions
+    // must wait for the callbacks to actually land, not just lock the list they land in.
+    [Fact]
+    public void A_copy_move_reports_progress_for_every_file()
+    {
+        var from = Src("a.txt", "sub/b.txt", "sub/deep/c.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+        var seen = new List<(int Copied, int Total)>();
+
+        var result = DataDirMove.Execute(forced, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+
+        Assert.True(result.Moved);
+        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
+                    "progress callbacks did not arrive within 5s");
+        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
+    }
+
+    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies. A
+    // bare Assert.Empty right after Execute returns would pass even against an implementation that DID
+    // tick on the rename path, since Progress<T> dispatch is asynchronous — give it a drain window
+    // first so the test can actually fail against the behaviour it exists to forbid.
+    [Fact]
+    public void A_rename_reports_no_progress()
+    {
+        var from = Src("a.txt");
+        var to = Path.Combine(Path.GetDirectoryName(from)!, "renamed-" + Guid.NewGuid().ToString("N"));
+        var seen = new List<(int, int)>();
+
+        var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+
+        Assert.True(result.Moved);
+        SpinWait.SpinUntil(() => { lock (seen) return seen.Count > 0; }, TimeSpan.FromSeconds(1));
+        lock (seen) Assert.Empty(seen);
+    }
+
+    // The plan is taken before the dialog and before the confirm; the copy runs afterwards. If a file
+    // lands in (or leaves) the data dir in between, a denominator taken from plan.FileCount reads
+    // "4 of 3 files" — an absurd number on the one operation the user must not kill. The copy is
+    // correct either way (Verify re-walks the source and rolls back on any mismatch); the words are
+    // what this pins. A stale plan is forced here rather than raced for, so the test is deterministic.
+    [Fact]
+    public void Progress_counts_against_the_live_file_set_not_a_stale_plan()
+    {
+        var from = Src("a.txt", "sub/b.txt", "sub/deep/c.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var stale = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete, FileCount = 99 };
+        var seen = new List<(int Copied, int Total)>();
+
+        var result = DataDirMove.Execute(stale, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+
+        Assert.True(result.Moved);
+        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
+                    "progress callbacks did not arrive within 5s");
+        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
+    }
+
+    // The default keeps every existing call site and all current tests compiling unchanged.
+    [Fact]
+    public void A_null_progress_callback_changes_nothing()
+    {
+        var from = Src("a.txt", "sub/b.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        var result = DataDirMove.Execute(forced, progress: null);
+
+        Assert.True(result.Moved);
+        Assert.Equal(2, Directory.GetFiles(to, "*", SearchOption.AllDirectories).Length);
+    }
+
+    // CopyTreeReporting's own doc comment states the load-bearing case: Verify walks GetFiles only, so
+    // a vanished empty directory is uncaught — and the source is deleted immediately afterwards. That
+    // guarantee lived in a private helper covered by nothing; this pins it down.
+    [Fact]
+    public void An_empty_subdirectory_survives_a_copy_move()
+    {
+        var from = Src("a.txt");
+        Directory.CreateDirectory(Path.Combine(from, "empty-sub"));
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        var result = DataDirMove.Execute(forced);
+
+        Assert.True(result.Moved);
+        Assert.True(Directory.Exists(Path.Combine(to, "empty-sub")));
+    }
 }

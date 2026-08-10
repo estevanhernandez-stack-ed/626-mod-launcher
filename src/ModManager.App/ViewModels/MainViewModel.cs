@@ -194,6 +194,16 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility OwnedBannerVisibility => HasOwnedLocations ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ReDeployedBannerVisibility => HasReDeployedLocations ? Visibility.Visible : Visibility.Collapsed;
 
+    // Drift that is provably costing something — nothing found AND a declared folder that is not
+    // there. See GameShape.NeedsAttention for why this is not "is it drifted": a banner on every
+    // drift would flag Elden Ring and every other loader-based install, all of them working fine.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SetupBannerVisibility))]
+    private bool setupNeedsAttention;
+
+    public Visibility SetupBannerVisibility =>
+        SetupNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Live "how to use" for an installed framework, read from its on-disk settings. The view
     /// calls this on a framework-button click and renders the lines in a toast.</summary>
     public static FrameworkUsageInfo FrameworkUsageFor(FrameworkInstallManifest m)
@@ -296,6 +306,25 @@ public sealed partial class MainViewModel : ObservableObject
         // second, and without the hold it erases this before it can be read — which is precisely how
         // a working guard reads as a dead click.
         AnswerStatus(_longOp.RefusalMessage);
+        return true;
+    }
+
+    /// <summary>
+    /// Refuse a second run while anything is still working, naming what is in the way when it has a
+    /// name.
+    ///
+    /// <para>Wider than <see cref="RefuseIfLongOpRunning"/>, which reads only the cancellable-long-op
+    /// slot. An operation that must NOT be interruptible never claims that slot — it cannot, since
+    /// claiming it lights the Stop button — so it is invisible to that check and needs this one.</para>
+    ///
+    /// <para>Public for the same reason its sibling is: the view has to refuse BEFORE it opens a
+    /// dialog, not after the user has filled one in.</para>
+    /// </summary>
+    public bool RefuseIfBusy()
+    {
+        if (RefuseIfLongOpRunning()) return true;   // it has a name — use it
+        if (!IsBusy) return false;
+        AnswerStatus("Something else is still running. Give it a moment, then try again.");
         return true;
     }
 
@@ -571,6 +600,7 @@ public sealed partial class MainViewModel : ObservableObject
             FrameworkRows.Clear();
             OwnedLocations.Clear();
             ReDeployedLocations.Clear();
+            SetupNeedsAttention = false; // collapse the setup banner when no game is active
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
@@ -854,6 +884,13 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasReDeployedLocations));
             OnPropertyChanged(nameof(OwnedBannerVisibility));
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
+
+            // The predicate, not the whole shape. GameShape.Of rebuilds the scanner context twice more,
+            // re-resolves every mod, and computes content roots and alignment — on every toggle, game
+            // switch and drop — all to read a two-term boolean the list above already has the inputs
+            // for. NeedsAttentionFor is that same predicate in Core, so the banner and the dialog still
+            // cannot disagree (GameShapeTests.Banner_predicate_agrees_with_the_dialog_shape).
+            SetupNeedsAttention = _ctx is not null && GameShape.NeedsAttentionFor(_ctx, list.Count);
 
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
@@ -3675,6 +3712,43 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = "Removed game from the launcher.";
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>Apply a registration edit, then reload. The service owns the ordering that makes a
+    /// failure recoverable; this method owns only the busy state and the status line.
+    ///
+    /// <para>The service arrives as a PARAMETER rather than a constructor dependency or a service-
+    /// locator lookup. This constructor already takes 14 concrete services and is the reason nothing
+    /// here can be tested; a fifteenth would make that worse, and a locator call would hide the
+    /// dependency entirely. MainWindow has already resolved it — let it hand it over.</para></summary>
+    public async Task SaveRegistrationAsync(
+        Services.RegistrationRepairService repair, GameEntry stored, GameEntry proposed, bool moveDataDir)
+    {
+        // A move runs for minutes behind an apparently-idle window with no Stop, so re-clicking is
+        // exactly what someone will do — and a second run's first act is to delete the first run's
+        // staging folder (the path is deterministic), which fails run #1 with a verify error. Nothing
+        // is lost, but it is a baffling failure on the one operation that cannot be stopped.
+        if (RefuseIfBusy()) return;
+        IsBusy = true;
+        try
+        {
+            // Per-file ticks, no Stop: a data-dir move must not be interruptible mid-flight, and the
+            // staging-then-swap design is exactly what makes that safe.
+            var progress = new Progress<(int Copied, int Total)>(p =>
+                AmbientStatus($"Moving launcher data: {p.Copied} of {p.Total} files."));
+
+            var outcome = await repair.SaveAsync(stored, proposed, moveDataDir, progress);
+            // Reload FIRST, answer SECOND. LoadAsync ends in UpdateStatus, which assigns StatusText
+            // directly, and the answer hold only defers AmbientStatus callers — not direct assignment.
+            // Answering first means "Saved." is erased by "N of M enabled" before it can be read, on
+            // the longest and riskiest operation in the app. RemoveActiveGameAsync orders it this way
+            // for the same reason. Only a save that happened reloads; the failure paths answer without
+            // one, which is why their message survives already.
+            if (outcome.Saved) await LoadAsync();
+            AnswerStatus(outcome.Message);
+        }
+        catch (Exception e) { AnswerStatus(ErrorRemedy.Describe(e)); }
         finally { IsBusy = false; }
     }
 

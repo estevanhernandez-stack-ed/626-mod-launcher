@@ -111,6 +111,8 @@ public sealed partial class MainWindow : Window
                 && (args.PropertyName == nameof(MainViewModel.OwnedBannerVisibility)
                     || args.PropertyName == nameof(MainViewModel.ReDeployedBannerVisibility)))
                 VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+            if (_suppressSetupBanner && args.PropertyName == nameof(MainViewModel.SetupBannerVisibility))
+                SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
             // The storefront is scoped to one game. Switching games from the title-bar switcher while it
             // is open would leave it labelled for the game you just left, so close it instead.
             if (args.PropertyName == nameof(MainViewModel.ActiveGame))
@@ -1330,6 +1332,11 @@ public sealed partial class MainWindow : Window
     // Session-level dismiss for the Vortex banner area (set from the Dismiss button).
     private bool _suppressVortexBanner;
 
+    // Session-level dismiss for the setup banner (set from its Dismiss button). Same shape as
+    // _suppressVortexBanner: the x:Bind is OneWay to the VM, so a raw Visibility write here would
+    // just be overwritten the next time SetupBannerVisibility changes — the flag is what survives.
+    private bool _suppressSetupBanner;
+
     // "Take them over" / "Take over again" — take over every Vortex-owned + re-deployed location
     // for the active game, then rescan (the VM flips the banners off when nothing's owned anymore).
     private async void OnTakeOverGame(object sender, RoutedEventArgs e)
@@ -1342,6 +1349,65 @@ public sealed partial class MainWindow : Window
     {
         VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
         _suppressVortexBanner = true;
+    }
+
+    // Session-level dismiss, matching the Vortex banner: a later rescan may re-show it, which is
+    // acceptable — the alternative is a persisted "don't tell me" that outlives the problem.
+    private void OnDismissSetupBanner(object sender, RoutedEventArgs e)
+    {
+        SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        _suppressSetupBanner = true;
+    }
+
+    private async void OnCheckSetup(object sender, RoutedEventArgs e)
+    {
+        var game = ViewModel.ActiveContextPublic?.Game;
+        if (game is null) return;
+
+        // Refuse here, before the dialog, rather than after the user has filled one in — the save
+        // re-checks and is the authority. Chiefly this catches re-opening during a data-dir move,
+        // which has no Stop and leaves the window looking idle.
+        if (ViewModel.RefuseIfBusy()) return;
+
+        var repair = App.AppHost.Services.GetRequiredService<Services.RegistrationRepairService>();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dialog = new GameSetupDialog(hwnd, game, repair) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+
+        if (dialog.Proposed is not { } proposed) return;
+
+        // The move-or-pin decision, and the save, happen HERE rather than inside the dialog: WinUI 3
+        // permits one ContentDialog per XamlRoot, so a confirm cannot open while the setup dialog is up.
+        // FALSE, not true. This is the answer to "did the user ask for a move", and nobody asked when
+        // no plan surfaced here. The save re-previews and can find a plan this dialog did not (the
+        // folder came into existence in between, say) — defaulting to true would move gigabytes of the
+        // user's only copy of their disabled mods without ever putting the question on screen. Pinning
+        // moves nothing, so a wrong default in this direction costs a settings key, not files.
+        var move = false;
+        if (dialog.MoveDataDirRequested is { } plan)
+        {
+            var confirm = new ContentDialog
+            {
+                Title = "Move this game's launcher data?",
+                Content = $"You changed the game folder. This game's launcher data — disabled mods, "
+                          + $"profiles, saves, installed tools — is {plan.FileCount} files at {plan.From}.\n\n"
+                          + "Move it next to the new folder, or leave it where it is. Leaving it works "
+                          + "fine; nothing is lost either way — it records this folder in the game's "
+                          + "setup, so the launcher keeps using it from here on.\n\n"
+                          + "Cancel abandons the whole edit, including the other fields you changed.",
+                PrimaryButtonText = "Move it",
+                SecondaryButtonText = "Leave it",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Secondary,
+                XamlRoot = Content.XamlRoot,
+            };
+            Services.DialogTheming.Apply(confirm);
+            var answer = await confirm.ShowAsync();
+            if (answer == ContentDialogResult.None) return;      // Cancel: change nothing
+            move = answer == ContentDialogResult.Primary;
+        }
+
+        await ViewModel.SaveRegistrationAsync(repair, game, proposed, move);
     }
 
     // If the row's folder is Vortex/MO2-owned (not yet taken over), offer to take it over first.

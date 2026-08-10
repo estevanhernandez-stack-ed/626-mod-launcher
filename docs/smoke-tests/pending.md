@@ -1329,3 +1329,114 @@ reads as broken when it is merely idle. Use a game with rows still lacking a des
 art, or collide against an identify run with real searching to do (its status line counts
 "Searching Nexus — N of M").
 
+---
+
+## PR (feat/registration-repair-ui) — registration repair surfaces (2026-08-09)
+
+**Shipped:** `Check setup…` in the More menu and a conditional banner, both opening one
+`GAME // SETUP` dialog that renders `GameShape` read-only with eight editable fields behind an
+expander; a move-or-pin confirm for the data dir; `RegistrationRepairService` owning the save order.
+
+**Core tests cover** the banner predicate (and that its cheap overload agrees with the dialog's
+shape), the two change lists, the preset-default rule, the declared-versus-derived location split,
+the progress callback and its denominator, and every failure path in `DataDirMove.Execute` including
+a source file held open. **What they can't cover:** the App layer is headless-untestable, and
+`RegistrationRepairService` — which owns the ordering that makes a failed save recoverable — has no
+unit test at all. Steps 12 and 13 are the only coverage its failure branches get.
+
+**Smoke steps:**
+
+1. **Elden Ring reads as healthy.** More → `Check setup…`. Expect: "11 mods", "Loaded by Elden Mod
+   Loader", "Living in mods", "Set to look in mod (this folder doesn't exist)", and a verdict saying
+   the mods load normally and this is drift, not damage. No banner anywhere. *Why it matters:* the
+   dialog must not imply a repair on a working install — that is the failure mode the whole
+   diagnose-first shape exists to avoid.
+2. **The banner appears only when it should.** Temporarily point a test game's mod folder at a
+   non-existent path with no mods present; expect the banner. `Dismiss` collapses it for the session.
+   Switch away and back; a rescan may re-show it, which is acceptable. *Why it matters:* the banner
+   fires on a two-term predicate that now runs on every toggle and game switch; if it fired on drift
+   instead, it would flag working games and train the user to dismiss the one case worth reading.
+3. **Save is disabled when it should be.** Open the expander and change nothing — Save stays
+   disabled. Blank the game folder — Save stays disabled and the blocker text appears in danger
+   colour. Restore it — Save enables. *Why it matters:* a blank game folder makes the data-dir path
+   resolve against the launcher's own install directory, so an unblocked save would plan a move of
+   the user's only copy of their disabled mods into the wrong place.
+4. **A rename shows a consequence.** Change only the game name. Expect "update the game name" under
+   "Saving will:" and NO pin line. Save, and confirm the title bar and library row update. *Why it
+   matters:* `FieldsChanged` excludes `gameName`, so a blank panel here would mean `OtherChanges` is
+   not wired.
+5. **A real data-dir move.** Change the game folder to an **existing** folder on another drive —
+   `RegistrationChange.Plan` blocks a folder that is not there, so create it first (a copy of the game,
+   or an empty folder if you are only exercising the move). Expect the move-or-pin confirm naming the
+   real file count and source path. Choose "Move it" and watch the status line tick per file.
+   Afterwards: the mods still list, and the data dir exists at the new location and not the old.
+   *Why it matters:* this moves REAL user files — the only copy of that game's disabled mods, held
+   framework proxies, archived takeovers and installed tools. It is the one step in this list where a
+   defect costs mods rather than metadata.
+6. **Pin moves nothing.** Same again, choosing "Leave it". Expect no progress ticks, the mods still
+   listing, and `games.json` carrying an explicit `dataDir` pointing at the original location.
+   *Why it matters:* pinning is the escape hatch for a user who does not want gigabytes copied, and
+   that explicit `dataDir` is permanent — from then on the launcher stops deriving the path, so a
+   LATER game-folder change plans no move at all. The confirm says so; check that it does.
+7. **Cancel is inert.** Open the dialog, type into several fields, press Close. Expect no change to
+   `games.json` and no change on disk. *Why it matters:* planning READS the filesystem (it sizes the
+   move on every pause in typing) and must never write — someone who reads the consequences and backs
+   out has to end up exactly where they started.
+8. **A game with several mod folders, declared and derived.** Windrose on this machine declares
+   `R5\Content\Paks\~mods` and `R5\Content\Paks\LogicMods` in `games.json`; the UE4SS mods folder is
+   NOT declared — the scanner appends it because the launcher owns the UE4SS install. So "Set to look
+   in" should list three entries with the UE4SS one marked `(added by the launcher, not declared)`,
+   while the mod-folder label says it is editing the first of **two**. Read the mod-location count in
+   `games.json` first and check the label against that number, not against the row above it. Change
+   nothing else, save, and confirm both declared locations survive in `games.json` and all 30 mods
+   still list. *Why it matters:* the editor rebuilds the location list from one text box, and an
+   earlier revision silently dropped locations 2 and 3 — which would also have permanently pinned the
+   mod path and opted the game out of future definition updates. The derived entry is the other half:
+   it was rendered as the bare label `ue4ss-mods` in a path slot, attributing a launcher-owned folder
+   to the user's registration where there is no field to fix it.
+9. **A registration with no declared mod folder.** Confirm the diagnosis reads `None declared.`,
+   then rename the game and save. *Why it matters:* the empty case has to save no mod location at
+   all — inventing one would pin the field and write a location at the game root.
+10. **An engine change that fills in preset defaults.** Change a game's engine and set its mod path
+    and extensions to the new preset's own defaults. Confirm the consequences panel says "update the
+    …" and NOT "lock in your …". *Why it matters:* a value equal to the preset's default is the preset
+    speaking, not the user, and promising to lock it in would be the dialog stating the opposite of
+    what happens.
+11. **The status line after a save.** Confirm the outcome message is still readable after the list
+    reloads. *Why it matters:* the reload writes the status line directly and an earlier revision let
+    it overwrite the confirmation of the riskiest operation in the app.
+12. **A move that fails.** THE MOST IMPORTANT STEP IN THIS LIST. `RegistrationRepairService` ships no
+    unit test by design, so its riskiest branch has no coverage of any kind. Deterministic recipe:
+    open a file inside the game's data dir in an editor that holds a lock — Notepad will not; a
+    running game or an open archive tool will. (The data dir is the entry's explicit `dataDir` if it
+    has one, else `<the folder above the game, or above steamapps>\_626mods\<id>` — see
+    `Scanner.DataDirForGame`.) Then change the game folder and choose "Move it". Expect: a message
+    saying a file is in use and nothing was moved, `games.json` byte-identical, and the data dir still
+    whole at the OLD path. Note the setup dialog has already closed by then — the edits are gone and
+    the change has to be retyped, which is expected today.
+    *Why it matters:* a file held open is the likeliest real-world failure on this path — the game may
+    well be running — and this is what proves the "the move runs first, so a failed move leaves
+    nothing written anywhere" claim the whole ordering exists to deliver.
+13. **A write that fails after the move succeeds.** NO COVERAGE OF ANY KIND — not a unit test, and not
+    practically reproducible by hand either: it needs the registry write to throw in the window
+    between a completed data-dir move and the reload, which no user action reaches. Stated here rather
+    than left silent. If you can make `games.json` unwritable exactly between those two moments (a
+    deny-write ACL applied while the copy is running is the only route anyone has thought of), expect
+    the launcher data to be put BACK at the old path with progress ticking, and a message saying
+    nothing was changed. If the old copy could not be deleted during the forward move, expect instead
+    a message saying the data is still where the game expects it, naming the other copy as the one
+    that was verified complete and asking you to compare the two before removing either — NOT an
+    orphan warning, and NOT an invitation to delete one of them. The recursive delete removes children
+    one at a time, so the surviving old folder may be partial while the target is whole.
+14. **Cancel on the move confirm abandons the whole edit.** Change the game name AND the game folder,
+    save, then press Cancel on the move-or-pin confirm. Expect no change to `games.json` at all —
+    including the rename. The confirm says so; check that it does. *Why it matters:* under a "Move
+    this game's launcher data?" title with "Leave it" already on screen, Cancel reads as backing out
+    of the move decision alone, and someone who loses their retyped folder path to it will not know
+    why.
+15. **`Check setup…` refuses while anything else is running.** Start a long operation (an identify
+    sweep, a discovery scan) and open the More menu — `Check setup…` should refuse with "Something
+    else is still running." rather than open. *Why it matters:* this is deliberate and wider than the
+    cancellable-long-op check, because a data-dir move cannot be stopped and leaves the window looking
+    idle. Whoever hits it first during an unrelated operation will read it as a bug; it is not.
+

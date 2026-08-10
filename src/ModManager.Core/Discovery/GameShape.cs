@@ -66,6 +66,72 @@ public sealed record GameShape
     /// <summary>Plain-language findings, safe to show a user or hand an agent verbatim.</summary>
     public required IReadOnlyList<string> Notes { get; init; }
 
+    /// <summary>
+    /// Whether this registration's drift is provably costing the user something.
+    ///
+    /// <para>Nothing found, AND at least one declared location is not on disk. That pair is the shape
+    /// that actually hurt: a Cyberpunk registration looking for <c>pak</c> in a folder of
+    /// <c>.archive</c> files reported 194 mods as zero.</para>
+    ///
+    /// <para>Deliberately NOT "is it drifted". Drift is common and usually harmless — Elden Ring is
+    /// drifted and perfectly healthy, as is any loader-based install. A banner on every drift would
+    /// flag working games and train the user to dismiss the one case worth reading.</para>
+    ///
+    /// <para>DECLARED entries only. A derived location (the launcher's own <c>ue4ss\Mods</c>) is not
+    /// something the registration says, so its absence is not a registration defect — and the banner's
+    /// only action is a dialog that edits the registration, which could not fix it.</para>
+    /// </summary>
+    public bool NeedsAttention => Attention(ModCount, DeclaredLocations);
+
+    /// <summary>
+    /// The same predicate as <see cref="NeedsAttention"/>, for a caller that already has the context
+    /// and the mod count.
+    ///
+    /// <para>Exists so the banner does not pay for a whole second listing. <c>ReloadModsAsync</c> has
+    /// already resolved the mod list; calling <see cref="Of"/> there rebuilt the context twice more,
+    /// re-resolved every mod, and computed content roots and alignment — a doubled scan on every
+    /// toggle, game switch and drop — all to read a two-term boolean. The predicate lives in ONE
+    /// place so the banner and the dialog can never disagree; <c>Banner_and_dialog_agree</c> holds
+    /// that line.</para>
+    /// </summary>
+    public static bool NeedsAttentionFor(GameContext ctx, int modCount)
+        => Attention(modCount, DeclaredFor(ctx));
+
+    private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared)
+        => modCount == 0 && declared.Any(d => d.Declared && !d.Exists);
+
+    /// <summary>
+    /// The locations the scanner will actually look in, each tagged with whether the REGISTRATION
+    /// said so.
+    ///
+    /// <para><c>Scanner.GameContext</c> appends a synthetic <c>ue4ss-mods</c> location when the
+    /// launcher owns a UE4SS install. It has no entry in <c>game.ModLocations</c>, so attributing it
+    /// to the registration puts a label ("ue4ss-mods") in a path slot under a heading that says the
+    /// game is "set to look in" it. It is not: the launcher added it. Derived entries carry their
+    /// absolute path instead, and every reader renders them as what they are.</para>
+    ///
+    /// <para>MATCHED ON PATH, NOT NAME. <c>Scanner.GameContext</c> substitutes "loc0" for a stored
+    /// location whose <c>Name</c> is empty — a fallback that exists because hand-edited registries do
+    /// exactly that, and hand-edited registries are this feature's whole audience. Matching by name
+    /// missed every one of them, so the location read as launcher-derived and the banner went silent
+    /// on the one shape it exists for: nothing found, and the folder the registration names is not on
+    /// disk. Both sides resolve through <c>Scanner.LocationAbs</c> so they cannot disagree.</para>
+    /// </summary>
+    private static List<DeclaredLocation> DeclaredFor(GameContext ctx)
+        => ctx.Locations.Select(l =>
+        {
+            var stored = ctx.Game.ModLocations.FirstOrDefault(
+                m => PathEquals(Scanner.LocationAbs(ctx.GameRoot, m.Path), l.Abs));
+            return new DeclaredLocation
+            {
+                Name = l.Name,
+                Path = stored?.Path ?? l.Abs,
+                Absolute = l.Abs,
+                Exists = !string.IsNullOrEmpty(l.Abs) && Directory.Exists(l.Abs),
+                Declared = stored is not null,
+            };
+        }).ToList();
+
     public static GameShape Of(GameEntry game)
     {
         var ctx = Scanner.GameContext(game);
@@ -79,13 +145,7 @@ public sealed record GameShape
             : null;
         var contentBase = playFolder ?? ctx.GameRoot;
 
-        var declared = ctx.Locations.Select(l => new DeclaredLocation
-        {
-            Name = l.Name,
-            Path = game.ModLocations.FirstOrDefault(m => m.Name == l.Name)?.Path ?? l.Name,
-            Absolute = l.Abs,
-            Exists = !string.IsNullOrEmpty(l.Abs) && Directory.Exists(l.Abs),
-        }).ToList();
+        var declared = DeclaredFor(ctx);
 
         // A mod's files are relative to the lane that found it: the play folder for the loose lanes,
         // but the mod's own declared LOCATION for the scanner. Resolving every file against one base
@@ -141,8 +201,15 @@ public sealed record GameShape
     {
         var notes = new List<string>();
 
+        // Two sentences, because they mean different things to whoever reads them. A declared folder
+        // that is missing is a registration the user can correct; a derived one is the launcher's own
+        // folder, and telling them their registration declares it would send them editing a field
+        // that does not exist.
         foreach (var d in declared.Where(d => !d.Exists))
-            notes.Add($"Declared mod location '{d.Path}' does not exist on disk ({d.Absolute}).");
+            notes.Add(d.Declared
+                ? $"Declared mod location '{d.Path}' does not exist on disk ({d.Absolute})."
+                : $"The launcher's own '{d.Name}' folder is not on disk ({d.Absolute}) — the "
+                  + "registration does not declare it and does not need to.");
 
         if (playFolder is not null && !PathEquals(playFolder, gameRoot))
             notes.Add($"Mods resolve under the play folder '{playFolder}', not the game root — paths "
@@ -224,14 +291,24 @@ public sealed record GameShape
     }
 }
 
-/// <summary>A mod location the registration declares, and whether it is actually there.</summary>
+/// <summary>A mod location the scanner will look in, and whether it is actually there.</summary>
 public sealed record DeclaredLocation
 {
     public required string Name { get; init; }
-    /// <summary>The relative path as stored in the registration (e.g. <c>mod</c>).</summary>
+
+    /// <summary>The relative path as stored in the registration (e.g. <c>mod</c>) when
+    /// <see cref="Declared"/>; the absolute path otherwise, since a derived location has no stored
+    /// path and rendering its NAME in a path slot presents a label as a folder.</summary>
     public required string Path { get; init; }
+
     public required string Absolute { get; init; }
     public required bool Exists { get; init; }
+
+    /// <summary>True when the registration actually names this location. False for one the launcher
+    /// derived — today the <c>ue4ss-mods</c> folder <c>Scanner.GameContext</c> appends when the
+    /// launcher owns a UE4SS install. A reader must not attribute a derived entry to the user's
+    /// registration: there is no field for it, and no edit that could change it.</summary>
+    public bool Declared { get; init; } = true;
 }
 
 /// <summary>A directory mods were actually found in.</summary>

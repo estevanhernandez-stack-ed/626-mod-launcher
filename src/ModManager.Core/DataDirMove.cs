@@ -97,7 +97,7 @@ public static class DataDirMove
     /// remove the source at the very end is deliberately non-fatal: a harmless duplicate is a far
     /// better outcome than risking the surviving copy in order to tidy up.</para>
     /// </summary>
-    public static DataDirMoveResult Execute(DataDirMovePlan plan)
+    public static DataDirMoveResult Execute(DataDirMovePlan plan, IProgress<(int Copied, int Total)>? progress = null)
     {
         if (!plan.CanProceed)
             return new DataDirMoveResult { Moved = false, SourceRemoved = false, Error = plan.Refusal };
@@ -119,7 +119,7 @@ public static class DataDirMove
             try
             {
                 if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
-                SafeMove.CopyDirVerified(plan.From, staging);
+                CopyTreeReporting(plan.From, staging, progress);
                 if (!Verify(plan.From, staging, out var mismatch))
                     throw new IOException("The copy did not match the original: " + mismatch);
 
@@ -169,13 +169,43 @@ public static class DataDirMove
     }
 
     /// <summary>
+    /// Copy the tree file by file, verifying each and reporting after each one.
+    ///
+    /// <para>Deliberately not <see cref="SafeMove.CopyDirVerified"/>, which is otherwise the same
+    /// guarantee: it offers no seam to report from, and a multi-gigabyte move behind a bare spinner
+    /// is indistinguishable from a hang — while killing the app mid-move is the one thing a user must
+    /// not do. Empty directories are recreated first so a folder the user's tools rely on does not
+    /// silently vanish; <see cref="Verify"/> only walks files and would not catch that.</para>
+    ///
+    /// <para>THE DENOMINATOR IS THE LIVE ENUMERATION, not <c>plan.FileCount</c>. The plan is taken
+    /// before the dialog and the confirm, so a file that lands in the data dir in between would make
+    /// the status line read "1,205 of 1,204 files" — an absurd number on the one operation the user
+    /// must not kill. The copy itself is correct either way (<see cref="Verify"/> re-walks the source
+    /// and rolls back on any mismatch); only the words the user reads depend on this.</para>
+    /// </summary>
+    private static void CopyTreeReporting(string from, string to, IProgress<(int, int)>? progress)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var dir in Directory.GetDirectories(from, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
+
+        var files = Directory.GetFiles(from, "*", SearchOption.AllDirectories);
+        var copied = 0;
+        foreach (var file in files)
+        {
+            SafeMove.CopyFileVerified(file, Path.Combine(to, Path.GetRelativePath(from, file)));
+            progress?.Report((++copied, files.Length));
+        }
+    }
+
+    /// <summary>
     /// Same set of relative paths, same byte length for each — a second pass over the SOURCE, taken
     /// after the copy has finished.
     ///
-    /// <para>WHY THIS IS NOT REDUNDANT with <see cref="SafeMove.CopyDirVerified"/>, which already
-    /// checks every file's size as it copies it: that check can only cover files the copy actually
-    /// saw. <c>CopyDirVerified</c> enumerates each directory just before copying it, so a file that
-    /// lands in — or grows in — an already-copied folder while the copy is still running is never
+    /// <para>WHY THIS IS NOT REDUNDANT with <see cref="CopyTreeReporting"/>, which already checks
+    /// every file's size as it copies it: that check can only cover files the copy actually saw.
+    /// <c>CopyTreeReporting</c> enumerates the whole tree once up front, so a file that lands in — or
+    /// grows in — the source after that snapshot was taken, while the copy is still running, is never
     /// enumerated and therefore never verified. It is also never copied. Without this pass that file
     /// goes to the target missing (or short) and then the source is deleted, which is a permanently
     /// lost user file: the data dir holds the ONLY copy. Re-reading the source at the end catches it
