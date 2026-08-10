@@ -31,6 +31,23 @@ These live in `Package.appxmanifest` (Name + Publisher + PublisherDisplayName). 
   submodule (so `git submodule update --init` first on a fresh clone). Either way the seal must pass — the
   plugin LOADER is compiled out in both.
 
+### Decide, every plugin release, whether the Store SKU follows
+
+The two SKUs share one registration path — `ModSourceHostServices` and the same
+`IModManagerPlugin.Register` entry point — so their BEHAVIOUR cannot fork. Their VERSION can.
+
+The GitHub SKU picks up a new `nexus-vX` the moment it lands on the feed. The Store SKU does not: it
+compiles from the pinned `external/626-mod-plugins` submodule, so it stays on whatever commit that
+pointer names until someone moves it.
+
+**So when you cut a plugin release, make it an explicit call:** should the Store SKU follow? If yes,
+bump the submodule pointer, rebuild with `-p:StoreNexus=true`, and re-run the seal. If no, that is
+fine — just make it a decision rather than a drift. Check the pointer before every Store submission:
+
+```bash
+git -C external/626-mod-plugins describe --tags
+```
+
 ### ⚠ Never let a test build share the submission's output folder
 
 A side-load test needs a throwaway package identity (so it installs beside the real Store app instead of
