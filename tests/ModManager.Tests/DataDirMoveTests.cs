@@ -372,6 +372,27 @@ public class DataDirMoveExecuteTests
         lock (seen) Assert.Empty(seen);
     }
 
+    // The plan is taken before the dialog and before the confirm; the copy runs afterwards. If a file
+    // lands in (or leaves) the data dir in between, a denominator taken from plan.FileCount reads
+    // "4 of 3 files" — an absurd number on the one operation the user must not kill. The copy is
+    // correct either way (Verify re-walks the source and rolls back on any mismatch); the words are
+    // what this pins. A stale plan is forced here rather than raced for, so the test is deterministic.
+    [Fact]
+    public void Progress_counts_against_the_live_file_set_not_a_stale_plan()
+    {
+        var from = Src("a.txt", "sub/b.txt", "sub/deep/c.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddm-to-"), "moved");
+        var stale = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete, FileCount = 99 };
+        var seen = new List<(int Copied, int Total)>();
+
+        var result = DataDirMove.Execute(stale, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+
+        Assert.True(result.Moved);
+        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
+                    "progress callbacks did not arrive within 5s");
+        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
+    }
+
     // The default keeps every existing call site and all current tests compiling unchanged.
     [Fact]
     public void A_null_progress_callback_changes_nothing()
