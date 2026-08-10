@@ -27,6 +27,35 @@ public sealed class GameContext
     public required string MetadataPath { get; init; }
     public required string LoadOrderPath { get; init; }
     public string? SaveDir { get; init; }
+    /// <summary>
+    /// The extensions this game is RESOLVED to scan with: the stored registration value with
+    /// <see cref="RegistrationRefresh"/> applied, so a manifest correction has already won. This is
+    /// the value <see cref="FileRe"/> is built from, and therefore the one <c>Scanner.ModKeyFor</c>
+    /// keys on — anything that must agree with the scanner reads THIS.
+    ///
+    /// <para>It differs from both neighbours, and confusing the three is the whole reason it exists:</para>
+    /// <list type="bullet">
+    /// <item><description><see cref="GameEntry.FileExtensions"/> on <see cref="Game"/> is the RAW
+    /// stored value, frozen the day the user clicked Add. It may be a stale preset snapshot the
+    /// manifest has since corrected — a Cyberpunk 2077 registration stored <c>["pak"]</c> while the
+    /// manifest said <c>["archive"]</c>. Reading it makes a caller disagree with the scanner about
+    /// what a mod even is.</description></item>
+    /// <item><description><see cref="Exts"/> is this list NORMALISED for a regex: empty is replaced
+    /// with <c>["pak"]</c>, entries are lowercased, leading dots trimmed, and every entry is
+    /// <c>Regex.Escape</c>d. Both halves make it unusable for comparison — the substitution claims a
+    /// pak engine for the folder-based engines (smapi / fromsoft / decima) that genuinely have no
+    /// extensions, and the escaping means a plain <c>Contains</c> misses any extension holding a
+    /// regex metacharacter.</description></item>
+    /// </list>
+    ///
+    /// <para>Empty is meaningful here and is preserved: it is how a folder-based, catalog-driven
+    /// engine is told apart from an extension-based one.</para>
+    /// </summary>
+    public required IReadOnlyList<string> DeclaredExts { get; init; }
+
+    /// <summary>The scan extensions normalised for <see cref="FileRe"/> — empty substituted with
+    /// <c>["pak"]</c>, lowercased, dots trimmed, regex-escaped. Never compare against this; see
+    /// <see cref="DeclaredExts"/>, which is the same list before normalisation.</summary>
     public required IReadOnlyList<string> Exts { get; init; }
     public required Regex FileRe { get; init; }
     public required IReadOnlyList<ModLocationCtx> Locations { get; init; }

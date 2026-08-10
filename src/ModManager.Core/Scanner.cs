@@ -113,6 +113,7 @@ public static class Scanner
             MetadataPath = Path.Combine(dataDir, "metadata.json"),
             LoadOrderPath = Path.Combine(dataDir, "loadorder.json"),
             SaveDir = string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
+            DeclaredExts = declaredExts,
             Exts = exts,
             FileRe = fileRe,
             Locations = locations,
@@ -1400,12 +1401,13 @@ public static class Scanner
 
                 // Get the mod keys this archive INSTALLS. Extension-based engines (pak/dll/jar) name mods
                 // after their files, so ZipModKeys (filter by c.Exts + strip variants) is right. Catalog-based
-                // engines (fromsoft direct-inject — c.Game.FileExtensions empty in the registry entry) name
-                // mods from DirectInject.Catalog, so fall back to the signature matcher against the archive's
-                // entries. Note: c.Exts is always non-empty (GameContext normalizes empty→["pak"]), so branch
-                // on the raw registry entry instead.
+                // engines (fromsoft direct-inject — no extensions declared at all) name mods from
+                // DirectInject.Catalog, so fall back to the signature matcher against the archive's entries.
+                // Branch on c.DeclaredExts: c.Exts is always non-empty (GameContext normalizes empty→["pak"])
+                // so it can never answer this, and c.Game.FileExtensions is the RAW stored value — a manifest
+                // correction that gave this game extensions would reach c.FileRe but not this branch.
                 IReadOnlyList<string> keys;
-                if (c.Game.FileExtensions.Count > 0)
+                if (c.DeclaredExts.Count > 0)
                 {
                     keys = ZipModKeys(path, c);
                 }
@@ -1511,7 +1513,8 @@ public static class Scanner
     {
         try
         {
-            if (c.Game.FileExtensions.Count > 0) return ZipModKeys(zipPath, c);
+            // c.DeclaredExts, not the raw registry entry — same reason as Md5IdentifyArchivesAsync above.
+            if (c.DeclaredExts.Count > 0) return ZipModKeys(zipPath, c);
             using var zip = Archive.Open(zipPath);
             return DirectInject.MatchSignaturesInZip(zip.EntryNames);
         }

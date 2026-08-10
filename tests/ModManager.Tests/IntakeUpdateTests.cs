@@ -52,6 +52,7 @@ public class IntakeUpdateTests
             ClassificationPath = Path.Combine(root, "_data", "classification.json"),
             MetadataPath = Path.Combine(root, "_data", "metadata.json"),
             LoadOrderPath = Path.Combine(root, "_data", "loadorder.json"),
+            DeclaredExts = exts,
             Exts = exts,
             FileRe = new System.Text.RegularExpressions.Regex(".*"),
             Locations = new[] { new ModLocationCtx("mods", "Mods", mods, Array.Empty<string>(), true) },

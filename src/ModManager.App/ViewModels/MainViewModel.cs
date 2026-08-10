@@ -2694,13 +2694,17 @@ public sealed partial class MainViewModel : ObservableObject
 
         var options = new DiscoverySweepOptions(
             ModPaths: modPaths,
-            // The RAW registry entry, not a preset lookup and not ctx.Exts: the manifest ships
-            // per-game overrides (e.g. Cyberpunk 2077 -> ["archive"], not the "custom" preset's
-            // ["pak"]), and ctx.Exts is normalized empty->["pak"] (Scanner.cs), which would make
-            // EngineShaped fire wrongly for fromsoft's genuinely-empty, folder-based extension list.
-            // ctx.Game.FileExtensions is the exact value ctx.FileRe (and therefore Scanner.ModKeyFor)
-            // is built from — using anything else would let the sweep and the key formula disagree.
-            EngineExtensions: ctx.Game.FileExtensions,
+            // Not a preset lookup and not ctx.Exts: the manifest ships per-game overrides (e.g.
+            // Cyberpunk 2077 -> ["archive"], not the "custom" preset's ["pak"]), and ctx.Exts is
+            // normalized empty->["pak"] and regex-escaped (Scanner.cs), which would make EngineShaped
+            // fire wrongly for fromsoft's genuinely-empty, folder-based extension list.
+            // ctx.DeclaredExts is the exact value ctx.FileRe (and therefore Scanner.ModKeyFor) is
+            // built from — the stored registration value with a manifest correction already applied.
+            // The RAW ctx.Game.FileExtensions is NOT that value once a correction lands: a stale
+            // Cyberpunk registration still reads ["pak"] while the scanner lists .archive mods, so
+            // the sweep would refuse to call a single one of them engine-shaped and "Identify my
+            // mods" would go blind on exactly the install this feature exists to rescue.
+            EngineExtensions: ctx.DeclaredExts,
             SkipFolders: skipFolders);
 
         // DiscoveryScanService.Sweep walks the whole game folder synchronously — keep it off the UI
