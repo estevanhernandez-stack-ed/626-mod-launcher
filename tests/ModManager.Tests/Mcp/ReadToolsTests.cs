@@ -47,6 +47,28 @@ public class ReadToolsTests
         Assert.Contains("\"code\":\"unknown_game\"", json);
     }
 
+    // A5's fourth site. The tool says "resolved mod context" and every other field it returns comes
+    // from the context; these two used to come from the raw registration. On a stale entry that told
+    // an agent the game scans ["pak"] while the scanner was keying on ["archive"] — the same
+    // confusion A5 closes, at a read-only agent surface where a wrong answer is silently believed.
+    [Fact]
+    public void GetModContext_reports_the_resolved_extensions_not_the_stored_ones()
+    {
+        var dir = TestSupport.TempDir("mcp-");
+        File.WriteAllText(Path.Combine(dir, "games.json"),
+            """
+            { "version": 1, "activeGameId": "cyberpunk-2077", "games": [
+              { "id": "cyberpunk-2077", "gameName": "Cyberpunk 2077", "engine": "custom",
+                "gameRoot": "C:/Games/CP77", "fileExtensions": ["pak"] } ] }
+            """);
+        McpConfig.DataRoot = dir;
+
+        var json = JsonSerializer.Serialize(ModTools.GetModContext("cyberpunk-2077"));
+
+        Assert.Contains("\"archive\"", json); // the manifest's correction, which the scanner keys on
+        Assert.DoesNotContain("\"pak\"", json);
+    }
+
     [Fact]
     public async Task ListMods_unknown_game_returns_error_shape()
     {

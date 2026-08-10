@@ -27,6 +27,52 @@ public sealed class GameContext
     public required string MetadataPath { get; init; }
     public required string LoadOrderPath { get; init; }
     public string? SaveDir { get; init; }
+    /// <summary>
+    /// The extensions this game is RESOLVED to scan with: the stored registration value with
+    /// <see cref="RegistrationRefresh"/> applied (so a manifest correction has already won), then
+    /// lowercased and stripped of leading dots, with anything that was nothing but dots dropped.
+    /// <see cref="Exts"/> is derived from this, so this is the value <see cref="FileRe"/> is built
+    /// from and therefore the one <c>Scanner.ModKeyFor</c> keys on — anything that must agree with
+    /// the scanner reads THIS, and comparing against it needs no normalisation of its own.
+    ///
+    /// <para>The dot-stripping is not cosmetic. A hand-written registration stores <c>".archive"</c>
+    /// as readily as <c>"archive"</c>, the regex build has always trimmed it, and
+    /// <c>DiscoverySweep.Extension</c> yields a dot-less extension — so a raw list made the scanner
+    /// list a game's mods perfectly while the sweep called none of them engine-shaped. Normalising
+    /// once, into the value both readers take, is what keeps them from drifting apart again.</para>
+    ///
+    /// <para>It differs from both neighbours, and confusing the three is the whole reason it exists:</para>
+    /// <list type="bullet">
+    /// <item><description><see cref="GameEntry.FileExtensions"/> on <see cref="Game"/> is the RAW
+    /// stored value, frozen the day the user clicked Add. It may be a stale preset snapshot the
+    /// manifest has since corrected — a Cyberpunk 2077 registration stored <c>["pak"]</c> while the
+    /// manifest said <c>["archive"]</c>. Reading it makes a caller disagree with the scanner about
+    /// what a mod even is.</description></item>
+    /// <item><description><see cref="Exts"/> is this list taken the last two steps to a regex: an
+    /// empty list is replaced with <c>["pak"]</c>, and every entry is <c>Regex.Escape</c>d. Both
+    /// steps make it the wrong answer to "does this game scan that extension" — the substitution
+    /// claims a pak engine for the folder-based engines (smapi / fromsoft / decima) that genuinely
+    /// have no extensions, and the escaping means a plain <c>Contains</c> misses any extension
+    /// holding a regex metacharacter. The intake sites compare against it anyway, deliberately and
+    /// with a known cost; see the note on <see cref="Exts"/>.</description></item>
+    /// </list>
+    ///
+    /// <para>Empty is meaningful here and is preserved: it is how a folder-based, catalog-driven
+    /// engine is told apart from an extension-based one.</para>
+    /// </summary>
+    public required IReadOnlyList<string> DeclaredExts { get; init; }
+
+    /// <summary><see cref="DeclaredExts"/> taken the last two steps to <see cref="FileRe"/> — an
+    /// empty list substituted with <c>["pak"]</c>, then every entry regex-escaped.
+    ///
+    /// <para>Prefer <see cref="DeclaredExts"/> for any comparison. The exception, and it is a real
+    /// one: the intake sites pass this to <c>Intake.ClassifyDrop</c>, which DOES compare it by
+    /// equality. They do that for the empty→<c>["pak"]</c> substitution, which they genuinely need
+    /// and <see cref="DeclaredExts"/> does not carry — so the escaping rides along as a known,
+    /// latent wrong answer for any extension holding a regex metacharacter (a game declaring
+    /// <c>mod+pak</c> gets <c>["mod\+pak"]</c> here, and a real <c>foo.mod+pak</c> classifies as
+    /// skip). Backlogged as A7; do not "fix" those sites by swapping in
+    /// <see cref="DeclaredExts"/>, which would break the substitution they rely on.</para></summary>
     public required IReadOnlyList<string> Exts { get; init; }
     public required Regex FileRe { get; init; }
     public required IReadOnlyList<ModLocationCtx> Locations { get; init; }

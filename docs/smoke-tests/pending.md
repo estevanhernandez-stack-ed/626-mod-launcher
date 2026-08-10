@@ -1184,6 +1184,45 @@ those, and for any manual re-run; it always reports back, even on nothing-found.
    existing mods…" on one of the batch-added games afterward to confirm the manual path still
    works identically to the single-add path.
 
+9. **A stale registration sweeps what the scanner shows (A5 — the only crossing of the
+   `MainViewModel` → `DiscoverySweep` boundary).** The sweep took its engine extensions from the RAW
+   registration while the scanner took them from the manifest-corrected one, so a stale entry made
+   the launcher list a game's mods and "Identify my mods" swear none existed. **Setup is deliberate
+   — a repaired registration will not reproduce it.** Close the launcher, back up
+   `%APPDATA%\ModManagerBuilder\games.json`, then in the `cyberpunk-2077` entry set
+   `"fileExtensions": ["pak"]` (the `custom` preset's frozen default; the correct value is
+   `["archive"]`). Check the same entry has no `"userSet"` array containing `"fileExtensions"` — if
+   it does, drop that one string, or the launcher correctly refuses the manifest and nothing
+   reproduces.
+
+   **You also need a probe file, because the obvious assertion cannot fire on this install.** The
+   sweep drops every engine-shaped candidate that already has a row (`ExcludeKnownKeys`), and on the
+   194-mod install named above those 194 rows ARE the exclusion list — so "the `.archive` files
+   appear" would report nothing even with the fix in. The discriminator is a subfolder: the scanner
+   lists top-level files only (`Directory.GetFiles`, no recursion), while the sweep walks the tree
+   and calls anything under a mod path engine-shaped. So create
+   `<gameRoot>\archive\pc\mod\626smoke\A5SweepProbe.archive` — one subfolder, one file, any bytes,
+   a name no existing mod shares. It is swept but never a row, so it survives the exclusion.
+
+   Reopen and run More → **Identify my mods…** (older builds: *Find existing mods…*). EXPECT:
+   `A5SweepProbe.archive` appears in the review dialog — "not identified" is the expected tier and
+   is fine, its PRESENCE is the whole assertion. Before the fix it is absent (the sweep is comparing
+   against `["pak"]`, so nothing under that folder is engine-shaped at all) while the mod list
+   shows all ~194 mods; that contradiction is the signature. Do not rely on the status line to tell
+   you which happened — `IdentifyMyModsAsync` runs five more passes and overwrites it with a
+   terminal message, so neither "no unmanaged mods" nor "already in your list" survives to be read.
+   Then repeat with `"fileExtensions": [".archive"]` — a leading dot, the way a hand-repair
+   plausibly types it — and confirm the probe still appears.
+
+   **Clean up:** delete the `626smoke` folder and restore `"fileExtensions": ["archive"]` (and the
+   `userSet` entry if you removed one). If you adopted the probe, remove its row from
+   `<gameDataDir>\metadata.json`.
+
+   **Why it matters:** no automated test crosses this boundary. The Core tests prove the resolved
+   list is correct, and prove `DiscoverySweep.Classify` classifies correctly when handed it; only
+   this step proves the view-model actually hands it over. This is the one site of the three A5
+   touched that was broken in the field — the other two were latent.
+
 **Why these matter:** every layer below the App wiring is unit-tested, but three separate
 review-round bugs on this exact feature were "ran fine, showed a status line, wrote nothing" —
 wrong extensions swept, archive candidates keyed to a dead write target, and a name index with no
