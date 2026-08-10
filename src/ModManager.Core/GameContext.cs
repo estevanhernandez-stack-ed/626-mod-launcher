@@ -48,13 +48,12 @@ public sealed class GameContext
     /// manifest has since corrected — a Cyberpunk 2077 registration stored <c>["pak"]</c> while the
     /// manifest said <c>["archive"]</c>. Reading it makes a caller disagree with the scanner about
     /// what a mod even is.</description></item>
-    /// <item><description><see cref="Exts"/> is this list taken the last two steps to a regex: an
-    /// empty list is replaced with <c>["pak"]</c>, and every entry is <c>Regex.Escape</c>d. Both
-    /// steps make it the wrong answer to "does this game scan that extension" — the substitution
+    /// <item><description><see cref="Exts"/> is this list taken one step further, for the readers
+    /// that need a game to have SOME extension: an empty list is replaced with <c>["pak"]</c>. That
+    /// substitution is what makes it the wrong answer to "does this game scan that extension" — it
     /// claims a pak engine for the folder-based engines (smapi / fromsoft / decima) that genuinely
-    /// have no extensions, and the escaping means a plain <c>Contains</c> misses any extension
-    /// holding a regex metacharacter. The intake sites compare against it anyway, deliberately and
-    /// with a known cost; see the note on <see cref="Exts"/>.</description></item>
+    /// have none. Comparing against it is otherwise safe: it carries the extensions themselves, not
+    /// a regex-escaped copy.</description></item>
     /// </list>
     ///
     /// <para>Empty is meaningful here and is preserved: it is how a folder-based, catalog-driven
@@ -62,18 +61,23 @@ public sealed class GameContext
     /// </summary>
     public required IReadOnlyList<string> DeclaredExts { get; init; }
 
-    /// <summary><see cref="DeclaredExts"/> taken the last two steps to <see cref="FileRe"/> — an
-    /// empty list substituted with <c>["pak"]</c>, then every entry regex-escaped.
+    /// <summary>The extensions this game treats as mods — lowercased, stripped of leading dots, and
+    /// with an empty declaration substituted by <c>["pak"]</c>. The extensions THEMSELVES: never a
+    /// regex-escaped copy, so a plain equality comparison against a filename's extension is correct.
     ///
-    /// <para>Prefer <see cref="DeclaredExts"/> for any comparison. The exception, and it is a real
-    /// one: the intake sites pass this to <c>Intake.ClassifyDrop</c>, which DOES compare it by
-    /// equality. They do that for the empty→<c>["pak"]</c> substitution, which they genuinely need
-    /// and <see cref="DeclaredExts"/> does not carry — so the escaping rides along as a known,
-    /// latent wrong answer for any extension holding a regex metacharacter (a game declaring
-    /// <c>mod+pak</c> gets <c>["mod\+pak"]</c> here, and a real <c>foo.mod+pak</c> classifies as
-    /// skip). Backlogged as A7; do not "fix" those sites by swapping in
-    /// <see cref="DeclaredExts"/>, which would break the substitution they rely on.</para></summary>
+    /// <para>The substitution is part of the contract, not an artifact of sharing a value with the
+    /// regex. A registration that declares no extensions (the <see cref="GameEntry.FileExtensions"/>
+    /// default) is a pak game to <see cref="FileRe"/>, to <c>Scanner.ModKeyFor</c>, and to the
+    /// listing lane; intake reads this same list so it can never become the one reader that
+    /// disagrees and refuses a file the launcher is already listing as a mod.</para>
+    ///
+    /// <para><see cref="FileRe"/> escapes on its way into the pattern, where escaping belongs. It
+    /// used to escape here instead, and every <c>Intake.ClassifyDrop</c> site paid for it: a game
+    /// declaring <c>mod+pak</c> carried <c>["mod\+pak"]</c>, which equals no real file's extension,
+    /// so a genuine <c>Foo.mod+pak</c> classified as skip. (A7.)</para></summary>
     public required IReadOnlyList<string> Exts { get; init; }
+
+    /// <summary>The mod-file matcher built from <see cref="Exts"/>, escaped at the point of use.</summary>
     public required Regex FileRe { get; init; }
     public required IReadOnlyList<ModLocationCtx> Locations { get; init; }
     public required string GroupingRule { get; init; }
