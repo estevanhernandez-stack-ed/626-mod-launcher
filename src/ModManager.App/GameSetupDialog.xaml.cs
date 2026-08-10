@@ -72,17 +72,28 @@ public sealed partial class GameSetupDialog : ContentDialog
         LivingInText.Visibility = roots.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         LivingInText.Text = string.Join(", ", roots);
 
-        // Never collapsed, unlike the loader/content-root rows above: an empty declared-location
-        // list is exactly the condition this dialog exists to surface — a registration with
-        // nothing declared at all. Hiding the row would go silent on the case a caller reaching
-        // for this dialog is more likely than average to be looking at. "None declared." states
-        // the fact plainly; GameShape.Notes is the only place that gets to say whether it's a problem.
-        DeclaredLabel.Visibility = Visibility.Visible;
-        DeclaredText.Visibility = Visibility.Visible;
+        // This row is never collapsed, unlike the loader/content-root rows above: an empty
+        // declared-location list is exactly the condition this dialog exists to surface — a
+        // registration with nothing declared at all. Hiding the row would go silent on the case a
+        // caller reaching for this dialog is more likely than average to be looking at. "None
+        // declared." states the fact plainly; GameShape.Notes is the only place that gets to say
+        // whether it's a problem. (No Visibility assignment needed — Visible is the XAML default and
+        // nothing here ever collapses it.)
+        //
+        // A DERIVED location is marked as such. Scanner.GameContext appends the launcher's own
+        // ue4ss\Mods folder when the launcher owns a UE4SS install; it is not something the
+        // registration declares, there is no field for it in the editor below, and listing it plainly
+        // under "Set to look in" attributes a launcher-owned folder to the user's setup. Windrose is
+        // exactly this shape.
         DeclaredText.Text = _shape.DeclaredLocations.Count > 0
-            ? string.Join(", ", _shape.DeclaredLocations
-                .Select(d => d.Exists ? d.Path : d.Path + "  (this folder doesn't exist)"))
+            ? string.Join(", ", _shape.DeclaredLocations.Select(Describe))
             : "None declared.";
+
+        static string Describe(DeclaredLocation d)
+        {
+            var suffix = d.Exists ? "" : "  (this folder doesn't exist)";
+            return d.Declared ? d.Path + suffix : $"{d.Path} (added by the launcher, not declared){suffix}";
+        }
 
         // Rendered verbatim: GameShape already states whether drift is a problem, and re-wording it
         // here would let the dialog and the MCP tool tell the user two different stories.
@@ -174,51 +185,40 @@ public sealed partial class GameSetupDialog : ContentDialog
             ? new[] { first }.Concat(_game.ModLocations.Skip(1)).ToArray()
             : new[] { first };
 
-        return new GameEntry
-        {
-            // Id is IMMUTABLE across an edit: it is half the key the data-dir path derives from, so
-            // re-slugging it on a rename would orphan every disabled mod, profile, and installed tool.
-            Id = _game.Id,
-            GameName = NameBox.Text.Trim(),
-            Engine = (EngineBox.SelectedItem as EngineOption)?.Key ?? _game.Engine,
-            WindowTitle = _game.WindowTitle,
-            GameRoot = FolderBox.Text.Trim(),
-            FileExtensions = exts,
-            GroupingRule = GroupingBox.Text.Trim(),
-            // NO STORED LOCATION AND A BLANK BOX MEANS NO LOCATION — not an invented one. This is the
-            // same count-first failure as the multi-location case above, at the other end: proposing
-            // [("mods", "mods", "")] against a stored [] makes SameLocations read 0-vs-1 as changed on
-            // ANY edit, so renaming the game would pin modLocations, permanently opting it out of
-            // future manifest corrections to a mod folder the user never typed — and the panel would
-            // promise exactly that in words. It would also save a location with an empty path at the
-            // game root. "None declared." is this dialog's headline case (see RenderDiagnosis), so it
-            // is the one that had to be right.
-            //
-            // A typed path with no stored location is the opposite: a real edit, a real proposal,
-            // legitimately pinned, because the user did state it.
-            ModLocations = _game.ModLocations.Count == 0 && typedPath.Length == 0
-                ? Array.Empty<ModLocation>()
-                : locations,
-            SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim(),
-            LaunchUrl = _game.LaunchUrl,
-            LaunchExe = _game.LaunchExe,
-            LaunchTargets = _game.LaunchTargets,
-            ModEngineConfig = _game.ModEngineConfig,
-            DataDir = _game.DataDir,
-            CurseforgeGameId = _game.CurseforgeGameId,
-            ScanSubfolders = _game.ScanSubfolders,
-            SaveDir = _game.SaveDir,
-            RequiredLauncher = string.IsNullOrWhiteSpace(LauncherBox.Text) ? null : LauncherBox.Text.Trim(),
-            SaveModPath = _game.SaveModPath,
-            SaveModForbidden = _game.SaveModForbidden,
-            NexusGameDomain = _game.NexusGameDomain,
-            AutoBackupOnLaunch = _game.AutoBackupOnLaunch,
-            SaveAutoKeep = _game.SaveAutoKeep,
-            LastKnownSteamBuildId = _game.LastKnownSteamBuildId,
-            StoreSource = _game.StoreSource,
-            LastLaunchedUtc = _game.LastLaunchedUtc,
-            UserSet = _game.UserSet,
-        };
+        // CLONE, THEN ASSIGN THE EIGHT EDITED FIELDS. An object initialiser naming all 27 properties
+        // was correct the day it was written and unmaintainable the day after: the 28th field added to
+        // GameEntry would be silently dropped from every registration edit, so a rename would quietly
+        // clear this game's nexusGameDomain or its autoBackupOnLaunch, with no compiler error and no
+        // failing test. GameEntry.CloneShallow is MemberwiseClone, so a new field carries itself.
+        //
+        // Id in particular is IMMUTABLE across an edit — it is half the key the data-dir path derives
+        // from, so re-slugging it on a rename would orphan every disabled mod, profile, and installed
+        // tool. The clone carries it; nothing below touches it.
+        var p = _game.CloneShallow();
+        p.GameName = NameBox.Text.Trim();
+        p.Engine = (EngineBox.SelectedItem as EngineOption)?.Key ?? _game.Engine;
+        p.GameRoot = FolderBox.Text.Trim();
+        p.FileExtensions = exts;
+        p.GroupingRule = GroupingBox.Text.Trim();
+        p.SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim();
+        p.RequiredLauncher = string.IsNullOrWhiteSpace(LauncherBox.Text) ? null : LauncherBox.Text.Trim();
+
+        // NO STORED LOCATION AND A BLANK BOX MEANS NO LOCATION — not an invented one. This is the
+        // same count-first failure as the multi-location case above, at the other end: proposing
+        // [("mods", "mods", "")] against a stored [] makes SameLocations read 0-vs-1 as changed on
+        // ANY edit, so renaming the game would pin modLocations, permanently opting it out of
+        // future manifest corrections to a mod folder the user never typed — and the panel would
+        // promise exactly that in words. It would also save a location with an empty path at the
+        // game root. "None declared." is this dialog's headline case (see RenderDiagnosis), so it
+        // is the one that had to be right.
+        //
+        // A typed path with no stored location is the opposite: a real edit, a real proposal,
+        // legitimately pinned, because the user did state it.
+        p.ModLocations = _game.ModLocations.Count == 0 && typedPath.Length == 0
+            ? Array.Empty<ModLocation>()
+            : locations;
+
+        return p;
     }
 
     /// <summary>

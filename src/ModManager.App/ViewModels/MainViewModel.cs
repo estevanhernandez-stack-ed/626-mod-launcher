@@ -885,7 +885,12 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(OwnedBannerVisibility));
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
 
-            SetupNeedsAttention = _ctx is not null && GameShape.Of(_ctx.Game).NeedsAttention;
+            // The predicate, not the whole shape. GameShape.Of rebuilds the scanner context twice more,
+            // re-resolves every mod, and computes content roots and alignment — on every toggle, game
+            // switch and drop — all to read a two-term boolean the list above already has the inputs
+            // for. NeedsAttentionFor is that same predicate in Core, so the banner and the dialog still
+            // cannot disagree (GameShapeTests.Banner_predicate_agrees_with_the_dialog_shape).
+            SetupNeedsAttention = _ctx is not null && GameShape.NeedsAttentionFor(_ctx, list.Count);
 
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));

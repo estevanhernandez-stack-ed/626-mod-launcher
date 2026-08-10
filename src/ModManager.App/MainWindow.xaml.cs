@@ -1378,7 +1378,12 @@ public sealed partial class MainWindow : Window
 
         // The move-or-pin decision, and the save, happen HERE rather than inside the dialog: WinUI 3
         // permits one ContentDialog per XamlRoot, so a confirm cannot open while the setup dialog is up.
-        var move = true;
+        // FALSE, not true. This is the answer to "did the user ask for a move", and nobody asked when
+        // no plan surfaced here. The save re-previews and can find a plan this dialog did not (the
+        // folder came into existence in between, say) — defaulting to true would move gigabytes of the
+        // user's only copy of their disabled mods without ever putting the question on screen. Pinning
+        // moves nothing, so a wrong default in this direction costs a settings key, not files.
+        var move = false;
         if (dialog.MoveDataDirRequested is { } plan)
         {
             var confirm = new ContentDialog
@@ -1387,7 +1392,9 @@ public sealed partial class MainWindow : Window
                 Content = $"You changed the game folder. This game's launcher data — disabled mods, "
                           + $"profiles, saves, installed tools — is {plan.FileCount} files at {plan.From}.\n\n"
                           + "Move it next to the new folder, or leave it where it is. Leaving it works "
-                          + "fine; nothing is lost either way.",
+                          + "fine; nothing is lost either way — it records this folder in the game's "
+                          + "setup, so the launcher keeps using it from here on.\n\n"
+                          + "Cancel abandons the whole edit, including the other fields you changed.",
                 PrimaryButtonText = "Move it",
                 SecondaryButtonText = "Leave it",
                 CloseButtonText = "Cancel",
