@@ -1479,3 +1479,56 @@ unit test at all. Steps 12 and 13 are the only coverage its failure branches get
     cancellable-long-op check, because a data-dir move cannot be stopped and leaves the window looking
     idle. Whoever hits it first during an unrelated operation will read it as a bug; it is not.
 
+---
+
+## PR (fix/library-repaint-after-add) — the Library home repaints after an add (2026-08-16)
+
+**Shipped:** Adding a game from the Library home used to look like nothing happened. The home grid is
+`LibraryViewModel`'s; `MainViewModel.AddGameAsync` ends in `MainViewModel.LoadAsync`, which refreshes
+the game switcher and the mod list and never touches the library rows. The only thing that repainted
+the home was `ShowLibrary()`, and the `+ Game` button never called it. The `+ Game` handler body is
+now an awaitable `AddGameViaDialogAsync`; it repaints the home (`LibraryViewModel.Load()`, not
+`ShowLibrary()`) after either success exit, and the discovered-game fallback for an undetectable
+engine now AWAITS it instead of firing the `async void` click handler and racing ahead.
+
+**No test coverage of any kind.** This is `MainWindow` code-behind — not reachable from the suite, and
+there is no seam here worth inventing for it. Nothing was added to Core to stand in for it either: a
+green Core test proving something adjacent would close this item while the bug survived. These steps
+are the only coverage this fix gets.
+
+**Read this before smoking:** on the Library home the library host COVERS the shell's status bar, so
+the `Added <name>.` confirmation is invisible there. Do not look at the status line for the verdict —
+watch the game grid itself. That covered status bar is exactly why the original bug read as "no
+success and no failure."
+
+**Smoke steps:**
+
+1. **`+ Game`, single game, from the home.** On the Library home, click `+ Game`, fill the single-game
+   form for a game not yet registered, and confirm. EXPECT the new game to appear in the grid without
+   any navigation, restart, or Home round-trip. *Why it matters:* this is the reported bug — three
+   adds on a clean Store box showed nothing, and all three games were there after a restart. It is
+   also the only one of the three paths that never had a repaint under any condition.
+2. **`+ Game`, batch mode, from the home.** Same button, but approve two or more rows in the batch
+   list. EXPECT every approved game in the grid immediately. *Why it matters:* the batch loop is a
+   SECOND success exit out of that handler and returns before the single-game path is ever reached —
+   fixing only the single-game lane would leave this one dead in exactly the same way.
+3. **Installed-games lane, engine NOT detected.** From the "Installed games not added yet" strip on
+   the home, add a game whose engine the launcher cannot detect (it hands off to the full `+ Game`
+   dialog so you can pick the engine). EXPECT the dialog to open, and the game to appear in the grid
+   after you confirm it — not before. *Why it matters:* this lane used to call the click handler
+   fire-and-forget, so the caller's repaint ran while the dialog was still open, against a library
+   nothing had been added to yet. Cancelling the dialog here should leave the grid untouched.
+4. **Installed-games lane, engine detected (regression check).** Add a game from the same strip whose
+   engine IS auto-detected — no dialog appears. EXPECT it to move out of the discovery lane and into
+   the all-games list. *Why it matters:* this path already worked before the fix and now runs a
+   second, redundant `Load()`. It must not double-add, flicker, or drop the discovery lane's other
+   rows.
+5. **`+ Game` from inside a game's mod view (regression check).** Navigate into a game, add another
+   one from there. EXPECT the same behavior as before the fix — the switcher and mod list refresh, you
+   stay where you are, and the home is NOT forced open behind you. *Why it matters:* the repaint is
+   deliberately gated on the library host being visible, and `Load()` was chosen over `ShowLibrary()`
+   precisely so this case cannot navigate the user somewhere they did not ask to go.
+6. **Cancel adds nothing.** Click `+ Game` on the home and press Close. EXPECT no grid change and no
+   new entry in `games.json`. *Why it matters:* the cancel path returns before the repaint, and a grid
+   that repaints on cancel would suggest something was written.
+
