@@ -3663,7 +3663,20 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var entry = _svc.AddGame(input);
+            var entry = _svc.AddGame(input, out var alreadyRegistered);
+
+            // The install was already registered: AddGame switched to it instead of adding a second
+            // copy. Say so by name — a silent "Added X." here would make the guard invisible and a
+            // repeat add indistinguishable from a real one. No save-folder re-detection (it would
+            // overwrite a folder the user may have set by hand) and no first-add sweep — this is not
+            // a first add.
+            if (alreadyRegistered)
+            {
+                await LoadAsync();
+                StatusText = $"{entry.GameName} is already in your library — switched to it.";
+                return;
+            }
+
             // Prefer the wizard's already-resolved save folder; else find it (Ludusavi by Steam id, then heuristics).
             var saveDir = !string.IsNullOrEmpty(resolvedSaveDir)
                 ? resolvedSaveDir
