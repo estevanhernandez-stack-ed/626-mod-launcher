@@ -19,10 +19,18 @@ public sealed class ThemeService
     public ThemeService() => _themes = BuildList();
 
     public IReadOnlyList<Theme> Themes => _themes;
-    // Forge is the flagship (vibe-glow reveal). The user's saved pick outranks this at launch
-    // (AppSettingsService.ThemeId, restored in MainViewModel's ctor — F-080); Default covers
-    // first-run, a cleared setting, and a deleted user theme.
-    public Theme Default => _themes.FirstOrDefault(t => t.Id == "forge") ?? _themes[0];
+    // 626 Labs (navy) is what a first run opens on. Forge shipped as the default with the
+    // vibe-glow reveal in 0.17.0 and was reverted here: the flagship look is a strong opinion to
+    // impose on someone who has not asked for one, and the live Store listing's screenshots are
+    // the navy set, so an unchosen install now matches what a user was shown before installing.
+    // Forge is unchanged and one click away in Settings — this is about what we pick FOR people,
+    // not about which theme is better.
+    //
+    // The user's saved pick outranks this at launch (AppSettingsService.ThemeId, restored in
+    // MainViewModel's ctor — F-080); Default covers first-run, a cleared setting, and a deleted
+    // user theme. Anyone on 0.17.0 who never chose a theme will move to navy on update, which is
+    // the intended effect.
+    public Theme Default => _themes.FirstOrDefault(t => t.Id == "626-labs") ?? _themes[0];
 
     private static string UserDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder", "themes");
