@@ -386,8 +386,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Undetectable engine — the full dialog lets the user pick it. Same handler the + Game button uses.
-        OnAddGame(this, new RoutedEventArgs());
+        // Undetectable engine — the full dialog lets the user pick it. Same flow the + Game button uses,
+        // awaited: the caller repaints the home when this returns, and it must not do that with the
+        // dialog still open.
+        await AddGameViaDialogAsync();
     }
 
     // OneWay IsOn + this handler: ignore the programmatic set during reload (when the switch
@@ -658,7 +660,17 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddModsAsync(files.Select(f => f.Path).ToList());
     }
 
-    private async void OnAddGame(object sender, RoutedEventArgs e)
+    private async void OnAddGame(object sender, RoutedEventArgs e) => await AddGameViaDialogAsync();
+
+    /// <summary>
+    /// The + Game dialog flow, awaitable.
+    ///
+    /// <para>Kept separate from the <c>async void</c> click handler so callers can sequence work
+    /// AFTER the dialog closes. <see cref="AddDiscoveredGameAsync"/> used to invoke the handler
+    /// directly, which returned at the first await — so the caller's "now repaint the home" step ran
+    /// while the dialog was still open, against a library that had not been added to yet.</para>
+    /// </summary>
+    private async Task AddGameViaDialogAsync()
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var steamGames = App.AppHost.Services.GetRequiredService<Services.SteamService>().InstalledGames();
@@ -676,10 +688,34 @@ public sealed partial class MainWindow : Window
                 await ViewModel.AddGameAsync(input, resolvedSaveDir, sweep: false);
             ViewModel.StatusText = $"Added {dialog.BatchApproved.Count} games. "
                 + "Use More -> Find existing mods on each to sweep for hand-installed mods.";
-            return;
+        }
+        else
+        {
+            await ViewModel.AddGameAsync(dialog.BuildInput(), dialog.ResolvedSaveDir);
         }
 
-        await ViewModel.AddGameAsync(dialog.BuildInput(), dialog.ResolvedSaveDir);
+        // Single refresh site for BOTH success exits — the batch loop above and the single-game add.
+        RefreshLibraryIfVisible();
+    }
+
+    /// <summary>
+    /// Repaint the Library home when it is the surface the user is looking at.
+    ///
+    /// <para>The home grid is <see cref="LibraryViewModel"/>'s; adding a game runs
+    /// <c>MainViewModel.LoadAsync</c>, which refreshes the game switcher and the mod list and never
+    /// touches the library rows. Without this, adding from the home looks like nothing happened —
+    /// and the "Added X." status line is no help, because the library host covers the shell's status
+    /// bar on that surface.</para>
+    ///
+    /// <para><c>Load()</c> only, deliberately — not <c>ShowLibrary()</c>. The user never left home,
+    /// so there is nothing to navigate to: <c>ShowLibrary</c> would additionally close the storefront
+    /// and the Updates overlay and re-hide the game-context title-bar controls, none of which this
+    /// moment asks for. <c>Load()</c> is idempotent and read-only.</para>
+    /// </summary>
+    private void RefreshLibraryIfVisible()
+    {
+        if (LibraryHost.Visibility == Visibility.Visible)
+            _libraryVm.Load();
     }
 
     // Populate the Launch dropdown from the active game's targets each time it opens, so it
