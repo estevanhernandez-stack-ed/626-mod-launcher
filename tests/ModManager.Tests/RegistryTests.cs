@@ -15,6 +15,26 @@ public class RegistryTests
         GroupingRule = "filename_no_ext",
     };
 
+    // A registered game with a real install folder (and optionally a Steam id) — the shape
+    // FindRegistered has to reason about.
+    private static GameEntry G(string id, string root, string? steamAppId = null) => new()
+    {
+        Id = id,
+        GameName = id,
+        GameRoot = root,
+        SteamAppId = steamAppId,
+        ModLocations = Array.Empty<ModLocation>(),
+        FileExtensions = new[] { "pak" },
+        GroupingRule = "filename_no_ext",
+    };
+
+    private static GameRegistry RegOf(params GameEntry[] games)
+    {
+        var r = Registry.EmptyRegistry();
+        foreach (var g in games) r = Registry.UpsertGame(r, g);
+        return r;
+    }
+
     [Fact]
     public void EmptyRegistry_shape()
     {
@@ -100,5 +120,75 @@ public class RegistryTests
         r = Registry.RemoveGame(r, "nope");
         Assert.Single(r.Games);
         Assert.Equal("a", r.ActiveGameId);
+    }
+
+    [Fact]
+    public void FindRegistered_matches_an_exact_game_root()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose"));
+        Assert.Equal("windrose", Registry.FindRegistered(r, @"C:\Games\Windrose", null)?.Id);
+    }
+
+    [Fact]
+    public void FindRegistered_matches_a_trailing_separator_variant()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose"));
+        Assert.Equal("windrose", Registry.FindRegistered(r, @"C:\Games\Windrose\", null)?.Id);
+    }
+
+    [Fact]
+    public void FindRegistered_matches_a_case_different_variant()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose"));
+        Assert.Equal("windrose", Registry.FindRegistered(r, @"c:\games\windrose", null)?.Id);
+    }
+
+    // The case an id-based guard would miss: same install folder, typed in under a different name,
+    // so EnginePresets.UniqueId would hand back a brand new id and the add would look novel.
+    [Fact]
+    public void FindRegistered_matches_the_same_folder_registered_under_a_different_name()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose"));
+        var hit = Registry.FindRegistered(r, @"C:\Games\Windrose", null);
+        Assert.Equal("windrose", hit?.Id);
+        Assert.NotEqual("windrose-the-cartographers-tale", hit?.Id);
+    }
+
+    [Fact]
+    public void FindRegistered_falls_back_to_a_matching_steam_app_id()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose", "1234"));
+        Assert.Equal("windrose", Registry.FindRegistered(r, @"D:\SteamLibrary\Windrose", "1234")?.Id);
+    }
+
+    [Fact]
+    public void FindRegistered_returns_null_for_a_genuinely_different_game()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose", "1234"));
+        Assert.Null(Registry.FindRegistered(r, @"C:\Games\Other", "9999"));
+        Assert.Null(Registry.FindRegistered(r, @"C:\Games\Other", null));
+    }
+
+    [Fact]
+    public void FindRegistered_blank_root_matches_nothing_even_against_a_blank_stored_root()
+    {
+        var r = RegOf(G("ghost", ""));
+        Assert.Null(Registry.FindRegistered(r, "", null));
+        Assert.Null(Registry.FindRegistered(r, null, null));
+        Assert.Null(Registry.FindRegistered(r, "   ", null));
+    }
+
+    [Fact]
+    public void FindRegistered_empty_steam_app_id_does_not_match_an_empty_stored_id()
+    {
+        var r = RegOf(G("windrose", @"C:\Games\Windrose", ""));
+        Assert.Null(Registry.FindRegistered(r, @"C:\Games\Other", ""));
+        Assert.Null(Registry.FindRegistered(r, @"C:\Games\Other", null));
+    }
+
+    [Fact]
+    public void FindRegistered_on_an_empty_registry_is_null()
+    {
+        Assert.Null(Registry.FindRegistered(Registry.EmptyRegistry(), @"C:\Games\Windrose", "1234"));
     }
 }

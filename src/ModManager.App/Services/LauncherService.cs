@@ -72,10 +72,26 @@ public sealed class LauncherService
         SaveRegistry(reg);
     }
 
-    /// <summary>Assemble a game entry from wizard input, persist it, and make it active.</summary>
-    public GameEntry AddGame(GameInput input)
+    /// <summary>Assemble a game entry from wizard input, persist it, and make it active.
+    /// <para>An install the registry already knows about is never added twice — it is switched to instead,
+    /// with <paramref name="alreadyRegistered"/> true and the existing entry returned. Without that guard a
+    /// repeat add built a fresh id (<c>windrose-2</c>, <c>windrose-3</c>) and quietly stole the active game;
+    /// see <see cref="Registry.FindRegistered"/>. All four add lanes come through here, so this covers
+    /// Steam quick-add, batch add, the manual form, and the library's not-added-yet list.</para></summary>
+    public GameEntry AddGame(GameInput input, out bool alreadyRegistered)
     {
         var reg = LoadRegistry();
+
+        var existing = Registry.FindRegistered(reg, input.GameRoot, input.SteamAppId);
+        if (existing is not null)
+        {
+            alreadyRegistered = true;
+            reg.ActiveGameId = existing.Id;
+            SaveRegistry(reg);
+            return existing;
+        }
+
+        alreadyRegistered = false;
         var entry = EnginePresets.BuildGameEntry(input, reg.Games.Select(g => g.Id));
         ApplyDetection(entry);
         reg = Registry.UpsertGame(reg, entry);
