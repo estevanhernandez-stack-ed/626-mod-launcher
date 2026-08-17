@@ -348,7 +348,7 @@
                      "+ New theme…" item at the bottom of the flyout opens the AI theme generator. -->
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="THEME" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
-                    <DropDownButton AutomationProperties.AutomationId="ThemePicker" AutomationProperties.Name="Theme" MinWidth="140" ToolTipService.ToolTip="Pick a theme or generate a new one">
+                    <DropDownButton AutomationProperties.AutomationId="ThemePicker" MinWidth="140" ToolTipService.ToolTip="Pick a theme or generate a new one">
                         <DropDownButton.Content>
                             <TextBlock Text="{x:Bind ViewModel.SelectedThemeName, Mode=OneWay}" />
                         </DropDownButton.Content>
