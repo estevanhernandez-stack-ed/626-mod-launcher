@@ -88,6 +88,8 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
 /// </summary>
 public sealed class DiscoveryReviewRow
 {
+    public string ApproveAutomationName => "Approve " + Headline;
+
     public AdoptionProposal Proposal { get; init; } = null!;
     public string Headline { get; init; } = "";
     public string Detail { get; init; } = "";

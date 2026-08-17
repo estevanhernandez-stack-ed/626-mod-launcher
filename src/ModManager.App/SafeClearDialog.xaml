@@ -41,16 +41,16 @@
                        Text="Your mods are kept. This archives your current setup to a restore point you can return to, then resets the launcher to first-run." />
 
             <TextBlock Text="After the reset:" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" />
-            <ComboBox x:Name="EndStateBox" HorizontalAlignment="Stretch">
+            <ComboBox AutomationProperties.AutomationId="EndStateBox" AutomationProperties.Name="End state" x:Name="EndStateBox" HorizontalAlignment="Stretch">
                 <ComboBoxItem Content="Return to vanilla (restorable)" />
                 <ComboBoxItem Content="Leave mods active" />
             </ComboBox>
 
-            <CheckBox x:Name="CreateRestorePointBox"
+            <CheckBox AutomationProperties.AutomationId="CreateRestorePointBox" x:Name="CreateRestorePointBox"
                       Content="Create a restore point (recommended)"
                       IsChecked="True" />
 
-            <ToggleSwitch x:Name="KeepNexusSwitch"
+            <ToggleSwitch AutomationProperties.AutomationId="KeepNexusSwitch" x:Name="KeepNexusSwitch"
                           Header="Keep Nexus connection"
                           IsOn="True" />
 

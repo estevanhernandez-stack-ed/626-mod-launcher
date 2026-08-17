@@ -16,6 +16,8 @@ public sealed class UpdateRow
 
     public PendingUpdate Pending { get; }
 
+    public string RowAutomationId => $"UpdateRow.{Pending.ModKey}";
+
     public string ModName => string.IsNullOrWhiteSpace(Pending.ModName) ? Pending.ModKey : Pending.ModName;
 
     /// <summary>"1.2.0 → 1.3.1". A mod with no recorded installed version says so rather than showing a
@@ -47,6 +49,10 @@ public sealed class UpdateGameGroup
 
     public string GameId { get; }
     public string GameName { get; }
+
+    /// <summary>Per-group name for the Open game button. Every one of them reads "Open game"
+    /// otherwise, and this view exists precisely to show several games at once.</summary>
+    public string OpenGameAutomationName => "Open " + GameName;
     public IReadOnlyList<UpdateRow> Rows { get; }
 
     public string CountText => Rows.Count == 1 ? "1 UPDATE" : $"{Rows.Count} UPDATES";

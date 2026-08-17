@@ -29,9 +29,9 @@
     <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                    Text="Describe a vibe, copy the prompt into any AI chat, paste the JSON it returns below, then Import." />
-        <TextBox x:Name="VibeBox" Header="Vibe" PlaceholderText="e.g. deep ocean bioluminescence" />
-        <Button Content="Copy prompt" Click="OnCopyPrompt" />
-        <TextBox x:Name="JsonBox" Header="Pasted JSON" AcceptsReturn="True" Height="170" TextWrapping="Wrap"
+        <TextBox AutomationProperties.AutomationId="ThemeVibeBox" x:Name="VibeBox" Header="Vibe" PlaceholderText="e.g. deep ocean bioluminescence" />
+        <Button AutomationProperties.AutomationId="CopyThemePromptButton" Content="Copy prompt" Click="OnCopyPrompt" />
+        <TextBox AutomationProperties.AutomationId="ThemeJsonBox" x:Name="JsonBox" Header="Pasted JSON" AcceptsReturn="True" Height="170" TextWrapping="Wrap"
                  TextChanged="OnJsonChanged"
                  PlaceholderText="Paste the JSON the AI returned" />
         <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" />
