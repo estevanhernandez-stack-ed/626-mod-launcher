@@ -19,6 +19,49 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ---
 
+
+## Triage pass — 2026-08-17
+
+First run of `scripts/smoke-run.ps1` plus Este walking the cases it cannot reach. **20 verified by
+harness, 12 needed a person; of those twelve Este settled five.** Full run evidence:
+`artifacts/smoke/results.json` (gitignored — re-run to regenerate).
+
+**Verified by Este:**
+
+- **Real Elden Ring saves work** — the BND4 walk (PR #49) is exercised in the field.
+- **WSE tool zips install by drop** — the Windrose tools. Covers the tool-intake half of the Mod
+  dashboard section.
+- **Steam build-update warning fires** — he gets the "this game was updated, check your mods" note in
+  normal use. Covers the Steam build-update (Phase 2) section.
+
+**Unblocked, and now schedulable:**
+
+- **UE4SS-missing dependency chips (PR #51)** and **framework intake (ELM)** were both marked BLOCKED
+  on remediation Task 4. Task 4 shipped; the banners were never removed. Both are smokeable — see the
+  corrected banners in each section.
+- **Safe Clear round-trip + the UE4SS test** were planned together on the clean box and were what Este
+  was starting when the add / repaint bug stopped him. **That bug shipped fixed in v0.18.1**, so the
+  session that got blocked can now run.
+
+**Still genuinely open:** Safe Clear refusal while the game runs, vanilla-vs-modded launch, Nexus
+OAuth connect, Nexus download + endorse, Vortex takeover, and the ban-risk acknowledgement (human-only
+by design — an agent must reach that gate and never satisfy it).
+
+**Vortex takeover has a fixture now.** Six Vortex-staged games on the main box:
+`monsterhunterwilds` (16 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
+`marvelsspiderman2` (2), `doomthedarkages` (1). **Monster Hunter Wilds is the one to use** — real
+volume and not in 626 yet, so it exercises takeover from scratch. No `taken-over.json` exists
+anywhere, confirming this path has never run. Windrose's `R5ortex.deployment.json` is a stale
+leftover, not a live conflict: it names one mod (`BonfireRadius_2x`) that is no longer on disk.
+
+**A harness caveat that shapes what a dev build can smoke.** The Debug build cannot load the Nexus
+plugin — `app-errors.log` shows a repeating `FileNotFoundException` for
+`ModManager.Plugins.Abstractions, Version=0.14.0.0`. So every Nexus-dependent case is unrunnable on a
+local Debug build regardless of fixtures, and the updates view reads 0 rows on it while the home badge
+says 7. Smoke Nexus surfaces against a release or Store build.
+
+---
+
 ## PR #49 — BND4 file-table walk (merged 2026-05-26)
 
 > **STATUS — SMOKED 2026-05-27 (per Este).** ER save editing exercised on real saves and working; steps 1-3 considered cleared. Confirm step 4 (edit -> in-game round-trip) if not already run.
@@ -37,7 +80,9 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ## PR #51 — Mod-dependency detection (merged 2026-05-26)
 
-> **STATUS — BLOCKED on remediation Task 4 (still OPEN as of 2026-05-29).** The "NEEDS Elden Mod Loader" chip framing is changing to conditional: a loader is not required when a DLL proxy / Seamless / ReShade is already present. Task 4 (`SelfProvidesProxy` + "MAY NEED" framing) is not yet built — `FrameworkDeps.cs:92` still asserts "Most ER mods need this." Smoking now would re-assert the wrong thing. Re-smoke after Task 4 ships.
+> **UNBLOCKED 2026-08-17.** The Task 4 blocker below cleared and nobody removed the banner. `SelfProvidesProxy` is in `KnownDirectInjectMod`, the `MAY NEED` framing is in `ModRowViewModel.cs:306-309`, and `FrameworkDeps` now carries the conditional note ("Only needed if you run a direct-inject mod that doesn't bring its own proxy; Seamless Co-op and ReShade do"). This section is smokeable. Este plans the UE4SS-missing run on the clean box.
+>
+> *Original banner, kept for the record:* BLOCKED on remediation Task 4 (still OPEN as of 2026-05-29) — smoking then would have re-asserted the wrong thing.
 
 **Shipped:** Every mod row in a framework-gated game (UE4SS, BepInEx, SMAPI, ME2, DLL proxy, Forge/Fabric) gets a red `NEEDS X` chip with a clickable get-link when the framework isn't installed. Post-drop status line names the missing framework and host (`". Heads up: this mod needs UE4SS — get it at github.com."`). Pure-core probe covered by 13 unit tests; App wiring verified by build only.
 
@@ -79,7 +124,9 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ## PR #?? — Framework intake (Elden Mod Loader) (merged YYYY-MM-DD)
 
-> **STATUS — BLOCKED on remediation Task 4 (still OPEN as of 2026-05-29).** Live ER session showed the "required Elden Mod Loader" framing drove an unnecessary install (red tag, degraded setup) — ELM is not required when a proxy is already present. Task 4 (conditional framing) is not yet built. The install/uninstall mechanics (steps 2-3, 5-6) are independent of the framing and could be smoked now; the chip-text steps (1, 4) wait for Task 4.
+> **UNBLOCKED 2026-08-17.** Task 4 shipped; see the note on PR #51 above. The chip-text steps (1, 4) that were waiting on it are now smokeable along with the mechanics.
+>
+> *Original banner, kept for the record:* BLOCKED on remediation Task 4 — the "required Elden Mod Loader" framing drove an unnecessary install in a live ER session.
 
 **Shipped:** Per [`docs/superpowers/specs/2026-05-27-framework-intake-design.md`](../superpowers/specs/2026-05-27-framework-intake-design.md):
 
