@@ -101,6 +101,28 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
         return $"{(int)(delta.TotalDays / 365)} yr ago";
     }
 
+    // --- Automation identity -----------------------------------------------------------------
+    // Follows the ModRowViewModel *AutomationName convention. Ids are built from Id rather than
+    // Name because Name is display copy: it gets retitled, and a harness keyed on it goes red for a
+    // rename while staying green for a control that moved. The two lists are prefixed apart because
+    // the same game appears in BOTH the recent strip and the all-games list, and an unprefixed
+    // Id would collide across them — an agent asking for "windrose" would get whichever the tree
+    // walker reached first, which is not a thing worth debugging later.
+
+    /// <summary>Stable id for this game's row in the all-games list.</summary>
+    public string RowAutomationId => $"GameRow.{Id}";
+
+    /// <summary>Stable id for this game's card in the recent strip. Prefixed apart from the row.</summary>
+    public string RecentAutomationId => $"RecentCard.{Id}";
+
+    /// <summary>Per-row name for the Play button. Without it every Play button in the list is the
+    /// literal string "Play" and none can be told apart — the UIA spike matched a Text label instead
+    /// of any button at all.</summary>
+    public string PlayAutomationName => $"Play {Name}";
+
+    /// <summary>Per-card name for the recent-strip card, which otherwise announces only its cover.</summary>
+    public string OpenAutomationName => $"Open {Name}";
+
     /// <summary>"3 mods · 2 on" style summary of the game's mod state.</summary>
     public string ModStateText => ModCount == 0
         ? "No mods"
@@ -174,6 +196,14 @@ public sealed partial class DiscoveredGameViewModel : ObservableObject
     public string AppId => Game.AppId;
     public string Name => Game.Name;
     public string StoreKind => Game.StoreKind;
+
+    /// <summary>Stable id for this discovery-lane row. Keyed on AppId, which is what the store gave
+    /// us and what survives a retitle.</summary>
+    public string DiscoveryAutomationId => $"DiscoveredGame.{AppId}";
+
+    /// <summary>Per-row name for the "+ Add" button. Every one of them reads "+ Add" otherwise, which
+    /// is precisely the control an agent needs to pick out by game when verifying the discovery lane.</summary>
+    public string AddAutomationName => $"Add {Name}";
 
     public string? CoverPath => _resolveCover(Game.AppId);
     public ImageSource? Cover => string.IsNullOrEmpty(CoverPath) ? null : new BitmapImage(new Uri(CoverPath));
