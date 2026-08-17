@@ -149,4 +149,63 @@ public class UiaShot {
     return $Path
 }
 
+function Test-ModalOpen {
+    <#.SYNOPSIS Is ANY modal dialog on screen? Returns the dialog's title, or $null.
+      Ask this before asserting on the surface behind it. Detecting a specific dialog by its known
+      field ids is not the same question and gets the wrong answer for every dialog you did not
+      list - a harness once reported "no dialog, added directly" with an adoption prompt sitting
+      open, because it only knew how to recognise the add-game form.#>
+    param($Root)
+    $tree = Get-Tree $Root
+    foreach ($e in $tree) {
+        try {
+            $ct = $e.Current.ControlType.ProgrammaticName
+            if ($ct -match 'ControlType\.(Window|Dialog)$' -and $e.Current.Name) {
+                # The app's own top-level window is not a modal.
+                if ($e.Current.Name -ne $Root.Current.Name) { return $e.Current.Name }
+            }
+        } catch {}
+    }
+    return $null
+}
+
+function Assert-NoModal {
+    param($Root)
+    $m = Test-ModalOpen -Root $Root
+    if ($m) { throw "a modal is open ('$m') - the surface behind it cannot be asserted on" }
+}
+
+function Get-RealisedCount {
+    <#.SYNOPSIS Count of elements whose AutomationId starts with $Prefix that are CURRENTLY REALISED.
+
+      This is deliberately not called Get-Count. A virtualized list realises only what is near the
+      viewport, so this number is "how many are rendered", never "how many exist". Reading it as a
+      total is how a harness concludes a freshly-added game is missing when it is simply sorted
+      below the fold. When you need the real total, get it from the source of truth (the registry via
+      MCP, or the view-model), not from the tree.#>
+    param($Tree, [string]$Prefix)
+    return @(Find-AllByIdPrefix $Tree $Prefix).Count
+}
+
+function Test-RowPresent {
+    <#.SYNOPSIS Is a specific row present, realising it if the platform can?
+      Uses the id directly first, then falls back to ItemContainerPattern/VirtualizedItem via the
+      containing list so an offscreen row still answers truthfully.#>
+    param($Tree, [string]$AutomationId)
+    $hit = Find-ById $Tree $AutomationId
+    if ($hit) { return $true }
+    foreach ($c in $Tree) {
+        try {
+            if (-not $c.GetCurrentPropertyValue($script:A::IsItemContainerPatternAvailableProperty)) { continue }
+            $icp = $c.GetCurrentPattern([System.Windows.Automation.ItemContainerPattern]::Pattern)
+            $found = $icp.FindItemByProperty($null, $script:A::AutomationIdProperty, $AutomationId)
+            if ($found) {
+                try { $found.GetCurrentPattern([System.Windows.Automation.VirtualizedItemPattern]::Pattern).Realize() } catch {}
+                return $true
+            }
+        } catch {}
+    }
+    return $false
+}
+
 function Wait-Idle { param([int]$Ms = 900) Start-Sleep -Milliseconds $Ms }
