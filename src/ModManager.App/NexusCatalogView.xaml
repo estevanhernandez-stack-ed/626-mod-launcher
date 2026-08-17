@@ -24,7 +24,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Click="OnBack" Background="Transparent" BorderThickness="0"
+            <Button AutomationProperties.AutomationId="NexusBackButton" AutomationProperties.Name="Back" Grid.Column="0" Click="OnBack" Background="Transparent" BorderThickness="0"
                     Padding="6,4" VerticalAlignment="Center"
                     ToolTipService.ToolTip="Back to this game's mods">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -45,10 +45,10 @@
              page. Adult content is excluded server-side in the plugin — there is no client-side filter
              here and no age gate anywhere. -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Padding="20,0,20,10">
-            <TextBox x:Name="QueryBox" PlaceholderText="Search mods…" Width="260"
+            <TextBox AutomationProperties.AutomationId="NexusQueryBox" AutomationProperties.Name="Search mods" x:Name="QueryBox" PlaceholderText="Search mods…" Width="260"
                      KeyDown="OnQueryKeyDown" TextChanged="OnQueryTextChanged" />
-            <Button x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
-            <ComboBox x:Name="SortBox" MinWidth="180" SelectedIndex="0"
+            <Button AutomationProperties.AutomationId="NexusSearchButton" x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
+            <ComboBox AutomationProperties.AutomationId="NexusSortBox" AutomationProperties.Name="Sort" x:Name="SortBox" MinWidth="180" SelectedIndex="0"
                       SelectionChanged="OnFilterChanged"
                       ToolTipService.ToolTip="Change how the listing is ordered">
                 <ComboBoxItem Content="Most endorsed" />
@@ -56,7 +56,7 @@
                 <ComboBoxItem Content="Recently updated" />
                 <ComboBoxItem Content="Recently added" />
             </ComboBox>
-            <ComboBox x:Name="CategoryBox" MinWidth="200"
+            <ComboBox AutomationProperties.AutomationId="NexusCategoryBox" AutomationProperties.Name="Category" x:Name="CategoryBox" MinWidth="200"
                       SelectionChanged="OnFilterChanged"
                       ToolTipService.ToolTip="Narrow the listing to one mod category" />
         </StackPanel>
@@ -197,7 +197,7 @@
         </GridView>
 
         <!-- Load more: user-driven paging only (no auto-crawl). Hidden once every hit is loaded. -->
-        <Button x:Name="LoadMoreButton" Grid.Row="3" Content="Load more"
+        <Button AutomationProperties.AutomationId="NexusLoadMoreButton" x:Name="LoadMoreButton" Grid.Row="3" Content="Load more"
                 HorizontalAlignment="Center" Margin="0,0,0,14"
                 Visibility="Collapsed" Click="OnLoadMoreClick"
                 ToolTipService.ToolTip="Fetch the next page of results" />

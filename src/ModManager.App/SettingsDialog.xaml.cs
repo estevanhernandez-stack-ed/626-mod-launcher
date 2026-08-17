@@ -26,6 +26,12 @@ public sealed record InstalledFrameworkRow(
     string GetUrl)
 {
     public Uri? GetUriObj => string.IsNullOrEmpty(GetUrl) ? null : new Uri(GetUrl);
+
+    // Automation identity. Keyed on FrameworkId rather than DisplayName for the same reason the mod
+    // rows are keyed on the on-disk name: the display string is catalog metadata and can be retitled.
+    public string RowAutomationId => $"Framework.{FrameworkId}";
+    public string GetAutomationName => "Get " + DisplayName;
+    public string UninstallFrameworkAutomationName => "Uninstall " + DisplayName;
 }
 
 /// <summary>One row in the Settings → Direct-inject mod configs list. Subtitle shows the
@@ -37,11 +43,20 @@ public sealed record DirectInjectConfigRow(
     string RelativeConfigPath,
     string EffectivePath,
     string Title,
-    string Subtitle);
+    string Subtitle)
+{
+    public string RowAutomationId => $"DirectInjectConfig.{ModId}";
+    public string OverrideAutomationName => "Override the config path for " + DisplayName;
+}
 
 /// <summary>One row in the Settings → Restore points list. Detail pre-formats the game names
 /// and total size so the XAML template binds a plain string, no converter needed.</summary>
-public sealed record RestorePointRow(string Timestamp, string Detail, string Id);
+public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
+{
+    public string RowAutomationId => $"RestorePoint.{Id}";
+    public string RestoreAutomationName => "Restore the point from " + Timestamp;
+    public string DeleteAutomationName => "Delete the restore point from " + Timestamp;
+}
 
 /// <summary>One Settings tool row: the entry plus the game data dir that owns it, so
 /// Configure can write back to the right registry (vibe-glow F-032).</summary>
@@ -52,6 +67,11 @@ public sealed record SettingsToolRow(ToolEntry Entry, string DataDir, string? Ga
     /// Configure→Uninstall must never ambiguate between copies. Display name when the
     /// registry knows the game; folder key as the fallback (F-068).</summary>
     public string GameLabel => $"For {(string.IsNullOrWhiteSpace(GameName) ? System.IO.Path.GetFileName(DataDir) : GameName)}";
+
+    /// <summary>The same tool can be installed per-game, so the name carries the owning game too —
+    /// otherwise two Configure buttons announce identically and a harness cannot tell the copies
+    /// apart, which is the exact ambiguity F-068 fixed for humans.</summary>
+    public string ConfigureAutomationName => $"Configure {DisplayName} ({GameLabel})";
 }
 
 /// <summary>

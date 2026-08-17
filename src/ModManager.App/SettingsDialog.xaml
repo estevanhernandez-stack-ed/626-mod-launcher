@@ -42,8 +42,8 @@
                     <Image x:Name="PreviewImage" Stretch="UniformToFill" />
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
-                    <Button Content="Pick image…" Click="OnPickImage" />
-                    <Button x:Name="RemoveButton" Content="Remove avatar" Click="OnRemove" Visibility="Collapsed" />
+                    <Button AutomationProperties.AutomationId="PickImageButton" Content="Pick image…" Click="OnPickImage" />
+                    <Button AutomationProperties.AutomationId="RemoveAvatarButton" x:Name="RemoveButton" Content="Remove avatar" Click="OnRemove" Visibility="Collapsed" />
                     <TextBlock x:Name="FileLabel" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Grid>
@@ -52,15 +52,15 @@
             <StackPanel x:Name="PaletteStrip" Orientation="Horizontal" Spacing="6" Height="32" />
             <TextBlock x:Name="PaletteEmpty" Text="Pick an image to see its dominant colors." Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
 
-            <CheckBox x:Name="UseAsIconCheck" Content="Use this image as the launcher's icon" IsChecked="True" />
-            <CheckBox x:Name="DeriveThemeCheck" Content="Save a theme derived from these colors" IsChecked="True" />
-            <TextBox x:Name="ThemeNameBox" Header="Theme name" Text="From avatar" />
+            <CheckBox AutomationProperties.AutomationId="UseAsIconCheck" x:Name="UseAsIconCheck" Content="Use this image as the launcher's icon" IsChecked="True" />
+            <CheckBox AutomationProperties.AutomationId="DeriveThemeCheck" x:Name="DeriveThemeCheck" Content="Save a theme derived from these colors" IsChecked="True" />
+            <TextBox AutomationProperties.AutomationId="ThemeNameBox" x:Name="ThemeNameBox" Header="Theme name" Text="From avatar" />
 
             <!-- Window transparency. Sits with the icon options because both control how the
                  launcher LOOKS on the desktop. Applies immediately (no Apply button needed). -->
             <StackPanel Orientation="Vertical" Spacing="2" Margin="0,8,0,0">
                 <TextBlock Text="Window transparency" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
-                <ComboBox x:Name="BackdropBox" SelectionChanged="OnBackdropChanged"
+                <ComboBox AutomationProperties.AutomationId="BackdropBox" AutomationProperties.Name="Window transparency" x:Name="BackdropBox" SelectionChanged="OnBackdropChanged"
                           ToolTipService.ToolTip="Solid keeps your theme's background opaque. Mica lets a hint of the desktop tint show through. Acrylic is more translucent.">
                     <ComboBoxItem Content="Solid" Tag="solid" />
                     <ComboBoxItem Content="Mica (subtle)" Tag="mica" />
@@ -87,8 +87,8 @@
             <TextBlock x:Name="NexusExplainer" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
 
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="NexusConnectButton" Content="Connect Nexus account" Click="OnNexusConnect" />
-                <Button x:Name="NexusDisconnectButton" Content="Disconnect" Click="OnNexusDisconnect" Visibility="Collapsed" />
+                <Button AutomationProperties.AutomationId="NexusConnectButton" x:Name="NexusConnectButton" Content="Connect Nexus account" Click="OnNexusConnect" />
+                <Button AutomationProperties.AutomationId="NexusDisconnectButton" x:Name="NexusDisconnectButton" Content="Disconnect" Click="OnNexusDisconnect" Visibility="Collapsed" />
             </StackPanel>
 
             <!-- Dark-window note: shown (button disabled) until Nexus delivers the OAuth client_id. -->
@@ -99,7 +99,7 @@
             <!-- Auto-check toggle. Polls Nexus by mod id on game load (debounced ~24h/game) to flag
                  mods with a newer version available. The manual "Refresh Nexus stats" action works
                  regardless of this setting. -->
-            <CheckBox x:Name="AutoCheckModUpdatesCheck"
+            <CheckBox AutomationProperties.AutomationId="AutoCheckModUpdatesCheck" x:Name="AutoCheckModUpdatesCheck"
                       Content="Check for mod updates automatically"
                       Click="OnAutoCheckModUpdatesToggled"
                       ToolTipService.ToolTip="On game load, quietly check Nexus for newer versions of your installed mods (about once a day per game). The manual Refresh Nexus stats action always works." />
@@ -107,7 +107,7 @@
             <!-- Keep-plugins-updated toggle. Gates the 24h re-check of the plugin feed (the first
                  install on Nexus connect always fires regardless). Desktop (FULL) only — the STORE
                  build shows a static note because plugins are a desktop-only delivery channel. -->
-            <CheckBox x:Name="KeepPluginsUpdatedCheck"
+            <CheckBox AutomationProperties.AutomationId="KeepPluginsUpdatedCheck" x:Name="KeepPluginsUpdatedCheck"
                       Content="Keep plugins updated"
                       Click="OnKeepPluginsUpdatedToggled"
                       ToolTipService.ToolTip="Once a day, quietly fetch the latest signed Nexus plugin from the 626 Mod Launcher feed. The first install always runs on connect; this gates the daily re-check." />
@@ -115,7 +115,7 @@
             <!-- Manual install / refresh button — FULL only. On STORE the PluginStatusText already
                  shows "Plugins are a desktop-only feature." and this button is absent from the tree.
                  The x:Name is referenced in the code-behind; the code-behind #if FULL guards it. -->
-            <Button x:Name="RefreshPluginButton"
+            <Button AutomationProperties.AutomationId="RefreshPluginButton" x:Name="RefreshPluginButton"
                     Content="Install / refresh Nexus plugin"
                     Click="OnRefreshPlugin"
                     Margin="0,4,0,0" />
@@ -164,7 +164,7 @@
                             </StackPanel>
                             <!-- Same management affordance the framework rows below have (F-032):
                                  rename / re-pick runnable / uninstall live in the configure dialog. -->
-                            <Button Grid.Column="1" Content="Configure…" Click="OnToolConfigure" Tag="{x:Bind}"
+                            <Button AutomationProperties.Name="{x:Bind ConfigureAutomationName}" Grid.Column="1" Content="Configure…" Click="OnToolConfigure" Tag="{x:Bind}"
                                     VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>
@@ -192,9 +192,9 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <HyperlinkButton Grid.Column="1" Content="Get it here" NavigateUri="{x:Bind GetUriObj}"
+                            <HyperlinkButton AutomationProperties.Name="{x:Bind GetAutomationName}" Grid.Column="1" Content="Get it here" NavigateUri="{x:Bind GetUriObj}"
                                              FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center" />
-                            <Button Grid.Column="2" Content="Uninstall" Tag="{x:Bind FrameworkId}"
+                            <Button AutomationProperties.Name="{x:Bind UninstallFrameworkAutomationName}" Grid.Column="2" Content="Uninstall" Tag="{x:Bind FrameworkId}"
                                     Click="OnUninstallFramework" VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>
@@ -224,7 +224,7 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="Override…" Tag="{x:Bind}"
+                            <Button AutomationProperties.Name="{x:Bind OverrideAutomationName}" Grid.Column="1" Content="Override…" Tag="{x:Bind}"
                                     Click="OnDirectInjectOverrideClick" VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>
@@ -241,7 +241,7 @@
             <TextBlock Text="Reset" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                        Text="Archive your current setup to a restore point, then reset the launcher to first-run. Your mods stay on disk." />
-            <Button x:Name="ResetLauncherButton"
+            <Button AutomationProperties.AutomationId="ResetLauncherButton" x:Name="ResetLauncherButton"
                     Content="Reset launcher…"
                     Click="OnResetLauncher" />
 
@@ -272,9 +272,9 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="Restore" Tag="{x:Bind Id}"
+                            <Button AutomationProperties.Name="{x:Bind RestoreAutomationName}" Grid.Column="1" Content="Restore" Tag="{x:Bind Id}"
                                     Click="OnRestorePoint" VerticalAlignment="Center" />
-                            <Button Grid.Column="2" Content="Delete" Tag="{x:Bind Id}"
+                            <Button AutomationProperties.Name="{x:Bind DeleteAutomationName}" Grid.Column="2" Content="Delete" Tag="{x:Bind Id}"
                                     Click="OnDeleteRestorePoint" VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>

@@ -35,13 +35,13 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="FolderBox" Grid.Column="0" Header="Save folder" IsReadOnly="True"
+            <TextBox AutomationProperties.AutomationId="SavesFolderBox" x:Name="FolderBox" Grid.Column="0" Header="Save folder" IsReadOnly="True"
                      PlaceholderText="Set the game's save folder to enable snapshots" />
-            <Button AutomationProperties.Name="Open save folder" x:Name="OpenFolderButton" Grid.Column="1" Click="OnOpenSaveFolder" VerticalAlignment="Bottom"
+            <Button AutomationProperties.AutomationId="OpenSaveFolderButton" AutomationProperties.Name="Open save folder" x:Name="OpenFolderButton" Grid.Column="1" Click="OnOpenSaveFolder" VerticalAlignment="Bottom"
                     ToolTipService.ToolTip="Open save folder in Explorer">
                 <FontIcon Glyph="&#xE838;" FontSize="{StaticResource BodyFontSize}" />
             </Button>
-            <Button Grid.Column="2" Content="Change…" VerticalAlignment="Bottom" Click="OnChangeFolder" />
+            <Button AutomationProperties.AutomationId="ChangeSaveFolderButton" Grid.Column="2" Content="Change…" VerticalAlignment="Bottom" Click="OnChangeFolder" />
         </Grid>
 
         <Grid ColumnSpacing="8">
@@ -49,22 +49,22 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="LabelBox" Grid.Column="0" Header="Label (optional)" PlaceholderText="e.g. before raid" />
-            <Button x:Name="BackupButton" Grid.Column="1" Content="Back up now" VerticalAlignment="Bottom" Click="OnBackup" />
+            <TextBox AutomationProperties.AutomationId="SnapshotLabelBox" x:Name="LabelBox" Grid.Column="0" Header="Label (optional)" PlaceholderText="e.g. before raid" />
+            <Button AutomationProperties.AutomationId="BackupNowButton" x:Name="BackupButton" Grid.Column="1" Content="Back up now" VerticalAlignment="Bottom" Click="OnBackup" />
         </Grid>
 
         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <CheckBox x:Name="AutoBackupCheck" Content="Auto-backup before launch"
+            <CheckBox AutomationProperties.AutomationId="AutoBackupCheck" x:Name="AutoBackupCheck" Content="Auto-backup before launch"
                       Checked="OnAutoBackupChanged" Unchecked="OnAutoBackupChanged"
                       ToolTipService.ToolTip="Snapshot the save automatically each time you press Play (older auto snapshots are pruned; your named backups are kept)." />
             <TextBlock Text="keep" VerticalAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
-            <NumberBox x:Name="KeepBox" Minimum="1" Maximum="999" SpinButtonPlacementMode="Compact"
+            <NumberBox AutomationProperties.AutomationId="KeepCountBox" AutomationProperties.Name="Snapshots to keep" x:Name="KeepBox" Minimum="1" Maximum="999" SpinButtonPlacementMode="Compact"
                        Width="120" ValueChanged="OnKeepChanged" VerticalAlignment="Center"
                        ToolTipService.ToolTip="How many auto snapshots to keep before pruning the oldest. Your named backups are never pruned." />
         </StackPanel>
 
         <TextBlock Text="Save files" FontWeight="SemiBold" />
-        <ListView x:Name="SaveFileList" MaxHeight="168" SelectionMode="None">
+        <ListView AutomationProperties.AutomationId="SaveFileList" AutomationProperties.Name="Save files" x:Name="SaveFileList" MaxHeight="168" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SaveFileRow">
                     <Grid ColumnSpacing="8" Padding="0,6">
@@ -90,7 +90,7 @@
         <TextBlock x:Name="SaveFilesEmpty" Text="No save files of this game's known types here. Check the save folder above — snapshots still cover everything in it." Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
 
         <TextBlock Text="Characters" FontWeight="SemiBold" />
-        <ListView x:Name="CharacterList" MaxHeight="200" SelectionMode="None">
+        <ListView AutomationProperties.AutomationId="CharacterList" AutomationProperties.Name="Characters" x:Name="CharacterList" MaxHeight="200" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:CharacterRow">
                     <Grid ColumnSpacing="8" Padding="0,6">
@@ -114,7 +114,7 @@
         <TextBlock x:Name="EditorCredit" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap" />
 
         <TextBlock Text="Installed save mods" FontWeight="SemiBold" />
-        <ListView x:Name="SaveModList" MaxHeight="200" SelectionMode="None">
+        <ListView AutomationProperties.AutomationId="SaveModList" AutomationProperties.Name="Installed save mods" x:Name="SaveModList" MaxHeight="200" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SaveModRow">
                     <Grid ColumnSpacing="8" Padding="0,6">
@@ -144,7 +144,7 @@
         <TextBlock Text="Snapshots" FontWeight="SemiBold" />
             <TextBlock Text="Restore takes a snapshot of your current save first, labeled 'before-restore'."
                        Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
-        <ListView x:Name="SnapshotList" MaxHeight="260" SelectionMode="None">
+        <ListView AutomationProperties.AutomationId="SnapshotList" AutomationProperties.Name="Snapshots" x:Name="SnapshotList" MaxHeight="260" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SaveRow">
                     <Grid ColumnSpacing="8" Padding="0,6">
