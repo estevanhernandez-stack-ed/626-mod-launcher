@@ -31,6 +31,18 @@ public sealed partial class ModRowViewModel : ObservableObject
     public string ConfigAutomationName => "Configure " + DisplayName;
     public string IniAutomationName => "Edit INI files for " + DisplayName;
     public string UninstallAutomationName => "Uninstall " + DisplayName;
+    public string ChipGlossaryAutomationName => "Chip glossary for " + DisplayName;
+    public string MpCompatAutomationName => "Multiplayer compatibility for " + DisplayName;
+    public string ModUrlAutomationName => ModUrlLabel + " page for " + DisplayName;
+    public string SourceAutomationName => "Source for " + DisplayName;
+    public string DonateAutomationName => "Donate for " + DisplayName;
+    public string MissingFrameworkAutomationName => "Install the missing framework for " + DisplayName;
+
+    /// <summary>Stable automation id for this row. Keyed on <c>Mod.Name</c> — the on-disk name — and
+    /// deliberately NOT on <see cref="DisplayName"/>, which is a title that Nexus metadata can rewrite
+    /// underneath a running app. A harness that pinned itself to the pretty name would go red the
+    /// first time an identify pass improved a title, which is the opposite of a regression.</summary>
+    public string RowAutomationId => $"ModRow.{Mod.Name}";
     // Busy disables the toggle while the file move + rescan runs; WinUI's disabled visual state
     // carries the dimming (vibe-glow F-016). CanInteract folds in the static CanToggle gate.
     [ObservableProperty]

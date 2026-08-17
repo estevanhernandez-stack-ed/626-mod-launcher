@@ -39,10 +39,10 @@
             <TextBlock Text="Quick add from Steam" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" />
             <TextBlock Text="Check the games to add — engine, folder, and saves are detected for you. Then click Add."
                        TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
-            <TextBox x:Name="SteamFilterBox" PlaceholderText="Filter detected games…"
+            <TextBox AutomationProperties.AutomationId="SteamFilterBox" AutomationProperties.Name="Filter detected games" x:Name="SteamFilterBox" PlaceholderText="Filter detected games…"
                      TextChanged="OnSteamFilterChanged"
                      ToolTipService.ToolTip="Narrow the detected list — checked games stay checked while you filter" />
-            <ListView x:Name="SteamGamesList" SelectionMode="Multiple" MaxHeight="180"
+            <ListView AutomationProperties.AutomationId="SteamGamesList" AutomationProperties.Name="Detected games" x:Name="SteamGamesList" SelectionMode="Multiple" MaxHeight="180"
                       BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1"
                       SelectionChanged="OnSteamSelectionChanged">
                 <ListView.ItemTemplate>
@@ -65,7 +65,7 @@
                        Text="No installed Steam games detected." Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
             <TextBlock x:Name="SteamSetupHeader" Visibility="Collapsed" Margin="0,6,0,0"
                        Text="Set up (engine not detected)" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
-            <ListView x:Name="SteamSetupList" Visibility="Collapsed" SelectionMode="None" MaxHeight="160"
+            <ListView AutomationProperties.AutomationId="SteamSetupList" x:Name="SteamSetupList" Visibility="Collapsed" SelectionMode="None" MaxHeight="160"
                       BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
                 <ListView.ItemTemplate>
                     <DataTemplate>
@@ -80,25 +80,25 @@
                                 <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                             </Border>
                             <TextBlock Foreground="{StaticResource ThemeInk}" Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
-                            <Button Grid.Column="2" Content="Set up" Click="OnSteamSetup" />
+                            <Button AutomationProperties.AutomationId="SteamSetupButton" Grid.Column="2" Content="Set up" Click="OnSteamSetup" />
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
             <TextBlock x:Name="SteamSelectionStatus" Visibility="Collapsed" FontSize="{StaticResource BodyFontSize}" />
         </StackPanel>
-        <ComboBox x:Name="PopularGamesBox" Header="Popular game (optional)" HorizontalAlignment="Stretch"
+        <ComboBox AutomationProperties.AutomationId="PopularGamesBox" x:Name="PopularGamesBox" Header="Popular game (optional)" HorizontalAlignment="Stretch"
                   DisplayMemberPath="Name" PlaceholderText="Pick a known moddable game"
                   SelectionChanged="OnPopularSelected" />
         <Expander x:Name="AiExpander" HorizontalAlignment="Stretch" Header="Add with AI">
             <StackPanel Spacing="{StaticResource SpaceM}" Width="400">
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                            Text="Type the game name, copy the prompt into any AI chat, paste the JSON it returns, then Apply to pre-fill the wizard." />
-                <TextBox x:Name="AiGameNameBox" Header="Game name" PlaceholderText="e.g. Elden Ring" />
-                <Button Content="Copy prompt" Click="OnCopyProfilePrompt" />
-                <TextBox x:Name="AiJsonBox" Header="Pasted JSON" AcceptsReturn="True" Height="150" TextWrapping="Wrap"
+                <TextBox AutomationProperties.AutomationId="AiGameNameBox" x:Name="AiGameNameBox" Header="Game name" PlaceholderText="e.g. Elden Ring" />
+                <Button AutomationProperties.AutomationId="CopyProfilePromptButton" Content="Copy prompt" Click="OnCopyProfilePrompt" />
+                <TextBox AutomationProperties.AutomationId="AiJsonBox" x:Name="AiJsonBox" Header="Pasted JSON" AcceptsReturn="True" Height="150" TextWrapping="Wrap"
                          PlaceholderText="Paste the JSON the agent returned" />
-                <Button Content="Apply profile" Click="OnApplyProfile" />
+                <Button AutomationProperties.AutomationId="ApplyProfileButton" Content="Apply profile" Click="OnApplyProfile" />
                 <TextBlock x:Name="ProfileStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" />
             </StackPanel>
         </Expander>
@@ -106,7 +106,7 @@
             <StackPanel Spacing="{StaticResource SpaceM}" Width="400">
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                            Text="Pick the Steam games you want to onboard, copy the batch prompt into your agent, paste the JSON array back, then Apply all. Profiles that pass register on Add; the rest are skipped." />
-                <ListView x:Name="BatchSteamList" SelectionMode="Multiple" Height="160"
+                <ListView AutomationProperties.AutomationId="BatchSteamList" x:Name="BatchSteamList" SelectionMode="Multiple" Height="160"
                           BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
                     <ListView.ItemTemplate>
                         <DataTemplate>
@@ -114,10 +114,10 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <Button Content="Copy batch prompt" Click="OnCopyBatchPrompt" />
-                <TextBox x:Name="BatchJsonBox" Header="Pasted JSON array" AcceptsReturn="True" Height="120" TextWrapping="Wrap"
+                <Button AutomationProperties.AutomationId="CopyBatchPromptButton" Content="Copy batch prompt" Click="OnCopyBatchPrompt" />
+                <TextBox AutomationProperties.AutomationId="BatchJsonBox" x:Name="BatchJsonBox" Header="Pasted JSON array" AcceptsReturn="True" Height="120" TextWrapping="Wrap"
                          PlaceholderText="Paste the JSON array the agent returned" />
-                <Button Content="Apply all" Click="OnApplyBatch" />
+                <Button AutomationProperties.AutomationId="ApplyBatchButton" Content="Apply all" Click="OnApplyBatch" />
                 <TextBlock x:Name="BatchStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" />
                 <ItemsControl x:Name="BatchResultsList" Margin="0,4,0,0">
                     <ItemsControl.ItemTemplate>
@@ -136,14 +136,14 @@
         </Expander>
         <StackPanel x:Name="ManualFormPanel" Spacing="12">
         <TextBlock Text="Or add one manually" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" />
-        <TextBox x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
+        <TextBox AutomationProperties.AutomationId="GameNameBox" x:Name="NameBox" Header="Game name" PlaceholderText="e.g. Windrose" />
         <StackPanel Spacing="2">
-            <ComboBox x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
+            <ComboBox AutomationProperties.AutomationId="EngineBox" x:Name="EngineBox" Header="Engine" HorizontalAlignment="Stretch"
                       DisplayMemberPath="Label" PlaceholderText="Select engine…"
                       SelectionChanged="OnEngineChanged" />
             <TextBlock x:Name="EngineHint" Foreground="{StaticResource ThemeAccent}" FontSize="{StaticResource BodyFontSize}"
                        Visibility="Collapsed" Text="Auto-detected from the game folder — change if it's wrong." />
-            <HyperlinkButton x:Name="RequestGameLink" Visibility="Collapsed"
+            <HyperlinkButton AutomationProperties.AutomationId="RequestGameLink" x:Name="RequestGameLink" Visibility="Collapsed"
                              Click="OnRequestGame" Padding="0,2,0,0"
                              Content="Can't find the engine? Request this game" FontSize="{StaticResource BodyFontSize}" />
         </StackPanel>
@@ -152,16 +152,16 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="FolderBox" Grid.Column="0" Header="Game folder"
+            <TextBox AutomationProperties.AutomationId="FolderBox" x:Name="FolderBox" Grid.Column="0" Header="Game folder"
                      PlaceholderText="C:\...\steamapps\common\YourGame" />
-            <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" VerticalAlignment="Bottom" Click="OnBrowse" />
+            <Button AutomationProperties.AutomationId="BrowseButton" x:Name="BrowseButton" Grid.Column="1" Content="Browse" VerticalAlignment="Bottom" Click="OnBrowse" />
         </Grid>
-        <TextBox x:Name="ModPathBox" Header="Mod folder (relative to the game folder)" />
-        <TextBox x:Name="SteamBox" Header="Steam App ID (optional — enables Launch)" />
-        <ComboBox x:Name="SaveRootBox" Header="Save root (optional)" HorizontalAlignment="Stretch"
+        <TextBox AutomationProperties.AutomationId="ModPathBox" x:Name="ModPathBox" Header="Mod folder (relative to the game folder)" />
+        <TextBox AutomationProperties.AutomationId="SteamAppIdBox" x:Name="SteamBox" Header="Steam App ID (optional — enables Launch)" />
+        <ComboBox AutomationProperties.AutomationId="SaveRootBox" x:Name="SaveRootBox" Header="Save root (optional)" HorizontalAlignment="Stretch"
                   PlaceholderText="Where saves live" />
-        <TextBox x:Name="SaveSubPathBox" Header="Save subfolder (relative to the save root, optional)" />
-        <TextBox x:Name="RequiredLauncherBox" Header="Required launcher (relative exe, optional)" />
+        <TextBox AutomationProperties.AutomationId="SaveSubPathBox" x:Name="SaveSubPathBox" Header="Save subfolder (relative to the save root, optional)" />
+        <TextBox AutomationProperties.AutomationId="RequiredLauncherBox" x:Name="RequiredLauncherBox" Header="Required launcher (relative exe, optional)" />
         <TextBlock x:Name="ErrorText" Foreground="{StaticResource ThemeDanger}" Visibility="Collapsed"
                    Text="Name, game folder, and engine are required." TextWrapping="Wrap" />
         </StackPanel>

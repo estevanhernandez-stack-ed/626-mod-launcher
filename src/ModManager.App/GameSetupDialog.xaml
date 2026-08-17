@@ -61,19 +61,19 @@
                       HorizontalContentAlignment="Stretch">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Game name" Foreground="{StaticResource ThemeInkDim}" />
-                    <TextBox x:Name="NameBox" TextChanged="OnFieldChanged" />
+                    <TextBox AutomationProperties.AutomationId="SetupNameBox" AutomationProperties.Name="Game name" x:Name="NameBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="Game folder" Foreground="{StaticResource ThemeInkDim}" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="FolderBox" Grid.Column="0" TextChanged="OnFieldChanged" />
-                        <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse…" Click="OnBrowse" />
+                        <TextBox AutomationProperties.AutomationId="SetupFolderBox" AutomationProperties.Name="Game folder" x:Name="FolderBox" Grid.Column="0" TextChanged="OnFieldChanged" />
+                        <Button AutomationProperties.AutomationId="SetupBrowseButton" x:Name="BrowseButton" Grid.Column="1" Content="Browse…" Click="OnBrowse" />
                     </Grid>
 
                     <TextBlock Text="Engine" Foreground="{StaticResource ThemeInkDim}" />
-                    <ComboBox x:Name="EngineBox" HorizontalAlignment="Stretch"
+                    <ComboBox AutomationProperties.AutomationId="SetupEngineBox" AutomationProperties.Name="Engine" x:Name="EngineBox" HorizontalAlignment="Stretch"
                               SelectionChanged="OnEngineChanged" DisplayMemberPath="Label" />
 
                     <!-- Label text is restated in SeedFields when the game declares more than one mod
@@ -81,19 +81,19 @@
                          all of them, so an unqualified "Mod folder" would read as covering all three. -->
                     <TextBlock x:Name="ModPathLabel" Text="Mod folder (relative to the game folder)"
                                Foreground="{StaticResource ThemeInkDim}" />
-                    <TextBox x:Name="ModPathBox" TextChanged="OnFieldChanged" />
+                    <TextBox AutomationProperties.AutomationId="SetupModPathBox" AutomationProperties.Name="Mod folder" x:Name="ModPathBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="File extensions (comma separated)" Foreground="{StaticResource ThemeInkDim}" />
-                    <TextBox x:Name="ExtensionsBox" TextChanged="OnFieldChanged" />
+                    <TextBox AutomationProperties.AutomationId="SetupExtensionsBox" AutomationProperties.Name="File extensions" x:Name="ExtensionsBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="Grouping rule" Foreground="{StaticResource ThemeInkDim}" />
-                    <TextBox x:Name="GroupingBox" TextChanged="OnFieldChanged" />
+                    <TextBox AutomationProperties.AutomationId="SetupGroupingBox" AutomationProperties.Name="Grouping rule" x:Name="GroupingBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="Steam App ID" Foreground="{StaticResource ThemeInkDim}" />
-                    <TextBox x:Name="SteamBox" TextChanged="OnFieldChanged" />
+                    <TextBox AutomationProperties.AutomationId="SetupSteamAppIdBox" AutomationProperties.Name="Steam App ID" x:Name="SteamBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="Required launcher (relative to the game folder)" Foreground="{StaticResource ThemeInkDim}" />
-                    <TextBox x:Name="LauncherBox" TextChanged="OnFieldChanged" />
+                    <TextBox AutomationProperties.AutomationId="SetupLauncherBox" AutomationProperties.Name="Required launcher" x:Name="LauncherBox" TextChanged="OnFieldChanged" />
 
                     <!-- Consequences, live. FieldsChanged and OtherChanges answer different questions,
                          so they are rendered as separate lines rather than one merged list. -->

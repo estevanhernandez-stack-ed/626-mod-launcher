@@ -15,6 +15,7 @@
              promised installed games "below once you add one," which was both false and a description
              of the bug: the lane was built and then hidden inside the collapsed content scroller. -->
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="420"
+                    AutomationProperties.AutomationId="LibraryEmptyState"
                     Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}">
             <TextBlock Text="Your library is empty" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold"
                        HorizontalAlignment="Center" Foreground="{StaticResource ThemeInk}" />
@@ -43,6 +44,8 @@
                                 <DataTemplate x:DataType="vm:GameLibraryRowViewModel">
                                     <Button Padding="0" BorderThickness="0" Background="Transparent"
                                             Click="OnRecentClick" Tag="{x:Bind}"
+                                            AutomationProperties.AutomationId="{x:Bind RecentAutomationId}"
+                                            AutomationProperties.Name="{x:Bind OpenAutomationName}"
                                             ToolTipService.ToolTip="{x:Bind Name}">
                                         <StackPanel Spacing="6" Width="150">
                                             <Grid Width="150" Height="200" CornerRadius="0">
@@ -85,12 +88,15 @@
                              pending — an empty or never-checked library keeps the home clean rather
                              than advertising a zero. -->
                         <Button Grid.Column="1" Click="OnOpenUpdates" VerticalAlignment="Center"
+                                AutomationProperties.AutomationId="LibraryUpdatesEntry"
                                 Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                 Foreground="{StaticResource ThemeAccent}"
                                 Content="{x:Bind ViewModel.UpdatesEntryText, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.UpdatesEntryVisibility, Mode=OneWay}"
                                 ToolTipService.ToolTip="{x:Bind ViewModel.UpdatesEntryTooltip, Mode=OneWay}" />
                         <TextBox Grid.Column="2" Width="220" PlaceholderText="Search games…"
+                                 AutomationProperties.AutomationId="LibrarySearchBox"
+                                 AutomationProperties.Name="Search games"
                                  Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </Grid>
 
@@ -101,6 +107,7 @@
                                      Button gives hover/pressed/keyboard for free; the inner Play button
                                      handles its own click so it won't also open the game. -->
                                 <Button Click="OnManage" Tag="{x:Bind}" Margin="0,0,0,6"
+                                        AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
                                         AutomationProperties.Name="{x:Bind Name}"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                         Background="{StaticResource ThemePanel}" BorderThickness="0"
@@ -176,6 +183,7 @@
                                             Content="Play" Foreground="{StaticResource ThemeBg}"
                                             Background="{StaticResource ThemeAccent}"
                                             Click="OnPlay" Tag="{x:Bind}"
+                                            AutomationProperties.Name="{x:Bind PlayAutomationName}"
                                             ToolTipService.ToolTip="Launch this game" />
 
                                 </Grid>
@@ -189,6 +197,8 @@
                      section on the page (nothing registered, something discovered) and stays shut
                      otherwise, so the established home is unchanged. -->
                 <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="LibraryDiscoveryExpander"
+                          AutomationProperties.Name="Installed games not added yet"
                           IsExpanded="{x:Bind ViewModel.DiscoveryExpanded, Mode=OneWay}"
                           Background="{StaticResource ThemePanel}">
                     <Expander.Header>
@@ -199,6 +209,8 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:DiscoveredGameViewModel">
                                     <Grid Padding="8" ColumnSpacing="12" Margin="0,0,0,4"
+                                          AutomationProperties.AutomationId="{x:Bind DiscoveryAutomationId}"
+                                          AutomationProperties.Name="{x:Bind Name}"
                                           Background="{StaticResource ThemeBarBg}" CornerRadius="0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
@@ -224,12 +236,14 @@
                                             <TextBlock Text="{x:Bind StoreKind}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Content="+ Add" VerticalAlignment="Center"
+                                                AutomationProperties.Name="{x:Bind AddAutomationName}"
                                                 Click="OnAddDiscovered" Tag="{x:Bind}" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <TextBlock Text="Nothing new — every installed game 626 can see is already in your library."
+                                   AutomationProperties.AutomationId="LibraryDiscoveryEmptyText"
                                    Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}"
                                    Visibility="{x:Bind ViewModel.DiscoveryEmptyVisibility, Mode=OneWay}" />
                     </StackPanel>

@@ -33,11 +33,11 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="NameBox" Grid.Column="0" Header="Save current loadout as" PlaceholderText="e.g. Hardcore" />
-            <Button Grid.Column="1" Content="Save" VerticalAlignment="Bottom" Click="OnSave" />
+            <TextBox AutomationProperties.AutomationId="ProfileNameBox" x:Name="NameBox" Grid.Column="0" Header="Save current loadout as" PlaceholderText="e.g. Hardcore" />
+            <Button AutomationProperties.AutomationId="SaveProfileButton" Grid.Column="1" Content="Save" VerticalAlignment="Bottom" Click="OnSave" />
         </Grid>
 
-        <ListView x:Name="ProfileList" MaxHeight="260" SelectionMode="None">
+        <ListView AutomationProperties.AutomationId="ProfileList" AutomationProperties.Name="Saved loadouts" x:Name="ProfileList" MaxHeight="260" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ProfileRow">
                     <Grid ColumnSpacing="8" Padding="0,4">
