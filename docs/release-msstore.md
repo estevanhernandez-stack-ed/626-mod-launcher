@@ -24,7 +24,15 @@ These live in `Package.appxmanifest` (Name + Publisher + PublisherDisplayName). 
 
 ## Build a Store bundle
 
-- **Locally:** `dotnet build src/ModManager.App/ModManager.App.csproj -c Store -p:Platform=x64 -p:Version=<v>` → `src/ModManager.App/AppPackages/.../ModManager.App_<v>_x64_Store.msixbundle`. Then `pwsh scripts/check-store-seal.ps1`.
+> **⚠ `-p:Version` does NOT set the MSIX package version.** That lives hardcoded in
+> `src/ModManager.App/Package.appxmanifest` (`<Identity Version="…">`) and must be edited by hand
+> before a Store build. Found while cutting 0.18.1: a build passing `-p:Version=0.18.1.0` produced a
+> **0.17.0.0** package, because the manifest still said 0.17.0.0 and nothing reconciles the two. It
+> looked correct on 0.17.0 only because the two numbers happened to match. Bump the manifest first,
+> then verify the version out of the built bundle — never off the manifest on disk.
+
+- **Locally:** bump `Package.appxmanifest`'s `Identity Version`, then
+  `dotnet build src/ModManager.App/ModManager.App.csproj -c Store -p:Platform=x64` → `src/ModManager.App/AppPackages/.../ModManager.App_<v>_x64_Store.msixbundle`. Then `pwsh scripts/check-store-seal.ps1`.
 - **In CI:** run the **Build Store MSIX (manual)** workflow with the version → download the `store-msixbundle-<v>` artifact.
 - **With Nexus (the 0.15.0.0 line onward):** add `-p:StoreNexus=true`. Plain `-c Store` still builds the
   sealed, Nexus-free package; the flag compiles the Nexus source in from the pinned `external/626-mod-plugins`
