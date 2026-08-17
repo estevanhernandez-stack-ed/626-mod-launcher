@@ -1,7 +1,7 @@
 # 626 Mod Launcher — brand & store assets
 
 One-stop kit for featuring 626 Mod Launcher (e.g. on the 626labs.dev hub). Everything a listing
-needs: links, identity, images, copy, brand tokens. All facts current as of the v0.8.1 Store launch.
+needs: links, identity, images, copy, brand tokens. Facts were current as of the v0.8.1 Store launch and are corrected in place as they drift — check the dates on any inline correction notes.
 
 ## Links
 
@@ -22,7 +22,7 @@ needs: links, identity, images, copy, brand tokens. All facts current as of the 
 
 ## Two channels (describe accurately)
 
-- **Microsoft Store** — signed (no SmartScreen), Store-managed updates. The **sealed-core** build: full mod management, but **no Nexus integration and no anti-cheat toggle**.
+- **Microsoft Store** — signed (no SmartScreen), Store-managed updates. The **sealed-core** build: full mod management **including Nexus**, but **no off-Store plugin loader and no anti-cheat toggle**. (Corrected 2026-08-16: this said "no Nexus integration", which stopped being true at 0.15.0 when the Store SKU began compiling Nexus in from the pinned `external/626-mod-plugins` submodule. It is the plugin LOADER that is sealed out, not Nexus.)
 - **GitHub / Velopack** — the **full** build: everything including the Nexus integration (a signed off-Store plugin). Unsigned installer (SmartScreen warning), auto-updates from GitHub.
 
 ## Images (in this folder)
