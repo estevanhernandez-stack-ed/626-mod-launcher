@@ -8,10 +8,10 @@
 > **The honest headline:** four bug fixes to a single flow — adding a game — and one visual
 > reversal. Nothing this app does with a user's files changed.
 >
-> **The one thing a reviewer might notice and wonder about** is the colour scheme, and which way it
-> reads depends on what was last approved. If 0.17.0.0 was approved, this build *reverts* the default
-> theme that submission introduced. If 0.17.0.0 was never submitted, this build simply matches the
-> approved listing. **Pick the matching paragraph below before pasting.**
+> **The one thing a reviewer will notice** is the colour scheme. 0.17.0.0 is the live version and it
+> made a gunmetal theme the default; this build puts the original dark blue back. The listing
+> screenshots still show the gunmetal one. The letter says so plainly rather than letting a reviewer
+> find the discrepancy and wonder what else was not mentioned.
 
 ---
 
@@ -48,20 +48,21 @@ previously approved versions. No new network endpoints. No new data is
 collected, stored or transmitted. The fixes above are entirely local UI and
 local-config behaviour.
 
-ABOUT THE COLOUR SCHEME  [KEEP ONE PARAGRAPH — DELETE THE OTHER]
+ABOUT THE COLOUR SCHEME, AND THE SCREENSHOTS
 
-[If 0.17.0.0 was approved:]
-Version 0.17.0.0 changed the app's default theme to a gunmetal-and-amber
-look. This version reverts that: the app opens on the original dark blue
-theme again. The gunmetal theme is unchanged and remains available in
-Settings. This affects only the default a user gets before choosing; a user
-who has already chosen a theme keeps their choice. The listing screenshots
-have been updated to match this build.
+Version 0.17.0.0 made a gunmetal-and-amber theme the app's default. This
+version reverts that: the app opens on the original dark blue theme again.
+The gunmetal theme is unchanged and is still available in Settings. This
+affects only the default a user gets before they choose; anyone who has
+already picked a theme keeps their choice.
 
-[If 0.17.0.0 was never submitted:]
-No visual change since the last approved version. An interim build changed
-the default theme; that change was reverted before submission, so this
-package matches the approved listing's screenshots.
+We want to flag that the listing screenshots still show the gunmetal theme,
+so this build will not match them on first launch. They remain accurate in
+that the app genuinely offers that theme and can be set to it in one click,
+but we would rather point this out than have you find it. We are retaking
+them and will submit the updated set in a listing update shortly. We chose
+not to hold this submission for it, because the fixes above address users
+who could not tell whether adding a game had worked.
 
 WHY runFullTrust IS REQUIRED  (unchanged from prior submissions)
 

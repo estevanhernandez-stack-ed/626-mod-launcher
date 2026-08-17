@@ -19,19 +19,28 @@
 
 ---
 
-## ⚠ Decide this before uploading: was 0.17.0.0 ever submitted?
+## Screenshots: the listing shows Forge, this build opens navy
 
-**Nobody has confirmed it, and it changes what you do about screenshots.** The 0.17.0 GitHub release
-shipped 2026-08-04; a Store submission is a separate act. Check Partner Center, then follow the
-matching row:
+**Answered 2026-08-16 — 0.17.0.0 is live on the Store and is the newest published version.** So the
+seven screenshots in `docs/store-assets/screenshots-0.17/` are what a shopper sees today, and they
+are all Forge: gunmetal chrome, amber buttons. This build opens navy.
 
-| If 0.17.0.0 was… | Then the live listing shows… | Screenshots |
-|---|---|---|
-| **never submitted** (last approved = 0.15.0.0) | the original navy screenshots | **Change nothing.** This build defaults to navy again, so the live set is accurate. Skip `store-assets/screenshots-0.17/` entirely. |
-| **submitted and approved** | the seven Forge screenshots from that submission | **Replace them** with the navy set, and say so in the reviewer letter — this build reverts the default the reviewer last approved. |
+**This is not a certification problem.** Requirement 10.1 asks that screenshots accurately represent
+the app. Forge is a theme this build genuinely ships, one click away in Settings — the app really can
+look exactly like those shots. Nothing in the listing becomes false. What it becomes is a
+first-impression mismatch: amber on the Store page, navy on first launch.
 
-`docs/store-listing-0.17.0.md` was written around Forge becoming the default and is superseded by
-this file. Do not follow both.
+**Recommended: submit now with the Forge screenshots, retake navy afterwards.** The reason this
+release exists is a user who added a game three times and got three copies. That fix should not wait
+on photography. Screenshots can be changed later in a listing-only submission — no new package, and
+those certify quickly.
+
+If you would rather retake first, they must be shot on the main box, not the clean test PC: the 0.17
+set shows six games with real cover art, and the test box has almost nothing in it. An empty library
+would be a worse listing than a differently-coloured one. All seven or none — a half-swapped set
+reads as a rendering bug.
+
+**Screenshot debt is tracked as D2 in `docs/2026-08-05-backlog.md`.** Do not let it close silently.
 
 ## Why the default look changed back
 
@@ -82,7 +91,7 @@ already has on disk or fetches from a source they connected themselves.
 
 ## Before you upload
 
-1. **Answer the 0.17.0.0 question above.** It decides the screenshot step.
+1. **Screenshots: reuse the existing Forge set** (see above). Do not upload a mixed set.
 2. Confirm the submodule pointer is what you intend — `external/626-mod-plugins` is pinned at
    **`nexus-v0.14.0`** for this build. The Store SKU compiles Nexus in from that pin; the GitHub SKU
    downloads a signed plugin from the feed. They do not advance together. See *Decide, every plugin
