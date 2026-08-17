@@ -76,9 +76,32 @@ Nobody has watched this gate work, and it is the one law in the repo that must n
 Vortex-takeover fixture (16 staged mods, not yet in 626). Adding it and enabling one mod should raise
 the gate. One action covers both open cases — and if the prompt does not appear, that is the finding.
 
-**Still genuinely open:** Safe Clear refusal while the game runs, Nexus endorse, Vortex takeover, and
-the ban-risk acknowledgement (human-only by design — an agent must reach that gate and never satisfy
-it).
+### Ban-risk enable gate — VERIFIED 2026-08-17, by an agent that could not pass it
+
+Driven through UIA against Elden Ring (`high` risk, feed appid 1245620). Disabling did not gate,
+which is correct. Re-enabling raised the dialog: *"This game uses anti-cheat. Enabling mods for
+online play can get your account banned. Disabling is always reversible."* Escape cancelled it, the
+enable was refused, the mod stayed off, and **`ban-risk-acks.json` was never written** — the agent
+reached the gate and did not satisfy it, which is the law working as designed.
+
+The same dialog also verifies **feat/ban-safe-loaders Task 4**: it surfaces *Get Mod Engine 2* and
+*Launch Seamless Co-op* under "The safe way to mod this game", with `Cancel` as the primary button
+and `Enable anyway` secondary. Evidence in `artifacts/banrisk/`.
+
+### UE4SS dependency chips — the test found a FALSE GREEN instead
+
+Este's recollection was red-chip-but-mods-worked. The live test found the opposite and worse: with
+`UE4SS.dll` moved aside and `dwmapi.dll` left in place, 626 reported `27 of 27 enabled` with zero
+chips while the game threw *"Failed to load UE4SS.dll"* and `UE4SS.log` was never written. Filed as
+**A13**. There is no second UE4SS.dll on the machine — that hypothesis is closed.
+
+**Monster Hunter Wilds is NOT installed**, correcting an earlier note here: that folder is Fluffy Mod
+Manager (`Modmanager.exe`, no game exe) and no `appmanifest_2246340.acf` exists. Vortex is staging 21
+mods for a game that is not on the box. High-risk games that ARE installed: Elden Ring (in 626),
+Helldivers 2, Marvel Rivals, Phasmophobia.
+
+**Still genuinely open:** Safe Clear refusal while the game runs, Nexus endorse, and Vortex takeover
+(which now needs a different fixture).
 
 **Vortex takeover has a fixture now.** Six Vortex-staged games on the main box:
 `monsterhunterwilds` (16 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
