@@ -43,9 +43,42 @@ harness, 12 needed a person; of those twelve Este settled five.** Full run evide
   was starting when the add / repaint bug stopped him. **That bug shipped fixed in v0.18.1**, so the
   session that got blocked can now run.
 
-**Still genuinely open:** Safe Clear refusal while the game runs, vanilla-vs-modded launch, Nexus
-OAuth connect, Nexus download + endorse, Vortex takeover, and the ban-risk acknowledgement (human-only
-by design — an agent must reach that gate and never satisfy it).
+**Second pass with Este, same day — five more settled:**
+
+- **Drop-zip framework install works** ("it does go to where it needs to go, so far").
+- **UE4SS-missing chips work** — "when it's not in the right spot, it definitely shows red." One
+  loose end he raised and could not resolve from memory: the mods kept working while the chip was
+  red, which would mean a UE4SS lived somewhere else. Worth a look — a red chip over a working setup
+  is the false positive the Task 4 "MAY NEED" work exists to avoid.
+- **Vanilla vs modded launch works** — launching Elden Ring the regular way does not bring Seamless
+  Co-op in.
+- **Nexus OAuth works**, and **download sends you to the mod page**. (Endorse is a separate action and
+  was not named — still unconfirmed.)
+- **Safe Clear refusal was a misread on my part, not his.** The case is not "cancelling the dialog
+  works" — it is that Safe Clear must REFUSE to start while the game is running. Still open.
+
+### The ban-risk gate has never fired, and there is no evidence it ever has
+
+Este: *"the ban risk shows up. I've seen it, I just haven't seen it pop up when I start the game."*
+That splits in two, and only half is expected behaviour.
+
+- **Palworld is `medium`.** `BanRiskRules.ShouldGateEnable` gates on `high` only; medium and low are
+  banner-only. No prompt is correct here.
+- **Elden Ring is `high`** (remote feed, Steam app id 1245620), has 11 mods, all enabled — and
+  **`ban-risk-acks.json` does not exist anywhere on disk.** The gate has never been acknowledged for
+  any game.
+
+Most likely benign: the gate ships from 2026-06-15 and those mods were enabled in May, and it only
+fires on *enable* — already-on mods never re-trigger it. That is an explanation, not a verification.
+Nobody has watched this gate work, and it is the one law in the repo that must not fail quietly.
+
+**Test it without touching Elden Ring.** `monster-hunter-wilds` is `high` risk in the feed AND is the
+Vortex-takeover fixture (16 staged mods, not yet in 626). Adding it and enabling one mod should raise
+the gate. One action covers both open cases — and if the prompt does not appear, that is the finding.
+
+**Still genuinely open:** Safe Clear refusal while the game runs, Nexus endorse, Vortex takeover, and
+the ban-risk acknowledgement (human-only by design — an agent must reach that gate and never satisfy
+it).
 
 **Vortex takeover has a fixture now.** Six Vortex-staged games on the main box:
 `monsterhunterwilds` (16 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
