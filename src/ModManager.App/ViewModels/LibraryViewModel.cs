@@ -225,16 +225,38 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty] private EngineTier? tierFilter;  // null = any tier
     [ObservableProperty] private bool banRiskOnly;        // true = only ban-risk games
 
-    /// <summary>True when the registry has no games — the view shows an empty state.</summary>
+    /// <summary>True when the registry has no games. NOT the same as "nothing to show" — a machine with
+    /// zero registered games can still have a full discovery lane, which is exactly the first-run case.
+    /// This gates the registered-games sections only; see <see cref="HasAnythingToShow"/>.</summary>
     public bool IsEmpty => _allRows.Count == 0;
 
+    /// <summary>True when the page has SOMETHING worth rendering — registered games, discovered ones, or
+    /// both. The content scroller gates on this rather than on <see cref="IsEmpty"/>: gating the whole
+    /// page on "no games registered" hid the discovery lane at the one moment it earns its keep, on a
+    /// fresh machine where the user has nothing registered and every installed game waiting to be added.</summary>
+    public bool HasAnythingToShow => _allRows.Count > 0 || DiscoveryRows.Count > 0;
+
     /// <summary>Visibility helpers so the view binds directly (the app's VM-drives-Visibility pattern).</summary>
-    public Visibility EmptyVisibility => IsEmpty ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility ContentVisibility => IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility EmptyVisibility => HasAnythingToShow ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ContentVisibility => HasAnythingToShow ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The recent strip and the all-games list only exist once something is registered. Without
+    /// this, a first-run machine with discoveries renders two live headers over two empty lists before
+    /// the one section the user can act on — technically visible, still useless. Deliberately keyed to
+    /// the FULL row set, not the filtered <see cref="Rows"/>: a search that matches nothing must keep its
+    /// own search box on screen, or there's no way to undo the search.</summary>
+    public Visibility RegisteredGamesVisibility => IsEmpty ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>The "nothing new to add" line shows only when the discovery lane found no candidates.</summary>
     public Visibility DiscoveryEmptyVisibility =>
         DiscoveryRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The discovery lane opens itself when it's the only thing on the page — a collapsed
+    /// expander on a first-run home is one more click between the user and the whole point of the
+    /// feature. With games registered it stays shut, as it always has, so the normal home is unchanged.
+    /// One-way by design: the user can still collapse it, and the next <see cref="Load"/> re-asserts it,
+    /// same as every other bound piece of this view.</summary>
+    public bool DiscoveryExpanded => IsEmpty && DiscoveryRows.Count > 0;
 
     // --- Cross-game updates -------------------------------------------------------------------------
     //
@@ -344,10 +366,15 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         ApplyFilter();
         RebuildDiscovery(games);
+        // ApplyFilter + RebuildDiscovery both ran above, so every count these read is final. Order
+        // matters only in that sense — nothing here may run before the collections settle.
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(HasAnythingToShow));
         OnPropertyChanged(nameof(EmptyVisibility));
         OnPropertyChanged(nameof(ContentVisibility));
+        OnPropertyChanged(nameof(RegisteredGamesVisibility));
         OnPropertyChanged(nameof(DiscoveryEmptyVisibility));
+        OnPropertyChanged(nameof(DiscoveryExpanded));
         OnPropertyChanged(nameof(TotalPendingUpdates));
         OnPropertyChanged(nameof(UpdatesEntryVisibility));
         OnPropertyChanged(nameof(UpdatesEntryText));

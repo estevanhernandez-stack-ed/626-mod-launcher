@@ -1532,3 +1532,58 @@ success and no failure."
    new entry in `games.json`. *Why it matters:* the cancel path returns before the repaint, and a grid
    that repaints on cancel would suggest something was written.
 
+
+---
+
+## PR (fix/discovery-visible-on-first-run) — the discovery lane shows up on a fresh machine (2026-08-16)
+
+**Shipped:** On a machine with no games registered, the Library home showed an empty state and nothing
+else — the "Installed games not added yet" lane was built, its covers resolved, and then hidden. The
+view has two mutually exclusive halves: the empty-state panel on `EmptyVisibility` and a content
+`ScrollViewer` holding EVERY section on `ContentVisibility`, and both were computed from `IsEmpty`,
+which means "no games REGISTERED." The discovery lane lives inside that scroller, so the one feature
+whose entire job is sparing a new user from typing paths was collapsed at exactly the moment it was
+useful. Both visibilities now gate on having anything to show at all (registered games OR discovered
+ones). The empty-state copy used to promise "626 finds installed games below once you add one" — a
+sentence that documented the bug — and now describes the only state it can actually appear in.
+
+Two more things had to move or the fix would have been cosmetic. Neither the "JUMP BACK IN" strip nor
+the "ALL GAMES" section collapsed when empty, so revealing the scroller alone would have put two live
+headers and two empty lists above the thing the user wants; both now gate on having registered games.
+And the discovery `Expander` had no `IsExpanded` at all, so it defaults CLOSED — a first-run user
+would have had to find and click it. It now opens itself when it is the only section on the page.
+
+**No test coverage of any kind.** `LibraryView` and `LibraryViewModel` are WinUI — not reachable from
+the headless suite, and no seam was invented to fake it. Nothing was added to Core to stand in for it
+either: a green Core test proving something adjacent would close this item while the bug survived.
+These steps are the only coverage this fix gets.
+
+**Smoke steps:**
+
+1. **Games installed, none registered — the reported bug.** On a machine (or a wiped data dir) with an
+   empty `games.json` and at least one Steam game installed, open the Library home. EXPECT the
+   "Installed games not added yet" lane, already expanded, listing the installed games with covers and
+   a working `+ Add` on each — and EXPECT no "JUMP BACK IN" header, no "ALL GAMES" header, no search
+   box, and no empty-library message. *Why it matters:* this is the entire bug. It is also the state
+   every brand-new install lands in, so it is the first screen most users will ever see.
+2. **Add one game from that lane, still on the home.** Click `+ Add` on a discovered row. EXPECT the
+   game to move out of the lane and into a now-visible all-games list, with the recent strip and
+   search box appearing alongside it. *Why it matters:* this crosses the boundary the fix is built
+   around — the page goes from "discoveries only" to "registered games" in one click, and every
+   section's visibility has to flip in that single repaint or the home half-renders.
+3. **Nothing installed and nothing registered — the true empty state.** On a machine where 626 finds
+   no installed games (no Steam, or every installed game already registered and then all of them
+   removed), open the home. EXPECT the centered "Your library is empty" panel with the new second
+   line pointing at `+ Game`, and no content sections at all. *Why it matters:* this is the only
+   state the empty panel can now appear in, and it is the state the old copy described incorrectly.
+   Read the sentence and confirm it is true of what is on screen.
+4. **Normal library with registered games (regression check).** Open the home on a machine with
+   several games registered. EXPECT the recent strip, the all-games list, the search box, and a
+   CLOSED discovery expander — exactly as before this change. *Why it matters:* the expander's
+   open/closed state is now bound rather than fixed, and the established home must not start opening
+   a lane the user has been collapsing past for releases.
+5. **Search that matches nothing (regression check).** With games registered, type a term matching no
+   game into the search box. EXPECT the box to stay on screen with an empty list under it. *Why it
+   matters:* the all-games section is deliberately gated on the FULL row set, not the filtered one.
+   Gating on the filtered rows would take the search box away the moment a search matched nothing,
+   leaving no way to undo the search — a worse bug than the one being fixed.

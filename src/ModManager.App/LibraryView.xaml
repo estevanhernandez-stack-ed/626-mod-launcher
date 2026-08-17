@@ -9,12 +9,16 @@
     mc:Ignorable="d">
 
     <Grid Background="{StaticResource ThemeBg}">
-        <!-- Empty state: no games registered yet -->
+        <!-- Empty state: nothing registered AND nothing discovered. Registered-but-nothing-installed
+             is impossible here, and installed-but-nothing-registered is the discovery lane's job —
+             this panel is only for the machine where 626 has genuinely nothing to offer. The old copy
+             promised installed games "below once you add one," which was both false and a description
+             of the bug: the lane was built and then hidden inside the collapsed content scroller. -->
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="420"
                     Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}">
             <TextBlock Text="Your library is empty" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold"
                        HorizontalAlignment="Center" Foreground="{StaticResource ThemeInk}" />
-            <TextBlock Text="Add a game to get started — 626 finds installed games below once you add one, or use + Game up top."
+            <TextBlock Text="No installed games turned up here either — use + Game up top to point 626 at one yourself."
                        TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource ThemeInkSoft}" />
         </StackPanel>
 
@@ -22,8 +26,9 @@
                       VerticalScrollBarVisibility="Auto" Padding="20,16,20,20">
             <StackPanel Spacing="20">
 
-                <!-- Recent strip: big cover cards, most-recently-played first -->
-                <StackPanel Spacing="8">
+                <!-- Recent strip: big cover cards, most-recently-played first. Gone entirely when
+                     nothing is registered — there is nothing to jump back into yet. -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.RegisteredGamesVisibility, Mode=OneWay}">
                     <TextBlock Text="JUMP BACK IN" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80"
                                Foreground="{StaticResource ThemeInkSoft}" />
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
@@ -65,8 +70,9 @@
                     </ScrollViewer>
                 </StackPanel>
 
-                <!-- Search + all-games list -->
-                <StackPanel Spacing="8">
+                <!-- Search + all-games list. Gated on the FULL row set, not the filtered one: a search
+                     that matches nothing must keep its search box, or there is no way back out of it. -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.RegisteredGamesVisibility, Mode=OneWay}">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -179,8 +185,11 @@
                     </ItemsControl>
                 </StackPanel>
 
-                <!-- Discovery lane: installed games not added yet -->
+                <!-- Discovery lane: installed games not added yet. Opens itself when it is the only
+                     section on the page (nothing registered, something discovered) and stays shut
+                     otherwise, so the established home is unchanged. -->
                 <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          IsExpanded="{x:Bind ViewModel.DiscoveryExpanded, Mode=OneWay}"
                           Background="{StaticResource ThemePanel}">
                     <Expander.Header>
                         <TextBlock Text="Installed games not added yet" FontWeight="SemiBold" />
