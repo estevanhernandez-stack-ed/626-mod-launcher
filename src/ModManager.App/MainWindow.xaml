@@ -57,18 +57,18 @@
                 <!-- Game-context title controls — shown only in a game's mod view, hidden on the Library
                      home (MainWindow toggles this in ShowLibrary / HideLibraryForGame). Home returns to
                      the library (which IS the game switcher); the label shows the game you're managing. -->
-                <Button AutomationProperties.Name="Home" x:Name="HomeButton" Click="OnGoHome" Background="Transparent" BorderThickness="0"
+                <Button AutomationProperties.AutomationId="HomeButton" AutomationProperties.Name="Home" x:Name="HomeButton" Click="OnGoHome" Background="Transparent" BorderThickness="0"
                         VerticalAlignment="Center" ToolTipService.ToolTip="Back to your library">
                     <FontIcon Glyph="&#xE80F;" FontSize="{StaticResource RowTitleFontSize}" />
                 </Button>
                 <!-- Game switcher: pick another game without a Home round-trip. Selecting sets ActiveGame
                      (TwoWay) -> OnActiveGameChanged -> reload; the Home button still opens the full library. -->
-                <ComboBox ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
+                <ComboBox AutomationProperties.AutomationId="GamePicker" AutomationProperties.Name="Active game" ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.ActiveGame, Mode=TwoWay}"
                           DisplayMemberPath="Name"
                           VerticalAlignment="Center" Margin="4,0,8,0" MinWidth="180" MaxWidth="320"
                           ToolTipService.ToolTip="Switch game" />
-                <Button ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
+                <Button AutomationProperties.AutomationId="GameOptionsButton" AutomationProperties.Name="Game options" ToolTipService.ToolTip="Game options — find mods, fetch metadata, generate a theme, more"
                         Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <FontIcon Glyph="&#xE712;" FontSize="{StaticResource RowTitleFontSize}" />
@@ -81,13 +81,13 @@
                                  Find mods on Nexus / CurseForge moved out of this menu into the MODS
                                  toolbar section (Find mods dropdown) — they're discovery actions, not
                                  game-options. The handler OnFindMods reads Tag and is reused there. -->
-                            <MenuFlyoutItem Text="Identify my mods…" Click="OnIdentifyMyMods"
+                            <MenuFlyoutItem AutomationProperties.AutomationId="MenuIdentifyMods" Text="Identify my mods…" Click="OnIdentifyMyMods"
                                             ToolTipService.ToolTip="Locate mods already installed that this launcher isn't tracking yet, and name the ones it can't identify. Nothing is moved.">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE721;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Re-detect launchers &amp; frameworks" Click="OnRedetect"
+                            <MenuFlyoutItem AutomationProperties.AutomationId="MenuRedetect" Text="Re-detect launchers &amp; frameworks" Click="OnRedetect"
                                             ToolTipService.ToolTip="Re-check which mod loaders and launch options this game has">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;" />
@@ -95,23 +95,23 @@
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
                             <MenuFlyoutSubItem Text="Advanced">
-                                <MenuFlyoutItem Text="Match against my downloads folder…" Click="OnNexusBackfill"
+                                <MenuFlyoutItem AutomationProperties.AutomationId="MenuNexusBackfill" Text="Match against my downloads folder…" Click="OnNexusBackfill"
                                                 ToolTipService.ToolTip="Match installed mods against a folder of downloaded archives, by file hash." />
-                                <MenuFlyoutItem Text="Refresh details from Nexus" Click="OnEnrichMetadata"
+                                <MenuFlyoutItem AutomationProperties.AutomationId="MenuEnrichMetadata" Text="Refresh details from Nexus" Click="OnEnrichMetadata"
                                                 ToolTipService.ToolTip="Re-fetch descriptions and cover art for mods we've already identified." />
-                                <MenuFlyoutItem Text="Check CurseForge" Command="{x:Bind ViewModel.FetchMetadataCommand}"
+                                <MenuFlyoutItem AutomationProperties.AutomationId="MenuCheckCurseForge" Text="Check CurseForge" Command="{x:Bind ViewModel.FetchMetadataCommand}"
                                                 ToolTipService.ToolTip="Name-search CurseForge for every mod (best-effort)." />
                             </MenuFlyoutSubItem>
                             <!-- 'Generate a theme with AI' moved into the THEME dropdown ("+ New theme…")
                                  so theme-related actions live in one place. -->
                             <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Check setup…" Click="OnCheckSetup"
+                            <MenuFlyoutItem AutomationProperties.AutomationId="MenuCheckSetup" Text="Check setup…" Click="OnCheckSetup"
                                             ToolTipService.ToolTip="See what this game's setup says, next to what the launcher actually found.">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE713;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Remove this game…" Click="OnRemoveGame">
+                            <MenuFlyoutItem AutomationProperties.AutomationId="MenuRemoveGame" Text="Remove this game…" Click="OnRemoveGame">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE74D;" />
                                 </MenuFlyoutItem.Icon>
@@ -123,17 +123,17 @@
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                 <!-- App-level Settings — always visible (home + game view), since it's app-global, not
                      game-scoped. Pulled out of the game "More" flyout so the home can reach it too. -->
-                <Button AutomationProperties.Name="Settings" Click="OnSettings" Background="Transparent" BorderThickness="0"
+                <Button AutomationProperties.AutomationId="SettingsButton" AutomationProperties.Name="Settings" Click="OnSettings" Background="Transparent" BorderThickness="0"
                         ToolTipService.ToolTip="App settings — avatar / theme / window transparency / Nexus account">
                     <FontIcon Glyph="&#xE713;" FontSize="{StaticResource RowTitleFontSize}" />
                 </Button>
-                <Button Content="+ Game" Click="OnAddGame" />
+                <Button AutomationProperties.AutomationId="AddGameButton" Content="+ Game" Click="OnAddGame" />
             </StackPanel>
             <!-- The primary action is a sanctioned glow surface (F-002): the empty Border hosts the
                  composition bloom BEHIND the button — see Bloom.Attach in the code-behind. -->
             <Grid Grid.Column="4" VerticalAlignment="Center">
                 <Border x:Name="LaunchBloomHost" />
-                <SplitButton x:Name="LaunchSplitButton" Visibility="Collapsed"
+                <SplitButton AutomationProperties.AutomationId="LaunchSplitButton" x:Name="LaunchSplitButton" Visibility="Collapsed"
                              Content="{x:Bind ViewModel.LaunchButtonLabel, Mode=OneWay}"
                              Command="{x:Bind ViewModel.LaunchCommand}"
                              ToolTipService.ToolTip="Click to run the target shown — open the menu to switch between modded / vanilla / alt launchers"
@@ -165,15 +165,15 @@
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="MODS" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
-                        <Button Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
+                        <Button AutomationProperties.AutomationId="EnableAllButton" Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
+                        <Button AutomationProperties.AutomationId="DisableAllButton" Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
                         <!-- Browse Nexus is a first-class action, not a menu entry: it is the primary way to
                              discover mods now, so it gets its own accent button (same primary treatment as
                              Apply order / Launch options). It was buried in the Find mods flyout, which is
                              about opening a BROWSER — wrong home, and two clicks deep. Gated on
                              CatalogVisibility so it is absent on Store / no plugin / no domain / disconnected;
                              the handler picks the rich storefront or the older simple dialog by capability. -->
-                        <Button Click="OnBrowseNexusInApp"
+                        <Button AutomationProperties.AutomationId="BrowseNexusButton" Click="OnBrowseNexusInApp"
                                 Visibility="{x:Bind ViewModel.CatalogVisibility, Mode=OneWay}"
                                 Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                 ToolTipService.ToolTip="Browse this game's Nexus mods in the launcher — sorted, filterable, and marked with what you already have. Get opens the mod page to download.">
@@ -182,7 +182,7 @@
                                 <TextBlock Text="Browse Nexus" Foreground="{StaticResource ThemeAccent}" />
                             </StackPanel>
                         </Button>
-                        <DropDownButton ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
+                        <DropDownButton AutomationProperties.AutomationId="FindModsButton" AutomationProperties.Name="Find mods" ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
                             <DropDownButton.Content>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <FontIcon Glyph="&#xE721;" FontSize="{StaticResource BodyFontSize}" />
@@ -191,12 +191,12 @@
                             </DropDownButton.Content>
                             <DropDownButton.Flyout>
                                 <MenuFlyout>
-                                    <MenuFlyoutItem Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
+                                    <MenuFlyoutItem AutomationProperties.AutomationId="MenuFindOnNexus" Text="Find mods on Nexus Mods" Tag="nexus" Click="OnFindMods">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE721;" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
-                                    <MenuFlyoutItem Text="Find mods on CurseForge" Tag="curseforge" Click="OnFindMods">
+                                    <MenuFlyoutItem AutomationProperties.AutomationId="MenuFindOnCurseForge" Text="Find mods on CurseForge" Tag="curseforge" Click="OnFindMods">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE721;" />
                                         </MenuFlyoutItem.Icon>
@@ -204,11 +204,11 @@
                                 </MenuFlyout>
                             </DropDownButton.Flyout>
                         </DropDownButton>
-                        <Button Content="+ Add mods" Click="OnAddMods" />
+                        <Button AutomationProperties.AutomationId="AddModsButton" Content="+ Add mods" Click="OnAddMods" />
                         <!-- TwoWay so a VM-side clear (game switch, no-game reset) empties the BOX
                              too — a one-way box->VM flow left stale text stating a filter that
                              wasn't applied (B4.5 review catch). -->
-                        <TextBox x:Name="ModFilterBox" Width="170" PlaceholderText="Filter mods…"
+                        <TextBox AutomationProperties.AutomationId="ModFilterBox" x:Name="ModFilterBox" Width="170" PlaceholderText="Filter mods…"
                                  Text="{x:Bind ViewModel.ModFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  VerticalAlignment="Center"
                                  ToolTipService.ToolTip="Narrow the list by mod name, author, or file key" />
@@ -227,7 +227,7 @@
                                  (wired in the ctor via Bloom.AttachStateGlow on BackgroundProperty). -->
                             <Grid>
                                 <Border x:Name="LoadoutAllGlowHost" />
-                                <Button x:Name="LoadoutAllSegment" Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
+                                <Button AutomationProperties.AutomationId="LoadoutAllSegment" x:Name="LoadoutAllSegment" Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
                                         BorderThickness="0" CornerRadius="0" MinWidth="44"
                                         Background="{x:Bind ViewModel.LoadoutAllBrush, Mode=OneWay}"
                                         Foreground="{x:Bind ViewModel.LoadoutAllForeground, Mode=OneWay}" />
@@ -235,7 +235,7 @@
                             <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
                             <Grid>
                                 <Border x:Name="LoadoutMpGlowHost" />
-                                <Button x:Name="LoadoutMpSegment" Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
+                                <Button AutomationProperties.AutomationId="LoadoutMpSegment" x:Name="LoadoutMpSegment" Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
                                         BorderThickness="0" CornerRadius="0" MinWidth="44"
                                         Background="{x:Bind ViewModel.LoadoutMpBrush, Mode=OneWay}"
                                         Foreground="{x:Bind ViewModel.LoadoutMpForeground, Mode=OneWay}" />
@@ -243,7 +243,7 @@
                             <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
                             <Grid>
                                 <Border x:Name="LoadoutSpGlowHost" />
-                                <Button x:Name="LoadoutSpSegment" Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
+                                <Button AutomationProperties.AutomationId="LoadoutSpSegment" x:Name="LoadoutSpSegment" Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
                                         BorderThickness="0" CornerRadius="0" MinWidth="44"
                                         Background="{x:Bind ViewModel.LoadoutSpBrush, Mode=OneWay}"
                                         Foreground="{x:Bind ViewModel.LoadoutSpForeground, Mode=OneWay}" />
@@ -257,18 +257,18 @@
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="LIBRARY" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="↻ Refresh" Command="{x:Bind ViewModel.RefreshCommand}"
+                        <Button AutomationProperties.AutomationId="RefreshButton" AutomationProperties.Name="Refresh" Content="↻ Refresh" Command="{x:Bind ViewModel.RefreshCommand}"
                                 ToolTipService.ToolTip="Re-scan the game folder for mod changes, and refresh Nexus stats (endorsements, downloads, update flags) when connected" />
-                        <Button Content="Reorder" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Drag rows to set the load order" />
-                        <Button Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
-                        <Button Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />
+                        <Button AutomationProperties.AutomationId="ReorderButton" Content="Reorder" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Drag rows to set the load order" />
+                        <Button AutomationProperties.AutomationId="ProfilesButton" Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
+                        <Button AutomationProperties.AutomationId="SavesButton" Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />
                     </StackPanel>
                 </StackPanel>
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" Foreground="{StaticResource ThemeAccent}"
                               VerticalAlignment="Bottom" Margin="10,0,0,6" />
                 <!-- Only appears for a long, stoppable run (the Nexus name-search sweep). Quick
                      atomic file ops stay uninterruptible — see MainViewModel.IsCancellable. -->
-                <Button Content="Stop" Click="OnCancelLongOperation"
+                <Button AutomationProperties.AutomationId="StopButton" Content="Stop" Click="OnCancelLongOperation"
                         Visibility="{x:Bind ViewModel.CancelVisibility, Mode=OneWay}"
                         VerticalAlignment="Bottom" Margin="8,0,0,2" Padding="10,2"
                         ToolTipService.ToolTip="Stop searching. Anything already found is kept for review." />
@@ -279,15 +279,15 @@
                         Visibility="{x:Bind ViewModel.LoadOrderVisibility, Mode=OneWay}">
                 <FontIcon Glyph="&#xE8CB;" FontSize="{StaticResource RowTitleFontSize}" Foreground="{StaticResource ThemeAccent}" />
                 <TextBlock Text="Load order — drag rows or type a position." VerticalAlignment="Center" />
-                <Button Content="Apply order" Click="OnApplyOrder" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1" />
-                <Button Content="Cancel" Click="OnCancelOrder" />
+                <Button AutomationProperties.AutomationId="ApplyOrderButton" Content="Apply order" Click="OnApplyOrder" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1" />
+                <Button AutomationProperties.AutomationId="CancelOrderButton" Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
             <!-- Right cluster: VIEW (group-by) · SETTINGS (theme picker) · standalone Nexus indicator.
                  Informational widgets (CoopHint / MpWarning / LaunchHint) sit at the left edge of this
                  stack and don't belong to any labeled section - they're visibility-toggled status banners.
                  Nexus has no section label - its dot color (accent / danger) signals the state. -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Bottom">
-                <Button Click="OnCoopHint" Background="Transparent" BorderThickness="0" VerticalAlignment="Bottom"
+                <Button AutomationProperties.AutomationId="CoopHintButton" AutomationProperties.Name="Co-op hint" Click="OnCoopHint" Background="Transparent" BorderThickness="0" VerticalAlignment="Bottom"
                         ToolTipService.ToolTip="Seamless Co-op is installed but its launcher is missing — co-op needs the full mod"
                         Visibility="{x:Bind ViewModel.CoopHintVisibility, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -326,7 +326,7 @@
                     </StackPanel>
                 </Border>
                 </Grid>
-                <Button Click="OnLaunchOptions" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
+                <Button AutomationProperties.AutomationId="LaunchOptionsButton" AutomationProperties.Name="Launch options" Click="OnLaunchOptions" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                         VerticalAlignment="Bottom" Margin="6,0,0,0"
                         ToolTipService.ToolTip="This game needs a launch option for mods to load"
                         Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
@@ -338,7 +338,7 @@
                 <!-- VIEW: how the mod list is grouped -->
                 <StackPanel Orientation="Vertical" Spacing="2" Margin="10,0,0,0">
                     <TextBlock Text="VIEW" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
-                    <ComboBox MinWidth="120" ToolTipService.ToolTip="Group the mod list"
+                    <ComboBox AutomationProperties.AutomationId="GroupModeCombo" AutomationProperties.Name="Group the mod list" MinWidth="120" ToolTipService.ToolTip="Group the mod list"
                               ItemsSource="{x:Bind ViewModel.GroupModes}"
                               SelectedItem="{x:Bind ViewModel.GroupMode, Mode=TwoWay}" />
                 </StackPanel>
@@ -348,7 +348,7 @@
                      "+ New theme…" item at the bottom of the flyout opens the AI theme generator. -->
                 <StackPanel Orientation="Vertical" Spacing="2">
                     <TextBlock Text="THEME" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
-                    <DropDownButton MinWidth="140" ToolTipService.ToolTip="Pick a theme or generate a new one">
+                    <DropDownButton AutomationProperties.AutomationId="ThemePicker" AutomationProperties.Name="Theme" MinWidth="140" ToolTipService.ToolTip="Pick a theme or generate a new one">
                         <DropDownButton.Content>
                             <TextBlock Text="{x:Bind ViewModel.SelectedThemeName, Mode=OneWay}" />
                         </DropDownButton.Content>
@@ -367,7 +367,7 @@
                      the Browse Nexus action button in the MODS group. Connected it shows the account name
                      (this chip is about WHO you are, not the brand); disconnected it reads "Connect Nexus",
                      and the Browse button is hidden in that state, so the two never collide. -->
-                <Button Click="OnSettings" VerticalAlignment="Bottom"
+                <Button AutomationProperties.AutomationId="StatusBarSettingsButton" AutomationProperties.Name="Settings" Click="OnSettings" VerticalAlignment="Bottom"
                         ToolTipService.ToolTip="{x:Bind ViewModel.NexusChipTooltip, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="{x:Bind ViewModel.NexusStatusBrush, Mode=OneWay}" />
@@ -399,8 +399,8 @@
                         BorderThickness="0,0,0,1" Padding="12,6">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock Text="Some folders here are managed by Vortex." VerticalAlignment="Center" />
-                        <Button Content="Take them over" Click="OnTakeOverGame" />
-                        <Button Content="Dismiss" Click="OnDismissVortexBanner" />
+                        <Button AutomationProperties.AutomationId="VortexTakeOverButton" Content="Take them over" Click="OnTakeOverGame" />
+                        <Button AutomationProperties.AutomationId="VortexDismissButton" Content="Dismiss" Click="OnDismissVortexBanner" />
                     </StackPanel>
                 </Border>
 
@@ -410,7 +410,7 @@
                         BorderThickness="0,0,0,1" Padding="12,6">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock Text="Vortex re-deployed into a folder you took over." VerticalAlignment="Center" />
-                        <Button Content="Take over again" Click="OnTakeOverGame" />
+                        <Button AutomationProperties.AutomationId="VortexTakeOverAgainButton" Content="Take over again" Click="OnTakeOverGame" />
                     </StackPanel>
                 </Border>
 
@@ -424,8 +424,8 @@
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock Text="No mods found here, and the folder this game is set to look in doesn't exist."
                                    VerticalAlignment="Center" TextWrapping="Wrap" />
-                        <Button Content="Check setup" Click="OnCheckSetup" />
-                        <Button Content="Dismiss" Click="OnDismissSetupBanner" />
+                        <Button AutomationProperties.AutomationId="SetupBannerCheckButton" Content="Check setup" Click="OnCheckSetup" />
+                        <Button AutomationProperties.AutomationId="SetupBannerDismissButton" Content="Dismiss" Click="OnDismissSetupBanner" />
                     </StackPanel>
                 </Border>
 
@@ -444,14 +444,14 @@
                                   Foreground="{StaticResource ThemeDanger}" />
                         <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SteamBuildMessage, Mode=OneWay}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Content="Mark as rechecked" VerticalAlignment="Center"
+                        <Button AutomationProperties.AutomationId="MarkRecheckedButton" Grid.Column="2" Content="Mark as rechecked" VerticalAlignment="Center"
                                 Command="{x:Bind ViewModel.DismissBuildWarningCommand}" />
                     </Grid>
                 </Border>
             </StackPanel>
 
             <!-- Mod list -->
-            <ListView x:Name="ModListView" Grid.Row="1" Padding="8,4" KeyDown="OnModListKeyDown"
+            <ListView AutomationProperties.AutomationId="ModListView" AutomationProperties.Name="Mods" x:Name="ModListView" Grid.Row="1" Padding="8,4" KeyDown="OnModListKeyDown"
                   ItemsSource="{x:Bind ViewModel.Mods, Mode=OneWay}" SelectionMode="None"
                   CanReorderItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
                   CanDragItems="{x:Bind ViewModel.IsLoadOrderMode, Mode=OneWay}"
@@ -460,7 +460,8 @@
                   Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ModRowViewModel">
-                    <StackPanel>
+                    <StackPanel AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
+                                AutomationProperties.Name="{x:Bind DisplayName}">
                     <!-- Section header. Right-margin 4 (was 0 on the plain TextBlock) for visual consistency with the ? button column. -->
                     <Grid Visibility="{x:Bind SectionHeaderVisibility, Mode=OneWay}" Margin="4,16,4,4">
                         <Grid.ColumnDefinitions>
@@ -470,7 +471,7 @@
                         <TextBlock Grid.Column="0" Text="{x:Bind SectionHeader}"
                                    FontWeight="SemiBold" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" CharacterSpacing="80"
                                    Foreground="{StaticResource ThemeAccent}" />
-                        <Button Grid.Column="1" Click="OnShowChipGlossary" Padding="6,0" MinWidth="24" MinHeight="24"
+                        <Button AutomationProperties.Name="{x:Bind ChipGlossaryAutomationName}" Grid.Column="1" Click="OnShowChipGlossary" Padding="6,0" MinWidth="24" MinHeight="24"
                                 Background="{StaticResource ThemePanel}" CornerRadius="0" BorderThickness="0"
                                 ToolTipService.ToolTip="What do the chips and icons mean?"
                                 Visibility="{x:Bind FirstSectionHelpVisibility, Mode=OneWay}">
@@ -542,11 +543,11 @@
                             <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{x:Bind CreditVisibility}">
                                 <TextBlock Text="{x:Bind AuthorText}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind AuthorVisibility}" />
-                                <HyperlinkButton Content="{x:Bind ModUrlLabel}" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
+                                <HyperlinkButton AutomationProperties.Name="{x:Bind ModUrlAutomationName}" Content="{x:Bind ModUrlLabel}" NavigateUri="{x:Bind ModUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
                                                  Visibility="{x:Bind ModUrlVisibility}" />
-                                <HyperlinkButton Content="Source" NavigateUri="{x:Bind SourceUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
+                                <HyperlinkButton AutomationProperties.Name="{x:Bind SourceAutomationName}" Content="Source" NavigateUri="{x:Bind SourceUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
                                                  Visibility="{x:Bind SourceVisibility}" />
-                                <HyperlinkButton Content="Donate" NavigateUri="{x:Bind DonateUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
+                                <HyperlinkButton AutomationProperties.Name="{x:Bind DonateAutomationName}" Content="Donate" NavigateUri="{x:Bind DonateUri}" Padding="6,0" FontSize="{StaticResource BodyFontSize}"
                                                  Foreground="{StaticResource ThemeDanger}" Visibility="{x:Bind DonateVisibility}" />
                                 <TextBlock Text="{x:Bind DownloadsText}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind DownloadsVisibility}" />
@@ -577,7 +578,7 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <HyperlinkButton NavigateUri="{x:Bind MissingFrameworkUri, Mode=OneWay}"
+                            <HyperlinkButton AutomationProperties.Name="{x:Bind MissingFrameworkAutomationName}" NavigateUri="{x:Bind MissingFrameworkUri, Mode=OneWay}"
                                              Padding="0" BorderThickness="0" Background="Transparent"
                                              Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
                                              ToolTipService.ToolTip="{x:Bind MissingFrameworkNote, Mode=OneWay}">
@@ -721,7 +722,7 @@
             </Grid.ColumnDefinitions>
             <!-- Open-in-Explorer affordance — a quiet folder glyph that fires the game-root path
                  through the shell. Hidden when no game is active so the empty footer stays clean. -->
-            <Button Grid.Column="0" AutomationProperties.Name="Open game folder" Click="OnOpenGameFolder"
+            <Button AutomationProperties.AutomationId="OpenGameFolderButton" Grid.Column="0" AutomationProperties.Name="Open game folder" Click="OnOpenGameFolder"
                     Background="Transparent" BorderThickness="0" Padding="0,0,8,0" MinWidth="0"
                     ToolTipService.ToolTip="Open game folder in Explorer"
                     Visibility="{x:Bind ViewModel.GameVisibility, Mode=OneWay}">
