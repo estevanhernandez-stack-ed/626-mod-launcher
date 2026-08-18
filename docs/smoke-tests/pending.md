@@ -64,9 +64,20 @@ That splits in two, and only half is expected behaviour.
 
 - **Palworld is `medium`.** `BanRiskRules.ShouldGateEnable` gates on `high` only; medium and low are
   banner-only. No prompt is correct here.
-- **Elden Ring is `high`** (remote feed, Steam app id 1245620), has 11 mods, all enabled — and
-  **`ban-risk-acks.json` does not exist anywhere on disk.** The gate has never been acknowledged for
-  any game.
+- **Elden Ring is `high`** (remote feed, Steam app id 1245620) and has 11 mods.
+
+**CORRECTION 2026-08-18: `ban-risk-acks.json` DOES exist** —
+`<steamRoot>/_626mods/elden-ring/ban-risk-acks.json`, contents `["elden-ring"]`, written
+2026-08-17 15:54. The original search looked in `%LOCALAPPDATA%\ModManagerBuilder`; per-game state
+lives in the per-game data dir under the Steam root (`Scanner.DataDirForGame`). Elden Ring HAS been
+acknowledged.
+
+**Which leaves something unexplained and worth a repro.** `BanRiskAckStore.IsAcked` returns **true**
+for elden-ring, so `ShouldGateEnable(High, acked: true)` is false and the gate should not fire. It
+fired anyway during the UIA test at 2026-08-18 00:42 — nine hours after the ack was written — with
+the full dialog captured in `artifacts/banrisk/3-gate-or-not.png`. Either the ack does not suppress
+the gate (a real defect: "Don't warn me again for this game" not sticking) or the app read a
+different data dir at that moment. **Not yet reproduced; do not file a fix until it is.**
 
 Most likely benign: the gate ships from 2026-06-15 and those mods were enabled in May, and it only
 fires on *enable* — already-on mods never re-trigger it. That is an explanation, not a verification.
@@ -104,10 +115,17 @@ Helldivers 2, Marvel Rivals, Phasmophobia.
 (which now needs a different fixture).
 
 **Vortex takeover has a fixture now.** Six Vortex-staged games on the main box:
-`monsterhunterwilds` (16 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
-`marvelsspiderman2` (2), `doomthedarkages` (1). **Monster Hunter Wilds is the one to use** — real
-volume and not in 626 yet, so it exercises takeover from scratch. No `taken-over.json` exists
-anywhere, confirming this path has never run. Windrose's `R5ortex.deployment.json` is a stale
+`monsterhunterwilds` (21 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
+`marvelsspiderman2` (2), `doomthedarkages` (1).
+
+**CORRECTION 2026-08-18, twice over.** Monster Hunter Wilds was **not installed** when recommended —
+that folder held Fluffy Mod Manager and there was no Steam appmanifest; the recommendation came from
+a staging-folder count without checking the game existed. Este has since reinstalled it.
+
+And **`taken-over.json` DOES exist** — `<steamRoot>/_626mods/windrose/taken-over.json`, written
+2026-06-03, claiming the UE4SS Mods folder. **Vortex takeover HAS run.** The original claim searched
+`%LOCALAPPDATA%` rather than the per-game data dir. The case needs re-scoping: what is untested is
+takeover on a game where 626 has no prior state, not takeover at all. Windrose's `R5ortex.deployment.json` is a stale
 leftover, not a live conflict: it names one mod (`BonfireRadius_2x`) that is no longer on disk.
 
 **A harness caveat that shapes what a dev build can smoke.** The Debug build cannot load the Nexus
