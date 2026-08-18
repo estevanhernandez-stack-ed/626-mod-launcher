@@ -158,8 +158,10 @@ byte-identical: the change is additive, not a behaviour swap.
 **It heals itself.** Every mod installed through 626 moves from inferred to tracked. Nothing needs
 migrating and the guessing shrinks on its own.
 
-**The limit stays visible.** For a Fluffy-placed `_CatLib` we can show it and say we do not know who
-depends on it. That is a real limit and should read as one — not be papered over with a confident
+**The limit stays visible — where there still is one.** Reading `require` shrank it: for a Lua library
+we can name the dependents outright. Where a format declares nothing, the row says what it holds and
+that 626 did not install it, and stops. That is a real limit and should read as one — not be papered
+over with a confident
 guess, which is how the flat install would have "succeeded".
 
 ## Decisions taken
