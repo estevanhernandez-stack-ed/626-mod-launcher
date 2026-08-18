@@ -339,6 +339,94 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     "$($rows.Count) update rows, no 'unknown', no bare arrow pairs"
 }
 
+Write-Host ''
+Write-Host '  -- intake + uninstall, end to end --' -ForegroundColor White
+
+# The drag-and-drop gesture is the one thing UIA cannot synthesise into a WinUI window. Everything
+# BEHIND it is reachable: a drop and the + Add mods picker both land in AddModsAsync(paths), so
+# driving the picker exercises the ban-risk gate, classification, validate-then-extract and the
+# provenance write - the whole chain minus the mouse. Say that plainly rather than claim drag-drop
+# coverage we do not have.
+#
+# Target is Windrose deliberately: folder lane (so uninstall exists), ban risk None (so the gate
+# does not block an unattended run), and a real library rather than a fixture.
+$probe = Join-Path $repo 'artifacts\smoke\SmokePicker626.pak'
+New-Item -ItemType Directory -Force -Path (Split-Path $probe) | Out-Null
+Set-Content -Path $probe -Value 'SMOKE626 probe payload, inert' -Encoding ascii
+$wrData = 'C:\Program Files (x86)\Steam\_626mods\windrose'
+$wrMods = 'C:\Program Files (x86)\Steam\steamapps\common\Windrose\R5\Content\Paks\~mods'
+
+# Start from a state where the probe is NOT installed. A leftover from a previous run sends intake
+# down the REPLACEMENT path instead, which raises 'Update installed mods?' - and then the next case
+# reports 'no confirm dialog' while a perfectly good modal sits on screen. That is the
+# check-for-ANY-modal trap in .claude/rules/automation-ids.md, walked into by the person who wrote
+# the harness that documents it.
+Remove-Item (Join-Path $wrMods 'SmokePicker626.pak') -Force -EA SilentlyContinue
+Remove-Item (Join-Path $wrData 'installs\SmokePicker626.json') -Force -EA SilentlyContinue
+
+Case 'intake-via-picker' 'A25/A26 - intake records what it placed' {
+    $t = Get-Tree $root
+    if (-not (Find-ById $t 'AddModsButton')) {
+        $home = Find-ById $t 'HomeButton'
+        if ($home) { Invoke-Node $home; Wait-Idle 2500; $t = Get-Tree $root }
+    }
+    # Explicitly Windrose - not whichever game the earlier navigation happened to land on.
+    $row = Find-ById (Get-Tree $root) 'GameRow.windrose'
+    if ($row) { Invoke-Node $row; Wait-Idle 4000 }
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+
+    $before = @(Find-AllByIdPrefix $t 'ModRow.').Count
+    Invoke-Node (Find-ById $t 'AddModsButton')
+    $dlg = Get-FileDialog
+    Assert-True ($null -ne $dlg) "the + Add mods picker never appeared"
+    Assert-True (Submit-FileDialog -Dialog $dlg -Paths @($probe)) "the picker did not close"
+    Wait-Idle 6000
+    # Nothing unexpected may be left on screen - a replacement prompt, a framework nudge, anything.
+    Assert-NoModal $root
+
+    $t2 = Get-Tree $root
+    $row = Find-ById $t2 'ModRow.SmokePicker626'
+    Assert-True ($null -ne $row) "no ModRow.SmokePicker626 after installing through the picker"
+
+    # The record, not the row. A25 was invisible for exactly as long as nobody looked here.
+    $manifest = Join-Path $wrData 'installs\SmokePicker626.json'
+    Assert-True (Test-Path $manifest) "installed but wrote no install manifest (A25)"
+    $claimed = (Get-Content $manifest -Raw | ConvertFrom-Json).files
+    Assert-True ($claimed -contains 'SmokePicker626.pak') "the manifest does not claim the file it placed"
+    "installed through the picker, row realised, manifest claims $($claimed.Count) file(s)"
+}
+
+Case 'uninstall-confirm-and-forget' 'A26 - the record goes with the file' {
+    Assert-NoModal $root
+    $t = Get-Tree $root
+    # Scoped to the ROW, and matched on the pattern rather than the exact string: the row prettifies
+    # its key for display, so 'SmokePicker626' surfaces as 'Smoke Picker 626' and an exact-name lookup
+    # for the key finds nothing. The row id is the stable handle; the button is a child of it.
+    $row = Find-ById $t 'ModRow.SmokePicker626'
+    Assert-True ($null -ne $row) "the probe row is not in the list to uninstall"
+    $btn = @(Get-Tree $row | Where-Object { try { $_.Current.Name -like 'Uninstall *' } catch { $false } })[0]
+    Assert-True ($null -ne $btn) "no uninstall affordance on the probe row"
+    Invoke-Node $btn
+
+    # A destructive confirm is a DECISION, and driving it is the point: the dialog is where the
+    # launcher states what it is about to do, and an assertion beats a screenshot nobody reads.
+    $dt = Get-ContentDialog $root 'Uninstall mod?' -ButtonName 'Uninstall'
+    Assert-True ($null -ne $dt) "no confirm dialog before a permanent delete"
+    # The copy is part of the contract: a permanent delete has to say so. Assert it, do not screenshot it.
+    $body = @(Get-Tree $dt | ForEach-Object { try { $_.Current.Name } catch { '' } })
+    Assert-True (@($body | Where-Object { $_ -like "*can't be undone*" }).Count -gt 0) "the confirm never says the delete is permanent"
+    $confirm = @(Get-Tree $dt | Where-Object { try { $_.Current.Name -eq 'Uninstall' } catch { $false } })[0]
+    Assert-True ($null -ne $confirm) "the confirm dialog has no Uninstall button"
+    Invoke-Node $confirm; Wait-Idle 5000
+
+    $t2 = Get-Tree $root
+    Assert-True ($null -eq (Find-ById $t2 'ModRow.SmokePicker626')) "the row survived its uninstall"
+    $gone = -not (Test-Path (Join-Path $wrData 'installs\SmokePicker626.json'))
+    Assert-True $gone "the install record outlived the file it claimed (A26)"
+    "uninstalled through its confirm dialog; row, file and record all gone"
+}
+
 # ---------------------------------------------------------------- what a harness cannot do
 Write-Host ''
 Write-Host '  -- cases this harness cannot run --' -ForegroundColor White
