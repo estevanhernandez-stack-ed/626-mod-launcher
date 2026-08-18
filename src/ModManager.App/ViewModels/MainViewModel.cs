@@ -153,10 +153,27 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Bound to the banner's Visibility — true when at least one framework is missing.</summary>
     public bool HasMissingFrameworks => MissingFrameworks.Count > 0;
 
-    /// <summary>One-line summary for the banner ("Missing: UE4SS"). Multiple frameworks comma-joined.</summary>
-    public string MissingFrameworksSummary => MissingFrameworks.Count == 0
-        ? ""
-        : "Missing: " + string.Join(", ", MissingFrameworks.Select(d => d.Name));
+    /// <summary>What the probe found for each of the active game's frameworks, missing ones included.
+    /// Kept beside <see cref="MissingFrameworks"/> rather than replacing it: the row chips key off the
+    /// dep, and this only feeds the sentence.</summary>
+    private IReadOnlyList<FrameworkPresence> _presences = Array.Empty<FrameworkPresence>();
+
+    /// <summary>One-line summary for the banner. Names the missing HALF when a framework is half
+    /// installed — "UE4SS — loader present, runtime missing" — because "Missing: UE4SS" is what a user
+    /// reads right after seeing the runtime sitting on disk, and it sends them to reinstall something
+    /// they already have. A framework missing outright is still named plainly; there is nothing to
+    /// qualify (A13).</summary>
+    public string MissingFrameworksSummary
+    {
+        get
+        {
+            if (MissingFrameworks.Count == 0) return "";
+            var byName = _presences.Where(p => !p.IsPresent).ToDictionary(p => p.Dep.Name, StringComparer.Ordinal);
+            var parts = MissingFrameworks.Select(d =>
+                byName.TryGetValue(d.Name, out var presence) ? presence.Describe() : d.Name);
+            return "Missing: " + string.Join(", ", parts);
+        }
+    }
 
     /// <summary>Tools installed for the active game. Refreshed at every <see cref="ReloadModsAsync"/>.</summary>
     public ObservableCollection<ToolEntry> Tools { get; } = new();
@@ -592,6 +609,7 @@ public sealed partial class MainViewModel : ObservableObject
             GameRootText = "";
             StatusText = "No game registered. Add one with + Game.";
             MissingFrameworks.Clear();
+            _presences = Array.Empty<FrameworkPresence>();
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
             Tools.Clear();
@@ -662,8 +680,11 @@ public sealed partial class MainViewModel : ObservableObject
             // MissingFrameworks at row-construction time. The notify pings further down keep the
             // banner binding fresh; this just lifts the source of truth to where rows see it.
             MissingFrameworks.Clear();
-            foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
-                MissingFrameworks.Add(dep);
+            // One probe, both readings: the missing list the chips key off, and the per-component
+            // detail the banner sentence needs. Two calls would be two walks of the same disk.
+            _presences = FrameworkDeps.Check(_ctx);
+            foreach (var presence in _presences.Where(p => !p.IsPresent))
+                MissingFrameworks.Add(presence.Dep);
             // Load direct-inject mod config-path overrides once. The resolver consults these to
             // pick a user-chosen path over the catalog default when set. Empty overrides for the
             // common case (no per-user customization) — no disk hit if file missing.

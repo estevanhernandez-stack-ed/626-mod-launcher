@@ -80,11 +80,15 @@ value. A "this game changed underneath you, recheck" banner is a separate surfac
 triggering question, and folding it in here would double the wave. **Recorded, not scheduled.**
 
 **Tests.** A two-component framework with only the runtime reads missing; with only the loader reads
-missing; with both reads present. A single-component entry behaves exactly as today (the OR cases are
-already covered by `FrameworkDepsCheckPresentTests` — those tests must pass unmodified, which is the
-real proof the change is additive). The catalog test asserts every entry is either evidenced-multi or
-documented-single, so a new entry cannot quietly inherit OR by default. Plus the named-component
-string the banner shows.
+missing; with both reads present. A single-component entry behaves exactly as today.
+
+**Correction, found while building this.** The line above used to promise that every existing
+`FrameworkDepsCheckPresentTests` case would pass unmodified, and called that the proof the change was
+additive. One of them did not, and could not: `Ue_pak_with_ue4ss_dll_under_project_subfolder_is_present`
+wrote the runtime alone and asserted UE4SS was **not** missing. That assertion is the bug, written
+down — a runtime with no proxy beside it is inert, and every ue4ss-lane mod is dead. It was flipped,
+renamed, and carries a comment saying what it used to claim and why that was wrong. The other fourteen
+passed untouched.
 
 ---
 
