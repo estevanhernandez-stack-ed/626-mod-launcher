@@ -577,6 +577,19 @@ public static class Scanner
                 DeletePath(Path.Combine(loc.Abs, f));
                 foreach (var mp in loc.Mirrors) DeletePath(Path.Combine(mp, f));
             }
+
+            // Forget the install records that claimed those files. The write site is careful never to
+            // record a claim on a file that is not on disk, for the reason it states there: the claim
+            // is what an uninstall acts on, and a claim on a missing file is how a cleanup deletes the
+            // wrong thing later. Deleting the files without forgetting the claim breaks that invariant
+            // from the other end (A26).
+            //
+            // AFTER the deletes, deliberately. If a delete throws, the record survives and still
+            // describes what is on disk — the launcher never ends up believing it owns nothing while
+            // the files are still there.
+            foreach (var f in m.Files)
+                foreach (var manifest in ModInstallRegistry.ClaimsOn(c.DataDir, f))
+                    ModInstallRegistry.Remove(c.DataDir, manifest.InstallId);
         }
         var held = Path.Combine(c.DisabledRoot, name);
         if (Directory.Exists(held)) DeleteDir(held);
