@@ -97,7 +97,24 @@ public sealed class LauncherService
         reg = Registry.UpsertGame(reg, entry);
         reg.ActiveGameId = entry.Id; // a newly added game becomes active
         SaveRegistry(reg);
+        SeedModFolder(entry);
         return entry; // save folder is detected (Ludusavi-first) by the caller, async
+    }
+
+    /// <summary>Create the declared mod folder when the manifest named it and it is not there yet
+    /// (A20). The decision is Core's and pure (<see cref="ModFolderSeed.PathToCreate"/>) - only the
+    /// write lives here, because a read path must never create anything and Scanner is a read path.
+    ///
+    /// <para>Best-effort by design: a game folder we cannot write to is a real situation (Program
+    /// Files without elevation, a read-only mount), and the launcher already handles an absent mod
+    /// folder gracefully. Failing the ADD over it would turn a cosmetic improvement into a blocker.</para></summary>
+    private static void SeedModFolder(GameEntry entry)
+    {
+        var path = ModFolderSeed.PathToCreate(entry);
+        if (path is null) return;
+        try { Directory.CreateDirectory(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     /// <summary>Re-run mod-location + launcher detection for an existing game (e.g. after Mod
