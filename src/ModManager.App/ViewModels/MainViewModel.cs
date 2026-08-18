@@ -3082,7 +3082,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task<IReadOnlyList<string>> DiscoveryWriteKeysAsync(AdoptionProposal p, GameContext ctx)
     {
-        if (p.Evidence == AdoptionEvidence.Md5 && p.Candidate.Kind == DiscoveryKind.Archive)
+        // EVERY archive resolves from its CONTENTS, not only an md5-identified one. An archive's
+        // metadata belongs to the mods it installs; its own download filename is a name no installed
+        // mod has. Restricting this to the md5 tier is what made A14 miss the case it was filed about:
+        // on Monster Hunter Wilds all thirteen downloads are name-matched or unidentified, so every one
+        // of them resolved to a stem key, read as "will write something", and kept the old copy and the
+        // inflated count (A29).
+        if (p.Candidate.Kind == DiscoveryKind.Archive)
         {
             var abs = Path.Combine(ctx.GameRoot, p.Candidate.RelativePath);
             return await Task.Run(() => Scanner.ArchiveModKeysFor(abs, ctx));
