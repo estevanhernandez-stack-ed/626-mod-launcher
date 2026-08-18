@@ -1247,6 +1247,28 @@ public static class Scanner
                     : Path.GetRelativePath(Path.GetFullPath(c.GameRoot), Path.GetFullPath(primaryLoc.Abs));
 
                 using var zip = Archive.Open(p);
+
+                // SMAPI mods are FOLDERS holding a manifest.json, so the extension test cannot see them
+                // and the empty->["pak"] substitution made a stray .pak inside the archive land flat in
+                // Mods/ (A9). Recognise the shape and place the folder that holds the marker.
+                //
+                // Engine AND marker, never the marker alone: a pak mod that happens to ship a
+                // manifest.json is not a SMAPI mod, and claiming it would be the same over-reach the
+                // discovery sweep refuses when it declines to call a file a mod for sitting in a folder.
+                if (c.Game.Engine == "smapi" && SmapiIntake.LooksLikeSmapi(zip.EntryNames))
+                {
+                    var placed = SmapiIntake.Plan(zip.EntryNames, Path.GetFileNameWithoutExtension(p));
+                    foreach (var (entryName, rel) in placed)
+                    {
+                        var abs = DestForRel(rel, c);
+                        var incoming = $"{p}!{entryName}";
+                        var name = Path.GetFileName(rel);
+                        if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, incoming));
+                        else if (!add.Any(a => a.RelPath == rel)) add.Add(new IntakeItem(name, rel, incoming));
+                    }
+                    continue;
+                }
+
                 foreach (var entryName in zip.EntryNames) // file entries only (dirs excluded by the seam)
                 {
                     if (Intake.ClassifyDrop(entryName, c.Exts) != "mod") continue;
