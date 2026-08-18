@@ -3279,10 +3279,32 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusChipTooltip));
     }
 
-    /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
+    /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).
+    ///
+    /// <para><b>The ban-risk gate runs here, once for the whole batch.</b> Every path that turns a mod ON
+    /// consulted <see cref="GateBanRiskEnableAsync"/> — the row toggle, enable-all, the loadout apply,
+    /// the variant chips — and intake did not, while <c>Scanner.ExecuteIntake</c> copies into the live
+    /// mod folder. A dropped zip therefore installed ENABLED on a high-risk game with no warning and no
+    /// acknowledgment (A22). Drag-and-drop is the first thing a new user reaches for, so this is the
+    /// user with no mods yet on a game the app itself flags, taking the most obvious action available.</para>
+    ///
+    /// <para>Once per BATCH, not per file: a ten-file drop is one decision. And it sits above every
+    /// branch below, so framework, tool, UE4SS-Lua and save-mod installs are covered too — a loader
+    /// going live is the thing anti-cheat actually sees.</para>
+    ///
+    /// <para>Refusing here writes nothing at all, which is the validate-then-extract order anyway: the
+    /// gate is above the first branch that touches disk.</para></summary>
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
+
+        if (!await GateBanRiskEnableAsync())
+        {
+            // The user performed a gesture and it did nothing — say so. Silence after a drop reads
+            // as a bug, and the gate is a decision the user just made, not a failure.
+            StatusText = "Nothing was installed.";
+            return;
+        }
 
         // Pre-check 0 (engine-agnostic): framework intake. KnownFramework.Classify scopes by
         // engine + SteamAppId internally, so this is a no-op for games whose engine doesn't
