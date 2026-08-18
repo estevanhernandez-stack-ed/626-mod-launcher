@@ -19,6 +19,105 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ---
 
+
+## Triage pass — 2026-08-17
+
+First run of `scripts/smoke-run.ps1` plus Este walking the cases it cannot reach. **20 verified by
+harness, 12 needed a person; of those twelve Este settled five.** Full run evidence:
+`artifacts/smoke/results.json` (gitignored — re-run to regenerate).
+
+**Verified by Este:**
+
+- **Real Elden Ring saves work** — the BND4 walk (PR #49) is exercised in the field.
+- **WSE tool zips install by drop** — the Windrose tools. Covers the tool-intake half of the Mod
+  dashboard section.
+- **Steam build-update warning fires** — he gets the "this game was updated, check your mods" note in
+  normal use. Covers the Steam build-update (Phase 2) section.
+
+**Unblocked, and now schedulable:**
+
+- **UE4SS-missing dependency chips (PR #51)** and **framework intake (ELM)** were both marked BLOCKED
+  on remediation Task 4. Task 4 shipped; the banners were never removed. Both are smokeable — see the
+  corrected banners in each section.
+- **Safe Clear round-trip + the UE4SS test** were planned together on the clean box and were what Este
+  was starting when the add / repaint bug stopped him. **That bug shipped fixed in v0.18.1**, so the
+  session that got blocked can now run.
+
+**Second pass with Este, same day — five more settled:**
+
+- **Drop-zip framework install works** ("it does go to where it needs to go, so far").
+- **UE4SS-missing chips work** — "when it's not in the right spot, it definitely shows red." One
+  loose end he raised and could not resolve from memory: the mods kept working while the chip was
+  red, which would mean a UE4SS lived somewhere else. Worth a look — a red chip over a working setup
+  is the false positive the Task 4 "MAY NEED" work exists to avoid.
+- **Vanilla vs modded launch works** — launching Elden Ring the regular way does not bring Seamless
+  Co-op in.
+- **Nexus OAuth works**, and **download sends you to the mod page**. (Endorse is a separate action and
+  was not named — still unconfirmed.)
+- **Safe Clear refusal was a misread on my part, not his.** The case is not "cancelling the dialog
+  works" — it is that Safe Clear must REFUSE to start while the game is running. Still open.
+
+### The ban-risk gate has never fired, and there is no evidence it ever has
+
+Este: *"the ban risk shows up. I've seen it, I just haven't seen it pop up when I start the game."*
+That splits in two, and only half is expected behaviour.
+
+- **Palworld is `medium`.** `BanRiskRules.ShouldGateEnable` gates on `high` only; medium and low are
+  banner-only. No prompt is correct here.
+- **Elden Ring is `high`** (remote feed, Steam app id 1245620), has 11 mods, all enabled — and
+  **`ban-risk-acks.json` does not exist anywhere on disk.** The gate has never been acknowledged for
+  any game.
+
+Most likely benign: the gate ships from 2026-06-15 and those mods were enabled in May, and it only
+fires on *enable* — already-on mods never re-trigger it. That is an explanation, not a verification.
+Nobody has watched this gate work, and it is the one law in the repo that must not fail quietly.
+
+**Test it without touching Elden Ring.** `monster-hunter-wilds` is `high` risk in the feed AND is the
+Vortex-takeover fixture (16 staged mods, not yet in 626). Adding it and enabling one mod should raise
+the gate. One action covers both open cases — and if the prompt does not appear, that is the finding.
+
+### Ban-risk enable gate — VERIFIED 2026-08-17, by an agent that could not pass it
+
+Driven through UIA against Elden Ring (`high` risk, feed appid 1245620). Disabling did not gate,
+which is correct. Re-enabling raised the dialog: *"This game uses anti-cheat. Enabling mods for
+online play can get your account banned. Disabling is always reversible."* Escape cancelled it, the
+enable was refused, the mod stayed off, and **`ban-risk-acks.json` was never written** — the agent
+reached the gate and did not satisfy it, which is the law working as designed.
+
+The same dialog also verifies **feat/ban-safe-loaders Task 4**: it surfaces *Get Mod Engine 2* and
+*Launch Seamless Co-op* under "The safe way to mod this game", with `Cancel` as the primary button
+and `Enable anyway` secondary. Evidence in `artifacts/banrisk/`.
+
+### UE4SS dependency chips — the test found a FALSE GREEN instead
+
+Este's recollection was red-chip-but-mods-worked. The live test found the opposite and worse: with
+`UE4SS.dll` moved aside and `dwmapi.dll` left in place, 626 reported `27 of 27 enabled` with zero
+chips while the game threw *"Failed to load UE4SS.dll"* and `UE4SS.log` was never written. Filed as
+**A13**. There is no second UE4SS.dll on the machine — that hypothesis is closed.
+
+**Monster Hunter Wilds is NOT installed**, correcting an earlier note here: that folder is Fluffy Mod
+Manager (`Modmanager.exe`, no game exe) and no `appmanifest_2246340.acf` exists. Vortex is staging 21
+mods for a game that is not on the box. High-risk games that ARE installed: Elden Ring (in 626),
+Helldivers 2, Marvel Rivals, Phasmophobia.
+
+**Still genuinely open:** Safe Clear refusal while the game runs, Nexus endorse, and Vortex takeover
+(which now needs a different fixture).
+
+**Vortex takeover has a fixture now.** Six Vortex-staged games on the main box:
+`monsterhunterwilds` (16 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
+`marvelsspiderman2` (2), `doomthedarkages` (1). **Monster Hunter Wilds is the one to use** — real
+volume and not in 626 yet, so it exercises takeover from scratch. No `taken-over.json` exists
+anywhere, confirming this path has never run. Windrose's `R5ortex.deployment.json` is a stale
+leftover, not a live conflict: it names one mod (`BonfireRadius_2x`) that is no longer on disk.
+
+**A harness caveat that shapes what a dev build can smoke.** The Debug build cannot load the Nexus
+plugin — `app-errors.log` shows a repeating `FileNotFoundException` for
+`ModManager.Plugins.Abstractions, Version=0.14.0.0`. So every Nexus-dependent case is unrunnable on a
+local Debug build regardless of fixtures, and the updates view reads 0 rows on it while the home badge
+says 7. Smoke Nexus surfaces against a release or Store build.
+
+---
+
 ## PR #49 — BND4 file-table walk (merged 2026-05-26)
 
 > **STATUS — SMOKED 2026-05-27 (per Este).** ER save editing exercised on real saves and working; steps 1-3 considered cleared. Confirm step 4 (edit -> in-game round-trip) if not already run.
@@ -37,7 +136,9 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ## PR #51 — Mod-dependency detection (merged 2026-05-26)
 
-> **STATUS — BLOCKED on remediation Task 4 (still OPEN as of 2026-05-29).** The "NEEDS Elden Mod Loader" chip framing is changing to conditional: a loader is not required when a DLL proxy / Seamless / ReShade is already present. Task 4 (`SelfProvidesProxy` + "MAY NEED" framing) is not yet built — `FrameworkDeps.cs:92` still asserts "Most ER mods need this." Smoking now would re-assert the wrong thing. Re-smoke after Task 4 ships.
+> **UNBLOCKED 2026-08-17.** The Task 4 blocker below cleared and nobody removed the banner. `SelfProvidesProxy` is in `KnownDirectInjectMod`, the `MAY NEED` framing is in `ModRowViewModel.cs:306-309`, and `FrameworkDeps` now carries the conditional note ("Only needed if you run a direct-inject mod that doesn't bring its own proxy; Seamless Co-op and ReShade do"). This section is smokeable. Este plans the UE4SS-missing run on the clean box.
+>
+> *Original banner, kept for the record:* BLOCKED on remediation Task 4 (still OPEN as of 2026-05-29) — smoking then would have re-asserted the wrong thing.
 
 **Shipped:** Every mod row in a framework-gated game (UE4SS, BepInEx, SMAPI, ME2, DLL proxy, Forge/Fabric) gets a red `NEEDS X` chip with a clickable get-link when the framework isn't installed. Post-drop status line names the missing framework and host (`". Heads up: this mod needs UE4SS — get it at github.com."`). Pure-core probe covered by 13 unit tests; App wiring verified by build only.
 
@@ -79,7 +180,9 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 
 ## PR #?? — Framework intake (Elden Mod Loader) (merged YYYY-MM-DD)
 
-> **STATUS — BLOCKED on remediation Task 4 (still OPEN as of 2026-05-29).** Live ER session showed the "required Elden Mod Loader" framing drove an unnecessary install (red tag, degraded setup) — ELM is not required when a proxy is already present. Task 4 (conditional framing) is not yet built. The install/uninstall mechanics (steps 2-3, 5-6) are independent of the framing and could be smoked now; the chip-text steps (1, 4) wait for Task 4.
+> **UNBLOCKED 2026-08-17.** Task 4 shipped; see the note on PR #51 above. The chip-text steps (1, 4) that were waiting on it are now smokeable along with the mechanics.
+>
+> *Original banner, kept for the record:* BLOCKED on remediation Task 4 — the "required Elden Mod Loader" framing drove an unnecessary install in a live ER session.
 
 **Shipped:** Per [`docs/superpowers/specs/2026-05-27-framework-intake-design.md`](../superpowers/specs/2026-05-27-framework-intake-design.md):
 

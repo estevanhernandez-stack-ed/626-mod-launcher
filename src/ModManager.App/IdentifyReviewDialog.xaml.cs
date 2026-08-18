@@ -127,6 +127,11 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
 /// </summary>
 public sealed class IdentifyReviewRow
 {
+    // Keyed on ModKey, not Headline: the headline is the proposed match and changes as the
+    // identify pass revises itself, which is the one thing a review row must not be pinned to.
+    public string RowAutomationId => $"IdentifyRow.{ModKey}";
+    public string ApproveAutomationName => "Approve the match for " + Headline;
+
     public AdoptionProposal? Adoption { get; init; }   // set for "new to your list" rows
     public string ModKey { get; init; } = "";          // set for "now identified" rows
     public SourceSearchHit? Hit { get; init; }         // set for "now identified" rows

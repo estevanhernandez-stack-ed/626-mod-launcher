@@ -48,3 +48,6 @@ CLAUDE.md
 
 # vibe-glow campaign evidence (screenshots) — findings registers are committed, evidence is not
 docs/ui-evidence/
+
+# Smoke-harness output — screenshots + results.json are per-run evidence, not source.
+artifacts/smoke/

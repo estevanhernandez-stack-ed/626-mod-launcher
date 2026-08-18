@@ -24,7 +24,7 @@
 
     <StackPanel Spacing="12" Width="440">
         <TextBlock x:Name="IntroText" TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
-        <TextBox x:Name="UrlBox" Header="Mod page URL"
+        <TextBox AutomationProperties.AutomationId="ManualMatchUrlBox" x:Name="UrlBox" Header="Mod page URL"
                  PlaceholderText="https://www.nexusmods.com/eldenring/mods/510 or https://www.curseforge.com/.../mods/..." />
         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}"
                    Text="Paste the URL from the mod's Nexus or CurseForge page. We'll pull the title, author, downloads, and icon. The match locks — future rescans won't override it." />

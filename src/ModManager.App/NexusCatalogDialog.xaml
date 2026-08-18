@@ -24,9 +24,9 @@
              server-side by the plugin, so this dialog does NO client-side filtering — it just
              renders what SearchCatalogAsync returns. -->
         <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBox x:Name="QueryBox" PlaceholderText="Search mods…" Width="380"
+            <TextBox AutomationProperties.AutomationId="CatalogQueryBox" AutomationProperties.Name="Search mods" x:Name="QueryBox" PlaceholderText="Search mods…" Width="380"
                      KeyDown="OnQueryKeyDown" />
-            <Button x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
+            <Button AutomationProperties.AutomationId="CatalogSearchButton" x:Name="SearchButton" Content="Search" Click="OnSearchClick" />
         </StackPanel>
 
         <!-- Status line for the Initial / Loading / Empty states. Only one is visible at a time. -->

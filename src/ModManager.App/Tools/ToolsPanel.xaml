@@ -33,14 +33,14 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="core:ToolEntry">
                         <Button Padding="10,4"
-                                Click="OnToolClick"
+                                AutomationProperties.Name="{x:Bind DisplayName}" Click="OnToolClick"
                                 Tag="{x:Bind}">
                             <!-- ContextFlyout replaces the old RightTapped hook (vibe-glow F-032):
                                  keyboard-reachable (Menu key / Shift+F10), and the tooltip now
                                  names the path so it's discoverable, not a guess. -->
                             <Button.ContextFlyout>
                                 <MenuFlyout>
-                                    <MenuFlyoutItem Text="Configure…" Click="OnToolConfigureClick" Tag="{x:Bind}">
+                                    <MenuFlyoutItem AutomationProperties.Name="{x:Bind DisplayName}" Text="Configure…" Click="OnToolConfigureClick" Tag="{x:Bind}">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE713;" />
                                         </MenuFlyoutItem.Icon>
@@ -71,7 +71,7 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="core:KnownTool">
                         <HyperlinkButton Padding="10,4"
-                                         Click="OnGetToolClick"
+                                         AutomationProperties.Name="{x:Bind DisplayName}" Click="OnGetToolClick"
                                          Tag="{x:Bind}"
                                          ToolTipService.ToolTip="Open the download page in your browser">
                             <!-- Style x:Null restores Foreground inheritance from the
@@ -104,7 +104,7 @@
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:DetectedLoaderRow">
                             <Button Padding="10,4"
-                                    Click="OnLoaderClick"
+                                    AutomationProperties.Name="{x:Bind DisplayName}" Click="OnLoaderClick"
                                     Tag="{x:Bind}">
                                 <ToolTipService.ToolTip>
                                     <ToolTip>
@@ -128,7 +128,7 @@
             </StackPanel>
 
             <Button Padding="8,4"
-                    AutomationProperties.Name="Install a tool" Click="OnAddToolClick"
+                    AutomationProperties.AutomationId="InstallToolButton" AutomationProperties.Name="Install a tool" Click="OnAddToolClick"
                     ToolTipService.ToolTip="Install a tool from a zip">
                 <SymbolIcon Symbol="Add" />
             </Button>
@@ -160,7 +160,7 @@
                                  is collapsed when the framework installed no editable .ini. -->
                             <StackPanel Orientation="Horizontal" Spacing="2">
                                 <Button Padding="10,4"
-                                        Click="OnFrameworkClick"
+                                        AutomationProperties.Name="{x:Bind DisplayName}" Click="OnFrameworkClick"
                                         Tag="{x:Bind Manifest}"
                                         ToolTipService.ToolTip="How to use this — click for the in-game keys + mods folder">
                                     <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind DisplayName}" />

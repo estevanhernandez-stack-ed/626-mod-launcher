@@ -39,8 +39,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <CheckBox Grid.Column="0" IsChecked="{x:Bind Approve, Mode=TwoWay}"
-                                      AutomationProperties.Name="{x:Bind Headline}" VerticalAlignment="Top"
+                            <CheckBox AutomationProperties.Name="{x:Bind ApproveAutomationName}" Grid.Column="0" IsChecked="{x:Bind Approve, Mode=TwoWay}"
+                                      VerticalAlignment="Top"
                                       Click="OnRowClick" />
                             <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock Text="{x:Bind Headline}" TextWrapping="Wrap"
@@ -65,8 +65,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <CheckBox Grid.Column="0" IsChecked="{x:Bind Approve, Mode=TwoWay}"
-                                      AutomationProperties.Name="{x:Bind Headline}" VerticalAlignment="Top"
+                            <CheckBox AutomationProperties.Name="{x:Bind ApproveAutomationName}" Grid.Column="0" IsChecked="{x:Bind Approve, Mode=TwoWay}"
+                                      VerticalAlignment="Top"
                                       Visibility="{x:Bind CheckboxVisibility}" Click="OnRowClick" />
                             <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock Text="{x:Bind Headline}" TextWrapping="Wrap"

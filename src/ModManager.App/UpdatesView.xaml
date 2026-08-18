@@ -23,7 +23,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Click="OnBack" Background="Transparent" BorderThickness="0"
+            <Button AutomationProperties.AutomationId="UpdatesBackButton" AutomationProperties.Name="Back" Grid.Column="0" Click="OnBack" Background="Transparent" BorderThickness="0"
                     Padding="6,4" VerticalAlignment="Center"
                     ToolTipService.ToolTip="Back to your library">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -77,7 +77,7 @@
                                                        Foreground="{StaticResource ThemeAccent}" />
                                         </Border>
                                     </StackPanel>
-                                    <Button Grid.Column="1" Content="Open game" Click="OnOpenGame" Tag="{x:Bind}"
+                                    <Button AutomationProperties.Name="{x:Bind OpenGameAutomationName}" Grid.Column="1" Content="Open game" Click="OnOpenGame" Tag="{x:Bind}"
                                             VerticalAlignment="Center"
                                             ToolTipService.ToolTip="Open this game's mods, where the update chips and Refresh live" />
                                 </Grid>
