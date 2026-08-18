@@ -47,6 +47,35 @@ public static class RegistrationRefresh
             ? manifest
             : stored;
 
+    /// <summary>The mod folder to actually scan. Same freeze, same rule, same precedence as the two
+    /// above — and the one that matters most, because the others change WHAT is found in a folder
+    /// while this one decides WHETHER the folder is looked at.
+    ///
+    /// <para>A registration froze its engine preset's path the day it was created. The preset knows
+    /// where a typical game of that engine keeps mods and cannot know where this one does: Unreal
+    /// games prefix the project name, RE Engine uses <c>reframework/autorun</c>, Cyberpunk uses
+    /// <c>archive/pc/mod</c>. Without this, a game registered against the wrong folder reports "no
+    /// mods found" forever, which reads to a user as the app not supporting their game rather than
+    /// as a setting they could correct.</para>
+    ///
+    /// <para>Paths compare with separators normalised and trailing slashes ignored, because
+    /// <c>Content/Paks</c> and <c>Content\Paks\</c> are the same folder and neither spelling is a
+    /// choice anyone made.</para></summary>
+    public static string? ModPath(
+        string? stored, string? presetDefault, string? manifest, bool userSet = false)
+        => userSet ? stored
+         : !string.IsNullOrWhiteSpace(manifest) && SamePath(stored, presetDefault)
+            ? manifest
+            : stored;
+
+    /// <summary>One spelling of "the same folder": separators normalised, trailing slash and case
+    /// ignored. Kept private so the comparison cannot drift the way the extension one did.</summary>
+    private static bool SamePath(string? a, string? b)
+        => string.Equals(NormalisePath(a), NormalisePath(b), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalisePath(string? p)
+        => (p ?? "").Trim().Replace('\\', '/').Trim('/');
+
     /// <summary>
     /// Whether the stored list is still exactly the preset's, ignoring order and case.
     ///

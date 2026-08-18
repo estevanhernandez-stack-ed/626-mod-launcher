@@ -28,7 +28,14 @@ public static class SteamGameImport
         if (string.IsNullOrEmpty(engine))
             return new SteamImportPlan(game.Name, game.AppId, Addable: false, Engine: null, Input: null);
 
-        var modPath = EnginePresets.Presets.TryGetValue(engine, out var preset) ? preset.ModPath : null;
+        // The manifest's per-game modPath is an OVERRIDE to the engine default (GameManifest.ModPath
+        // says so in as many words), so it has to be asked first. Taking the preset here is how a
+        // Monster Hunter Wilds registered with mod folder "mods" - a folder that does not exist on
+        // an RE Engine game - and then reported no mods for a library the user had already
+        // downloaded. 54 of the 118 feed games with a curated path differ from their preset, so this
+        // was never one game's problem. Preset stays as the fallback for everything uncurated.
+        var modPath = KnownModPaths.ByAppId(game.AppId)
+                      ?? (EnginePresets.Presets.TryGetValue(engine, out var preset) ? preset.ModPath : null);
         var input = new GameInput
         {
             Name = game.Name,
