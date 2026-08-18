@@ -1168,6 +1168,12 @@ public sealed partial class MainViewModel : ObservableObject
                 if (row.Enabled) _direct.EnableProxy(_ctx.Game, row.Mod.Name);
                 else _direct.DisableProxy(_ctx.Game, row.Mod.Name);
             }
+            // A library row is appended by ModListing, so BuildModList cannot resolve it by name and
+            // the ordinary disable would silently move nothing. Hand over the row itself. Only an
+            // idle library reaches here at all - one whose dependents are known and all switched off -
+            // because any other state leaves it ReadOnly and the toggle never offered.
+            else if (row.Mod.Class == "library")
+                await Scanner.SetAppendedRowEnabledAsync(row.Mod, row.Enabled, _ctx);
             else if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (DirectInjectBacked) _direct.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (LooseRootBacked) LooseRootService.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
