@@ -72,12 +72,21 @@ That splits in two, and only half is expected behaviour.
 lives in the per-game data dir under the Steam root (`Scanner.DataDirForGame`). Elden Ring HAS been
 acknowledged.
 
-**Which leaves something unexplained and worth a repro.** `BanRiskAckStore.IsAcked` returns **true**
-for elden-ring, so `ShouldGateEnable(High, acked: true)` is false and the gate should not fire. It
-fired anyway during the UIA test at 2026-08-18 00:42 — nine hours after the ack was written — with
-the full dialog captured in `artifacts/banrisk/3-gate-or-not.png`. Either the ack does not suppress
-the gate (a real defect: "Don't warn me again for this game" not sticking) or the app read a
-different data dir at that moment. **Not yet reproduced; do not file a fix until it is.**
+**Briefly filed as an unexplained defect, then disproved by running it.** The claim was that the gate
+fired despite `IsAcked` being true, dated from screenshot timestamps that turned out to be
+worthless — all six captures in `artifacts/banrisk/` carry mtimes **2 milliseconds apart**, and that
+run had five- and six-second sleeps between them, so something rewrote them in a batch long after the
+fact. Este questioned the timeline and was right to.
+
+**Live repro 2026-08-18, and the gate is correct.** With `ban-risk-acks.json` containing
+`elden-ring`, enabling a mod raises **no** dialog and the mod goes on. Disabling raises none either,
+as designed. The gate fired the previous evening because the game was not yet acked at that moment;
+the ack was recorded during that session and now suppresses it exactly as intended.
+
+Two lessons kept rather than the finding: **a file mtime is not a timestamp of the event you care
+about**, and the first repro attempt matched the always-present ban-risk BANNER instead of the dialog,
+reporting a repro that was really a toggle in the ungated direction. The dialog is distinguishable —
+it alone says *"Disabling is always reversible."*
 
 Most likely benign: the gate ships from 2026-06-15 and those mods were enabled in May, and it only
 fires on *enable* — already-on mods never re-trigger it. That is an explanation, not a verification.
