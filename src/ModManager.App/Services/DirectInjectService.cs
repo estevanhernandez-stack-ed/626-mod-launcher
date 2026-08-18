@@ -73,7 +73,7 @@ public sealed class DirectInjectService
         return DirectInject.ProcessLoadProxiesIn(top);
     }
 
-    private static string VanillaProxyHolding(string playFolder) => Path.Combine(playFolder, "_626", "vanilla-proxy");
+    private static string VanillaProxyHolding(string playFolder) => DirectInject.VanillaProxyHolding(playFolder);
 
     /// <summary>Step one active proxy DLL aside (reversible) for a vanilla launch.</summary>
     public void DisableProxy(GameEntry game, string proxyDll)

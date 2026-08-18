@@ -1148,13 +1148,27 @@ public sealed partial class MainViewModel : ObservableObject
         // switch rebuilds from actual state (mirrors the variant-family cancel path).
         if (!row.Enabled && LooseRootBacked && row.Mod.IsLoader && !await GateLooseLoaderDisableAsync(row))
         { row.Enabled = true; await ReloadModsAsync(); return; }
+        // Same warning for a proxy-loader row on ANY engine. This one is a file 626 did not install -
+        // REFramework, ReShade, an ASI loader - and every mod in the list may ride on it, so turning it
+        // off is a bigger act than turning off a mod. Warn and proceed; never block.
+        if (!row.Enabled && row.Mod.Location == ProxyLoaderRows.LocationTag
+            && !await GateLooseLoaderDisableAsync(row))
+        { row.Enabled = true; await ReloadModsAsync(); return; }
         // A manual toggle leaves "clean vanilla" — clear the stash so CurrentMode reverts to Modded and
         // the launch button stops claiming "Play vanilla" while a mod is live again.
         VanillaStashStore.Clear(_ctx.DataDir);
         row.IsBusy = true;
         try
         {
-            if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
+            // Proxy-loader rows are checked FIRST: they are appended by ModListing regardless of which
+            // lane listed the game's mods, so any later branch would claim them and route a DLL
+            // step-aside through a mod mover that knows nothing about it.
+            if (row.Mod.Location == ProxyLoaderRows.LocationTag)
+            {
+                if (row.Enabled) _direct.EnableProxy(_ctx.Game, row.Mod.Name);
+                else _direct.DisableProxy(_ctx.Game, row.Mod.Name);
+            }
+            else if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (DirectInjectBacked) _direct.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else if (LooseRootBacked) LooseRootService.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
             else await Scanner.SetLoaderModEnabledAsync(row.Mod.Name, row.Enabled, _ctx);
