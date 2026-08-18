@@ -85,7 +85,9 @@
                                 <ItemsControl ItemsSource="{x:Bind Rows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="local:UpdateRow">
-                                            <Grid Padding="10,8" Margin="0,0,0,4" CornerRadius="0"
+                                            <Grid AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
+                                                  AutomationProperties.Name="{x:Bind ModName}"
+                                                  Padding="10,8" Margin="0,0,0,4" CornerRadius="0"
                                                   Background="{StaticResource ThemePanel}" ColumnSpacing="12">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />

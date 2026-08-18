@@ -320,9 +320,23 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $t3 = Get-Tree $root
     $rows = @(Find-AllByIdPrefix $t3 'UpdateRow.')
     $back = Find-ById $t3 'UpdatesBackButton'
-    $unknown = @($t3 | Where-Object { try { $_.Current.Name -like '*unknown*' } catch { $false } }).Count
+    # Scoped to the ROWS, not the whole tree. The library home is a host that stays in the tree
+    # behind this view, and it legitimately renders 'Unknown' as the recency of a never-launched game.
+    # A first cut of this assertion scanned everything and failed on that - a false RED, which is the
+    # safe direction to be wrong in, and took two minutes to clear because the case named what it hit.
+    $rowText = @($rows | ForEach-Object { Get-Tree $_ } | ForEach-Object { try { $_.Current.Name } catch { '' } })
+    $unknown = @($rowText | Where-Object { $_ -like '*unknown*' }).Count
+    # A backwards arrow is the A27 defect, on screen: '1.0.1 -> 1.0.0' invited an update to an older
+    # version. The row text is readable, so assert on it rather than eyeballing a screenshot.
+    $backwards = @($rowText | Where-Object { $_ -match '\d\s*→\s*\d' })
     if ($back) { Invoke-Node $back; Wait-Idle 2000 }
-    "$($rows.Count) update rows; $unknown elements rendering 'unknown' (A10)"
+    # This case printed '0 update rows' and passed for as long as it existed, because the rows carried
+    # no AutomationId and nothing asserted they did (A28). A number nobody checks is a case that
+    # cannot fail.
+    Assert-True ($rows.Count -gt 0) "no UpdateRow.* realised - are the row ids bound?"
+    Assert-True ($unknown -eq 0) "$unknown elements still render 'unknown' (A10)"
+    foreach ($b in $backwards) { Assert-True $false "arrow pair on screen (A27): $b" }
+    "$($rows.Count) update rows, no 'unknown', no bare arrow pairs"
 }
 
 # ---------------------------------------------------------------- what a harness cannot do
