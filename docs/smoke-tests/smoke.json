@@ -496,11 +496,12 @@
       "title": "Vortex takeover",
       "surface": "2026-06-02",
       "coverage": "human",
-      "humanReason": "Needs a Vortex-managed game staged on this box",
+      "humanReason": "Needs a Vortex-managed game. Windrose IS one - three vortex.deployment markers, at the game root, R5, and R5/Binaries/Win64 - so this is runnable today. Still a person's job: taking a folder over is a one-way-ish act on a real library and wants a human deciding to do it.",
       "status": "untriaged",
       "lastVerified": null,
       "steps": [],
-      "source": "scripts/smoke-run.ps1"
+      "source": "scripts/smoke-run.ps1",
+      "note": "The old reason said no such game was staged on this box. Checked 2026-08-18: there is one. See docs/superpowers/plans/2026-08-18-smoke-one-pass.md, sitting 1."
     },
     {
       "id": "ban-risk-ack-gate",
