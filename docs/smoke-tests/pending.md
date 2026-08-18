@@ -64,9 +64,29 @@ That splits in two, and only half is expected behaviour.
 
 - **Palworld is `medium`.** `BanRiskRules.ShouldGateEnable` gates on `high` only; medium and low are
   banner-only. No prompt is correct here.
-- **Elden Ring is `high`** (remote feed, Steam app id 1245620), has 11 mods, all enabled — and
-  **`ban-risk-acks.json` does not exist anywhere on disk.** The gate has never been acknowledged for
-  any game.
+- **Elden Ring is `high`** (remote feed, Steam app id 1245620) and has 11 mods.
+
+**CORRECTION 2026-08-18: `ban-risk-acks.json` DOES exist** —
+`<steamRoot>/_626mods/elden-ring/ban-risk-acks.json`, contents `["elden-ring"]`, written
+2026-08-17 15:54. The original search looked in `%LOCALAPPDATA%\ModManagerBuilder`; per-game state
+lives in the per-game data dir under the Steam root (`Scanner.DataDirForGame`). Elden Ring HAS been
+acknowledged.
+
+**Briefly filed as an unexplained defect, then disproved by running it.** The claim was that the gate
+fired despite `IsAcked` being true, dated from screenshot timestamps that turned out to be
+worthless — all six captures in `artifacts/banrisk/` carry mtimes **2 milliseconds apart**, and that
+run had five- and six-second sleeps between them, so something rewrote them in a batch long after the
+fact. Este questioned the timeline and was right to.
+
+**Live repro 2026-08-18, and the gate is correct.** With `ban-risk-acks.json` containing
+`elden-ring`, enabling a mod raises **no** dialog and the mod goes on. Disabling raises none either,
+as designed. The gate fired the previous evening because the game was not yet acked at that moment;
+the ack was recorded during that session and now suppresses it exactly as intended.
+
+Two lessons kept rather than the finding: **a file mtime is not a timestamp of the event you care
+about**, and the first repro attempt matched the always-present ban-risk BANNER instead of the dialog,
+reporting a repro that was really a toggle in the ungated direction. The dialog is distinguishable —
+it alone says *"Disabling is always reversible."*
 
 Most likely benign: the gate ships from 2026-06-15 and those mods were enabled in May, and it only
 fires on *enable* — already-on mods never re-trigger it. That is an explanation, not a verification.
@@ -104,10 +124,17 @@ Helldivers 2, Marvel Rivals, Phasmophobia.
 (which now needs a different fixture).
 
 **Vortex takeover has a fixture now.** Six Vortex-staged games on the main box:
-`monsterhunterwilds` (16 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
-`marvelsspiderman2` (2), `doomthedarkages` (1). **Monster Hunter Wilds is the one to use** — real
-volume and not in 626 yet, so it exercises takeover from scratch. No `taken-over.json` exists
-anywhere, confirming this path has never run. Windrose's `R5ortex.deployment.json` is a stale
+`monsterhunterwilds` (21 staged mods), `windrose` (19), `eldenring` (5), `assassinscreedshadows` (2),
+`marvelsspiderman2` (2), `doomthedarkages` (1).
+
+**CORRECTION 2026-08-18, twice over.** Monster Hunter Wilds was **not installed** when recommended —
+that folder held Fluffy Mod Manager and there was no Steam appmanifest; the recommendation came from
+a staging-folder count without checking the game existed. Este has since reinstalled it.
+
+And **`taken-over.json` DOES exist** — `<steamRoot>/_626mods/windrose/taken-over.json`, written
+2026-06-03, claiming the UE4SS Mods folder. **Vortex takeover HAS run.** The original claim searched
+`%LOCALAPPDATA%` rather than the per-game data dir. The case needs re-scoping: what is untested is
+takeover on a game where 626 has no prior state, not takeover at all. Windrose's `R5ortex.deployment.json` is a stale
 leftover, not a live conflict: it names one mod (`BonfireRadius_2x`) that is no longer on disk.
 
 **A harness caveat that shapes what a dev build can smoke.** The Debug build cannot load the Nexus
