@@ -4,6 +4,19 @@ using ModManager.Core.Discovery;
 
 namespace ModManager.App;
 
+/// <summary>What the review came back with. Two different answers, because the dialog now shows two
+/// different kinds of thing: mods that are installed and want naming, and downloads that were never
+/// installed at all. Adopt is not install, so the outcome cannot be one list (A14).</summary>
+/// <param name="Approved">Proposals to adopt — metadata only, no file moves.</param>
+/// <param name="ToInstall">Downloads the user asked 626 to install, handed to the normal intake path.</param>
+public sealed record DiscoveryReviewOutcome(
+    IReadOnlyList<AdoptionProposal> Approved,
+    IReadOnlyList<AdoptionProposal> ToInstall)
+{
+    public static DiscoveryReviewOutcome Nothing { get; } =
+        new(Array.Empty<AdoptionProposal>(), Array.Empty<AdoptionProposal>());
+}
+
 /// <summary>
 /// Review-before-adopt for discovered mods: one row per proposal, checked by default when we
 /// identified it, unchecked when we didn't. Apply is the ONLY path that returns approvals;
@@ -14,6 +27,12 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
     private readonly List<DiscoveryReviewRow> _rows = new();
 
     public IReadOnlyList<AdoptionProposal> Approved { get; private set; } = Array.Empty<AdoptionProposal>();
+
+    /// <summary>The downloads the user asked to INSTALL rather than adopt. Adoption attaches
+    /// metadata to mods that are already installed; for an archive that was never deployed there is
+    /// nothing to attach to, and the action that actually helps is the one drag-and-drop already
+    /// does. Non-empty only when the Install button was used (A14).</summary>
+    public IReadOnlyList<AdoptionProposal> ToInstall { get; private set; } = Array.Empty<AdoptionProposal>();
 
     public DiscoveryReviewDialog(IReadOnlyList<AdoptionProposal> proposals)
     {
@@ -37,6 +56,9 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
                 // unresolved reach (null) keeps the old optimistic assumption rather than hiding
                 // a row we simply failed to check.
                 WillWrite = proposal.Reach is null or AdoptionReach.NamesAMod,
+                // Only a real archive can be handed back to intake. An inert row of any other kind
+                // is not a file we could drop on ourselves, so it gets the honest copy and no offer.
+                CanInstall = inert && proposal.Candidate.Kind == DiscoveryKind.Archive,
                 // A loader is described as what it is rather than as an unidentified mod. Saying
                 // "not identified" about a version.dll implies we failed to name something nameable;
                 // we didn't — the name genuinely doesn't determine which loader it is.
@@ -76,6 +98,11 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
         else if (_rows.Count > 0 && _rows.All(r => !r.WillWrite))
         {
             HeadingText.Text = "Mods you've downloaded";
+            // Nothing here is adoptable, so the only action on offer is Install and pre-ticking
+            // cannot inflate an adopt count. In a MIXED sweep they stay unticked — there the ticks
+            // mean "adopt", and pre-ticking rows that adoption cannot write for is the thing that
+            // produced "Adopt 13 mods" in the first place.
+            foreach (var row in _rows.Where(r => r.CanInstall)) row.Approve = true;
             Blurb.Text = "These are downloads sitting in this game's folders — none of them is installed, so "
                          + "there's nothing for 626 to name yet. Drop them on the window and it'll install them, "
                          + "and they'll show up in the list.";
@@ -87,6 +114,12 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
 
     private void OnApply(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         => Approved = _rows.Where(r => r.Approve && r.WillWrite).Select(r => r.Proposal).ToList();
+
+    // Install hands the ticked downloads back to the normal intake path — the same one a
+    // drag-and-drop uses, with its ban-risk gate, its replacement confirmation and its
+    // validate-then-extract order. This dialog installs nothing itself.
+    private void OnInstall(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        => ToInstall = _rows.Where(r => r.Approve && r.CanInstall).Select(r => r.Proposal).ToList();
 
     private void OnRowClick(object sender, RoutedEventArgs e) => SyncPrimary();
 
@@ -105,6 +138,14 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
             : "mod";
         PrimaryButtonText = $"Adopt {n} {noun}{(n == 1 ? "" : "s")}";
         IsPrimaryButtonEnabled = n > 0;
+
+        // The second action, offered only when there is something it could do. A dialog that shows
+        // an Install button over nothing installable is the same overstatement in a different place.
+        var installable = _rows.Count(r => r.Approve && r.CanInstall);
+        SecondaryButtonText = installable == 0
+            ? ""
+            : $"Install {installable} download{(installable == 1 ? "" : "s")}";
+        IsSecondaryButtonEnabled = installable > 0;
     }
 }
 
@@ -128,4 +169,8 @@ public sealed class DiscoveryReviewRow
     /// <summary>True when the apply will actually write something for this row. False for a download
     /// that was never installed — adoption has nothing to attach metadata to (A14).</summary>
     public bool WillWrite { get; init; } = true;
+
+    /// <summary>True when this row is a download 626 could install for the user — an archive that
+    /// adoption cannot help with. Drives the Install action (A14).</summary>
+    public bool CanInstall { get; init; }
 }

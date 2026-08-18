@@ -1756,3 +1756,33 @@ delete `ban-risk-acks.json` from that game's data dir — `<gameRoot>/_626mods/<
 6. **Drop a mod on a game with no ban risk (regression check).** EXPECT no warning at all and a
    normal install. *Why it matters:* the gate is high-risk-only. Any friction on an ordinary game
    is a bug — the flagship gesture must stay one motion.
+
+## A14 part 3 — the adoption dialog offers to install a download
+
+Added 2026-08-18. App-side dialog, so not coverable by the suite. The Core half (what adoption can
+reach) has tests; what needs a human is the two-action dialog.
+
+**Setup.** A game with mod archives sitting in its folder that are NOT installed — the Fluffy case:
+Monster Hunter Wilds with downloads under `Games/MonsterHunterWilds/Mods/` and no `natives/` folder.
+
+**Smoke steps:**
+
+1. **Run Identify my mods (or add the game) so the review appears.** EXPECT the heading to read
+   "Mods you've downloaded", not "Mods already installed", and each row to say *downloaded, not
+   installed*. EXPECT "Adopt 0 mods" disabled and an enabled "Install 13 downloads".
+   *Why it matters:* the old dialog said the mods were installed and offered to adopt thirteen of
+   them, which would have written nothing.
+2. **Press Install.** EXPECT the ban-risk warning first (Wilds is high-risk — clear its ack to see
+   it), then the normal intake: replacement confirmation if any, then the mods appearing in the list.
+   *Why it matters:* the dialog installs nothing itself — it hands the files to the same path a
+   drag-and-drop uses, so every guard on that path applies.
+3. **Run the identify sweep again.** EXPECT the same archives now offered as adoptable rather than as
+   downloads. *Why it matters:* once they are installed there IS something for adoption to attach to,
+   so the same sweep gives a different and correct answer.
+4. **A mixed sweep (regression check).** On a game with both unnamed installed mods and loose
+   downloads, EXPECT the downloads unticked and the installed mods ticked, "Adopt N" counting only the
+   installed ones. *Why it matters:* pre-ticking is only safe in the all-downloads case; in a mixed
+   sweep a tick means "adopt", and pre-ticking rows adoption cannot write for is the original bug.
+5. **A sweep with no downloads at all (regression check).** EXPECT no Install button on the dialog.
+   *Why it matters:* an Install button over nothing installable is the same overstatement in a new
+   place.
