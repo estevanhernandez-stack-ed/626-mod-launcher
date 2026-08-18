@@ -75,12 +75,35 @@ public static class ModListing
         var libraries = inferred.Where(r => r.Kind == InferredKind.Library && !listed.Contains(r.Key)).ToList();
         if (libraries.Count == 0) return Array.Empty<Mod>();
 
+        // Sources from the mod folder AND the holding folder. A disabled mod's files are stepped
+        // aside, so scanning only what is live conflates "nothing needs this" with "its dependent is
+        // switched off" - and those want opposite answers. Reading holding is what lets the row say
+        // which one it is.
         var sources = LuaSourcesUnder(primary.Abs);
+        var heldSources = LuaSourcesUnder(ctx.DisabledRoot);
+
+        var enabledByName = alreadyListed
+            .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Any(m => m.Enabled), StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<Mod>();
         foreach (var lib in libraries)
         {
-            var dependents = LuaRequires.DependentsOf(lib.Key, sources);
+            var live = LuaRequires.DependentsOf(lib.Key, sources);
+            var held = LuaRequires.DependentsOf(lib.Key, heldSources);
+            var dependents = live.Concat(held).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            // A dependent counts as ON when the listing says so. Unknown to the listing but present in
+            // the tree counts as ON too: something is there, and assuming it is off is the assumption
+            // that breaks a working game.
+            var enabled = dependents
+                .Where(d => !enabledByName.TryGetValue(d, out var on) || on)
+                .ToList();
+
+            var state = dependents.Count == 0 ? LibraryState.Unknown
+                      : enabled.Count > 0     ? LibraryState.InUse
+                      :                         LibraryState.Idle;
+
             rows.Add(new Mod
             {
                 Name = lib.Key,
@@ -91,31 +114,60 @@ public static class ModListing
                 Files = new List<string> { lib.Key },
                 IsFolder = true,
                 Enabled = true,
-                // No toggle, no uninstall. Not IsLoader - that flag bypasses exactly this refusal.
-                ReadOnly = true,
-                Description = DescribeLibrary(lib.Key, dependents),
+                // Switchable only when we KNOW its dependents and none of them is on. Unknown is not
+                // permission: "nothing declared that it needs this" and "nothing needs this" are
+                // different claims, and only the second one makes a toggle safe.
+                ReadOnly = state != LibraryState.Idle,
+                Description = DescribeLibrary(state, dependents, enabled),
             });
         }
         return rows;
     }
 
+    /// <summary>Whether a library can be switched off right now, and why.</summary>
+    private enum LibraryState
+    {
+        /// <summary>Something that needs it is on. Refuse.</summary>
+        InUse,
+        /// <summary>Its dependents are known and all of them are off. Nothing breaks - allow it.</summary>
+        Idle,
+        /// <summary>Nothing readable declares it. Refuse: we did not learn that nothing needs it, we
+        /// learned that we could not tell.</summary>
+        Unknown,
+    }
+
     /// <summary>Consequence copy rather than a switch. Names the dependents when they can be read,
     /// says so plainly when they cannot, and points at the action that expresses what someone
     /// reaching for a switch here usually wants.</summary>
-    private static string DescribeLibrary(string name, IReadOnlyList<string> dependents)
+    private static string DescribeLibrary(
+        LibraryState state, IReadOnlyList<string> dependents, IReadOnlyList<string> enabled)
     {
-        var head = $"A shared library other mods load. 626 did not install this.";
-        var who = dependents.Count switch
+        const string head = "A shared library other mods load. 626 did not install this.";
+        return state switch
         {
-            0 => " Nothing here declares that it needs it — it may be used by a mod whose "
-                 + "dependencies can't be read from its files.",
-            1 => $" {dependents[0]} needs it: removing it would stop that mod loading.",
-            _ => $" {dependents.Count} mods need it ({string.Join(", ", dependents)}) — removing it "
-                 + "would stop all of them loading.",
+            LibraryState.InUse when enabled.Count == 1 =>
+                $"{head} {enabled[0]} is on and needs it — turning it off would stop that mod loading. "
+                + "To play without mods for a session, use Play vanilla, which steps everything aside "
+                + "together and puts it back afterwards.",
+
+            LibraryState.InUse =>
+                $"{head} {enabled.Count} mods that are on need it ({string.Join(", ", enabled)}) — "
+                + "turning it off would stop all of them loading. To play without mods for a session, "
+                + "use Play vanilla, which steps everything aside together and puts it back afterwards.",
+
+            LibraryState.Idle =>
+                $"{head} Nothing that needs it is on right now — {Names(dependents)} would need it "
+                + "again when turned back on. Safe to switch off until then.",
+
+            _ =>
+                $"{head} Nothing readable declares that it needs it, which is not the same as nothing "
+                + "needing it — a mod may load it in a way we can't see from its files. Left switched "
+                + "on for that reason. To play without mods for a session, use Play vanilla.",
         };
-        return head + who + " To play without mods for a session, use Play vanilla, which steps "
-             + "everything aside together and puts it back afterwards.";
     }
+
+    private static string Names(IReadOnlyList<string> xs)
+        => xs.Count == 1 ? xs[0] : string.Join(", ", xs);
 
     /// <summary>Mod keys currently stepped aside. A disabled mod's files are in the holding folder, so
     /// without this a disabled PAIRED mod looks like an orphan folder and gets called a library.</summary>

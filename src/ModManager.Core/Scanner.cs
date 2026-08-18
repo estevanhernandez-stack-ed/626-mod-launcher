@@ -487,6 +487,26 @@ public static class Scanner
 
     // ---------- enable / disable ----------
 
+    /// <summary>
+    /// Toggle a row that <see cref="BuildModList"/> does not produce — one appended by
+    /// <see cref="ModListing.Resolve"/>, such as an inferred library folder.
+    ///
+    /// <para>Exists because <see cref="DisableMod"/> resolves its target by looking the NAME up in
+    /// BuildModList, which has never heard of an appended row: the lookup returns null and the
+    /// disable silently does nothing. A switch that flips in the UI and moves no file is the exact
+    /// failure this repo keeps finding, so an appended row hands over the object instead of a name.
+    /// Enabling needs no such help — it restores from the holding folder by name.</para>
+    ///
+    /// <para>Every guard still applies: DisableEntry refuses a ReadOnly row, honours loader-manifest
+    /// mods, and rolls back a partial move.</para>
+    /// </summary>
+    public static Task SetAppendedRowEnabledAsync(Mod row, bool enabled, GameContext c)
+    {
+        if (enabled) EnableMod(row.Name, c);
+        else DisableEntry(row, c);
+        return Task.CompletedTask;
+    }
+
     public static Task DisableModAsync(string name, GameContext c) { DisableMod(name, c); return Task.CompletedTask; }
     public static Task EnableModAsync(string name, GameContext c) { EnableMod(name, c); return Task.CompletedTask; }
     public static Task<EnableOutcome> EnableModWithOutcomeAsync(string name, GameContext c)
