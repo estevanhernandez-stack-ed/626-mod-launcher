@@ -27,6 +27,51 @@ public sealed record PendingUpdate(string GameId, string GameName, string ModKey
         && !string.IsNullOrWhiteSpace(LatestVersion)
         && NormalizeVersion(InstalledVersion!) == NormalizeVersion(LatestVersion!);
 
+    /// <summary>True only when the latest version is PROVABLY newer than the installed one: both
+    /// parse as plain dotted numbers and the comparison ascends. Anything else — a suffix like
+    /// "1.0.0.1-hotfix", a descending pair, an unknown side — is false.
+    ///
+    /// <para>The arrow in the row is a claim about DIRECTION, and it may only be drawn where that claim
+    /// holds. A10 declined to order arbitrary version strings, correctly, and then drew the arrow
+    /// whenever two known versions differed — so the launcher kept inviting the user to "update" from
+    /// 1.0.1 to 1.0.0, which is one of the two examples A10 was filed about (A27).</para>
+    ///
+    /// <para>Refusing to guess costs the suffix case: "1.0.0.1-hotfix" probably IS newer, and this
+    /// says nothing about it. Saying less is the point — the row names both versions either way.</para>
+    /// </summary>
+    public bool LatestIsProvablyNewer => Compare(InstalledVersion, LatestVersion) is int c && c < 0;
+
+    /// <summary>Numeric-only ordering, or null when either side is not a plain dotted number. Null is
+    /// the answer that matters: it means "not comparable", never "equal".</summary>
+    internal static int? Compare(string? a, string? b)
+    {
+        var left = Numeric(a);
+        var right = Numeric(b);
+        if (left is null || right is null) return null;
+        for (var i = 0; i < Math.Max(left.Count, right.Count); i++)
+        {
+            var x = i < left.Count ? left[i] : 0;
+            var y = i < right.Count ? right[i] : 0;
+            if (x != y) return x.CompareTo(y);
+        }
+        return 0;
+    }
+
+    // Every segment must be digits. A single non-numeric part makes the whole string unorderable —
+    // deliberately strict, because a lenient parse is the guessing this exists to avoid.
+    private static List<int>? Numeric(string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return null;
+        var parts = v.Trim().TrimStart('v', 'V').Split('.');
+        var nums = new List<int>(parts.Length);
+        foreach (var p in parts)
+        {
+            if (p.Length == 0 || !p.All(char.IsAsciiDigit) || !int.TryParse(p, out var n)) return null;
+            nums.Add(n);
+        }
+        return nums.Count == 0 ? null : nums;
+    }
+
     /// <summary>Trailing zero segments dropped, so 1.0.0 == 1.0 == 1. Deliberately NOT an ordering:
     /// mod versions are not reliably semver, and a comparator that guessed which side is newer would
     /// produce a confidently wrong DIRECTION — the fault this is here to remove.</summary>
