@@ -1,7 +1,7 @@
 # The smoke list — one pass to settle it
 
 **Date:** 2026-08-18 · **Input:** all 105 catalogue cases, all 417 steps, read end to end
-**Output:** what collapses without any work, and six sittings for what is left
+**Output:** what collapses without any work, and seven sittings for what is left
 
 ---
 
@@ -17,8 +17,8 @@ from you rather than a test run:
 | Answer themselves — their own text says PASSED or live-smoked | 4 | Mark verified, quoting their own line |
 | The harness runs it today | ~12 | Mark harness-covered; stop asking a person |
 | Visual conformance, wave by wave | 19 | One themed pass, not nineteen |
-| Real work needing you and a fixture | ~22 | **Six sittings, below** |
-| Fixture we do not have | 4 | Decide: install the fixture, or drop the case |
+| Real work needing you and a fixture | ~22 | **Seven sittings, below** |
+| Fixture we do not have | 2 | Decide: install the fixture, or drop the case |
 
 The single biggest saving is that the prose file and the catalogue's human-only bucket describe the
 **same cases twice**. `PR #49 — BND4 file-table walk` and `bnd4-save-walk` are one thing; so are the
@@ -30,7 +30,8 @@ already settled most of those.
 
 ## Fixture inventory — checked on this machine, not assumed
 
-Three of the "we cannot test this" claims turn out to be wrong, and two turn out to be right.
+Four of the "we cannot test this" claims turn out to be wrong, and two turn out to be right. Every
+row below was checked on disk.
 
 | Fixture | State | Consequence |
 |---|---|---|
@@ -42,7 +43,7 @@ Three of the "we cannot test this" claims turn out to be wrong, and two turn out
 | **R.E.P.O. + BepInEx** | **BepInEx absent** | The BepInEx-flavour steps are blocked |
 | **Witchfire** | Installed and registered (`Witchfire/Witchfire/Content/Paks`) | The paks-root base-game filter case runs |
 | **Marvel Rivals** | Installed, **not registered** | The 2-level UE probe case runs the moment you add it |
-| **Dark Souls II / Decima** | Not installed | The loose-root section is unrunnable. Recommend dropping it until such a game is on the box |
+| **Death Stranding 2 (Decima)** | **Installed and registered.** Every mod the section names is on disk: `Zipliner_v1.1.asi`, `DollmanMute.asi`, `ShaderToggler.addon64`, `ReShade.ini`, `renodx-deathstranding2.addon64`, `Chiral Clarity.ini`, `OptiScaler.ini`, plus `version.dll` as the proxy | The loose-root section is **fully runnable** — it is the exact fixture it was written against |
 
 ---
 
@@ -65,7 +66,7 @@ Each of these records its own outcome. Mark and close them.
 
 ---
 
-## The six sittings
+## The seven sittings
 
 Ordered so each one leaves the machine ready for the next, and so the two with real risk come after
 the cheap ones have proved the build is sane.
@@ -142,7 +143,32 @@ Two cases that only need a game added.
 - **The duplicate-add guard** — add a registered game a second time and confirm it switches rather
   than creating `windrose-2`.
 
-### 6. One themed pass, replacing nineteen visual sections · ~20 min
+### 6. Death Stranding 2 — loose root, the mod shape nothing else here has · ~25 min
+
+Every other registered game keeps its mods in a folder. DS2 keeps them **loose in the game root**,
+mixed in with the game's own files and the GPU vendor DLLs — which is exactly why this section exists
+and why its failure mode is the scary one: listing a game file as a mod, or worse, letting you toggle
+one off.
+
+- **Categorised listing.** Open DS2. Expect `ReShade` under SHADERS, `Zipliner` and `DollmanMute` as
+  plugins, and `version.dll` recognised as the LOADER the others ride on.
+- **Game files stay invisible — the one that matters.** `OptiScaler.ini`, `Chiral Clarity.ini`,
+  `Real colors SMRT.ini`, `SDR+.ini`, `PORTER 1.2.ini` and the `sl.*.dll` / `amd_fidelityfx_*` /
+  `dlssg_to_fsr3_*` families must NOT be listed. A false positive here is a row that offers to disable
+  part of the game.
+- **Toggle off is a reversible move.** Toggle one plugin off — its files leave the root for the holding
+  folder. Toggle back — byte-identical return.
+- **Loader warning.** Toggle `version.dll` off and expect the "this mod is a loader" dialog rather than
+  a silent move that takes ReShade down with it.
+- **Drop install.** Drop a new `.asi` and confirm it lands in the root, not in a folder that does not
+  exist here.
+- **Vanilla step-aside.** Play vanilla should move every enabled loose mod aside, loader included, and
+  Play modded should bring back exactly the set that was on.
+
+There is also a `_MODS_STAGING` folder in that root. Worth a look while you are there — if 626 is
+listing anything out of it, that is a finding.
+
+### 7. One themed pass, replacing nineteen visual sections · ~20 min
 
 The glow waves and road-to-zero sections were per-PR conformance checks, and the later waves re-verified
 the earlier ones. What is still worth a human eye, once, across Forge / Obsidian / Matrix:
@@ -176,8 +202,10 @@ likelier someone deleted the awkward entries than that a harness learned to play
 
 ## What I recommend dropping
 
-- **Dark Souls II / Decima loose-root** — no such game on the box. Keep the section in the prose file
-  as a record; mark the case obsolete until one is installed.
+- ~~**Dark Souls II / Decima loose-root**~~ — **withdrawn. I misread "DS2".** The section says DS2 and
+  I read Dark Souls II; its own vocabulary says otherwise — *Zipliner*, *Chiral Clarity*, *DollmanMute*
+  are Death Stranding mods, and Death Stranding 2 is the Decima game, installed and registered here.
+  Nothing to drop: it gets a sitting of its own below.
 - **Plugin flavour sealing (B1, B2a, 5c-consumer, delivery UX)** — five sections of STORE-versus-FULL
   checks from June, on a surface that has shipped four plugin versions since. Worth **one** current
   check ("the Store build shows no Nexus surface at all") rather than five historical ones.
@@ -193,5 +221,5 @@ with the release, the date, and who. `SmokeCatalogueTests` fails the build if an
 without saying when and by whom, so the record cannot rot the way the checkboxes did.
 
 **The number to watch is the denominator.** The harness prints *"N of 105 catalogue cases were
-executed, M still awaiting triage"*. When these six sittings are done that second number should be
+executed, M still awaiting triage"*. When these seven sittings are done that second number should be
 close to zero — not because the cases were run, but because each one was given an answer.
