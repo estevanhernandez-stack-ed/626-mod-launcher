@@ -73,7 +73,10 @@ public static class LooseRootListing
 
         var catalog = DirectInject.Detect(files, dirs);
         var owned = new HashSet<string>(catalog.SelectMany(m => m.Entries), StringComparer.OrdinalIgnoreCase);
-        var nature = LooseModScan.Detect(files, dirs, owned);
+        // Ask each proxy DLL what it is. One version-resource read per loader, only for the handful
+        // of files whose name matches a proxy convention.
+        var nature = LooseModScan.Detect(files, dirs, owned,
+            f => LoaderIdentity.ReadProduct(Path.Combine(folder, f)));
 
         return catalog.Concat(nature).ToList();
     }

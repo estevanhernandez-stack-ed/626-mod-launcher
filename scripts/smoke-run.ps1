@@ -35,6 +35,13 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $script:Results = New-Object System.Collections.Generic.List[object]
 $script:Seq = 0
 
+# The catalogue is the source of truth for WHAT EXISTS; this script is the source of truth for
+# what runs. SmokeCatalogueTests fails the build if the two disagree about the executable cases,
+# and the human-only bucket lives only in the catalogue so it cannot be quietly trimmed here.
+$catalogPath = Join-Path $repo 'docs/smoke-tests/smoke.json'
+if (-not (Test-Path $catalogPath)) { throw "smoke catalogue not found: $catalogPath" }
+$catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
+
 function Case {
     param([string]$Id, [string]$Section, [scriptblock]$Body)
     $script:Seq++
@@ -64,6 +71,20 @@ function HumanOnly {
 
 function Assert-True { param([bool]$Cond, [string]$Msg) if (-not $Cond) { throw $Msg } }
 
+# The mod view lives in the visual tree WHILE THE LIBRARY HOME IS SHOWING - the home is a host
+# swapped in over it - and its ModListView even reports IsOffscreen=False. So "ModRow.* is in the
+# tree" says nothing about what is on screen. Receipt: on the 2026-08-18 run where navigate-to-game
+# FAILED, game-toolbar-present, mod-list-populated, status-line-readable and loadout-segments all
+# passed anyway. Four greens about a surface the harness never reached.
+#
+# HomeButton is the discriminator: absent on the library home, present once a game is open.
+function Assert-OnGameView {
+    param($Tree)
+    if (-not (Find-ById $Tree 'HomeButton')) {
+        throw "not on a game view (no HomeButton) - this case would have been a false green"
+    }
+}
+
 # ---------------------------------------------------------------- start
 Write-Host ''
 Write-Host '  626 smoke harness' -ForegroundColor Cyan
@@ -74,10 +95,14 @@ Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA Silent
 Start-Sleep -Seconds 2
 if (-not (Test-Path $Exe)) { throw "launcher not found: $Exe" }
 Start-Process $Exe
-Start-Sleep -Seconds 13
+Start-Sleep -Seconds 4
 
 $root = Get-AppRoot
 if (-not $root) { throw "app did not present a window" }
+
+# Wait for the window to finish building rather than guessing at it. See Wait-Ready.
+$built = Wait-Ready $root
+Write-Host ("  window settled at {0} elements" -f $built) -ForegroundColor DarkGray
 
 Write-Host '  -- library home --' -ForegroundColor White
 
@@ -163,6 +188,7 @@ Case 'navigate-to-game' 'fix/library-repaint-after-add' {
 
 Case 'game-toolbar-present' 'Mod dashboard' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $need = @('EnableAllButton','DisableAllButton','AddModsButton','RefreshButton','ProfilesButton','SavesButton','ModFilterBox','ModListView')
     $miss = @($need | Where-Object { -not (Find-ById $t $_) })
     Assert-True ($miss.Count -eq 0) "missing: $($miss -join ', ')"
@@ -171,6 +197,7 @@ Case 'game-toolbar-present' 'Mod dashboard' {
 
 Case 'mod-list-populated' 'ReloadModsAsync unification' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $mods = @(Find-AllByIdPrefix $t 'ModRow.')
     Assert-True ($mods.Count -gt 0) "no ModRow.* realised"
     "$($mods.Count) mod rows"
@@ -178,6 +205,7 @@ Case 'mod-list-populated' 'ReloadModsAsync unification' {
 
 Case 'status-line-readable' 'Mod dashboard' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $s = Get-Text (Find-ById $t 'AppStatusText')
     Assert-True (-not [string]::IsNullOrWhiteSpace($s)) "AppStatusText empty"
     "'$s'"
@@ -185,6 +213,7 @@ Case 'status-line-readable' 'Mod dashboard' {
 
 Case 'loadout-segments' 'Loadout MP/SP' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $miss = @(@('LoadoutAllSegment','LoadoutMpSegment','LoadoutSpSegment') | Where-Object { -not (Find-ById $t $_) })
     Assert-True ($miss.Count -eq 0) "missing: $($miss -join ', ')"
     "All / MP / SP present"
@@ -192,6 +221,7 @@ Case 'loadout-segments' 'Loadout MP/SP' {
 
 Case 'theme-picker-reads-current' 'road-to-zero B2 / D2' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $tp = Find-ById $t 'ThemePicker'
     Assert-True ($null -ne $tp) "ThemePicker absent"
     "current theme reads '$(Get-Text $tp)'"
@@ -199,6 +229,7 @@ Case 'theme-picker-reads-current' 'road-to-zero B2 / D2' {
 
 Case 'group-combo-selection-without-opening' 'Group the mod list' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $sel = Get-Selection (Find-ById $t 'GroupModeCombo')
     Assert-True (-not [string]::IsNullOrWhiteSpace($sel)) "no selection readable"
     "selection='$sel' (popup never opened)"
@@ -289,27 +320,120 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $t3 = Get-Tree $root
     $rows = @(Find-AllByIdPrefix $t3 'UpdateRow.')
     $back = Find-ById $t3 'UpdatesBackButton'
-    $unknown = @($t3 | Where-Object { try { $_.Current.Name -like '*unknown*' } catch { $false } }).Count
+    # Scoped to the ROWS, not the whole tree. The library home is a host that stays in the tree
+    # behind this view, and it legitimately renders 'Unknown' as the recency of a never-launched game.
+    # A first cut of this assertion scanned everything and failed on that - a false RED, which is the
+    # safe direction to be wrong in, and took two minutes to clear because the case named what it hit.
+    $rowText = @($rows | ForEach-Object { Get-Tree $_ } | ForEach-Object { try { $_.Current.Name } catch { '' } })
+    $unknown = @($rowText | Where-Object { $_ -like '*unknown*' }).Count
+    # A backwards arrow is the A27 defect, on screen: '1.0.1 -> 1.0.0' invited an update to an older
+    # version. The row text is readable, so assert on it rather than eyeballing a screenshot.
+    $backwards = @($rowText | Where-Object { $_ -match '\d\s*→\s*\d' })
     if ($back) { Invoke-Node $back; Wait-Idle 2000 }
-    "$($rows.Count) update rows; $unknown elements rendering 'unknown' (A10)"
+    # This case printed '0 update rows' and passed for as long as it existed, because the rows carried
+    # no AutomationId and nothing asserted they did (A28). A number nobody checks is a case that
+    # cannot fail.
+    Assert-True ($rows.Count -gt 0) "no UpdateRow.* realised - are the row ids bound?"
+    Assert-True ($unknown -eq 0) "$unknown elements still render 'unknown' (A10)"
+    foreach ($b in $backwards) { Assert-True $false "arrow pair on screen (A27): $b" }
+    "$($rows.Count) update rows, no 'unknown', no bare arrow pairs"
+}
+
+Write-Host ''
+Write-Host '  -- intake + uninstall, end to end --' -ForegroundColor White
+
+# The drag-and-drop gesture is the one thing UIA cannot synthesise into a WinUI window. Everything
+# BEHIND it is reachable: a drop and the + Add mods picker both land in AddModsAsync(paths), so
+# driving the picker exercises the ban-risk gate, classification, validate-then-extract and the
+# provenance write - the whole chain minus the mouse. Say that plainly rather than claim drag-drop
+# coverage we do not have.
+#
+# Target is Windrose deliberately: folder lane (so uninstall exists), ban risk None (so the gate
+# does not block an unattended run), and a real library rather than a fixture.
+$probe = Join-Path $repo 'artifacts\smoke\SmokePicker626.pak'
+New-Item -ItemType Directory -Force -Path (Split-Path $probe) | Out-Null
+Set-Content -Path $probe -Value 'SMOKE626 probe payload, inert' -Encoding ascii
+$wrData = 'C:\Program Files (x86)\Steam\_626mods\windrose'
+$wrMods = 'C:\Program Files (x86)\Steam\steamapps\common\Windrose\R5\Content\Paks\~mods'
+
+# Start from a state where the probe is NOT installed. A leftover from a previous run sends intake
+# down the REPLACEMENT path instead, which raises 'Update installed mods?' - and then the next case
+# reports 'no confirm dialog' while a perfectly good modal sits on screen. That is the
+# check-for-ANY-modal trap in .claude/rules/automation-ids.md, walked into by the person who wrote
+# the harness that documents it.
+Remove-Item (Join-Path $wrMods 'SmokePicker626.pak') -Force -EA SilentlyContinue
+Remove-Item (Join-Path $wrData 'installs\SmokePicker626.json') -Force -EA SilentlyContinue
+
+Case 'intake-via-picker' 'A25/A26 - intake records what it placed' {
+    $t = Get-Tree $root
+    if (-not (Find-ById $t 'AddModsButton')) {
+        $home = Find-ById $t 'HomeButton'
+        if ($home) { Invoke-Node $home; Wait-Idle 2500; $t = Get-Tree $root }
+    }
+    # Explicitly Windrose - not whichever game the earlier navigation happened to land on.
+    $row = Find-ById (Get-Tree $root) 'GameRow.windrose'
+    if ($row) { Invoke-Node $row; Wait-Idle 4000 }
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+
+    $before = @(Find-AllByIdPrefix $t 'ModRow.').Count
+    Invoke-Node (Find-ById $t 'AddModsButton')
+    $dlg = Get-FileDialog
+    Assert-True ($null -ne $dlg) "the + Add mods picker never appeared"
+    Assert-True (Submit-FileDialog -Dialog $dlg -Paths @($probe)) "the picker did not close"
+    Wait-Idle 6000
+    # Nothing unexpected may be left on screen - a replacement prompt, a framework nudge, anything.
+    Assert-NoModal $root
+
+    $t2 = Get-Tree $root
+    $row = Find-ById $t2 'ModRow.SmokePicker626'
+    Assert-True ($null -ne $row) "no ModRow.SmokePicker626 after installing through the picker"
+
+    # The record, not the row. A25 was invisible for exactly as long as nobody looked here.
+    $manifest = Join-Path $wrData 'installs\SmokePicker626.json'
+    Assert-True (Test-Path $manifest) "installed but wrote no install manifest (A25)"
+    $claimed = (Get-Content $manifest -Raw | ConvertFrom-Json).files
+    Assert-True ($claimed -contains 'SmokePicker626.pak') "the manifest does not claim the file it placed"
+    "installed through the picker, row realised, manifest claims $($claimed.Count) file(s)"
+}
+
+Case 'uninstall-confirm-and-forget' 'A26 - the record goes with the file' {
+    Assert-NoModal $root
+    $t = Get-Tree $root
+    # Scoped to the ROW, and matched on the pattern rather than the exact string: the row prettifies
+    # its key for display, so 'SmokePicker626' surfaces as 'Smoke Picker 626' and an exact-name lookup
+    # for the key finds nothing. The row id is the stable handle; the button is a child of it.
+    $row = Find-ById $t 'ModRow.SmokePicker626'
+    Assert-True ($null -ne $row) "the probe row is not in the list to uninstall"
+    $btn = @(Get-Tree $row | Where-Object { try { $_.Current.Name -like 'Uninstall *' } catch { $false } })[0]
+    Assert-True ($null -ne $btn) "no uninstall affordance on the probe row"
+    Invoke-Node $btn
+
+    # A destructive confirm is a DECISION, and driving it is the point: the dialog is where the
+    # launcher states what it is about to do, and an assertion beats a screenshot nobody reads.
+    $dt = Get-ContentDialog $root 'Uninstall mod?' -ButtonName 'Uninstall'
+    Assert-True ($null -ne $dt) "no confirm dialog before a permanent delete"
+    # The copy is part of the contract: a permanent delete has to say so. Assert it, do not screenshot it.
+    $body = @(Get-Tree $dt | ForEach-Object { try { $_.Current.Name } catch { '' } })
+    Assert-True (@($body | Where-Object { $_ -like "*can't be undone*" }).Count -gt 0) "the confirm never says the delete is permanent"
+    $confirm = @(Get-Tree $dt | Where-Object { try { $_.Current.Name -eq 'Uninstall' } catch { $false } })[0]
+    Assert-True ($null -ne $confirm) "the confirm dialog has no Uninstall button"
+    Invoke-Node $confirm; Wait-Idle 5000
+
+    $t2 = Get-Tree $root
+    Assert-True ($null -eq (Find-ById $t2 'ModRow.SmokePicker626')) "the row survived its uninstall"
+    $gone = -not (Test-Path (Join-Path $wrData 'installs\SmokePicker626.json'))
+    Assert-True $gone "the install record outlived the file it claimed (A26)"
+    "uninstalled through its confirm dialog; row, file and record all gone"
 }
 
 # ---------------------------------------------------------------- what a harness cannot do
 Write-Host ''
 Write-Host '  -- cases this harness cannot run --' -ForegroundColor White
 
-HumanOnly 'bnd4-save-walk'        'PR #49'  'Needs a real Elden Ring / Seamless .co2 save on disk'
-HumanOnly 'framework-intake-elm'  'PR ??'   'Needs the Elden Mod Loader zip to drop'
-HumanOnly 'tool-intake-wse'       'PR ??'   'Needs the WSE tool zip to drop'
-HumanOnly 'dependency-chip-ue4ss' 'PR #51'  'Needs UE4SS.dll deleted from the game folder, then restored'
-HumanOnly 'safe-clear-round-trip' 'Phase 1B' 'Destructive against a real game folder; two-drive setup. Explicit go-ahead only'
-HumanOnly 'safe-clear-refusal'    'Task 2'  'Needs the game actually running'
-HumanOnly 'vanilla-vs-modded'     'feat/vanilla-modded-launch' 'Needs the game launched and observed in-engine'
-HumanOnly 'nexus-oauth-connect'   'Task 11' 'Needs a live Nexus sign-in in a browser'
-HumanOnly 'nexus-download-endorse' 'Nexus endorse' 'Needs a live Nexus account action against the real site'
-HumanOnly 'steam-build-warning'   'Phase 2' 'Needs Steam to actually update a game'
-HumanOnly 'vortex-takeover'       '2026-06-02' 'Needs a Vortex-managed game staged on this box'
-HumanOnly 'ban-risk-ack-gate'     '2026-06-15' 'Agent must REACH the gate and never satisfy it - the ack is human-only by design'
+foreach ($c in $catalog.cases | Where-Object { $_.coverage -eq 'human' }) {
+    HumanOnly $c.id $c.surface $c.humanReason
+}
 
 # ---------------------------------------------------------------- report
 Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
@@ -318,9 +442,19 @@ $pass  = @($script:Results | Where-Object Status -eq 'PASS').Count
 $fail  = @($script:Results | Where-Object Status -eq 'FAIL').Count
 $human = @($script:Results | Where-Object Status -eq 'NEEDS-HUMAN').Count
 
+# Every number below is against the CATALOGUE total, not against what this script happened to
+# run. A percentage of the cases a harness chose for itself is not coverage, and reporting one
+# is how a green run comes to mean less than it looks like it means.
+$total     = @($catalog.cases).Count
+$untriaged = @($catalog.cases | Where-Object { $_.coverage -eq 'untriaged' }).Count
+
 Write-Host ''
 Write-Host '  ============================================' -ForegroundColor Cyan
 Write-Host ("   {0} verified, {1} failed, {2} require a human" -f $pass, $fail, $human) -ForegroundColor Cyan
+Write-Host ("   {0} of {1} catalogue cases were executed" -f ($pass + $fail), $total) -ForegroundColor Cyan
+if ($untriaged -gt 0) {
+    Write-Host ("   {0} still awaiting triage - neither run nor claimed" -f $untriaged) -ForegroundColor DarkYellow
+}
 Write-Host '  ============================================' -ForegroundColor Cyan
 if ($fail -gt 0) {
     Write-Host ''

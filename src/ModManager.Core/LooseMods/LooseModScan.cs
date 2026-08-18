@@ -14,8 +14,12 @@ public static class LooseModScan
     internal static readonly string[] ProxyNames =
         { "dinput8.dll", "version.dll", "winmm.dll", "d3d11.dll", "dxgi.dll", "winhttp.dll" };
 
+    /// <param name="identify">Optional: what a proxy DLL says about itself, so a loader row can name
+    /// the thing rather than the filename. Left null the scan behaves exactly as before — this stays
+    /// pure, and the caller decides when to touch a file (A24).</param>
     public static IReadOnlyList<DirectInjectMod> Detect(
-        IReadOnlyList<string> topFiles, IReadOnlyList<string> topDirs, ISet<string>? alreadyOwned = null)
+        IReadOnlyList<string> topFiles, IReadOnlyList<string> topDirs, ISet<string>? alreadyOwned = null,
+        Func<string, (string? Product, string? Version)>? identify = null)
     {
         var owned = alreadyOwned ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool Free(string name) => !owned.Contains(name);
@@ -45,9 +49,17 @@ public static class LooseModScan
         foreach (var p in ProxyNames)
         {
             var hit = topFiles.FirstOrDefault(f => f.Equals(p, StringComparison.OrdinalIgnoreCase) && Free(f));
-            if (hit is not null)
-                mods.Add(new DirectInjectMod(Path.GetFileNameWithoutExtension(hit) + " (ASI loader)",
-                    "loader", "proxy loader DLL in game root", new List<string> { hit }));
+            if (hit is null) continue;
+
+            // The NAME stays derived from the filename: it is the row key, and a disabled loader's
+            // holding folder is already named after it. What changes is what the row SAYS. "version.dll"
+            // was called an ASI loader when the file itself reports DLSS Enabler 4.5.2.2 (A24).
+            var (product, version) = identify?.Invoke(hit) ?? (null, null);
+            var evidence = LoaderIdentity.Identified(product)
+                ? $"{LoaderIdentity.Label(hit, product, version)} — a loader in the game root"
+                : "proxy loader DLL in game root";
+            mods.Add(new DirectInjectMod(Path.GetFileNameWithoutExtension(hit) + " (ASI loader)",
+                "loader", evidence, new List<string> { hit }));
         }
 
         return mods;

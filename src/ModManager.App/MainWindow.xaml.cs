@@ -89,9 +89,14 @@ public sealed partial class MainWindow : Window
         ViewModel.ReviewDiscoveries = async proposals =>
         {
             var dialog = new DiscoveryReviewDialog(proposals) { XamlRoot = Content.XamlRoot };
-            return await dialog.ShowAsync() == ContentDialogResult.Primary
-                ? dialog.Approved
-                : Array.Empty<ModManager.Core.Discovery.AdoptionProposal>();
+            // Three outcomes now, not two: adopt what is installed, install what is only downloaded,
+            // or do neither. Cancel still writes nothing at all.
+            return await dialog.ShowAsync() switch
+            {
+                ContentDialogResult.Primary => new DiscoveryReviewOutcome(dialog.Approved, Array.Empty<ModManager.Core.Discovery.AdoptionProposal>()),
+                ContentDialogResult.Secondary => new DiscoveryReviewOutcome(Array.Empty<ModManager.Core.Discovery.AdoptionProposal>(), dialog.ToInstall),
+                _ => DiscoveryReviewOutcome.Nothing,
+            };
         };
         // The unified identify run's single review — same view-owns-the-dialog split as above, but
         // it returns BOTH approved sections. Cancel (or an unwired delegate) writes nothing at all.
@@ -509,12 +514,12 @@ public sealed partial class MainWindow : Window
     /// ASI plugin loads through). Proceed-or-cancel only, NEVER a hard block: "Disable anyway"
     /// returns true and the reversible disable runs; Cancel returns false and nothing changes on
     /// disk. Mirrors the ConfirmBanRiskEnable wiring — the VM owns the policy, this owns the dialog.</summary>
-    private async Task<bool> ConfirmLooseLoaderDisableAsync(string modName)
+    private async Task<bool> ConfirmLooseLoaderDisableAsync(string modName, string consequence)
     {
         var dialog = new ContentDialog
         {
             Title = "This mod is a loader",
-            Content = $"\"{modName}\" is the loader other mods inject through — disabling it disables every ASI plugin.",
+            Content = consequence,
             PrimaryButtonText = "Disable anyway",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,

@@ -5,33 +5,69 @@ using ModManager.Core;
 
 namespace ModManager.App;
 
-/// <summary>One mod line in the Updates directory — installed version on the left of the arrow, the
-/// latest version a previous Nexus refresh recorded on the right. Immutable and built once per open, so
-/// every binding is OneTime.</summary>
+/// <summary>One MOD line in the Updates directory — not one file line. Immutable and built once per
+/// open, so every binding is OneTime.</summary>
 public sealed class UpdateRow
 {
     // Ctor-injected and read-only on purpose — an init-only `required` property makes WinUI's
     // XamlTypeInfo generator emit an activator it can't satisfy (see NexusCatalogCard's note).
-    public UpdateRow(PendingUpdate pending) => Pending = pending;
+    public UpdateRow(PendingUpdateGroup group) => Group = group;
 
-    public PendingUpdate Pending { get; }
+    public PendingUpdateGroup Group { get; }
+
+    /// <summary>The member the row speaks for. A group of four option files is still one mod, and
+    /// the version line comes from whichever of them can justify one.</summary>
+    private PendingUpdate Pending => Group.Primary;
 
     public string RowAutomationId => $"UpdateRow.{Pending.ModKey}";
 
-    public string ModName => string.IsNullOrWhiteSpace(Pending.ModName) ? Pending.ModKey : Pending.ModName;
+    public string ModName => string.IsNullOrWhiteSpace(Group.ModName) ? Pending.ModKey : Group.ModName;
 
-    /// <summary>"1.2.0 → 1.3.1". A mod with no recorded installed version says so rather than showing a
-    /// blank left-hand side — we know what's on Nexus, we just never learned what's on disk.</summary>
+    /// <summary>Names the files behind a collapsed row. Grouping is a display decision, so the thing
+    /// it hides has to stay readable — otherwise "Faster Ships" silently stands for four downloads
+    /// and the user cannot tell which one Nexus is talking about.</summary>
+    public string FilesText => Group.IsMulti
+        ? $"{Group.Members.Count} files — {string.Join(", ", Group.MemberKeys)}"
+        : "";
+
+    public Visibility FilesVisibility => Group.IsMulti ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// What the row says about versions — and only when it can say something true.
+    ///
+    /// <para>This used to render "installed → latest" for every row regardless of why the row existed,
+    /// which produced about twenty consecutive "unknown → 1.2.1" on a real install, plus "1.1 → 1" and
+    /// "1.0.1 → 1.0.0". Those last two read as DOWNGRADES: the launcher was inviting the user to go
+    /// backwards. The arrow is a claim about direction, and a row pending on Nexus's per-user flag has
+    /// no left-hand side to point away from (A10).</para>
+    /// </summary>
     public string VersionText
     {
         get
         {
-            var installed = string.IsNullOrWhiteSpace(Pending.InstalledVersion) ? "unknown" : Pending.InstalledVersion!;
-            // The right-hand side can be unknown too. A row can be pending purely on Nexus's own
-            // per-user flag, which rides in on a search hit and carries no version — so we know the
-            // user is behind without ever having been told what they are behind of.
-            var latest = string.IsNullOrWhiteSpace(Pending.LatestVersion) ? "unknown" : Pending.LatestVersion!;
-            return $"{installed} → {latest}";
+            // Listed because Nexus says so, not because we compared anything. Say that.
+            if (Pending.Reason == PendingReason.NexusFlag || string.IsNullOrWhiteSpace(Pending.InstalledVersion))
+                return "Nexus says a newer file is available";
+
+            if (string.IsNullOrWhiteSpace(Pending.LatestVersion))
+                return $"{Pending.InstalledVersion} installed — a newer file is available";
+
+            // "1" and "1.0" are the same release. Showing that pair implies a change that is not
+            // there; the row stays, because Nexus may still be right that a newer FILE exists, and
+            // dropping it would hide a real update to tidy away a display problem.
+            if (Pending.VersionsLookEquivalent)
+                return $"{Pending.InstalledVersion} installed — Nexus has a newer file";
+
+            // The arrow only where the direction is provable. Two known versions differing is not
+            // enough: "1.1" and "1" differ, and an arrow between them points backwards. Those were the
+            // two examples A10 was filed about and they survived it, because the fix drew the pair
+            // whenever both sides were known (A27).
+            if (Pending.LatestIsProvablyNewer)
+                return $"{Pending.InstalledVersion} → {Pending.LatestVersion}";
+
+            // Both known, order not provable — a descending pair, or a suffix like "1.0.0.1-hotfix"
+            // that no strict parse can rank. Name both and imply nothing.
+            return $"{Pending.InstalledVersion} installed · Nexus lists {Pending.LatestVersion}";
         }
     }
 }
@@ -44,7 +80,8 @@ public sealed class UpdateGameGroup
     {
         GameId = summary.GameId;
         GameName = string.IsNullOrWhiteSpace(summary.GameName) ? summary.GameId : summary.GameName;
-        Rows = summary.Pending.Select(p => new UpdateRow(p)).ToList();
+        // One row per mod, not per Nexus FILE (A11).
+        Rows = summary.Groups.Select(g => new UpdateRow(g)).ToList();
     }
 
     public string GameId { get; }

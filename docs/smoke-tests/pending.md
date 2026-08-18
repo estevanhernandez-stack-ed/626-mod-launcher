@@ -2,6 +2,17 @@
 
 Running log of post-merge smoke needs the orchestrator can't verify automatically. Each entry: what shipped, what to test, why it matters. Strike entries through (or move to a "Cleared" section) once smoked.
 
+> **The machine-readable half is `smoke.json`, beside this file** (backlog E3). This document is the
+> prose record and stays the place to write a new entry in full; the catalogue is what an agent
+> executes and what a run reports against. `scripts/smoke-run.ps1` reads it, and `SmokeCatalogueTests`
+> fails the build if the two disagree about which cases exist.
+>
+> **73 of the 105 catalogue entries are `untriaged`** — inherited from the sections below and not yet
+> walked with Este. Untriaged means nobody has said whether it was exercised, which is not the same as
+> untested and not the same as pending. That distinction is the whole reason the catalogue exists:
+> read this file as a to-do list and you re-test things that were fine in May; read it as history and
+> you ship believing something was covered when it never was.
+
 > **2026-05-29 remediation status (verified against `git log` + code).** The 2026-05-28 live ER + Safe Clear pass surfaced 7 issues (`docs/superpowers/plans/2026-05-28-smoke-remediations.md`, decision log 2026-05-28). The priority-1/2 fixes are now **merged** — the old BLOCKED banners below have been cleared where the fix shipped:
 >
 > | Remediation | Status | Evidence |
@@ -1717,3 +1728,81 @@ These steps are the only coverage this fix gets.
    matters:* the all-games section is deliberately gated on the FULL row set, not the filtered one.
    Gating on the filtered rows would take the search box away the moment a search matched nothing,
    leaving no way to undo the search — a worse bug than the one being fixed.
+
+## A22 — installing a mod asks the ban-risk question
+
+Added 2026-08-18. **Not coverable by the suite**: the gate is an App-side dialog wired through a
+delegate, and the App layer is headless-untestable. The Core half — `BanRiskRules.ShouldGateEnable`,
+the high-only, ack-clears-it policy — already has tests; what needs a human is that intake now
+consults it.
+
+Background: every path that turned a mod ON consulted the gate; intake did not, while
+`Scanner.ExecuteIntake` copies into the live mod folder. A dropped zip installed enabled on a
+high-risk game with no warning.
+
+**Setup.** A high ban-risk game that has NOT been acknowledged. If it has been, clear its ack:
+delete `ban-risk-acks.json` from that game's data dir — `<gameRoot>/_626mods/<gameId>/`, not
+`%LOCALAPPDATA%`.
+
+**Smoke steps:**
+
+1. **Drop a mod zip on a high-risk, un-acked game.** EXPECT the ban-risk warning before anything is
+   installed, with its ban-safe loader list. Cancel it. EXPECT the status line to read "Nothing was
+   installed." and the game folder to be untouched — no new files in the mod folder, no new row.
+   *Why it matters:* this is the whole entry. Refusing has to happen above the first branch that
+   touches disk, so a cancel leaves the folder exactly as it was.
+2. **Drop again and press through the warning, WITHOUT ticking the checkbox.** EXPECT the mod to
+   install normally — and EXPECT `ban-risk-acks.json` NOT to be written.
+   *Why it matters:* proceeding is not acknowledging. The ack is recorded only when the user ticks
+   "Don't warn me again for this game" AND proceeds (`proceed && dontWarn.IsChecked == true`). Until
+   then every enable stays a fresh decision, which is what the rule means by an EXPLICIT
+   acknowledgment. An earlier draft of this entry expected step 3 to be silent after step 2. That was
+   wrong, and wrong in the dangerous direction: a gate that HAD granted itself a permanent opt-out
+   would have read as a pass.
+3. **Drop a third time, still without ticking.** EXPECT the warning AGAIN.
+   *Why it matters:* the gate must keep asking until it is told not to.
+4. **Drop a fourth time, tick "Don't warn me again for this game", and proceed.** EXPECT the install,
+   and EXPECT `ban-risk-acks.json` to appear naming the game. Then drop once more and EXPECT silence.
+   *Why it matters:* this is the only path that records the ack, and re-asking after it would train
+   the user to click through — worse than not asking.
+5. **Drop TEN files at once on a fresh un-acked high-risk game.** EXPECT exactly ONE warning, not
+   ten. *Why it matters:* a ten-file drop is one decision. Per-file would be unusable and would
+   make the ack meaningless.
+6. **Install a framework or a tool on a fresh un-acked high-risk game** (drop a UE4SS / BepInEx
+   archive, or install a tool from the Tools panel). EXPECT the same single warning. *Why it
+   matters:* a loader going live is the thing anti-cheat actually sees, so it counts as much as a
+   mod does. All of these route through the same intake entry point, which is why one gate covers
+   them — confirm that holds on the surface, not just in the call graph.
+7. **Drop a mod on a game with no ban risk (regression check).** EXPECT no warning at all and a
+   normal install. *Why it matters:* the gate is high-risk-only. Any friction on an ordinary game
+   is a bug — the flagship gesture must stay one motion.
+
+## A14 part 3 — the adoption dialog offers to install a download
+
+Added 2026-08-18. App-side dialog, so not coverable by the suite. The Core half (what adoption can
+reach) has tests; what needs a human is the two-action dialog.
+
+**Setup.** A game with mod archives sitting in its folder that are NOT installed — the Fluffy case:
+Monster Hunter Wilds with downloads under `Games/MonsterHunterWilds/Mods/` and no `natives/` folder.
+
+**Smoke steps:**
+
+1. **Run Identify my mods (or add the game) so the review appears.** EXPECT the heading to read
+   "Mods you've downloaded", not "Mods already installed", and each row to say *downloaded, not
+   installed*. EXPECT "Adopt 0 mods" disabled and an enabled "Install 13 downloads".
+   *Why it matters:* the old dialog said the mods were installed and offered to adopt thirteen of
+   them, which would have written nothing.
+2. **Press Install.** EXPECT the ban-risk warning first (Wilds is high-risk — clear its ack to see
+   it), then the normal intake: replacement confirmation if any, then the mods appearing in the list.
+   *Why it matters:* the dialog installs nothing itself — it hands the files to the same path a
+   drag-and-drop uses, so every guard on that path applies.
+3. **Run the identify sweep again.** EXPECT the same archives now offered as adoptable rather than as
+   downloads. *Why it matters:* once they are installed there IS something for adoption to attach to,
+   so the same sweep gives a different and correct answer.
+4. **A mixed sweep (regression check).** On a game with both unnamed installed mods and loose
+   downloads, EXPECT the downloads unticked and the installed mods ticked, "Adopt N" counting only the
+   installed ones. *Why it matters:* pre-ticking is only safe in the all-downloads case; in a mixed
+   sweep a tick means "adopt", and pre-ticking rows adoption cannot write for is the original bug.
+5. **A sweep with no downloads at all (regression check).** EXPECT no Install button on the dialog.
+   *Why it matters:* an Install button over nothing installable is the same overstatement in a new
+   place.

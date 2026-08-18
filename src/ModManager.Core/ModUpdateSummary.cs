@@ -2,9 +2,86 @@ using System.Text.Json;
 
 namespace ModManager.Core;
 
+/// <summary>Why a mod is listed as pending. The row renders differently for each, because only one
+/// of them supports a version comparison (A10).</summary>
+public enum PendingReason
+{
+    /// <summary>We know both versions and they differ. A pair can honestly be shown.</summary>
+    VersionDiffers,
+    /// <summary>Nexus's own per-user flag says the user is behind. It rides in on a search hit and
+    /// carries no version, so there is no left-hand side and no pair to draw — rendering one anyway is
+    /// how "unknown -> 1.2.1" filled twenty consecutive rows.</summary>
+    NexusFlag,
+}
+
 /// <summary>One mod with a newer version available on Nexus than what's installed.</summary>
 public sealed record PendingUpdate(string GameId, string GameName, string ModKey, string ModName,
-    string? InstalledVersion, string? LatestVersion, int? NexusModId, string? NexusDomain);
+    string? InstalledVersion, string? LatestVersion, int? NexusModId, string? NexusDomain,
+    PendingReason Reason = PendingReason.VersionDiffers)
+{
+    /// <summary>True when the two version strings mean the same release — "1" and "1.0", "1.0.0" and
+    /// "1.0". A pair like that is not an update to show; Nexus may still be right that a newer FILE
+    /// exists, so the row stays and only its wording changes.</summary>
+    public bool VersionsLookEquivalent =>
+        !string.IsNullOrWhiteSpace(InstalledVersion)
+        && !string.IsNullOrWhiteSpace(LatestVersion)
+        && NormalizeVersion(InstalledVersion!) == NormalizeVersion(LatestVersion!);
+
+    /// <summary>True only when the latest version is PROVABLY newer than the installed one: both
+    /// parse as plain dotted numbers and the comparison ascends. Anything else — a suffix like
+    /// "1.0.0.1-hotfix", a descending pair, an unknown side — is false.
+    ///
+    /// <para>The arrow in the row is a claim about DIRECTION, and it may only be drawn where that claim
+    /// holds. A10 declined to order arbitrary version strings, correctly, and then drew the arrow
+    /// whenever two known versions differed — so the launcher kept inviting the user to "update" from
+    /// 1.0.1 to 1.0.0, which is one of the two examples A10 was filed about (A27).</para>
+    ///
+    /// <para>Refusing to guess costs the suffix case: "1.0.0.1-hotfix" probably IS newer, and this
+    /// says nothing about it. Saying less is the point — the row names both versions either way.</para>
+    /// </summary>
+    public bool LatestIsProvablyNewer => Compare(InstalledVersion, LatestVersion) is int c && c < 0;
+
+    /// <summary>Numeric-only ordering, or null when either side is not a plain dotted number. Null is
+    /// the answer that matters: it means "not comparable", never "equal".</summary>
+    internal static int? Compare(string? a, string? b)
+    {
+        var left = Numeric(a);
+        var right = Numeric(b);
+        if (left is null || right is null) return null;
+        for (var i = 0; i < Math.Max(left.Count, right.Count); i++)
+        {
+            var x = i < left.Count ? left[i] : 0;
+            var y = i < right.Count ? right[i] : 0;
+            if (x != y) return x.CompareTo(y);
+        }
+        return 0;
+    }
+
+    // Every segment must be digits. A single non-numeric part makes the whole string unorderable —
+    // deliberately strict, because a lenient parse is the guessing this exists to avoid.
+    private static List<int>? Numeric(string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return null;
+        var parts = v.Trim().TrimStart('v', 'V').Split('.');
+        var nums = new List<int>(parts.Length);
+        foreach (var p in parts)
+        {
+            if (p.Length == 0 || !p.All(char.IsAsciiDigit) || !int.TryParse(p, out var n)) return null;
+            nums.Add(n);
+        }
+        return nums.Count == 0 ? null : nums;
+    }
+
+    /// <summary>Trailing zero segments dropped, so 1.0.0 == 1.0 == 1. Deliberately NOT an ordering:
+    /// mod versions are not reliably semver, and a comparator that guessed which side is newer would
+    /// produce a confidently wrong DIRECTION — the fault this is here to remove.</summary>
+    internal static string NormalizeVersion(string v)
+    {
+        var parts = v.Trim().TrimStart('v', 'V').Split('.', StringSplitOptions.TrimEntries).ToList();
+        while (parts.Count > 1 && (parts[^1] == "0" || parts[^1].Length == 0)) parts.RemoveAt(parts.Count - 1);
+        return string.Join('.', parts);
+    }
+}
 
 /// <summary>What we know about one game's updates, from its already-persisted metadata.json alone.
 /// <see cref="Checked"/> = false means the game has never had a Nexus refresh — that is NOT the same
@@ -14,7 +91,16 @@ public sealed record PendingUpdate(string GameId, string GameName, string ModKey
 public sealed record GameUpdateSummary(string GameId, string GameName, bool Checked,
     IReadOnlyList<PendingUpdate> Pending)
 {
-    public int Count => Pending.Count;
+    private IReadOnlyList<PendingUpdateGroup>? _groups;
+
+    /// <summary>The pending updates collapsed to one entry per mod (A11).</summary>
+    public IReadOnlyList<PendingUpdateGroup> Groups => _groups ??= PendingUpdateGroups.Group(Pending);
+
+    /// <summary>How many MODS are pending — the number a badge shows and a person counts. It follows
+    /// the rows rather than the files, because "115 updates" on an install with a fraction of that
+    /// many mods is the same overstatement in badge form. Zero here still means zero pending, so the
+    /// checked / never-checked distinction is untouched.</summary>
+    public int Count => Groups.Count;
 }
 
 /// <summary>
@@ -91,8 +177,13 @@ public static class ModUpdateSummary
             if (!behind) continue;
 
             var modName = string.IsNullOrWhiteSpace(m.Title) ? key : m.Title;
+            // Carry WHY. A row listed on Nexus's flag has no version comparison behind it, and the
+            // view must not draw an arrow between two things it was never told (A10).
+            var reason = m.NexusUpdateAvailable == true
+                ? PendingReason.NexusFlag
+                : PendingReason.VersionDiffers;
             pending.Add(new PendingUpdate(gameId, gameName, key, modName, m.Version, latest,
-                m.NexusModId, game.NexusGameDomain));
+                m.NexusModId, game.NexusGameDomain, reason));
         }
 
         return new GameUpdateSummary(gameId, gameName, checkedAny, pending);

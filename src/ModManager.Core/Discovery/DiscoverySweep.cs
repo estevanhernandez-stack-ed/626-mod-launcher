@@ -22,6 +22,19 @@ public static class DiscoverySweep
     // regardless of location. Shares LooseModScan.ProxyNames (internal) rather than a second copy.
     private static readonly string[] ArchiveExtensions = { "zip", "7z", "rar" };
 
+    /// <summary>True when an archive names itself as a mod MANAGER extension rather than a game mod.
+    /// Deliberately narrow: it requires the manager name AND the word "extension", so a mod legitimately
+    /// called "Vortex Armour" or a mod whose description mentions Vortex is untouched. A refusal here
+    /// costs the user a row they would have had to uncheck; a refusal that over-reaches hides a real
+    /// mod, so the test is the conservative one.</summary>
+    internal static bool IsManagerExtension(string fileName)
+    {
+        var name = fileName ?? "";
+        if (name.IndexOf("extension", StringComparison.OrdinalIgnoreCase) < 0) return false;
+        return name.IndexOf("vortex", StringComparison.OrdinalIgnoreCase) >= 0
+               || name.IndexOf("mod organizer", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     public static IReadOnlyList<DiscoveryCandidate> Classify(
         IReadOnlyList<SweptFile> files, DiscoverySweepOptions options)
     {
@@ -36,6 +49,11 @@ public static class DiscoverySweep
 
             if (ArchiveExtensions.Contains(extension))
             {
+                // An archive that says it is a MANAGER extension is not a game mod. Sitting in the
+                // same folder is not enough to make something a mod, and offering the user
+                // "Vortex Extension Update - Monster Hunter Wilds Vortex Extension v0.1.4.zip" as a
+                // mod to adopt is a claim its own filename contradicts (A14).
+                if (IsManagerExtension(fileName)) continue;
                 found.Add(new DiscoveryCandidate(normalized, fileName, DiscoveryKind.Archive));
                 continue;
             }

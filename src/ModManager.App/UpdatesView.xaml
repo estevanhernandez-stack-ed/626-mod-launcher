@@ -85,15 +85,23 @@
                                 <ItemsControl ItemsSource="{x:Bind Rows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="local:UpdateRow">
-                                            <Grid Padding="10,8" Margin="0,0,0,4" CornerRadius="0"
+                                            <Grid AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
+                                                  AutomationProperties.Name="{x:Bind ModName}"
+                                                  Padding="10,8" Margin="0,0,0,4" CornerRadius="0"
                                                   Background="{StaticResource ThemePanel}" ColumnSpacing="12">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{x:Bind ModName}"
-                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource ThemeInk}" />
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{x:Bind ModName}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{StaticResource ThemeInk}" />
+                                                    <TextBlock Text="{x:Bind FilesText}" Visibility="{x:Bind FilesVisibility}"
+                                                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                                               FontSize="{StaticResource MetaFontSize}"
+                                                               Foreground="{StaticResource ThemeInkSoft}" />
+                                                </StackPanel>
                                                 <TextBlock Grid.Column="1" Text="{x:Bind VersionText}"
                                                            FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                                            VerticalAlignment="Center" />
