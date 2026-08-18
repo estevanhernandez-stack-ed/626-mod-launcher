@@ -1153,7 +1153,19 @@ public static class Scanner
     private static string DestForRel(string relPath, GameContext c)
     {
         var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
-        return Path.Combine(primary.Abs, relPath);
+        var root = Path.GetFullPath(primary.Abs);
+        var dest = Path.GetFullPath(Path.Combine(root, relPath));
+
+        // Belt and braces on the zip-slip refusal in IntakeNesting: resolve the combined path and
+        // require it to stay under the mod folder. IntakeNesting rejects traversal segments already,
+        // but this is the LAST point before a destination becomes a real file, and it holds for any
+        // future caller that hands us a relative path from somewhere else. A containment check at the
+        // write boundary costs one GetFullPath and cannot be forgotten the way a caller-side rule can.
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+        if (!dest.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Refusing to place a file outside the mod folder: '{relPath}'.");
+
+        return dest;
     }
 
     /// <summary>Classify a drop into add / collision / unsafe without writing anything.</summary>
@@ -1262,9 +1274,18 @@ public static class Scanner
         string? batch = null;
         string Batch() => batch ??= ReplacedStore.NewBatch(Path.Combine(c.DataDir, "replaced"));
 
+        // Which archive placed which file. Recorded as we copy so the manifest describes what actually
+        // landed rather than what was planned - a file that failed to copy must not be claimed.
+        var placed = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var item in plan.ToAdd)
         {
-            try { CopyPlanned(item.IncomingSource, Path.Combine(primary.Abs, item.RelPath)); result.Added.Add(item.RelPath); }
+            try
+            {
+                CopyPlanned(item.IncomingSource, Path.Combine(primary.Abs, item.RelPath));
+                result.Added.Add(item.RelPath);
+                Claim(placed, item.IncomingSource, item.RelPath);
+            }
             catch (Exception e) { result.Skipped.Add(new SkippedItem(item.Name, e.Message)); }
         }
         var manifest = new List<ReplacedStore.ReplacedEntry>();
@@ -1278,6 +1299,9 @@ public static class Scanner
                 CopyPlanned(col.IncomingSource, col.ExistingPath);
                 manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow));
                 result.Updated.Add(col.RelPath);
+                // A replaced file is one we wrote, so the install claims it - and the original is in
+                // the ReplacedStore backup, so the claim stays reversible.
+                Claim(placed, col.IncomingSource, col.RelPath);
             }
             catch (Exception e)
             {
@@ -1296,7 +1320,32 @@ public static class Scanner
             .Select(s => { var b = s.IndexOf('!'); return b < 0 ? null : s[..b]; })
             .Where(z => z is not null).Select(z => z!);
         CaptureReadmes(zipSources, c);
+
+        // Record what each archive actually placed. Written LAST, after every copy has either
+        // succeeded or been skipped, so a manifest never claims a file that is not on disk - the
+        // claim is what an uninstall would act on, and a claim on a missing file is how a cleanup
+        // deletes the wrong thing later.
+        foreach (var (archive, files) in placed)
+        {
+            if (files.Count == 0) continue;
+            ModInstallRegistry.Save(c.DataDir, new ModInstallManifest(
+                InstallId: ModInstallRegistry.IdFor(archive),
+                SourceArchive: Path.GetFileName(archive),
+                Location: primary.Name,
+                Files: files,
+                InstalledUtc: DateTime.UtcNow));
+        }
         return result;
+    }
+
+    /// <summary>Attribute one placed file to the archive it came from. An incoming source is either
+    /// "zipPath!entry" or a loose file path; both reduce to the thing the user dropped.</summary>
+    private static void Claim(Dictionary<string, List<string>> placed, string incomingSource, string relPath)
+    {
+        var bang = incomingSource.IndexOf('!');
+        var archive = bang < 0 ? incomingSource : incomingSource[..bang];
+        if (!placed.TryGetValue(archive, out var files)) placed[archive] = files = new List<string>();
+        if (!files.Contains(relPath, StringComparer.OrdinalIgnoreCase)) files.Add(relPath);
     }
 
     // ---------- metadata refresh (network client injected) ----------

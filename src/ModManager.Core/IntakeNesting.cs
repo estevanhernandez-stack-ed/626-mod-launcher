@@ -40,7 +40,21 @@ public static class IntakeNesting
 
             var below = entry.Skip(start + anchor.Length).ToArray();
             // The entry IS the anchor directory, or a file directly named like it - nothing below to place.
-            return below.Length == 0 ? null : string.Join(Path.DirectorySeparatorChar, below);
+            if (below.Length == 0) return null;
+
+            // ZIP SLIP. Preserving the archive's path means preserving whatever it says, and a
+            // malicious entry says "reframework/autorun/../../../../Windows/System32/evil.dll". The
+            // previous behaviour was accidentally safe: Path.GetFileName threw every directory
+            // component away, so traversal could not survive. Keeping the tree removes that accident,
+            // so the refusal has to be explicit.
+            //
+            // Refuse rather than sanitise. A path with a traversal segment is not a path we
+            // misunderstood, it is an archive doing something it has no reason to do, and silently
+            // rewriting it to something "safe" would install a file the author never described.
+            // Returning null puts the caller back on the filename-only fallback, which cannot escape.
+            if (below.Any(seg => seg == ".." || seg == ".")) return null;
+
+            return string.Join(Path.DirectorySeparatorChar, below);
         }
         return null;
     }

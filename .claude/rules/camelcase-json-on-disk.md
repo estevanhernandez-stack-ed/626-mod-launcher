@@ -68,4 +68,8 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — hand-built camelCase JSON, atomic temp+rename; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs`)
 - `ModNameIndex` nexus-name-index.json (`src/ModManager.Core/Discovery/ModNameIndex.cs` — per-game Nexus name cache; written via `AtomicJson` by `ModNameIndexSource`)
 
+- `ModInstallManifest` per-install records (`src/ModManager.Core/ModInstallRegistry.cs` — written to
+  `<dataDir>/installs/<installId>.json` via `AtomicJson`; what an intake actually placed, so a row can
+  say which files are its own)
+
 If you're adding a new on-disk shape and it isn't in this list, add it.

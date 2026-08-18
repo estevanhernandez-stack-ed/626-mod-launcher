@@ -91,3 +91,42 @@ public class IntakeNestingTests
             IntakeNesting.RelativeUnderAnchor("Release/mods/MyMod/script.lua", "mods"));
     }
 }
+
+/// <summary>
+/// Zip Slip. Preserving the archive's path means preserving whatever it says, and the previous
+/// behaviour was accidentally safe: <c>Path.GetFileName</c> threw every directory component away, so
+/// a traversal segment could not survive. Keeping the tree removes that accident, so the refusal has
+/// to be explicit. Caught by review on the pushed commit, not by me.
+/// </summary>
+public class IntakeNestingTraversalTests
+{
+    private const string Anchor = "reframework/autorun";
+
+    [Theory]
+    [InlineData("reframework/autorun/../../../../Windows/System32/evil.dll")]
+    [InlineData("reframework/autorun/../../eldenring.exe")]
+    [InlineData(@"reframework\autorun\..\..\..\evil.dll")]
+    [InlineData("reframework/autorun/mod/../../../escape.lua")]
+    [InlineData("reframework/autorun/./sneaky.lua")]
+    public void Refuses_any_entry_that_walks_out_of_the_mod_folder(string entry)
+    {
+        // Null puts the caller back on the filename-only fallback, which cannot escape.
+        Assert.Null(IntakeNesting.RelativeUnderAnchor(entry, Anchor));
+    }
+
+    [Fact]
+    public void Traversal_BEFORE_the_anchor_is_harmless_and_still_installs()
+    {
+        // The relative path starts fresh at the anchor, so anything above it cannot reach the
+        // destination. Refusing here would reject legitimate archives for no gain.
+        Assert.Equal(Path.Combine("mod", "x.lua"),
+            IntakeNesting.RelativeUnderAnchor("../../reframework/autorun/mod/x.lua", Anchor));
+    }
+
+    [Fact]
+    public void A_file_merely_NAMED_like_a_traversal_is_not_one()
+    {
+        // ".." is a segment, not a substring. A mod called "..thing.lua" is odd but not an attack.
+        Assert.Equal("..thing.lua", IntakeNesting.RelativeUnderAnchor("reframework/autorun/..thing.lua", Anchor));
+    }
+}
