@@ -118,15 +118,33 @@ proxy loaders swaps the blurb, and the `dinput8.dll` row explains that several l
 filename. That is the pattern; `DiscoveryKind.Archive` gives us the discriminator for free. An archive
 row is *found, downloaded, not deployed* — never *installed by hand*.
 
-**2. Stop counting what adoption cannot write.** `DiscoveryWriteKeysAsync` runs at apply time so the
-dialog cannot know, at open, which archives resolve to installed keys. It can be asked earlier — the
-work is reading archive entries, which the sweep already paid for once. Resolving before the dialog
-opens lets *"Adopt 13 mods"* become an honest count, and lets a row that adoption cannot help say so
-next to itself rather than in a status line after the fact.
+**2. Stop counting what adoption cannot write.** `DiscoveryWriteKeysAsync` runs at apply time, so the
+dialog cannot know at open which archives resolve to installed keys. Ask earlier: resolving before the
+dialog opens lets *"Adopt 13 mods"* become an honest count, and lets a row adoption cannot help say so
+next to itself instead of in a status line after the fact.
 
-  This is the one part with a real cost question. If pre-resolving proves slow on a large library, the
-  fallback is to keep resolution at apply time and make the **button** honest instead — it must not
-  promise thirteen writes it will not make. What it must never do is stay as it is.
+**The cost, measured rather than guessed.** The scaling dimension is *archives found in one game's
+sweep* — not the number of games, and not the number of mods, since an `EngineShaped` candidate needs
+no archive read at all. On Este's actual machine, twelve registered games:
+
+| | |
+|---|---|
+| Games with zero archives | **10 of 12** |
+| Windrose | 4 archives, 0.1 MB |
+| Monster Hunter Wilds | **13 archives, 41.9 MB**, largest 14.1 MB |
+
+`ArchiveModKeysFor` opens the archive and reads `EntryNames` — the central directory, no decompression.
+Measured against those thirteen: **482 entries across all 13, 22 ms.** For comparison, md5-ing the same
+thirteen takes **164 ms**, and the propose phase *already does that*, plus a Nexus round-trip per
+archive (`Md5Of` then `IdentifyByHashAsync`). The read this part adds is roughly a seventh of a cost
+already being paid, before counting the network.
+
+So there is no cost question, and the plan carries no fallback for one. The bounds are already in the
+code if a pathological folder ever appears: `DiscoveryMd5TierCap = 25` in-game and
+`DownloadsMd5Cap = 100` for the opt-in downloads pass. Even 500 archives would be under a second at
+the measured rate. If a cap turns out to be wanted here, it rides those, and it gets logged rather
+than silently truncating — a dialog that quietly stopped resolving at row 25 would understate the
+count in the same direction this entry is about.
 
 **3. Offer the action that actually helps.** For archives that adoption cannot touch, the user's route
 is to install them — which is `AddModsAsync`, the same intake path a drag-and-drop uses and one Este
