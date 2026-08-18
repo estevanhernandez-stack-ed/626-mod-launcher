@@ -24,8 +24,16 @@ public class FrameworkDepsCheckPresentTests
     }
 
     [Fact]
-    public void Ue_pak_with_ue4ss_dll_under_project_subfolder_is_present()
+    public void Ue_pak_with_the_runtime_but_no_loader_is_NOT_present()
     {
+        // CHANGED 2026-08-18 (A13). This test used to assert the opposite — runtime alone counted as
+        // present — and that assertion was the bug, written down. UE4SS.dll does not load itself; the
+        // game loads dwmapi.dll, which loads the runtime. With no proxy beside it the runtime is inert
+        // and every ue4ss-lane mod is dead, which is precisely the state that reported clean while the
+        // game showed its own "Failed to load UE4SS.dll" dialog.
+        //
+        // Verified against the real Windrose install: dwmapi.dll (60 KB) sits beside ue4ss/ in
+        // R5/Binaries/Win64, and it is the only proxy-shaped DLL anywhere in the game folder.
         var root = TestSupport.TempDir("fwdep-");
         var bin = Path.Combine(root, "R5", "Binaries", "Win64", "ue4ss");
         Directory.CreateDirectory(bin);
@@ -34,7 +42,7 @@ public class FrameworkDepsCheckPresentTests
 
         var missing = FrameworkDeps.CheckPresent(ctx);
 
-        Assert.DoesNotContain(missing, d => d.Name == "UE4SS");
+        Assert.Contains(missing, d => d.Name == "UE4SS");
     }
 
     [Fact]

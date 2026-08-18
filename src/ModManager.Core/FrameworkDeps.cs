@@ -1,25 +1,85 @@
 namespace ModManager.Core;
 
 /// <summary>
-/// One framework dependency the launcher knows about: what engine it belongs to, where it
-/// installs on disk (relative to the game root or a UE project subfolder), and where the
-/// user can get it. Pure data — no probing logic here, see <see cref="FrameworkDeps"/>.
+/// One PIECE a framework needs on disk, and the filenames that would satisfy it. Paths within a
+/// component are alternatives (OR) — a loader that legitimately ships under several proxy names.
+/// Components within a framework are all required (AND) — a runtime and the proxy that loads it.
+///
+/// <para>The distinction is not academic. UE4SS ships its runtime at
+/// <c>Binaries/Win64/ue4ss/UE4SS.dll</c> and its loader at <c>Binaries/Win64/dwmapi.dll</c>; the game
+/// loads the proxy, the proxy loads the runtime. Treating those two as alternatives — which is what
+/// one flat any-of list does — meant either half alone read as "framework present". Proven live on
+/// 2026-08-17: with the runtime moved aside, 626 reported <c>27 of 27 enabled</c> and zero NEEDS
+/// chips while the game refused to start with its own "Failed to load UE4SS.dll" dialog. Twelve mods
+/// were dead and the launcher said everything was fine.</para>
+///
+/// <para>A false red is noise. A false green is a user who believes their mods are on.</para>
+/// </summary>
+/// <param name="Name">What this piece is called in a sentence — "runtime", "loader". Surfaced to the
+/// user, so a half-installed framework reads "runtime present, loader missing" rather than a bare
+/// "Missing: UE4SS". Empty for a single-component framework, where there is no half to name.</param>
+/// <param name="AnyOf">Relative paths, any ONE of which satisfies this component.</param>
+public sealed record FrameworkComponent(string Name, IReadOnlyList<string> AnyOf)
+{
+    public static FrameworkComponent Of(string name, params string[] anyOf) => new(name, anyOf);
+}
+
+/// <summary>
+/// One framework dependency the launcher knows about: what engine it belongs to, the pieces it needs
+/// on disk, and where the user can get it. Pure data — no probing logic here, see
+/// <see cref="FrameworkDeps"/>.
 /// </summary>
 /// <param name="Engine">Engine key from <c>EnginePresets.Presets</c> (e.g. "ue-pak", "bepinex").</param>
-/// <param name="Name">Display name as the user knows it (UE4SS, BepInEx, SMAPI, ME2, Forge/Fabric, dinput8 proxy).</param>
-/// <param name="DetectRelativePaths">One or more relative file paths; if ANY exists under the resolved
-/// candidate roots, the framework is considered present. Multiple paths cover loader variants
-/// (e.g. UE4SS ships its loader as <c>dwmapi.dll</c> next to <c>UE4SS.dll</c>).</param>
+/// <param name="Name">Display name as the user knows it (UE4SS, BepInEx, SMAPI, ME2, Forge/Fabric).</param>
+/// <param name="Components">The pieces this framework needs. ALL must be satisfied; each is satisfied
+/// by ANY of its paths. A single component reproduces the old flat any-of behaviour exactly.</param>
 /// <param name="GetUrl">https URL where the user can get the framework. Single canonical link
 /// per framework — vendor releases page, not a wiki tree.</param>
 /// <param name="Note">One-sentence why-it-matters, surfaced in the status banner tooltip.</param>
 public sealed record FrameworkDep(
     string Engine,
     string Name,
-    IReadOnlyList<string> DetectRelativePaths,
+    IReadOnlyList<FrameworkComponent> Components,
     string GetUrl,
-    string Note);
+    string Note)
+{
+    /// <summary>The single-component form: one any-of list, no half worth naming. Kept as a real
+    /// constructor rather than a migration so every entry that IS genuinely a set of alternatives
+    /// stays written exactly as it was — the diff then shows only the entries whose meaning changed.</summary>
+    public FrameworkDep(string Engine, string Name, IReadOnlyList<string> DetectRelativePaths,
+        string GetUrl, string Note)
+        : this(Engine, Name, new[] { new FrameworkComponent("", DetectRelativePaths) }, GetUrl, Note) { }
 
+    /// <summary>Every path across every component, in declaration order. For callers that only want
+    /// "which files does this framework put on disk" — it deliberately does NOT express the AND/OR
+    /// structure, so never use it to decide presence. <see cref="FrameworkDeps.Check"/> does that.</summary>
+    public IReadOnlyList<string> DetectRelativePaths => Components.SelectMany(c => c.AnyOf).ToList();
+}
+
+/// <summary>What a probe found for one framework: which of its pieces are on disk and which are not.
+/// The partial case is the one worth naming — it is both the dangerous state and the one a user can
+/// act on immediately, because they already have half of it.</summary>
+public sealed record FrameworkPresence(
+    FrameworkDep Dep,
+    IReadOnlyList<FrameworkComponent> Present,
+    IReadOnlyList<FrameworkComponent> Missing)
+{
+    public bool IsPresent => Missing.Count == 0;
+
+    /// <summary>Some pieces there, some not — the state that used to read as fully present.</summary>
+    public bool IsPartial => Missing.Count > 0 && Present.Count > 0;
+
+    /// <summary>How to say it. "UE4SS — runtime present, loader missing" for a half-install; the bare
+    /// framework name when it is missing outright, because there is nothing to qualify.</summary>
+    public string Describe()
+    {
+        if (!IsPartial) return Dep.Name;
+        var parts = Present.Select(c => $"{Label(c)} present").Concat(Missing.Select(c => $"{Label(c)} missing"));
+        return $"{Dep.Name} — {string.Join(", ", parts)}";
+    }
+
+    private static string Label(FrameworkComponent c) => string.IsNullOrWhiteSpace(c.Name) ? "part" : c.Name;
+}
 /// <summary>
 /// Static catalog of framework dependencies the launcher knows about. One entry per
 /// (engine, framework) pair. Mirrors the spec table at
@@ -33,12 +93,13 @@ public static class FrameworkDeps
         new FrameworkDep(
             Engine: "ue-pak",
             Name: "UE4SS",
-            // UE4SS ships its loader as dwmapi.dll next to the ue4ss/ runtime under
-            // <Project>/Binaries/Win64. EITHER path existing means the framework is present.
-            DetectRelativePaths: new[]
+            // TWO components, not two variants. The game loads dwmapi.dll, which loads UE4SS.dll.
+            // Both are required, and reading them as alternatives is what let a half-install report
+            // clean while the game refused to start (proven live 2026-08-17 — see FrameworkComponent).
+            Components: new[]
             {
-                "Binaries/Win64/ue4ss/UE4SS.dll",
-                "Binaries/Win64/dwmapi.dll",
+                FrameworkComponent.Of("runtime", "Binaries/Win64/ue4ss/UE4SS.dll"),
+                FrameworkComponent.Of("loader", "Binaries/Win64/dwmapi.dll"),
             },
             GetUrl: "https://github.com/UE4SS-RE/RE-UE4SS/releases",
             Note: "Required for Lua mods and Blueprint LogicMods paks. Plain content paks don't need it."),
@@ -46,6 +107,12 @@ public static class FrameworkDeps
         new FrameworkDep(
             Engine: "bepinex",
             Name: "BepInEx",
+            // REVIEWED against the UE4SS finding, deliberately UNCHANGED. This has the same
+            // runtime-plus-proxy shape, so it is probably two components — but Doorstop ships under
+            // several proxy names depending on version and platform, so the loader group is not just
+            // winhttp.dll, and we have no BepInEx install here to establish what it is. Splitting it
+            // on the strength of the resemblance would trade a dangerous failure for an annoying one
+            // and still be a guess. Split it against a real install, not from memory.
             DetectRelativePaths: new[]
             {
                 "BepInEx/core/BepInEx.dll",
@@ -67,6 +134,10 @@ public static class FrameworkDeps
         new FrameworkDep(
             Engine: "fromsoft",
             Name: "Mod Engine 2",
+            // REVIEWED, deliberately UNCHANGED. These two are neither variants nor a chain: one is
+            // the launcher executable, the other its config. A config alone is not ME2, so an AND
+            // would be closer to right than an OR — but ME2 is also installed in layouts we have not
+            // seen, and a wrong AND puts a red chip on a working install. Decide with one in hand.
             DetectRelativePaths: new[]
             {
                 "modengine2_launcher.exe",
@@ -116,19 +187,33 @@ public static class FrameworkDeps
     /// resolved relative to the game root only.
     /// </summary>
     public static IReadOnlyList<FrameworkDep> CheckPresent(GameContext ctx)
+        => Check(ctx).Where(p => !p.IsPresent).Select(p => p.Dep).ToList();
+
+    /// <summary>
+    /// The full picture for every catalog entry that applies to this game: which pieces of each
+    /// framework are on disk and which are not.
+    ///
+    /// <para>A framework is present when EVERY component is satisfied, and a component is satisfied by
+    /// ANY of its paths. The old flat any-of rule is the special case where there is one component,
+    /// which is why entries that are genuinely lists of alternatives did not have to change.</para>
+    /// </summary>
+    public static IReadOnlyList<FrameworkPresence> Check(GameContext ctx)
     {
         var engine = ctx.Game.Engine ?? "";
         var entries = Catalog.Where(d => d.Engine == engine).ToList();
-        if (entries.Count == 0) return Array.Empty<FrameworkDep>();
+        if (entries.Count == 0) return Array.Empty<FrameworkPresence>();
 
         var roots = ResolveProbeRoots(ctx);
-        var missing = new List<FrameworkDep>();
+        var result = new List<FrameworkPresence>();
         foreach (var dep in entries)
         {
-            if (!IsAnyPathPresent(dep.DetectRelativePaths, roots))
-                missing.Add(dep);
+            var present = new List<FrameworkComponent>();
+            var missing = new List<FrameworkComponent>();
+            foreach (var component in dep.Components)
+                (IsAnyPathPresent(component.AnyOf, roots) ? present : missing).Add(component);
+            result.Add(new FrameworkPresence(dep, present, missing));
         }
-        return missing;
+        return result;
     }
 
     // For UE-pak: the project subfolders extracted from each resolved primary mod-location path
