@@ -299,6 +299,11 @@ public class DesignLawTests
             // when every proposal is a ProxyLoader — same conditional-override shape. The shared
             // name is deliberate: shared name, shared wording, so the two surfaces cannot drift.
             ("DiscoveryReviewDialog.xaml", "Blurb"),
+            // Same dialog's TITLE, same conditional-override shape (A14). The XAML literal reads
+            // "Mods already installed", which is right for what adoption is normally shown for and
+            // false for a sweep that turned up only downloads — thirteen Nexus zips on a game with
+            // nothing deployed. The code-behind replaces it only in that case.
+            ("DiscoveryReviewDialog.xaml", "HeadingText"),
             ("IdentifyReviewDialog.xaml", "Blurb"),
             // GameSetupDialog: the mod-folder label. The XAML literal is what a single-location game
             // shows; SeedFields overrides it ONLY when the game declares more than one location, to

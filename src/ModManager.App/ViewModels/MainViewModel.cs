@@ -110,7 +110,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// code-behind, not the VM) — exactly the <see cref="ConfirmBanRiskEnable"/> pattern. When unset,
     /// <see cref="DiscoverExistingModsAsync"/> stops after building proposals: nothing is adopted.
     /// </summary>
-    public Func<IReadOnlyList<AdoptionProposal>, Task<IReadOnlyList<AdoptionProposal>>>? ReviewDiscoveries { get; set; }
+    public Func<IReadOnlyList<AdoptionProposal>, Task<DiscoveryReviewOutcome>>? ReviewDiscoveries { get; set; }
 
     /// <summary>Set by the view to show the unified review. Returns what the user approved in each
     /// section. Null (unwired view) means the run proposes and writes nothing.</summary>
@@ -153,10 +153,27 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Bound to the banner's Visibility — true when at least one framework is missing.</summary>
     public bool HasMissingFrameworks => MissingFrameworks.Count > 0;
 
-    /// <summary>One-line summary for the banner ("Missing: UE4SS"). Multiple frameworks comma-joined.</summary>
-    public string MissingFrameworksSummary => MissingFrameworks.Count == 0
-        ? ""
-        : "Missing: " + string.Join(", ", MissingFrameworks.Select(d => d.Name));
+    /// <summary>What the probe found for each of the active game's frameworks, missing ones included.
+    /// Kept beside <see cref="MissingFrameworks"/> rather than replacing it: the row chips key off the
+    /// dep, and this only feeds the sentence.</summary>
+    private IReadOnlyList<FrameworkPresence> _presences = Array.Empty<FrameworkPresence>();
+
+    /// <summary>One-line summary for the banner. Names the missing HALF when a framework is half
+    /// installed — "UE4SS — loader present, runtime missing" — because "Missing: UE4SS" is what a user
+    /// reads right after seeing the runtime sitting on disk, and it sends them to reinstall something
+    /// they already have. A framework missing outright is still named plainly; there is nothing to
+    /// qualify (A13).</summary>
+    public string MissingFrameworksSummary
+    {
+        get
+        {
+            if (MissingFrameworks.Count == 0) return "";
+            var byName = _presences.Where(p => !p.IsPresent).ToDictionary(p => p.Dep.Name, StringComparer.Ordinal);
+            var parts = MissingFrameworks.Select(d =>
+                byName.TryGetValue(d.Name, out var presence) ? presence.Describe() : d.Name);
+            return "Missing: " + string.Join(", ", parts);
+        }
+    }
 
     /// <summary>Tools installed for the active game. Refreshed at every <see cref="ReloadModsAsync"/>.</summary>
     public ObservableCollection<ToolEntry> Tools { get; } = new();
@@ -592,6 +609,7 @@ public sealed partial class MainViewModel : ObservableObject
             GameRootText = "";
             StatusText = "No game registered. Add one with + Game.";
             MissingFrameworks.Clear();
+            _presences = Array.Empty<FrameworkPresence>();
             OnPropertyChanged(nameof(HasMissingFrameworks));
             OnPropertyChanged(nameof(MissingFrameworksSummary));
             Tools.Clear();
@@ -662,8 +680,11 @@ public sealed partial class MainViewModel : ObservableObject
             // MissingFrameworks at row-construction time. The notify pings further down keep the
             // banner binding fresh; this just lifts the source of truth to where rows see it.
             MissingFrameworks.Clear();
-            foreach (var dep in FrameworkDeps.CheckPresent(_ctx))
-                MissingFrameworks.Add(dep);
+            // One probe, both readings: the missing list the chips key off, and the per-component
+            // detail the banner sentence needs. Two calls would be two walks of the same disk.
+            _presences = FrameworkDeps.Check(_ctx);
+            foreach (var presence in _presences.Where(p => !p.IsPresent))
+                MissingFrameworks.Add(presence.Dep);
             // Load direct-inject mod config-path overrides once. The resolver consults these to
             // pick a user-chosen path over the catalog default when set. Empty overrides for the
             // common case (no per-user customization) — no disk hit if file missing.
@@ -2524,7 +2545,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (stopped)
                 StatusText = "Stopped early. Review what was found, or run it again for the rest.";
 
-            var (approvedAdoptions, approvedIdentifications) = await ReviewIdentifyRun(adoptions, identifications);
+            adoptions = await ResolveAdoptionReachAsync(adoptions, ctx);
+        var (approvedAdoptions, approvedIdentifications) = await ReviewIdentifyRun(adoptions, identifications);
 
             // Strongest first — see the apply-order note above.
             var written = await ApplyDiscoveriesAsync(approvedAdoptions, adoptions.Count, ctx);
@@ -2708,7 +2730,23 @@ public sealed partial class MainViewModel : ObservableObject
         if (proposals.Count == 0) return;
 
         if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
-        var approved = await ReviewDiscoveries(proposals);
+        proposals = await ResolveAdoptionReachAsync(proposals, ctx);
+        var outcome = await ReviewDiscoveries(proposals);
+
+        // Install, not adopt. The user picked the action that matches what these files actually
+        // are — downloads that were never deployed — and it routes through the ordinary intake
+        // path, ban-risk gate and all. Adoption is skipped entirely: the same sweep will offer
+        // these again once they ARE installed, and then it will have something to attach to.
+        if (outcome.ToInstall.Count > 0)
+        {
+            var paths = outcome.ToInstall
+                .Select(p => Path.Combine(ctx.GameRoot, p.Candidate.RelativePath))
+                .ToList();
+            await AddModsAsync(paths);
+            return;
+        }
+
+        var approved = outcome.Approved;
 
         // ApplyDiscoveriesAsync sets StatusText itself for the write outcome, same auto gating.
         await ApplyDiscoveriesAsync(approved, proposals.Count, ctx, auto);
@@ -2976,7 +3014,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <see cref="LooseIdentify.Candidates"/>'s exact predicate for the exact same reason: a weaker
     /// tier (name-index or "found, unidentified") must never downgrade a stronger existing match.</summary>
     private static bool IsAlreadyIdentified(IReadOnlyDictionary<string, ModMeta> existing, string key)
-        => existing.TryGetValue(key, out var meta) && (meta.IsManual || meta.NexusModId is not null || meta.SourceConfidence is not null);
+        => AdoptionReachRules.IsAlreadyIdentified(existing, key);
 
     /// <summary>The best-guess metadata key for a raw candidate BEFORE any tier has run — used only to
     /// pre-filter already-identified rows out of the proposal list. An EngineShaped candidate's real
@@ -2998,6 +3036,39 @@ public sealed partial class MainViewModel : ObservableObject
     /// filename — and can legitimately return zero or several keys. Everything else (Signature, or an
     /// Archive that only cleared tier 2/3) has no scanned row to align with yet, so it keys off the
     /// extension-stripped filename as harmless bookkeeping.</summary>
+    /// <summary>Work out what adoption will actually do for each proposal, BEFORE the review dialog
+    /// opens, so the dialog can say it instead of a status line saying it afterwards (A14).
+    ///
+    /// <para>The cost is the same key resolution the apply already does, moved earlier: for an
+    /// md5-identified archive that is a central-directory read, no decompression. Measured on the
+    /// thirteen Monster Hunter Wilds downloads that produced this entry — 482 entries across all
+    /// thirteen, 22 ms. The propose phase already md5s those same archives (164 ms) and makes a Nexus
+    /// round-trip for each, so this is a fraction of a cost already paid.</para>
+    ///
+    /// <para><b>Known limit.</b> <see cref="DiscoveryWriteKeysAsync"/> only reads an archive's CONTENTS
+    /// when md5 identified it; an archive that only cleared tier 2/3 falls back to its own
+    /// extension-stripped download filename, which resolves to a key no installed mod has. That write
+    /// is bookkeeping the apply already treats as harmless, and it reads here as NamesAMod. Changing it
+    /// would change what adoption WRITES, which is beyond an entry about what it SAYS — filed rather
+    /// than fixed in passing.</para></summary>
+    private async Task<IReadOnlyList<AdoptionProposal>> ResolveAdoptionReachAsync(
+        IReadOnlyList<AdoptionProposal> proposals, GameContext ctx)
+    {
+        if (proposals.Count == 0) return proposals;
+        var existing = Scanner.LoadMetadata(ctx);
+        var resolved = new List<AdoptionProposal>(proposals.Count);
+        foreach (var p in proposals)
+        {
+            IReadOnlyList<string> keys;
+            // A proposal we cannot resolve leaves Reach null rather than guessing — the dialog then
+            // says nothing about reach, which is the honest fallback.
+            try { keys = await DiscoveryWriteKeysAsync(p, ctx); }
+            catch { resolved.Add(p); continue; }
+            resolved.Add(p with { Reach = AdoptionReachRules.For(keys, existing) });
+        }
+        return resolved;
+    }
+
     private async Task<IReadOnlyList<string>> DiscoveryWriteKeysAsync(AdoptionProposal p, GameContext ctx)
     {
         if (p.Evidence == AdoptionEvidence.Md5 && p.Candidate.Kind == DiscoveryKind.Archive)
@@ -3223,10 +3294,32 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusChipTooltip));
     }
 
-    /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).</summary>
+    /// <summary>Intake dropped/picked paths, then attach metadata (fingerprint, then name-search fallback).
+    ///
+    /// <para><b>The ban-risk gate runs here, once for the whole batch.</b> Every path that turns a mod ON
+    /// consulted <see cref="GateBanRiskEnableAsync"/> — the row toggle, enable-all, the loadout apply,
+    /// the variant chips — and intake did not, while <c>Scanner.ExecuteIntake</c> copies into the live
+    /// mod folder. A dropped zip therefore installed ENABLED on a high-risk game with no warning and no
+    /// acknowledgment (A22). Drag-and-drop is the first thing a new user reaches for, so this is the
+    /// user with no mods yet on a game the app itself flags, taking the most obvious action available.</para>
+    ///
+    /// <para>Once per BATCH, not per file: a ten-file drop is one decision. And it sits above every
+    /// branch below, so framework, tool, UE4SS-Lua and save-mod installs are covered too — a loader
+    /// going live is the thing anti-cheat actually sees.</para>
+    ///
+    /// <para>Refusing here writes nothing at all, which is the validate-then-extract order anyway: the
+    /// gate is above the first branch that touches disk.</para></summary>
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
+
+        if (!await GateBanRiskEnableAsync())
+        {
+            // The user performed a gesture and it did nothing — say so. Silence after a drop reads
+            // as a bug, and the gate is a decision the user just made, not a failure.
+            StatusText = "Nothing was installed.";
+            return;
+        }
 
         // Pre-check 0 (engine-agnostic): framework intake. KnownFramework.Classify scopes by
         // engine + SteamAppId internally, so this is a no-op for games whose engine doesn't

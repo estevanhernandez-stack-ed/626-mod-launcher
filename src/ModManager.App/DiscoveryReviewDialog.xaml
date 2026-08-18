@@ -8,7 +8,8 @@
     CloseButtonText="Cancel"
     DefaultButton="Close"
     AutomationProperties.Name="Mods already installed"
-    PrimaryButtonClick="OnApply">
+    PrimaryButtonClick="OnApply"
+    SecondaryButtonClick="OnInstall">
 
     <ContentDialog.Title>
         <StackPanel Spacing="6">
@@ -18,7 +19,7 @@
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        AutomationProperties.AccessibilityView="Raw"
                        Foreground="{StaticResource ThemeInkDim}" />
-            <TextBlock Text="Mods already installed" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
+            <TextBlock x:Name="HeadingText" Text="Mods already installed" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
         </StackPanel>
     </ContentDialog.Title>
 

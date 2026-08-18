@@ -1717,3 +1717,72 @@ These steps are the only coverage this fix gets.
    matters:* the all-games section is deliberately gated on the FULL row set, not the filtered one.
    Gating on the filtered rows would take the search box away the moment a search matched nothing,
    leaving no way to undo the search — a worse bug than the one being fixed.
+
+## A22 — installing a mod asks the ban-risk question
+
+Added 2026-08-18. **Not coverable by the suite**: the gate is an App-side dialog wired through a
+delegate, and the App layer is headless-untestable. The Core half — `BanRiskRules.ShouldGateEnable`,
+the high-only, ack-clears-it policy — already has tests; what needs a human is that intake now
+consults it.
+
+Background: every path that turned a mod ON consulted the gate; intake did not, while
+`Scanner.ExecuteIntake` copies into the live mod folder. A dropped zip installed enabled on a
+high-risk game with no warning.
+
+**Setup.** A high ban-risk game that has NOT been acknowledged. If it has been, clear its ack:
+delete `ban-risk-acks.json` from that game's data dir — `<gameRoot>/_626mods/<gameId>/`, not
+`%LOCALAPPDATA%`.
+
+**Smoke steps:**
+
+1. **Drop a mod zip on a high-risk, un-acked game.** EXPECT the ban-risk warning before anything is
+   installed, with its ban-safe loader list. Cancel it. EXPECT the status line to read "Nothing was
+   installed." and the game folder to be untouched — no new files in the mod folder, no new row.
+   *Why it matters:* this is the whole entry. Refusing has to happen above the first branch that
+   touches disk, so a cancel leaves the folder exactly as it was.
+2. **Drop again and accept.** EXPECT the mod to install normally and appear in the list.
+   *Why it matters:* the gate warns and takes an ack — it never refuses. Reversibility stands.
+3. **Drop a third time.** EXPECT no second warning, because step 2 acknowledged it for this game.
+   *Why it matters:* the ack persists per game; re-asking every drop would train the user to click
+   through it, which is worse than not asking.
+4. **Drop TEN files at once on a fresh un-acked high-risk game.** EXPECT exactly ONE warning, not
+   ten. *Why it matters:* a ten-file drop is one decision. Per-file would be unusable and would
+   make the ack meaningless.
+5. **Install a framework or a tool on a fresh un-acked high-risk game** (drop a UE4SS / BepInEx
+   archive, or install a tool from the Tools panel). EXPECT the same single warning. *Why it
+   matters:* a loader going live is the thing anti-cheat actually sees, so it counts as much as a
+   mod does. All of these route through the same intake entry point, which is why one gate covers
+   them — confirm that holds on the surface, not just in the call graph.
+6. **Drop a mod on a game with no ban risk (regression check).** EXPECT no warning at all and a
+   normal install. *Why it matters:* the gate is high-risk-only. Any friction on an ordinary game
+   is a bug — the flagship gesture must stay one motion.
+
+## A14 part 3 — the adoption dialog offers to install a download
+
+Added 2026-08-18. App-side dialog, so not coverable by the suite. The Core half (what adoption can
+reach) has tests; what needs a human is the two-action dialog.
+
+**Setup.** A game with mod archives sitting in its folder that are NOT installed — the Fluffy case:
+Monster Hunter Wilds with downloads under `Games/MonsterHunterWilds/Mods/` and no `natives/` folder.
+
+**Smoke steps:**
+
+1. **Run Identify my mods (or add the game) so the review appears.** EXPECT the heading to read
+   "Mods you've downloaded", not "Mods already installed", and each row to say *downloaded, not
+   installed*. EXPECT "Adopt 0 mods" disabled and an enabled "Install 13 downloads".
+   *Why it matters:* the old dialog said the mods were installed and offered to adopt thirteen of
+   them, which would have written nothing.
+2. **Press Install.** EXPECT the ban-risk warning first (Wilds is high-risk — clear its ack to see
+   it), then the normal intake: replacement confirmation if any, then the mods appearing in the list.
+   *Why it matters:* the dialog installs nothing itself — it hands the files to the same path a
+   drag-and-drop uses, so every guard on that path applies.
+3. **Run the identify sweep again.** EXPECT the same archives now offered as adoptable rather than as
+   downloads. *Why it matters:* once they are installed there IS something for adoption to attach to,
+   so the same sweep gives a different and correct answer.
+4. **A mixed sweep (regression check).** On a game with both unnamed installed mods and loose
+   downloads, EXPECT the downloads unticked and the installed mods ticked, "Adopt N" counting only the
+   installed ones. *Why it matters:* pre-ticking is only safe in the all-downloads case; in a mixed
+   sweep a tick means "adopt", and pre-ticking rows adoption cannot write for is the original bug.
+5. **A sweep with no downloads at all (regression check).** EXPECT no Install button on the dialog.
+   *Why it matters:* an Install button over nothing installable is the same overstatement in a new
+   place.
