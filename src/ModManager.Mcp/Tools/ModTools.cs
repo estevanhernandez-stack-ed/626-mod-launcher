@@ -63,7 +63,13 @@ public static class ModTools
         {
             gameId = s.GameId,
             managed = s.Managed,
+            // BOTH counts, because they are both true and mean different things. modCount is mod
+            // keys; rowCount is what a person sees after variant families collapse. Reporting only
+            // the first had an agent say "you have 30 mods" about an install showing 27 rows, and
+            // the user reasonably concluded the agent was wrong (A12).
             modCount = s.ModCount,
+            rowCount = s.RowCount,
+            variantFamilies = s.VariantFamilies.Select(f => new { title = f.Title, keys = f.Keys }).ToArray(),
             mechanism = s.Mechanism.ToString(),
             alignment = s.Alignment.ToString(),
             gameRoot = s.GameRoot,
@@ -71,6 +77,12 @@ public static class ModTools
             declaredLocations = s.DeclaredLocations.Select(d => new
             {
                 name = d.Name, path = d.Path, absolute = d.Absolute, exists = d.Exists,
+                // A8. GameShape gained this flag (#266) and the projection never followed, so a
+                // launcher-DERIVED location - the synthetic ue4ss-mods entry GameContext appends -
+                // looked exactly like one the registration declares, while its `path` had quietly
+                // changed meaning from a relative tail to an absolute path. An agent reading a
+                // registration would report a folder the user never configured as configured.
+                declared = d.Declared,
             }).ToArray(),
             contentRoots = s.ContentRoots.Select(r => new
             {
@@ -79,6 +91,9 @@ public static class ModTools
             }).ToArray(),
             loaders = s.Loaders,
             notes = s.Notes,
+            hint = "modCount counts mod keys; rowCount counts what a person sees, after variantFamilies "
+                   + "collapse into single rows. They differ only by those families. A declaredLocation "
+                   + "with declared=false is the launcher's own folder, not one the registration states.",
         };
     }
 
