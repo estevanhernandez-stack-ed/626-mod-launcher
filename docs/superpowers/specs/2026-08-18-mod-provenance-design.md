@@ -79,13 +79,49 @@ Rules, in order:
    `mhwilds_overlay/` is one row, not two. This is the single highest-value rule — it is the case the
    current listing gets visibly wrong.
 2. **Bare script.** A top-level script with no matching folder is a mod. `KittyBig.lua`.
-3. **Unpaired folder.** A folder no script matches is *probably a library* — `_CatLib`, `utility`.
-   Show it, mark it **shared**, and do **not** offer a toggle. We cannot know who depends on it, and a
-   one-click switch that silently breaks four other mods is worse than no switch.
+3. **Unpaired folder.** A folder no script matches is a library — `_CatLib`, `utility`. Show it, and
+   instead of a toggle give it **consequence copy**: what it is, who needs it, and what the user
+   should do if they actually want it gone.
 
-Rule 3 is a deliberate refusal, not an omission. Compare the loader row, which *is* toggleable behind
-a warning: there we know exactly what the file does. Here we do not, so the honest surface is
-visibility without a switch.
+### Rule 3 in full: explain, do not switch
+
+The first draft said "we cannot know who depends on it, so no toggle." **The first half was wrong.**
+For a script tree the dependency is *declared in the source*, so it is readable rather than
+guessable. Measured on the real install:
+
+```
+grep -rl 'require("_CatLib' reframework/autorun
+  -> mhwilds_overlay/**  (20+ files, and nothing else)
+```
+
+`_CatLib` on this machine exists to serve exactly one mod. And reading `_CatLib/README.md` says what
+it *is*: `Core.NewMod(name)` gives a mod automatic config storage and `mod.Menu(...)` builds its
+settings panel inside REFramework's overlay. So removing it does not merely break MHWilds Overlay —
+it removes the panel the user configures it through.
+
+That turns a dead-end row into a useful one:
+
+> **_CatLib** — shared library · 33 files · 626 did not install this
+> Mods use it for their settings menus and drawing. **MHWilds Overlay needs it** — removing it would
+> stop that mod loading. To play without mods for a session, use **Play vanilla**, which steps
+> everything aside together and puts it back afterwards.
+
+Three things that copy does and a toggle does not: it **names the dependents** instead of implying
+unknown risk, it **explains the cost** in terms of what the user loses, and it **points at the action
+that actually expresses the intent** — someone reaching for this switch usually wants a clean game,
+which is what vanilla launch already does reversibly.
+
+Este's framing, and the reason it beats both earlier options: *"If you turn this off, you might as
+well do vanilla."*
+
+**Where dependencies are not declarable, say so rather than guess.** Lua has `require`; a folder of
+opaque binaries has nothing to read. The row then says how many files it holds and that 626 did not
+install it, and stops — the same honesty as the unnamed proxy loader, which states its filename and
+admits it cannot say more.
+
+This is deliberately a different call from the loader row, which *is* toggleable behind a warning.
+There the file's role is known and singular. Here the row's value is what it explains, not what it
+switches — and a switch whose consequence needs a paragraph is a paragraph wearing a switch.
 
 ### 3. The merge
 
@@ -143,6 +179,10 @@ guess, which is how the flat install would have "succeeded".
 3. **Adoption's relationship to this.** A14 established adoption is metadata-only. Does adopting an
    inferred group also mint a manifest — a claim we did not earn — or stay metadata and leave the
    grouping inferred? Leaning: stay metadata. A manifest should mean "we wrote these bytes."
+4. **How far to take dependency reading.** `require("_CatLib")` is unambiguous. Do we also surface the
+   reverse — marking MHWilds Overlay as *needing* CatLib, so disabling the library warns from the
+   dependent's side too? Cheap once the scan exists, and it is the same information read the other
+   way.
 
 ## Testing
 
