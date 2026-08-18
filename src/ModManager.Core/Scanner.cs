@@ -1145,9 +1145,15 @@ public static class Scanner
 
     /// <summary>The absolute destination a placed file would take (primary mod location), and its rel key.</summary>
     private static (string Abs, string Rel) DestFor(string fileName, GameContext c)
+        => (DestForRel(fileName, c), fileName);
+
+    /// <summary>Absolute destination for a path already relative to the primary mod location. Separate
+    /// from <see cref="DestFor"/> because that one's Rel is the filename by definition; this takes a
+    /// relative path that may carry directories, which is what a preserved archive tree produces.</summary>
+    private static string DestForRel(string relPath, GameContext c)
     {
         var primary = c.Locations.FirstOrDefault() ?? throw new InvalidOperationException("No mod location configured for this game.");
-        return (Path.Combine(primary.Abs, fileName), fileName);
+        return Path.Combine(primary.Abs, relPath);
     }
 
     /// <summary>Classify a drop into add / collision / unsafe without writing anything.</summary>
@@ -1187,12 +1193,26 @@ public static class Scanner
             }
             else if (kind == "zip")
             {
+                // Where the mod folder sits relative to the game root - the segment an archive states
+                // internally. Derived rather than declared: the ctx carries the absolute location and
+                // the game root, and their difference is the anchor. Null-safe: no primary location
+                // means DestFor throws below anyway.
+                var anchor = primaryLoc is null
+                    ? null
+                    : Path.GetRelativePath(Path.GetFullPath(c.GameRoot), Path.GetFullPath(primaryLoc.Abs));
+
                 using var zip = Archive.Open(p);
                 foreach (var entryName in zip.EntryNames) // file entries only (dirs excluded by the seam)
                 {
                     if (Intake.ClassifyDrop(entryName, c.Exts) != "mod") continue;
+                    // Keep the tree the archive declares. A script mod ships its full path inside
+                    // (reframework/autorun/...); placing by filename alone dropped 33 CatLib files loose
+                    // into the mod folder where none of them resolve, and made two mods' utility/Statics.lua
+                    // collide on one name. An archive that states nothing falls back to the filename, which
+                    // is what every pak game does and must keep doing.
+                    var rel = IntakeNesting.RelativeUnderAnchor(entryName, anchor) ?? Path.GetFileName(entryName);
                     var name = Path.GetFileName(entryName);
-                    var (abs, rel) = DestFor(name, c);
+                    var abs = DestForRel(rel, c);
                     var incoming = $"{p}!{entryName}";
                     if (File.Exists(abs)) collisions.Add(new IntakeCollision(name, rel, abs, incoming));
                     else if (!add.Any(a => a.RelPath == rel)) add.Add(new IntakeItem(name, rel, incoming));
