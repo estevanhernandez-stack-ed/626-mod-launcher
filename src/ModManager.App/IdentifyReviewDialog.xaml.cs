@@ -33,27 +33,37 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
         {
             var identified = p.Evidence != AdoptionEvidence.None;
             var loader = p.Candidate.Kind == DiscoveryKind.ProxyLoader;
+            // See DiscoveryReviewDialog: a downloaded archive that was never installed has
+            // nothing for adoption to attach metadata to. Both review surfaces read the one Core
+            // rule so they cannot drift (A14).
+            var inert = p.Reach == AdoptionReach.NothingToNameYet;
+            var named = p.Reach == AdoptionReach.AlreadyNamed;
             _new.Add(new IdentifyReviewRow
             {
                 Adoption = p,
+                WillWrite = p.Reach is null or AdoptionReach.NamesAMod,
                 // A loader is described as what it is rather than as an unidentified mod. Saying
                 // "not identified" about a version.dll implies we failed to name something nameable;
                 // we didn't — the name genuinely doesn't determine which loader it is. Wording is
                 // kept identical to DiscoveryReviewDialog so the two surfaces can't drift.
-                Headline = (identified, loader) switch
+                Headline = (loader, inert, identified) switch
                 {
-                    (true, _) => $"{p.Candidate.FileName} — {p.Title}",
-                    (false, true) => $"{p.Candidate.FileName} — mod loader",
+                    (true, _, _) => $"{p.Candidate.FileName} — mod loader",
+                    (_, true, true) => $"{p.Candidate.FileName} — {p.Title} (downloaded, not installed)",
+                    (_, true, false) => $"{p.Candidate.FileName} — downloaded, not installed",
+                    (_, _, true) => $"{p.Candidate.FileName} — {p.Title}",
                     _ => $"{p.Candidate.FileName} — not identified",
                 },
-                Detail = (p.Evidence, loader) switch
+                Detail = (loader, inert, named, p.Evidence) switch
                 {
-                    (AdoptionEvidence.Md5, _) => $"Exact match by file hash. {p.Candidate.RelativePath}",
-                    (AdoptionEvidence.NameIndex, _) => $"Matched by name{(p.Author is null ? "" : $" · by {p.Author}")}. {p.Candidate.RelativePath}",
-                    (_, true) => $"Found at {p.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
+                    (true, _, _, _) => $"Found at {p.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
+                    (_, true, _, _) => $"Found at {p.Candidate.RelativePath}. This is the download, not an installed mod — nothing from it is in the game folder. Adopting names mods that are already installed, so it can't help here. Drop the file on the window to install it, and it'll be listed.",
+                    (_, _, true, _) => $"Found at {p.Candidate.RelativePath}. Already named — nothing to add.",
+                    (_, _, _, AdoptionEvidence.Md5) => $"Exact match by file hash. {p.Candidate.RelativePath}",
+                    (_, _, _, AdoptionEvidence.NameIndex) => $"Matched by name{(p.Author is null ? "" : $" · by {p.Author}")}. {p.Candidate.RelativePath}",
                     _ => $"Found at {p.Candidate.RelativePath}. Adopt it to manage it anyway.",
                 },
-                Approve = identified,
+                Approve = identified && !inert && !named,
             });
         }
 
@@ -88,7 +98,7 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
     }
 
     public IReadOnlyList<AdoptionProposal> ApprovedAdoptions()
-        => _new.Where(r => r.Approve && r.Adoption is not null).Select(r => r.Adoption!).ToList();
+        => _new.Where(r => r.Approve && r.WillWrite && r.Adoption is not null).Select(r => r.Adoption!).ToList();
 
     public IReadOnlyList<(string ModKey, SourceSearchHit Hit)> ApprovedIdentifications()
         => _identified.Where(r => r.Approve && r.Hit is not null).Select(r => (r.ModKey, r.Hit!)).ToList();
@@ -138,6 +148,10 @@ public sealed class IdentifyReviewRow
     public string Headline { get; init; } = "";
     public string Detail { get; init; } = "";
     public bool Approve { get; set; }
+
+    /// <summary>True when the apply will actually write for this row. False for a download that was
+    /// never installed, so "Apply N changes" counts changes rather than ticks (A14).</summary>
+    public bool WillWrite { get; init; } = true;
 
     // An unmatched row has nothing to approve — show the line, drop the checkbox.
     public Visibility CheckboxVisibility => Adoption is not null || Hit is not null ? Visibility.Visible : Visibility.Collapsed;

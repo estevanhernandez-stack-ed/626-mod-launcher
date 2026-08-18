@@ -57,6 +57,13 @@ public sealed record AdoptionProposal(
     /// <summary>The search hit behind a <see cref="AdoptionEvidence.NameSearch"/> proposal, so
     /// <see cref="ToMeta"/> can route it through the ONE search-hit mapper rather than hand-copying a
     /// subset and dropping whatever the API also returned.</summary>
+    /// <summary>What adopting this will actually do — <see cref="AdoptionReachRules"/>. Null until
+    /// something resolves it, because working it out means reading the archive and Core does not
+    /// decide when that I/O happens. A surface that finds it null should say nothing about reach
+    /// rather than assume the optimistic answer, which is how "Adopt 13 mods" came to be offered for
+    /// thirteen archives that would have written nothing (A14).</summary>
+    public AdoptionReach? Reach { get; init; }
+
     public SourceSearchHit? Hit { get; init; }
 
     /// <summary>

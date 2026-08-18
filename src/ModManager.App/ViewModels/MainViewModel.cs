@@ -2545,7 +2545,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (stopped)
                 StatusText = "Stopped early. Review what was found, or run it again for the rest.";
 
-            var (approvedAdoptions, approvedIdentifications) = await ReviewIdentifyRun(adoptions, identifications);
+            adoptions = await ResolveAdoptionReachAsync(adoptions, ctx);
+        var (approvedAdoptions, approvedIdentifications) = await ReviewIdentifyRun(adoptions, identifications);
 
             // Strongest first — see the apply-order note above.
             var written = await ApplyDiscoveriesAsync(approvedAdoptions, adoptions.Count, ctx);
@@ -2729,6 +2730,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (proposals.Count == 0) return;
 
         if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
+        proposals = await ResolveAdoptionReachAsync(proposals, ctx);
         var approved = await ReviewDiscoveries(proposals);
 
         // ApplyDiscoveriesAsync sets StatusText itself for the write outcome, same auto gating.
@@ -2997,7 +2999,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <see cref="LooseIdentify.Candidates"/>'s exact predicate for the exact same reason: a weaker
     /// tier (name-index or "found, unidentified") must never downgrade a stronger existing match.</summary>
     private static bool IsAlreadyIdentified(IReadOnlyDictionary<string, ModMeta> existing, string key)
-        => existing.TryGetValue(key, out var meta) && (meta.IsManual || meta.NexusModId is not null || meta.SourceConfidence is not null);
+        => AdoptionReachRules.IsAlreadyIdentified(existing, key);
 
     /// <summary>The best-guess metadata key for a raw candidate BEFORE any tier has run — used only to
     /// pre-filter already-identified rows out of the proposal list. An EngineShaped candidate's real
@@ -3019,6 +3021,39 @@ public sealed partial class MainViewModel : ObservableObject
     /// filename — and can legitimately return zero or several keys. Everything else (Signature, or an
     /// Archive that only cleared tier 2/3) has no scanned row to align with yet, so it keys off the
     /// extension-stripped filename as harmless bookkeeping.</summary>
+    /// <summary>Work out what adoption will actually do for each proposal, BEFORE the review dialog
+    /// opens, so the dialog can say it instead of a status line saying it afterwards (A14).
+    ///
+    /// <para>The cost is the same key resolution the apply already does, moved earlier: for an
+    /// md5-identified archive that is a central-directory read, no decompression. Measured on the
+    /// thirteen Monster Hunter Wilds downloads that produced this entry — 482 entries across all
+    /// thirteen, 22 ms. The propose phase already md5s those same archives (164 ms) and makes a Nexus
+    /// round-trip for each, so this is a fraction of a cost already paid.</para>
+    ///
+    /// <para><b>Known limit.</b> <see cref="DiscoveryWriteKeysAsync"/> only reads an archive's CONTENTS
+    /// when md5 identified it; an archive that only cleared tier 2/3 falls back to its own
+    /// extension-stripped download filename, which resolves to a key no installed mod has. That write
+    /// is bookkeeping the apply already treats as harmless, and it reads here as NamesAMod. Changing it
+    /// would change what adoption WRITES, which is beyond an entry about what it SAYS — filed rather
+    /// than fixed in passing.</para></summary>
+    private async Task<IReadOnlyList<AdoptionProposal>> ResolveAdoptionReachAsync(
+        IReadOnlyList<AdoptionProposal> proposals, GameContext ctx)
+    {
+        if (proposals.Count == 0) return proposals;
+        var existing = Scanner.LoadMetadata(ctx);
+        var resolved = new List<AdoptionProposal>(proposals.Count);
+        foreach (var p in proposals)
+        {
+            IReadOnlyList<string> keys;
+            // A proposal we cannot resolve leaves Reach null rather than guessing — the dialog then
+            // says nothing about reach, which is the honest fallback.
+            try { keys = await DiscoveryWriteKeysAsync(p, ctx); }
+            catch { resolved.Add(p); continue; }
+            resolved.Add(p with { Reach = AdoptionReachRules.For(keys, existing) });
+        }
+        return resolved;
+    }
+
     private async Task<IReadOnlyList<string>> DiscoveryWriteKeysAsync(AdoptionProposal p, GameContext ctx)
     {
         if (p.Evidence == AdoptionEvidence.Md5 && p.Candidate.Kind == DiscoveryKind.Archive)
