@@ -56,6 +56,16 @@ public static class ModListing
         var primary = ctx.Locations.FirstOrDefault();
         if (primary is null || !Directory.Exists(primary.Abs)) return Array.Empty<Mod>();
 
+        // Not in a folder the GAME owns. Calling an unexplained directory a library is sound reasoning
+        // inside a folder dedicated to mods - an unpaired folder in ~mods really is probably a library.
+        // It is unsound when the mod location IS the game root, where an unexplained directory is just
+        // the game: Death Stranding 2 listed LocalCacheWinGame, steaminput, tools, uds and the user's
+        // own _MODS_STAGING as mods, and read "15 of 15 enabled" on an install with nine (A23).
+        //
+        // A directory in the game root still becomes a row on EVIDENCE - a lane that lists it, or an
+        // install manifest claiming it (A25). What it never does is become one by sitting there.
+        if (IsGameRoot(primary.Abs, ctx.GameRoot)) return Array.Empty<Mod>();
+
         string[] files, dirs;
         try
         {
@@ -71,7 +81,13 @@ public static class ModListing
 
         // Only libraries, and only ones no lane already produced. A folder a lane lists is that lane's
         // to describe.
-        var listed = new HashSet<string>(alreadyListed.Select(m => m.Name), StringComparer.OrdinalIgnoreCase);
+        // Matched on the files a row OWNS as well as its name. Matching names alone missed the case
+        // where a lane claims a directory under a different name: the ReShade row is called "ReShade"
+        // and owns "reshade-shaders", so the folder was listed twice - once inside ReShade, once as its
+        // own library row. That double claim is not cosmetic. Play vanilla moved the directory (rightly,
+        // under the row that owns it) even though the library row was ReadOnly and excluded, which means
+        // a directory belonging to two rows is protected only as strongly as its weakest claim.
+        var listed = ClaimedBy(alreadyListed);
         var libraries = inferred.Where(r => r.Kind == InferredKind.Library && !listed.Contains(r.Key)).ToList();
         if (libraries.Count == 0) return Array.Empty<Mod>();
 
@@ -122,6 +138,29 @@ public static class ModListing
             });
         }
         return rows;
+    }
+
+    /// <summary>Everything the already-listed rows account for: their names AND the files they own.
+    /// A lane that lists a directory is that lane's to describe, and it may well call it something
+    /// else — the ReShade row is named "ReShade" and owns "reshade-shaders", so matching on names
+    /// alone let the same folder appear twice, once inside ReShade and once as its own library row
+    /// (A23).</summary>
+    internal static HashSet<string> ClaimedBy(IReadOnlyList<Mod> rows)
+        => new(rows.Select(m => m.Name).Concat(rows.SelectMany(m => m.Files)), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True when a mod location resolves to the game root itself, as a loose-root
+    /// registration's does. Compared on normalised full paths so a trailing separator or a different
+    /// spelling of the same folder cannot make the game root look like a dedicated mod folder.</summary>
+    private static bool IsGameRoot(string locationAbs, string? gameRoot)
+    {
+        if (string.IsNullOrWhiteSpace(gameRoot)) return false;
+        try
+        {
+            var a = Path.TrimEndingDirectorySeparator(Path.GetFullPath(locationAbs));
+            var b = Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameRoot));
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 
     /// <summary>Whether a library can be switched off right now, and why.</summary>

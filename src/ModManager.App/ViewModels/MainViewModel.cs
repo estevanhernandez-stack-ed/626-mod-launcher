@@ -102,7 +102,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// never a hard block; when unset the disable proceeds without extra friction. Mirrors the
     /// <see cref="ConfirmBanRiskEnable"/> delegate pattern.
     /// </summary>
-    public Func<string, Task<bool>>? ConfirmLooseLoaderDisable { get; set; }
+    /// <summary>Takes the row name AND the consequence sentence, because the consequence is a Core
+    /// decision now: it depends on what the FILE says it is, not on what it is called (A24).</summary>
+    public Func<string, string, Task<bool>>? ConfirmLooseLoaderDisable { get; set; }
 
     /// <summary>
     /// Shows the review-before-adopt dialog for a discovery sweep's proposals and returns the
@@ -1151,7 +1153,16 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task<bool> GateLooseLoaderDisableAsync(ModRowViewModel row)
     {
         if (ConfirmLooseLoaderDisable is null) return true;
-        return await ConfirmLooseLoaderDisable(row.DisplayName);
+        // Read the file at the moment of the click rather than trusting the row label. "version.dll"
+        // was warned about as an ASI loader when the file reports DLSS Enabler - the label was derived
+        // from the filename, and so was the consequence (A24). One version-resource read per click.
+        var fileName = row.Mod.Files.FirstOrDefault() ?? row.Mod.Name;
+        var folder = ModManager.Core.LooseMods.LooseRootListing.PlayFolder(_ctx?.Game.GameRoot)
+                     ?? DirectInjectService.PlayFolder(_ctx?.Game.GameRoot ?? "")
+                     ?? _ctx?.Game.GameRoot ?? "";
+        var (product, _) = ModManager.Core.LooseMods.LoaderIdentity.ReadProduct(Path.Combine(folder, fileName));
+        var consequence = ModManager.Core.LooseMods.LoaderIdentity.Consequence(fileName, product);
+        return await ConfirmLooseLoaderDisable(row.DisplayName, consequence);
     }
 
     /// <summary>Toggle one mod. The reversible disable/enable lives in Scanner; on failure the

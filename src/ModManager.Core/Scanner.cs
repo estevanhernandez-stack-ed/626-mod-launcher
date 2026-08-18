@@ -1288,7 +1288,18 @@ public static class Scanner
         // same no-clobber + back-up-then-replace contract; replaced originals land under the game's
         // data dir like every other intake backup. (It re-adds plan.Unsafe to its own result.)
         if (primary.Form == "loose-root")
-            return DirectInject.Execute(Path.GetFullPath(primary.Abs), Path.Combine(c.DataDir, "replaced"), plan, replaceRelPaths);
+        {
+            var looseResult = DirectInject.Execute(Path.GetFullPath(primary.Abs), Path.Combine(c.DataDir, "replaced"), plan, replaceRelPaths);
+            // Record what this placed, exactly as the folder path below does. This branch used to
+            // return straight past the manifest write at the end of the method, so every loose-root
+            // and direct-inject install went unrecorded — and a mod 626 had placed itself thirty
+            // seconds earlier read as "Detected:", the inference, because nothing had claimed it
+            // (A25). The claim is built from the RESULT, not the plan, so a file that was skipped is
+            // never claimed: a manifest that names a file which is not on disk is what an uninstall
+            // would act on.
+            RecordInstalls(c, plan, looseResult, primary.Name);
+            return looseResult;
+        }
 
         Directory.CreateDirectory(primary.Abs);
         string? batch = null;
@@ -1360,6 +1371,34 @@ public static class Scanner
 
     /// <summary>Attribute one placed file to the archive it came from. An incoming source is either
     /// "zipPath!entry" or a loose file path; both reduce to the thing the user dropped.</summary>
+    /// <summary>Write one install manifest per source archive, naming only files the result says
+    /// actually landed. Shared by the branches that place files through <see cref="DirectInject"/> —
+    /// the folder path builds its claim map as it copies, which it can because it does the copying.</summary>
+    private static void RecordInstalls(GameContext c, IntakePlan plan, IntakeResult result, string locationName)
+    {
+        var landed = result.Added.Concat(result.Updated).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (landed.Count == 0) return;
+
+        var placed = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in plan.ToAdd)
+            if (landed.Contains(item.RelPath)) Claim(placed, item.IncomingSource, item.RelPath);
+        // A replaced file is one we wrote, so the install claims it — the original is recoverable
+        // through the replaced-store batch, which is a separate record with a separate job.
+        foreach (var col in plan.Collisions)
+            if (landed.Contains(col.RelPath)) Claim(placed, col.IncomingSource, col.RelPath);
+
+        foreach (var (archive, files) in placed)
+        {
+            if (files.Count == 0) continue;
+            ModInstallRegistry.Save(c.DataDir, new ModInstallManifest(
+                InstallId: ModInstallRegistry.IdFor(archive),
+                SourceArchive: Path.GetFileName(archive),
+                Location: locationName,
+                Files: files,
+                InstalledUtc: DateTime.UtcNow));
+        }
+    }
+
     private static void Claim(Dictionary<string, List<string>> placed, string incomingSource, string relPath)
     {
         var bang = incomingSource.IndexOf('!');

@@ -514,12 +514,12 @@ public sealed partial class MainWindow : Window
     /// ASI plugin loads through). Proceed-or-cancel only, NEVER a hard block: "Disable anyway"
     /// returns true and the reversible disable runs; Cancel returns false and nothing changes on
     /// disk. Mirrors the ConfirmBanRiskEnable wiring — the VM owns the policy, this owns the dialog.</summary>
-    private async Task<bool> ConfirmLooseLoaderDisableAsync(string modName)
+    private async Task<bool> ConfirmLooseLoaderDisableAsync(string modName, string consequence)
     {
         var dialog = new ContentDialog
         {
             Title = "This mod is a loader",
-            Content = $"\"{modName}\" is the loader other mods inject through — disabling it disables every ASI plugin.",
+            Content = consequence,
             PrimaryButtonText = "Disable anyway",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
