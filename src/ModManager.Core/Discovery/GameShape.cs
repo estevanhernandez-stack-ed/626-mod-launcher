@@ -36,7 +36,19 @@ public sealed record GameShape
     /// <summary>Is the launcher finding anything at all for this game.</summary>
     public required bool Managed { get; init; }
 
+    /// <summary>How many mod KEYS the launcher tracks. Windrose reports 30 here and shows 27 rows,
+    /// because four Faster Ships files are one variant family. Neither number is wrong; reporting
+    /// only one of them is (A12) - an agent said "you have 30 mods", the user counted 27 on screen,
+    /// and concluded the agent was broken.</summary>
     public required int ModCount { get; init; }
+
+    /// <summary>How many ROWS a person sees, after variant families collapse. Equal to
+    /// <see cref="ModCount"/> when the game has no families.</summary>
+    public required int RowCount { get; init; }
+
+    /// <summary>The families that make the two differ, largest first. Empty when they agree, so a
+    /// caller can say WHY rather than reporting a bare discrepancy.</summary>
+    public required IReadOnlyList<VariantFamilySummary> VariantFamilies { get; init; }
 
     /// <summary>How the mods were actually listed. The single most clarifying field: it names the
     /// lane, so a declared-path mismatch reads as "different mechanism" rather than "missing files."</summary>
@@ -151,14 +163,20 @@ public sealed record GameShape
         // but the mod's own declared LOCATION for the scanner. Resolving every file against one base
         // is precisely the mistake this type exists to stop — it puts a correctly-placed pak at the
         // game root and reports a tidy install as drifted.
+        // A content root is a claim about DISK, so it is verified against disk. Building it from the
+        // rows alone counted files that are not there: a disabled mod's files live in the holding
+        // folder while its row still names the location it would occupy, so six disabled mods
+        // manufactured a root at a path that does not exist - and Alignment then read Aligned off it
+        // (A21). Counting only what is present is what makes this report falsifiable.
         var roots = mods
             .SelectMany(m =>
             {
                 var b = BaseFor(m, playFolder, declared, ctx.GameRoot);
                 var files = m.Files.Count > 0 ? m.Files : new List<string> { m.Name };
-                return files.Select(f => AbsoluteDirOf(b, f));
+                return files.Select(f => new { Dir = AbsoluteDirOf(b, f), Abs = Norm(Path.Combine(b, (f ?? "").Replace('/', Path.DirectorySeparatorChar))) });
             })
-            .GroupBy(d => d, StringComparer.OrdinalIgnoreCase)
+            .Where(x => Exists(x.Abs))
+            .GroupBy(x => x.Dir, StringComparer.OrdinalIgnoreCase)
             .Select(g => new ContentRoot
             {
                 RelativePath = RelativeOrEmpty(contentBase, g.Key),
@@ -169,10 +187,29 @@ public sealed record GameShape
             .OrderByDescending(r => r.FileCount)
             .ToList();
 
+        // What a person counts on screen, and why it differs. Variant families collapse to one row -
+        // four Faster Ships files are one mod with four options - so the key count and the row count
+        // are both true and mean different things. Reporting both, with the families named, is what
+        // stops an agent and a user contradicting each other over the same install (A12).
+        var families = VariantGroups.Group(mods)
+            .Where(f => f.Members.Count > 1)
+            .Select(f => new VariantFamilySummary
+            {
+                Title = f.Members[0].DisplayName is { Length: > 0 } t ? t : f.Members[0].Name,
+                Keys = f.Members.Select(m => m.Name).ToList(),
+            })
+            .OrderByDescending(f => f.Keys.Count)
+            .ToList();
+        var rowCount = mods.Count - families.Sum(f => f.Keys.Count - 1);
+
         var loaders = mods.Where(m => m.IsLoader).Select(m => m.DisplayName is { Length: > 0 } d ? d : m.Name).ToList();
 
+        // Alignment falls out of what actually survived the disk check. A game with rows but no
+        // roots has its mods stepped aside rather than missing, and saying so is a different answer
+        // from "no mods" - which is the distinction A21 was reporting wrongly.
         var alignment =
             mods.Count == 0                     ? LocationAlignment.NoMods
+            : roots.Count == 0                  ? LocationAlignment.AllDisabled
             : roots.All(r => r.InsideDeclared)  ? LocationAlignment.Aligned
             : roots.Any(r => r.InsideDeclared)  ? LocationAlignment.Partial
             :                                     LocationAlignment.Drifted;
@@ -182,6 +219,8 @@ public sealed record GameShape
             GameId = game.Id,
             Managed = mods.Count > 0,
             ModCount = mods.Count,
+            RowCount = rowCount,
+            VariantFamilies = families,
             Mechanism = mechanism,
             GameRoot = ctx.GameRoot,
             PlayFolder = playFolder,
@@ -189,7 +228,7 @@ public sealed record GameShape
             ContentRoots = roots,
             Loaders = loaders,
             Alignment = alignment,
-            Notes = BuildNotes(mechanism, declared, roots, loaders, alignment, playFolder, ctx.GameRoot),
+            Notes = BuildNotes(mechanism, declared, roots, loaders, alignment, playFolder, ctx.GameRoot, mods.Count),
         };
     }
 
@@ -197,7 +236,8 @@ public sealed record GameShape
     // point is to end the guessing — so each note says what is true AND whether it is a problem.
     private static List<string> BuildNotes(
         ListingMechanism mechanism, List<DeclaredLocation> declared, List<ContentRoot> roots,
-        List<string> loaders, LocationAlignment alignment, string? playFolder, string gameRoot)
+        List<string> loaders, LocationAlignment alignment, string? playFolder, string gameRoot,
+        int modCount)
     {
         var notes = new List<string>();
 
@@ -222,6 +262,12 @@ public sealed record GameShape
         notes.Add(alignment switch
         {
             LocationAlignment.NoMods  => "No mods detected for this game.",
+            // Without this case the switch fell through to the drift arm and reported "all 0 file(s)
+            // were found by the scanner lane" - a sentence about drift, for a game with no drift.
+            LocationAlignment.AllDisabled =>
+                $"{modCount} mod(s) are registered and none is currently placed on disk — every one is "
+                + "switched off and held aside. Not the same as having no mods, and nothing here is "
+                + "missing: enabling any of them puts its files back.",
             LocationAlignment.Aligned => "Mods are where the registration says they are.",
             LocationAlignment.Partial => "Some mods are outside every declared location.",
             _ => $"No mod is inside a declared location — all {roots.Sum(r => r.FileCount)} file(s) were "
@@ -283,6 +329,17 @@ public sealed record GameShape
         return c.StartsWith(p + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Is this path actually there? File OR directory, because a folder-shaped mod's single
+    /// "file" IS a directory (UE4SS Lua mods, REFramework script folders) and checking only for a
+    /// file would erase every one of them from the shape report. Any IO failure counts as absent:
+    /// a path we cannot read is not a path we can claim content for.</summary>
+    private static bool Exists(string? abs)
+    {
+        if (string.IsNullOrEmpty(abs)) return false;
+        try { return File.Exists(abs) || Directory.Exists(abs); }
+        catch { return false; }
+    }
+
     private static string Norm(string? p)
     {
         if (string.IsNullOrWhiteSpace(p)) return "";
@@ -323,9 +380,24 @@ public sealed record ContentRoot
 
 /// <summary>Whether mods were found where the registration said to look. Drift is a description, not
 /// a defect — see <see cref="GameShape"/>.</summary>
+/// <summary>One variant family: several mod keys a person sees as a single row with options.</summary>
+public sealed class VariantFamilySummary
+{
+    /// <summary>What the row is called on screen.</summary>
+    public required string Title { get; init; }
+    /// <summary>The mod keys that collapse into it.</summary>
+    public required IReadOnlyList<string> Keys { get; init; }
+}
+
 public enum LocationAlignment
 {
     NoMods,
+    /// <summary>Mods ARE registered and none of them is currently placed on disk — every one is
+    /// stepped aside in the holding folder. Distinct from <see cref="NoMods"/> on purpose: "you have
+    /// no mods" and "your mods are all switched off" are different answers to "is this install
+    /// healthy", and reporting the first for the second is how a shape report claimed Aligned for a
+    /// folder that does not exist (A21).</summary>
+    AllDisabled,
     /// <summary>Every content root sits inside a declared location.</summary>
     Aligned,
     /// <summary>Some content is inside a declared location, some is not.</summary>
