@@ -35,6 +35,13 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $script:Results = New-Object System.Collections.Generic.List[object]
 $script:Seq = 0
 
+# The catalogue is the source of truth for WHAT EXISTS; this script is the source of truth for
+# what runs. SmokeCatalogueTests fails the build if the two disagree about the executable cases,
+# and the human-only bucket lives only in the catalogue so it cannot be quietly trimmed here.
+$catalogPath = Join-Path $repo 'docs/smoke-tests/smoke.json'
+if (-not (Test-Path $catalogPath)) { throw "smoke catalogue not found: $catalogPath" }
+$catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
+
 function Case {
     param([string]$Id, [string]$Section, [scriptblock]$Body)
     $script:Seq++
@@ -64,6 +71,20 @@ function HumanOnly {
 
 function Assert-True { param([bool]$Cond, [string]$Msg) if (-not $Cond) { throw $Msg } }
 
+# The mod view lives in the visual tree WHILE THE LIBRARY HOME IS SHOWING - the home is a host
+# swapped in over it - and its ModListView even reports IsOffscreen=False. So "ModRow.* is in the
+# tree" says nothing about what is on screen. Receipt: on the 2026-08-18 run where navigate-to-game
+# FAILED, game-toolbar-present, mod-list-populated, status-line-readable and loadout-segments all
+# passed anyway. Four greens about a surface the harness never reached.
+#
+# HomeButton is the discriminator: absent on the library home, present once a game is open.
+function Assert-OnGameView {
+    param($Tree)
+    if (-not (Find-ById $Tree 'HomeButton')) {
+        throw "not on a game view (no HomeButton) - this case would have been a false green"
+    }
+}
+
 # ---------------------------------------------------------------- start
 Write-Host ''
 Write-Host '  626 smoke harness' -ForegroundColor Cyan
@@ -74,10 +95,14 @@ Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA Silent
 Start-Sleep -Seconds 2
 if (-not (Test-Path $Exe)) { throw "launcher not found: $Exe" }
 Start-Process $Exe
-Start-Sleep -Seconds 13
+Start-Sleep -Seconds 4
 
 $root = Get-AppRoot
 if (-not $root) { throw "app did not present a window" }
+
+# Wait for the window to finish building rather than guessing at it. See Wait-Ready.
+$built = Wait-Ready $root
+Write-Host ("  window settled at {0} elements" -f $built) -ForegroundColor DarkGray
 
 Write-Host '  -- library home --' -ForegroundColor White
 
@@ -163,6 +188,7 @@ Case 'navigate-to-game' 'fix/library-repaint-after-add' {
 
 Case 'game-toolbar-present' 'Mod dashboard' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $need = @('EnableAllButton','DisableAllButton','AddModsButton','RefreshButton','ProfilesButton','SavesButton','ModFilterBox','ModListView')
     $miss = @($need | Where-Object { -not (Find-ById $t $_) })
     Assert-True ($miss.Count -eq 0) "missing: $($miss -join ', ')"
@@ -171,6 +197,7 @@ Case 'game-toolbar-present' 'Mod dashboard' {
 
 Case 'mod-list-populated' 'ReloadModsAsync unification' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $mods = @(Find-AllByIdPrefix $t 'ModRow.')
     Assert-True ($mods.Count -gt 0) "no ModRow.* realised"
     "$($mods.Count) mod rows"
@@ -178,6 +205,7 @@ Case 'mod-list-populated' 'ReloadModsAsync unification' {
 
 Case 'status-line-readable' 'Mod dashboard' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $s = Get-Text (Find-ById $t 'AppStatusText')
     Assert-True (-not [string]::IsNullOrWhiteSpace($s)) "AppStatusText empty"
     "'$s'"
@@ -185,6 +213,7 @@ Case 'status-line-readable' 'Mod dashboard' {
 
 Case 'loadout-segments' 'Loadout MP/SP' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $miss = @(@('LoadoutAllSegment','LoadoutMpSegment','LoadoutSpSegment') | Where-Object { -not (Find-ById $t $_) })
     Assert-True ($miss.Count -eq 0) "missing: $($miss -join ', ')"
     "All / MP / SP present"
@@ -192,6 +221,7 @@ Case 'loadout-segments' 'Loadout MP/SP' {
 
 Case 'theme-picker-reads-current' 'road-to-zero B2 / D2' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $tp = Find-ById $t 'ThemePicker'
     Assert-True ($null -ne $tp) "ThemePicker absent"
     "current theme reads '$(Get-Text $tp)'"
@@ -199,6 +229,7 @@ Case 'theme-picker-reads-current' 'road-to-zero B2 / D2' {
 
 Case 'group-combo-selection-without-opening' 'Group the mod list' {
     $t = Get-Tree $root
+    Assert-OnGameView $t
     $sel = Get-Selection (Find-ById $t 'GroupModeCombo')
     Assert-True (-not [string]::IsNullOrWhiteSpace($sel)) "no selection readable"
     "selection='$sel' (popup never opened)"
@@ -298,18 +329,9 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
 Write-Host ''
 Write-Host '  -- cases this harness cannot run --' -ForegroundColor White
 
-HumanOnly 'bnd4-save-walk'        'PR #49'  'Needs a real Elden Ring / Seamless .co2 save on disk'
-HumanOnly 'framework-intake-elm'  'PR ??'   'Needs the Elden Mod Loader zip to drop'
-HumanOnly 'tool-intake-wse'       'PR ??'   'Needs the WSE tool zip to drop'
-HumanOnly 'dependency-chip-ue4ss' 'PR #51'  'Needs UE4SS.dll deleted from the game folder, then restored'
-HumanOnly 'safe-clear-round-trip' 'Phase 1B' 'Destructive against a real game folder; two-drive setup. Explicit go-ahead only'
-HumanOnly 'safe-clear-refusal'    'Task 2'  'Needs the game actually running'
-HumanOnly 'vanilla-vs-modded'     'feat/vanilla-modded-launch' 'Needs the game launched and observed in-engine'
-HumanOnly 'nexus-oauth-connect'   'Task 11' 'Needs a live Nexus sign-in in a browser'
-HumanOnly 'nexus-download-endorse' 'Nexus endorse' 'Needs a live Nexus account action against the real site'
-HumanOnly 'steam-build-warning'   'Phase 2' 'Needs Steam to actually update a game'
-HumanOnly 'vortex-takeover'       '2026-06-02' 'Needs a Vortex-managed game staged on this box'
-HumanOnly 'ban-risk-ack-gate'     '2026-06-15' 'Agent must REACH the gate and never satisfy it - the ack is human-only by design'
+foreach ($c in $catalog.cases | Where-Object { $_.coverage -eq 'human' }) {
+    HumanOnly $c.id $c.surface $c.humanReason
+}
 
 # ---------------------------------------------------------------- report
 Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
@@ -318,9 +340,19 @@ $pass  = @($script:Results | Where-Object Status -eq 'PASS').Count
 $fail  = @($script:Results | Where-Object Status -eq 'FAIL').Count
 $human = @($script:Results | Where-Object Status -eq 'NEEDS-HUMAN').Count
 
+# Every number below is against the CATALOGUE total, not against what this script happened to
+# run. A percentage of the cases a harness chose for itself is not coverage, and reporting one
+# is how a green run comes to mean less than it looks like it means.
+$total     = @($catalog.cases).Count
+$untriaged = @($catalog.cases | Where-Object { $_.coverage -eq 'untriaged' }).Count
+
 Write-Host ''
 Write-Host '  ============================================' -ForegroundColor Cyan
 Write-Host ("   {0} verified, {1} failed, {2} require a human" -f $pass, $fail, $human) -ForegroundColor Cyan
+Write-Host ("   {0} of {1} catalogue cases were executed" -f ($pass + $fail), $total) -ForegroundColor Cyan
+if ($untriaged -gt 0) {
+    Write-Host ("   {0} still awaiting triage - neither run nor claimed" -f $untriaged) -ForegroundColor DarkYellow
+}
 Write-Host '  ============================================' -ForegroundColor Cyan
 if ($fail -gt 0) {
     Write-Host ''

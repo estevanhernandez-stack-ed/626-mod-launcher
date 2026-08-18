@@ -44,6 +44,25 @@ function Get-Tree {
     return $list
 }
 
+function Wait-Ready {
+    <#.SYNOPSIS Block until the element tree stops growing, or $TimeoutSec elapses.
+      A fixed sleep is a guess about someone else's machine. Measured here: the same launch read
+      276 elements on one run and 632 on the next, and the 276 run passed app-starts (which only
+      asks for >100) and then failed navigate-to-game because the game list had not arrived yet.
+      A harness that reads a half-built window reports on a screen the user never sees.#>
+    param($Root, [int]$TimeoutSec = 40, [int]$StableReads = 2, [int]$PollMs = 700)
+    $last = -1; $stable = 0
+    $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSec)
+    while ([datetime]::UtcNow -lt $deadline) {
+        $n = (Get-Tree $Root).Count
+        if ($n -eq $last -and $n -gt 100) { $stable++ } else { $stable = 0 }
+        if ($stable -ge $StableReads) { return $n }
+        $last = $n
+        Start-Sleep -Milliseconds $PollMs
+    }
+    return $last
+}
+
 function Find-ById {
     param($Tree, [string]$Id)
     $Tree | Where-Object { try { $_.Current.AutomationId -eq $Id } catch { $false } } | Select-Object -First 1
