@@ -1817,6 +1817,40 @@
         "**A sweep with no downloads at all (regression check).** EXPECT no Install button on the dialog."
       ],
       "source": "docs/smoke-tests/pending.md#L1760"
+    },
+    {
+      "id": "intake-via-picker",
+      "title": "A mod installs through the + Add mods picker, and the install is recorded",
+      "surface": "A25/A26 - intake records what it placed",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1+wave4",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Green on the first run that got the dialog plumbing right."
+      },
+      "action": "Open Windrose, invoke AddModsButton, paste a probe .pak into the native Open dialog and accept it.",
+      "expect": "A ModRow for the probe is realised, and <dataDir>/installs/ carries a manifest claiming exactly the file that was placed. No modal is left on screen afterwards.",
+      "steps": [],
+      "source": "scripts/smoke-run.ps1"
+    },
+    {
+      "id": "uninstall-confirm-and-forget",
+      "title": "Uninstall confirms, deletes, and forgets its record",
+      "surface": "A26 - the record goes with the file",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1+wave4",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Drives a destructive confirm dialog rather than screenshotting it."
+      },
+      "action": "Invoke the probe row's uninstall affordance, assert the confirm says the delete is permanent, then confirm it.",
+      "expect": "The confirm dialog appears and states the delete cannot be undone. After confirming, the row, the file and the install manifest are all gone.",
+      "steps": [],
+      "source": "scripts/smoke-run.ps1"
     }
   ]
 }
