@@ -1111,9 +1111,13 @@
       "id": "feat-loose-root-mods-organize-loose-root-mods-ds2-decima",
       "title": "feat/loose-root-mods — organize loose root mods (DS2/Decima)",
       "surface": "feat/loose-root-mods",
-      "coverage": "untriaged",
-      "status": "untriaged",
-      "lastVerified": null,
+      "coverage": "human",
+      "status": "pending",
+      "lastVerified": {
+        "release": "v0.18.1+wave3",
+        "date": "2026-08-18",
+        "by": "este + agent, walked together"
+      },
       "origin": null,
       "steps": [
         "**Categorized listing.** Open DS2. EXPECT: ReShade under SHADERS (catalog hit, kind \"graphics\"); Zipliner_v1.1 / DollmanMute / DeathStranding2Fix under PLUGINS with their same-stem `.ini` configs grouped into the row (not separate rows); ShaderToggler + DeathStranding2UI addons under SHADERS; dinput8 under LOADERS. Rows name-sorted within each section.",
@@ -1124,7 +1128,9 @@
         "**Drop install.** Drop a new `.asi` (or a zip containing one) onto the window. EXPECT: it installs to the game root through the recognition gate and lists under PLUGINS. A random readme/text drop is refused with \"not a recognized loose mod\" — nothing placed among game files.",
         "**Vanilla step-aside.** Launch dropdown → \"Play vanilla (no mods)\". EXPECT: every enabled loose mod (loader included) steps aside to `loose-disabled`, the game launches clean, and \"Play modded (restore mods)\" restores exactly the stepped-aside set afterward."
       ],
-      "source": "docs/smoke-tests/pending.md#L662"
+      "source": "docs/smoke-tests/pending.md#L662",
+      "humanReason": "Needs a loose-root game with real mods in its root. Death Stranding 2 is that game and it is registered here, so this is runnable - but toggling a loader and dropping files into a folder holding the game executable wants a person watching.",
+      "note": "Walked 2026-08-18 on Death Stranding 2. FIVE mechanisms verified, every one against on-disk hashes rather than the screen: (1) disable MOVES - Zipliner_v1.1.asi left the root for loose-disabled/zipliner-v1-1/ with its sha256 and its original April mtime intact; (2) enable restores byte-identical and leaves holding empty; (3) toggling a loader raises the loader warning with Cancel as the default button; (4) cancelling that dialog writes nothing at all; (5) dropping a zip installs loose into the game root, creates no spurious subfolder, and raises NO ban-risk friction on a game with no ban risk - the A22 regression check. Game root verified byte-for-byte identical afterwards across all eight mod files.\n\nTHREE findings, all of them the launcher knowing or saying less than it should, none able to damage the game: A23 (six of the game's own folders listed as mods - LocalCacheWinGame, steaminput, tools, uds, reshade-shaders, _MODS_STAGING - so the status line reads 15 of 15 on an install with nine mods), A24 (the loader warning calls version.dll an ASI loader and says disabling it disables every ASI plugin; FileVersionInfo says it is DLSS Enabler 4.5.2.2, and dxgi.dll is ReShade 6.7.3), A25 (loose-root intakes write no install manifest, so a mod 626 placed itself reads as inferred - and that is what blocks uninstall on these games).\n\nSTILL UNRUN from this section: Play vanilla, which is where A23's containment gets tested for real - it should step aside the nine real mods and leave the six phantom rows alone. Verified in code (ActiveModRows filters !ReadOnly) but not on the rig."
     },
     {
       "id": "nexus-loose-identify-review-first-nexus-identify-for-loose-r",
