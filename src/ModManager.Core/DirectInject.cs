@@ -98,6 +98,13 @@ public static class DirectInject
             .Where(n => n is not null && ProcessLoadProxies.Contains(n!, StringComparer.OrdinalIgnoreCase))
             .Select(n => n!).ToList();
 
+    /// <summary>Where a proxy DLL goes when it is stepped aside. ONE spelling, in Core, because two
+    /// callers need it and they must never disagree: the vanilla-launch step-aside writes here, and
+    /// the listing lane reads here to decide whether a loader row shows as off. If those drifted, a
+    /// stepped-aside loader would disappear from the list instead of reading disabled - a one-way
+    /// door in a launcher whose whole promise is that nothing is.</summary>
+    public static string VanillaProxyHolding(string playFolder) => Path.Combine(playFolder, "_626", "vanilla-proxy");
+
     /// <summary>Step a single top-level file aside to a holding folder (reversible move, no delete).
     /// No-op when the file is absent; never clobbers an existing held copy.</summary>
     public static void DisableSingleFile(string playFolder, string holdingRoot, string fileName)

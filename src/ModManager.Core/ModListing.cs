@@ -21,7 +21,39 @@ public static class ModListing
             ListingMechanism.LooseRoot    => LooseRootListing.List(game),
             _                             => Scanner.ListClassified(ctx),
         };
-        return Metadata.MergeMetadata(raw, Scanner.LoadMetadata(ctx));
+        var merged = Metadata.MergeMetadata(raw, Scanner.LoadMetadata(ctx));
+
+        // Append loader rows for proxy DLLs no lane above claimed. Appended HERE, in the one shared
+        // read path, so the App list and the agent-access MCP cannot disagree about what is loading
+        // into the game - the parity rule. Only the direct-inject lane lists these today, and only on
+        // FromSoft, which is how a Monster Hunter Wilds install showed six mods and no sign of the
+        // REFramework loading them.
+        var loaderRows = ProxyLoaderRowsFor(game, merged);
+        return loaderRows.Count == 0 ? merged : merged.Concat(loaderRows).ToList();
+    }
+
+    /// <summary>Proxy-loader rows for a game, read off disk. Empty when the play folder is unknown.</summary>
+    private static IReadOnlyList<Mod> ProxyLoaderRowsFor(GameEntry game, IReadOnlyList<Mod> alreadyListed)
+    {
+        var play = DirectInjectListing.PlayFolder(game.GameRoot);
+        if (play is null) return Array.Empty<Mod>();
+
+        string[] top;
+        try { top = Directory.GetFiles(play); } catch { return Array.Empty<Mod>(); }
+
+        string[] held;
+        var holding = DirectInject.VanillaProxyHolding(play);
+        try { held = Directory.Exists(holding) ? Directory.GetFiles(holding) : Array.Empty<string>(); }
+        catch { held = Array.Empty<string>(); }
+
+        // Directories too: a loader is named by what sits BESIDE its proxy, and REFramework's tell is
+        // a reframework/ folder rather than any file. Passing only files would leave it unnamed.
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(play); } catch { dirs = Array.Empty<string>(); }
+
+        // Every filename any lane already produced, so a loader another lane owns is not listed twice.
+        var claimed = alreadyListed.SelectMany(m => m.Files).Concat(alreadyListed.Select(m => m.Name));
+        return ProxyLoaderRows.Build(top, held, claimed, top.Concat(dirs));
     }
 
     /// <summary>
