@@ -168,11 +168,10 @@ this entry.
 **So part 3 does not ship until that is settled**, because an Install button on this dialog would
 inherit the gap and put it behind a second door. Two honest outcomes:
 
-- If intake genuinely is ungated, that is its own finding — file it, fix it, and part 3 follows.
-- If some other gate covers it that the call-site grep missed, say so and part 3 proceeds.
-
-Verify it live before either. This is precisely the kind of claim I have gotten wrong from static
-reading in this repo before.
+**Answered, 2026-08-18: intake is ungated.** `Scanner.ExecuteIntake` copies into `primary.Abs` — the
+live mod folder — and all four `AddModsAsync` call sites (drop handler, file picker, tools panel,
+internal) reach it without a gate call. A dropped zip installs enabled on a high-risk game with no
+warning and no ack. Filed as **A22**, which now blocks part 3.
 
 ### Also here, and cheap
 
