@@ -36,12 +36,17 @@ public sealed record FrameworkComponent(string Name, IReadOnlyList<string> AnyOf
 /// <param name="GetUrl">https URL where the user can get the framework. Single canonical link
 /// per framework — vendor releases page, not a wiki tree.</param>
 /// <param name="Note">One-sentence why-it-matters, surfaced in the status banner tooltip.</param>
+/// <param name="LogRelativePaths">Where this framework writes its own log, if it writes one. A log
+/// that advanced past a launch is proof the loader RAN, which is the question the launcher could never
+/// answer before (B5). Only filled where the file has actually been seen on disk - an invented path
+/// would read as "no log" forever, which is indistinguishable from a loader that never logs.</param>
 public sealed record FrameworkDep(
     string Engine,
     string Name,
     IReadOnlyList<FrameworkComponent> Components,
     string GetUrl,
-    string Note)
+    string Note,
+    IReadOnlyList<string>? LogRelativePaths = null)
 {
     /// <summary>The single-component form: one any-of list, no half worth naming. Kept as a real
     /// constructor rather than a migration so every entry that IS genuinely a set of alternatives
@@ -102,7 +107,10 @@ public static class FrameworkDeps
                 FrameworkComponent.Of("loader", "Binaries/Win64/dwmapi.dll"),
             },
             GetUrl: "https://github.com/UE4SS-RE/RE-UE4SS/releases",
-            Note: "Required for Lua mods and Blueprint LogicMods paks. Plain content paks don't need it."),
+            Note: "Required for Lua mods and Blueprint LogicMods paks. Plain content paks don't need it.",
+            // Seen on disk: Windrose keeps UE4SS.log beside the runtime, and its staleness is exactly
+            // how A13 was diagnosed - the log read 2 August while the launcher said 27 of 27 enabled.
+            LogRelativePaths: new[] { "Binaries/Win64/ue4ss/UE4SS.log" }),
 
         new FrameworkDep(
             Engine: "bepinex",

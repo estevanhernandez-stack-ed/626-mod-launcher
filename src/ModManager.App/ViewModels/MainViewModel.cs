@@ -1710,8 +1710,36 @@ public sealed partial class MainViewModel : ObservableObject
             if (!up) { StatusText = "Couldn't start Steam — open Steam, then launch again."; return; }
         }
         AutoBackupBeforeLaunch();
-        try { _svc.Launch(target, _ctx.Game.GameRoot); StampLaunch(); }
+        try
+        {
+            _svc.Launch(target, _ctx.Game.GameRoot);
+            StampLaunch();
+            WatchLaunch();
+        }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+    }
+
+    /// <summary>Watch the launch we just made and say whether the loaders actually ran (B5).
+    ///
+    /// <para>Fire and forget on purpose: the game is starting, the user is looking at it and not at us,
+    /// and nothing here may delay or fail a launch. The status line updates when there is something
+    /// worth saying and stays as it was when there is not — which is most launches.</para>
+    ///
+    /// <para>626 has always known exactly what it enabled and never found out whether any of it ran.
+    /// That is the A13 class of bug, whose only witness was the user at the crash.</para></summary>
+    private void WatchLaunch()
+    {
+        var ctx = _ctx;
+        if (ctx is null) return;
+        var launchedUtc = DateTime.UtcNow;
+        _ = Task.Run(async () =>
+        {
+            var line = await new Services.LaunchVerifier().WatchAsync(ctx, launchedUtc);
+            if (string.IsNullOrEmpty(line)) return;
+            // Back to the UI thread the same way every other background finisher here does.
+            if (_dispatcherQueue is { } dq) dq.TryEnqueue(() => StatusText = line);
+            else StatusText = line;
+        });
     }
 
     /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.</summary>
