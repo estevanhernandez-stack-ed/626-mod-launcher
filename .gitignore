@@ -50,4 +50,5 @@ CLAUDE.md
 docs/ui-evidence/
 
 # Smoke-harness output — screenshots + results.json are per-run evidence, not source.
-artifacts/smoke/
+# Broad on purpose: today alone produced artifacts/smoke, artifacts/banrisk and artifacts/mhw.
+artifacts/
