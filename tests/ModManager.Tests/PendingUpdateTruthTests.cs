@@ -51,6 +51,45 @@ public class PendingUpdateTruthTests
         Assert.False(Flagged("k").VersionsLookEquivalent);
     }
 
+    [Theory]
+    [InlineData("1.1", "1")]          // the real Fast Craft row
+    [InlineData("1.0.1", "1.0.0")]    // the real Elden Ring Ultrawide Fix row
+    [InlineData("2.0", "1.9")]
+    public void A_descending_pair_is_never_provably_newer(string installed, string latest)
+    {
+        // A27. Both of these rendered as arrows pointing backwards on the live install AFTER A10
+        // shipped - and both are named in A10's own entry as the reason it was filed.
+        Assert.False(Compared("k", installed, latest).LatestIsProvablyNewer);
+    }
+
+    [Theory]
+    [InlineData("1.2.0", "1.3.1")]
+    [InlineData("1", "2")]
+    [InlineData("1.0", "1.0.1")]
+    public void An_ascending_pair_keeps_its_arrow(string installed, string latest)
+        => Assert.True(Compared("k", installed, latest).LatestIsProvablyNewer);
+
+    [Theory]
+    [InlineData("1.0.0.1", "1.0.0.1-hotfix")]   // the real Better pet boar row
+    [InlineData("1.0", "1.0b")]
+    [InlineData("alpha", "beta")]
+    public void An_unrankable_pair_is_not_claimed_either_way(string installed, string latest)
+    {
+        // The cost of refusing to guess: the hotfix probably IS newer. Saying so would be the
+        // guessing this exists to avoid, and the row still names both versions.
+        Assert.False(Compared("k", installed, latest).LatestIsProvablyNewer);
+        Assert.Null(PendingUpdate.Compare(installed, latest));
+    }
+
+    [Fact]
+    public void Not_comparable_is_never_reported_as_equal()
+    {
+        // Null means "cannot rank these", and a caller reading it as 0 would treat an unknown pair as
+        // an identical one - the same conflation A10 was about, one layer down.
+        Assert.Null(PendingUpdate.Compare("1.0", "1.0-rc"));
+        Assert.Equal(0, PendingUpdate.Compare("1.0", "1.0.0"));
+    }
+
     [Fact]
     public void No_ordering_is_offered_because_mod_versions_are_not_reliably_semver()
     {

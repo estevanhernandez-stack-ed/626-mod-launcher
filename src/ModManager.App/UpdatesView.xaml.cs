@@ -58,7 +58,16 @@ public sealed class UpdateRow
             if (Pending.VersionsLookEquivalent)
                 return $"{Pending.InstalledVersion} installed — Nexus has a newer file";
 
-            return $"{Pending.InstalledVersion} → {Pending.LatestVersion}";
+            // The arrow only where the direction is provable. Two known versions differing is not
+            // enough: "1.1" and "1" differ, and an arrow between them points backwards. Those were the
+            // two examples A10 was filed about and they survived it, because the fix drew the pair
+            // whenever both sides were known (A27).
+            if (Pending.LatestIsProvablyNewer)
+                return $"{Pending.InstalledVersion} → {Pending.LatestVersion}";
+
+            // Both known, order not provable — a descending pair, or a suffix like "1.0.0.1-hotfix"
+            // that no strict parse can rank. Name both and imply nothing.
+            return $"{Pending.InstalledVersion} installed · Nexus lists {Pending.LatestVersion}";
         }
     }
 }
