@@ -8,7 +8,8 @@
     CloseButtonText="Cancel"
     DefaultButton="Close"
     AutomationProperties.Name="Mods already installed"
-    PrimaryButtonClick="OnApply">
+    PrimaryButtonClick="OnApply"
+    SecondaryButtonClick="OnInstall">
 
     <ContentDialog.Title>
         <StackPanel Spacing="6">

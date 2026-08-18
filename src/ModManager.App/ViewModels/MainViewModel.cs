@@ -110,7 +110,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// code-behind, not the VM) — exactly the <see cref="ConfirmBanRiskEnable"/> pattern. When unset,
     /// <see cref="DiscoverExistingModsAsync"/> stops after building proposals: nothing is adopted.
     /// </summary>
-    public Func<IReadOnlyList<AdoptionProposal>, Task<IReadOnlyList<AdoptionProposal>>>? ReviewDiscoveries { get; set; }
+    public Func<IReadOnlyList<AdoptionProposal>, Task<DiscoveryReviewOutcome>>? ReviewDiscoveries { get; set; }
 
     /// <summary>Set by the view to show the unified review. Returns what the user approved in each
     /// section. Null (unwired view) means the run proposes and writes nothing.</summary>
@@ -2731,7 +2731,22 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
         proposals = await ResolveAdoptionReachAsync(proposals, ctx);
-        var approved = await ReviewDiscoveries(proposals);
+        var outcome = await ReviewDiscoveries(proposals);
+
+        // Install, not adopt. The user picked the action that matches what these files actually
+        // are — downloads that were never deployed — and it routes through the ordinary intake
+        // path, ban-risk gate and all. Adoption is skipped entirely: the same sweep will offer
+        // these again once they ARE installed, and then it will have something to attach to.
+        if (outcome.ToInstall.Count > 0)
+        {
+            var paths = outcome.ToInstall
+                .Select(p => Path.Combine(ctx.GameRoot, p.Candidate.RelativePath))
+                .ToList();
+            await AddModsAsync(paths);
+            return;
+        }
+
+        var approved = outcome.Approved;
 
         // ApplyDiscoveriesAsync sets StatusText itself for the write outcome, same auto gating.
         await ApplyDiscoveriesAsync(approved, proposals.Count, ctx, auto);
