@@ -1751,20 +1751,29 @@ delete `ban-risk-acks.json` from that game's data dir — `<gameRoot>/_626mods/<
    installed." and the game folder to be untouched — no new files in the mod folder, no new row.
    *Why it matters:* this is the whole entry. Refusing has to happen above the first branch that
    touches disk, so a cancel leaves the folder exactly as it was.
-2. **Drop again and accept.** EXPECT the mod to install normally and appear in the list.
-   *Why it matters:* the gate warns and takes an ack — it never refuses. Reversibility stands.
-3. **Drop a third time.** EXPECT no second warning, because step 2 acknowledged it for this game.
-   *Why it matters:* the ack persists per game; re-asking every drop would train the user to click
-   through it, which is worse than not asking.
-4. **Drop TEN files at once on a fresh un-acked high-risk game.** EXPECT exactly ONE warning, not
+2. **Drop again and press through the warning, WITHOUT ticking the checkbox.** EXPECT the mod to
+   install normally — and EXPECT `ban-risk-acks.json` NOT to be written.
+   *Why it matters:* proceeding is not acknowledging. The ack is recorded only when the user ticks
+   "Don't warn me again for this game" AND proceeds (`proceed && dontWarn.IsChecked == true`). Until
+   then every enable stays a fresh decision, which is what the rule means by an EXPLICIT
+   acknowledgment. An earlier draft of this entry expected step 3 to be silent after step 2. That was
+   wrong, and wrong in the dangerous direction: a gate that HAD granted itself a permanent opt-out
+   would have read as a pass.
+3. **Drop a third time, still without ticking.** EXPECT the warning AGAIN.
+   *Why it matters:* the gate must keep asking until it is told not to.
+4. **Drop a fourth time, tick "Don't warn me again for this game", and proceed.** EXPECT the install,
+   and EXPECT `ban-risk-acks.json` to appear naming the game. Then drop once more and EXPECT silence.
+   *Why it matters:* this is the only path that records the ack, and re-asking after it would train
+   the user to click through — worse than not asking.
+5. **Drop TEN files at once on a fresh un-acked high-risk game.** EXPECT exactly ONE warning, not
    ten. *Why it matters:* a ten-file drop is one decision. Per-file would be unusable and would
    make the ack meaningless.
-5. **Install a framework or a tool on a fresh un-acked high-risk game** (drop a UE4SS / BepInEx
+6. **Install a framework or a tool on a fresh un-acked high-risk game** (drop a UE4SS / BepInEx
    archive, or install a tool from the Tools panel). EXPECT the same single warning. *Why it
    matters:* a loader going live is the thing anti-cheat actually sees, so it counts as much as a
    mod does. All of these route through the same intake entry point, which is why one gate covers
    them — confirm that holds on the surface, not just in the call graph.
-6. **Drop a mod on a game with no ban risk (regression check).** EXPECT no warning at all and a
+7. **Drop a mod on a game with no ban risk (regression check).** EXPECT no warning at all and a
    normal install. *Why it matters:* the gate is high-risk-only. Any friction on an ordinary game
    is a bug — the flagship gesture must stay one motion.
 
