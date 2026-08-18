@@ -174,17 +174,45 @@ guess, which is how the flat install would have "succeeded".
 
 ## Open questions
 
-1. **Key.** `modKey` from `Scanner.ModKeyFor` works for a file; what keys a folder-shaped mod? The
-   folder name is the obvious candidate, but two mods can ship the same folder name.
-2. **Reference counting on disable.** When a tracked mod's file is also claimed by another *enabled*
-   tracked mod, disable must leave it. Is that per-file, or does the row refuse and explain?
-3. **Adoption's relationship to this.** A14 established adoption is metadata-only. Does adopting an
-   inferred group also mint a manifest — a claim we did not earn — or stay metadata and leave the
-   grouping inferred? Leaning: stay metadata. A manifest should mean "we wrote these bytes."
-4. **How far to take dependency reading.** `require("_CatLib")` is unambiguous. Do we also surface the
-   reverse — marking MHWilds Overlay as *needing* CatLib, so disabling the library warns from the
-   dependent's side too? Cheap once the scan exists, and it is the same information read the other
-   way.
+Este, 2026-08-18, asked whether these get answered by building. **Two of them do. One must not be.**
+
+### Resolves while building
+
+1. **Key.** `Scanner.ModKeyFor` keys a file; what keys a folder-shaped mod? The folder name is the
+   obvious candidate and two mods can ship the same one. Write it, hit the collision, let the shape
+   dictate the answer.
+2. **Reference counting on disable.** Largely folded into the decision below — once dependencies are
+   read both ways, "another enabled mod needs this" is something the row can *say* rather than
+   something the toggle has to adjudicate silently.
+
+### Decided: read the dependency in both directions
+
+Este: *"yeah, so I think we do need to read it."*
+
+A `require` scan is one read of the tree and it answers two questions at once. Forward: *this library
+is needed by MHWilds Overlay.* Reverse: *this mod needs `_CatLib`, which is present / which is
+missing.* The reverse direction is the more valuable of the two, because it turns a mod that would
+silently fail to load into a row that says why — the same job the `NEEDS UE4SS` chip already does for
+frameworks, applied to library dependencies inside the mod folder.
+
+### Must be decided BEFORE uninstall exists: adoption never mints a manifest
+
+A14 established adoption is metadata-only. The open question was whether adopting an inferred group
+should also write an install manifest. **It must not**, and this is a law question rather than an
+implementation detail.
+
+A manifest is what uninstall reads to decide which files to remove. If adoption could mint one, then
+adopting a library Fluffy placed and later uninstalling it would delete files 626 never wrote — with
+no backup to restore from, because there was never an install to snapshot. That is the reversibility
+law broken at its root: you cannot undo a removal you had no part in making.
+
+So: **a manifest means "we wrote these bytes."** Adoption gives a row its identity, its metadata and
+its grouping, and grants no claim over the files. An adopted group is uninstallable only in the sense
+that the *user* can delete it themselves; 626 will not offer to.
+
+The cost is real and worth stating: a user who adopts a Fluffy-installed mod gets a managed row they
+cannot uninstall from 626. That is the honest position — the alternative is a delete button backed by
+a claim we invented.
 
 ## Testing
 
