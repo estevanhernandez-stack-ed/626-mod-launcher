@@ -2,6 +2,17 @@
 
 Running log of post-merge smoke needs the orchestrator can't verify automatically. Each entry: what shipped, what to test, why it matters. Strike entries through (or move to a "Cleared" section) once smoked.
 
+> **The machine-readable half is `smoke.json`, beside this file** (backlog E3). This document is the
+> prose record and stays the place to write a new entry in full; the catalogue is what an agent
+> executes and what a run reports against. `scripts/smoke-run.ps1` reads it, and `SmokeCatalogueTests`
+> fails the build if the two disagree about which cases exist.
+>
+> **73 of the 105 catalogue entries are `untriaged`** — inherited from the sections below and not yet
+> walked with Este. Untriaged means nobody has said whether it was exercised, which is not the same as
+> untested and not the same as pending. That distinction is the whole reason the catalogue exists:
+> read this file as a to-do list and you re-test things that were fine in May; read it as history and
+> you ship believing something was covered when it never was.
+
 > **2026-05-29 remediation status (verified against `git log` + code).** The 2026-05-28 live ER + Safe Clear pass surfaced 7 issues (`docs/superpowers/plans/2026-05-28-smoke-remediations.md`, decision log 2026-05-28). The priority-1/2 fixes are now **merged** — the old BLOCKED banners below have been cleared where the fix shipped:
 >
 > | Remediation | Status | Evidence |
