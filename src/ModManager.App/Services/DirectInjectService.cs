@@ -46,7 +46,6 @@ public sealed class DirectInjectService
     /// (the bug that let a vanilla launch crash silently). The hijack is a fact of disk, not of rows.</summary>
     public bool AnyActiveProxyDll(GameEntry game)
     {
-        if (game.Engine != "fromsoft") return false;
         var folder = PlayFolder(game.GameRoot);
         if (folder is null) return false;
         string[] topLevel;
@@ -55,10 +54,18 @@ public sealed class DirectInjectService
         return DirectInject.AnyProcessLoadProxy(topLevel);
     }
 
-    /// <summary>The process-load proxy DLL filenames currently sitting at the top of the play folder.</summary>
+    /// <summary>The process-load proxy DLL filenames currently sitting at the top of the play folder.
+    ///
+    /// <para>NOT gated on engine, deliberately. It was, on "fromsoft", and that is how a Monster
+    /// Hunter Wilds install reported a successful vanilla launch while REFramework's dinput8.dll went
+    /// on hijacking the process — a seventeen-month-old loader against a freshly patched build, so the
+    /// game crashed on every start and the launcher said nothing. RE Engine, Unreal and Unity games
+    /// use the same proxy filenames FromSoft games do; Windows loads none of them from a game folder
+    /// unless something is hijacking, because the real ones live in System32. The comment on
+    /// <see cref="DirectInject.AnyProcessLoadProxy"/> already said the hijack is a fact of the
+    /// filesystem rather than of how the launcher displays rows — the engine gate contradicted it.</para></summary>
     public IReadOnlyList<string> ActiveProxyDlls(GameEntry game)
     {
-        if (game.Engine != "fromsoft") return Array.Empty<string>();
         var folder = PlayFolder(game.GameRoot);
         if (folder is null) return Array.Empty<string>();
         string[] top;
