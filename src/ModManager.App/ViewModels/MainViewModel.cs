@@ -392,7 +392,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         get { var n = MpRiskyEnabledCount; return $"{n} enabled mod{(n == 1 ? "" : "s")} may not be co-op-safe"; }
     }
-    private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); }
+    private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); RebuildStateChips(); }
 
     // Game-level ban-risk banner: resolved live by Steam app id from EffectiveManifest (via
     // BanRiskCatalog), distinct from the per-mod co-op-desync MpWarning above. Shows for high and
@@ -403,6 +403,140 @@ public sealed partial class MainViewModel : ObservableObject
         BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
     public string BanRiskWarningText => "This game uses anti-cheat — enabling mods for online play can get your account banned.";
     private void NotifyBanRiskWarning() { OnPropertyChanged(nameof(BanRiskWarningVisibility)); OnPropertyChanged(nameof(BanRiskWarningText)); }
+
+    // ---------------------------------------------------------------------------------------------
+    // The game-state strip (wave 7)
+    //
+    // These states used to render in EIGHT places across TWO registers: four full-width banners above
+    // the mod list, in declaration order, and four inline warnings wedged into the command bar's right
+    // cluster beside the theme picker. So the weights ran backwards against consequence — the one
+    // warning whose cost lands outside this machine was the smallest thing on the screen, and "another
+    // tool has files in a folder" took a full-width bar and pushed the mods down.
+    //
+    // One strip now, one chip per condition, ordered by GameStateStrip.For — which lives in Core under
+    // test, because the ranking is the arguable part and XAML declaration order is not an argument.
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Raised when a chip's action button is pressed. The view owns the dialogs, so the
+    /// view-model states WHAT was asked for and MainWindow decides what that opens.</summary>
+    public event Action<string>? StateChipActionRequested;
+
+    public ObservableCollection<GameStateChipViewModel> StateChips { get; } = new();
+
+    public Visibility StateStripVisibility => StateChips.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Session dismissals, by chip id. Cleared when the active game changes — a dismissal is
+    /// about THIS game's state, and carrying it to the next game would hide a fact the user has not
+    /// seen yet.</summary>
+    private readonly HashSet<string> _dismissedChips = new(StringComparer.Ordinal);
+    private string? _chipsGameId;
+
+    /// <summary>The chip whose sentence is showing. Defaults to the most severe one, so the highest-
+    /// consequence line reads as a full sentence with no interaction — which is the whole point of
+    /// the wave.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StateDetailVisibility))]
+    [NotifyPropertyChangedFor(nameof(StateDetailText))]
+    [NotifyPropertyChangedFor(nameof(StateDetailActionLabel))]
+    [NotifyPropertyChangedFor(nameof(StateDetailActionVisibility))]
+    [NotifyPropertyChangedFor(nameof(StateDetailDismissVisibility))]
+    [NotifyPropertyChangedFor(nameof(StateDetailAccent))]
+    private GameStateChipViewModel? expandedChip;
+
+    public Visibility StateDetailVisibility => ExpandedChip is null ? Visibility.Collapsed : Visibility.Visible;
+    public string StateDetailText => ExpandedChip?.Detail ?? "";
+    public string StateDetailActionLabel => ExpandedChip?.ActionLabel ?? "";
+    public Visibility StateDetailActionVisibility => ExpandedChip?.ActionVisibility ?? Visibility.Collapsed;
+    public Visibility StateDetailDismissVisibility => ExpandedChip?.DismissVisibility ?? Visibility.Collapsed;
+    public Brush StateDetailAccent => ExpandedChip?.Accent ?? (Brush)Application.Current.Resources["ThemeInk"];
+
+    [RelayCommand]
+    private void RunStateChipAction()
+    {
+        if (ExpandedChip is not null) StateChipActionRequested?.Invoke(ExpandedChip.Id);
+    }
+
+    [RelayCommand]
+    private void DismissStateChip()
+    {
+        if (ExpandedChip is null) return;
+        DismissChip(ExpandedChip.Id);
+    }
+
+    private void SelectChip(GameStateChipViewModel chip)
+    {
+        foreach (var c in StateChips) c.IsExpanded = ReferenceEquals(c, chip);
+        ExpandedChip = chip;
+    }
+
+    private void DismissChip(string id)
+    {
+        _dismissedChips.Add(id);
+        RebuildStateChips();
+    }
+
+    /// <summary>What holds true for the active game right now, in the shape Core ranks. Every value
+    /// here is one the view-model already computed for the old banners — this wave changed where they
+    /// render, not how they are decided.</summary>
+    private GameStateConditions CurrentConditions() => new()
+    {
+        BanRisk = BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium,
+        LaunchOptionsNeeded = LaunchNeedsAttention,
+        // A13's sentence finally has somewhere to go. Until this wave MissingFrameworksSummary was
+        // computed on every reload and bound in no XAML file at all.
+        MissingFrameworks = HasMissingFrameworks ? MissingFrameworksSummary : null,
+        SetupDrift = SetupNeedsAttention,
+        SteamUpdated = SteamBuildChanged,
+        SteamMessage = SteamBuildMessage,
+        CoopLauncherMissing = CoopLauncherMissing,
+        MpWarning = MpRiskyEnabledCount > 0 ? MpWarningText + "." : null,
+        VortexReDeployed = HasReDeployedLocations,
+        VortexManaged = HasOwnedLocations,
+    };
+
+    public void RebuildStateChips()
+    {
+        // A dismissal AND an expansion are both scoped to the game they were made on. Carrying either
+        // across a game switch is how the smoke harness caught this wave's own bug: Windrose had its
+        // "Steam updated" chip expanded, and opening Palworld — which is ban-risk AND Steam-updated —
+        // kept the Steam sentence showing while BAN RISK sat first in the row unread. The one thing
+        // this wave exists to prevent, reintroduced by a convenience.
+        var gameId = _ctx?.Game.Id;
+        var sameGame = string.Equals(gameId, _chipsGameId, StringComparison.Ordinal);
+        if (!sameGame)
+        {
+            _dismissedChips.Clear();
+            _chipsGameId = gameId;
+        }
+
+        var chips = GameStateStrip.For(_ctx is null ? null : CurrentConditions())
+            .Where(c => !_dismissedChips.Contains(c.Id))
+            .ToList();
+
+        // Only within the same game does the user's choice of what to read survive a rebuild.
+        var keepExpanded = sameGame ? ExpandedChip?.Id : null;
+        StateChips.Clear();
+        foreach (var chip in chips)
+            StateChips.Add(new GameStateChipViewModel(chip, SelectChip, id => StateChipActionRequested?.Invoke(id), DismissChip));
+
+        // Keep whatever the user had open; otherwise open the most severe one. LeadFor returns null
+        // when nothing is Danger-level, so a game whose only news is "Vortex manages a folder" gets a
+        // quiet row of chips rather than a sentence demanding to be read.
+        var lead = StateChips.FirstOrDefault(c => c.Id == keepExpanded)
+                   ?? (GameStateStrip.LeadFor(chips) is { } l ? StateChips.FirstOrDefault(c => c.Id == l.Id) : null);
+
+        ExpandedChip = lead;
+        if (lead is not null) foreach (var c in StateChips) c.IsExpanded = ReferenceEquals(c, lead);
+
+        OnPropertyChanged(nameof(StateStripVisibility));
+    }
+
+    // The strip is derived state, so it rebuilds wherever its inputs move. These four are
+    // [ObservableProperty] fields; the collection-backed ones rebuild at the end of ReloadModsAsync.
+    partial void OnSetupNeedsAttentionChanged(bool value) => RebuildStateChips();
+    partial void OnSteamBuildChangedChanged(bool value) => RebuildStateChips();
+    partial void OnLaunchNeedsAttentionChanged(bool value) => RebuildStateChips();
+    partial void OnCoopLauncherMissingChanged(bool value) => RebuildStateChips();
 
     /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
     public void SetMpOverride(ModRowViewModel row, MpRisk? value)
@@ -640,6 +774,7 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogDetailVisibility));
             OnPropertyChanged(nameof(CatalogActionsAvailable));
             OnPropertyChanged(nameof(CatalogActionsVisibility));
+            RebuildStateChips();
             return;
         }
         // Save/restore, never a bare `false`. This reload is routinely NESTED inside a longer
@@ -937,6 +1072,10 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CatalogDetailVisibility));
             OnPropertyChanged(nameof(CatalogActionsAvailable));
             OnPropertyChanged(nameof(CatalogActionsVisibility));
+
+            // Last, because every input the strip reads has settled by here — the framework probe,
+            // the Vortex ownership pass, the Steam build compare and the setup predicate all ran above.
+            RebuildStateChips();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = wasBusy; }

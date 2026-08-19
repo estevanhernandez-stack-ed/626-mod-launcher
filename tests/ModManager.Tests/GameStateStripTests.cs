@@ -175,17 +175,42 @@ public class GameStateStripTests
     }
 
     [Fact]
-    public void The_lead_chip_is_the_most_severe_one_and_only_when_it_is_severe()
+    public void The_lead_chip_is_the_most_consequential_one_whatever_its_severity()
     {
-        // The lead reads as a full sentence with no interaction. That is what stops the
-        // highest-consequence line being the smallest thing on the screen.
+        // The lead reads as a full sentence with no interaction — what stops the highest-consequence
+        // line being the smallest thing on the screen.
         Assert.Equal("ban-risk", GameStateStrip.LeadFor(GameStateStrip.For(Everything()))!.Id);
 
-        var mildOnly = GameStateStrip.For(new GameStateConditions { VortexManaged = true, SetupDrift = true });
-        Assert.Null(GameStateStrip.LeadFor(mildOnly));
+        // And it does NOT gate on Danger. The rig proved why: Windrose's only news is "Steam updated
+        // this game", which was a full-width banner carrying its sentence and a one-click "Mark as
+        // rechecked". Behind a severity gate it collapsed to a four-letter chip reading UPDATED with
+        // both a tap away. Fewer surfaces must mean less clutter, never less information.
+        var mildOnly = GameStateStrip.For(new GameStateConditions { SetupDrift = true, VortexManaged = true });
+        Assert.Equal("setup-drift", GameStateStrip.LeadFor(mildOnly)!.Id);
+
+        var informationalOnly = GameStateStrip.For(new GameStateConditions { VortexManaged = true });
+        Assert.Equal("vortex-managed", GameStateStrip.LeadFor(informationalOnly)!.Id);
 
         Assert.Null(GameStateStrip.LeadFor(GameStateStrip.For(Nothing)));
         Assert.Null(GameStateStrip.LeadFor(null));
+    }
+
+    [Fact]
+    public void Nothing_that_had_a_sentence_before_is_reduced_to_a_label()
+    {
+        // Every one of the eight surfaces this strip replaced showed the user a sentence. The chip
+        // row is the index; the lead is the sentence. Assert on each condition ALONE, which is the
+        // case where there is nothing else to tap and the chip label would be all there was.
+        foreach (var id in new[]
+                 {
+                     "ban-risk", "launch-options", "framework-missing", "setup-drift",
+                     "steam-updated", "coop-launcher", "mp-desync", "vortex-redeployed", "vortex-managed",
+                 })
+        {
+            var lead = GameStateStrip.LeadFor(GameStateStrip.For(Only(id)));
+            Assert.NotNull(lead);
+            Assert.Equal(id, lead!.Id);
+        }
     }
 
     [Fact]

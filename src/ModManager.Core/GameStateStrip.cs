@@ -71,7 +71,7 @@ public static class GameStateStrip
         // 1. The only one whose cost lands outside this machine.
         if (c.BanRisk)
             chips.Add(new GameStateChip("ban-risk", GameStateSeverity.Danger, "BAN RISK",
-                "This game uses anti-cheat — modding for online play can get your account banned.",
+                "This game uses anti-cheat — enabling mods for online play can get your account banned.",
                 null, Dismissible: false));
 
         // 2. Nothing loads at all until this is set.
@@ -107,7 +107,7 @@ public static class GameStateStrip
         if (c.CoopLauncherMissing)
             chips.Add(new GameStateChip("coop-launcher", GameStateSeverity.Warning, "CO-OP",
                 "Seamless Co-op is installed but its launcher is missing — co-op needs the full mod.",
-                null, Dismissible: false));
+                "What to do", Dismissible: false));
 
         // 7. Affects other people rather than this install.
         if (!string.IsNullOrWhiteSpace(c.MpWarning))
@@ -129,9 +129,17 @@ public static class GameStateStrip
         return chips;
     }
 
-    /// <summary>The chip that should read as a full sentence without anyone tapping anything — the
-    /// most severe one, when it is severe enough to be worth the room. Everything else expands on
-    /// demand. This is what stops the highest-consequence line being the smallest thing on screen.</summary>
+    /// <summary>The chip that reads as a full sentence without anyone tapping anything: the first
+    /// one, which by the ordering above is the most consequential thing true about this game.
+    ///
+    /// <para>This deliberately does NOT gate on <see cref="GameStateSeverity.Danger"/>. It did at
+    /// first, and the rig showed what that costs: Windrose's only news is "Steam updated this game",
+    /// which used to be a full-width banner carrying its sentence AND a one-click <i>Mark as
+    /// rechecked</i>. Behind a severity gate it collapsed to a four-letter chip reading UPDATED, with
+    /// the sentence and the button both a tap away. Fewer surfaces has to mean less clutter, never
+    /// less information — a state that was legible before must stay legible after.</para>
+    ///
+    /// <para>So severity decides COLOUR and ORDER. It does not decide whether the user is told.</para></summary>
     public static GameStateChip? LeadFor(IReadOnlyList<GameStateChip>? chips)
-        => chips?.FirstOrDefault(c => c.Severity == GameStateSeverity.Danger);
+        => chips is null || chips.Count == 0 ? null : chips[0];
 }

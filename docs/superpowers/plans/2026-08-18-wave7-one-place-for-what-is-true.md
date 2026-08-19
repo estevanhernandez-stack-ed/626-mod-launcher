@@ -111,3 +111,50 @@ caught the original fault — **the ban-risk chip is present and addressable whe
 - Full suite green, `CorePurityTests` green, harness green.
 - Verified on the rig against a game with real conditions — Windrose carries Vortex markers and a Steam
   build stamp; Monster Hunter Wilds is high ban-risk.
+
+---
+
+## What shipped
+
+All of the above. **MainWindow.xaml: 75 lines added, 105 removed**, and about twenty of the added ones
+are the comment explaining what the strip replaced.
+
+**Order:** as proposed, approved unchanged.
+
+**Two things the rig settled that the plan had wrong.**
+
+**1. The lead cannot gate on severity.** The first build expanded the leading chip only when it was
+`Danger`. Windrose's only news is *"Steam updated this game"* — a `Warning` — so a full-width banner
+carrying a sentence AND a one-click *Mark as rechecked* collapsed into a four-letter chip reading
+**UPDATED**, with both a tap away. Fewer surfaces has to mean less clutter, never less information.
+The lead is now simply the first chip; severity decides colour and order, not whether the user is
+told. `Nothing_that_had_a_sentence_before_is_reduced_to_a_label` pins it for all nine conditions.
+
+**2. An expansion is scoped to its game.** Keeping the expanded chip across a rebuild is right within
+a game and wrong across a switch. Palworld is *both* ban-risk and Steam-updated; arriving from
+Windrose kept the Steam sentence on screen while **BAN RISK sat first in the row, unread** — this
+wave's own thesis, undone by a convenience. Caught by `ban-risk-chip-addressable`, not by a person.
+
+## Three things worth keeping
+
+**An `AutomationId` on a `Border` does nothing.** It never reaches the control view. The app built,
+looked right, and the walk came back empty. Moved one level in to the `TextBlock` and it surfaced.
+
+**Id the fact, not the widget.** `StateChip.ban-risk` sat on the old inline warning one commit before
+the strip existed, so the assertion was green *before* the move and stayed green *after*. Constraint 1
+paid for itself exactly as written.
+
+**Restore the harness fixture in a `finally`.** The failing ban-risk assertion threw before its
+tidy-up, left the app on a game with no mods, and five later cases went red for a fixture reason —
+five phantom bugs beside the one real one.
+
+## What this wave deliberately did not do
+
+The framework chip's **Get it** still opens the same download page the per-row `NEEDS` chip does. That
+is the dead end the round table's new modder walked into, and it is **item 5**, not this wave. Moving
+a control and changing what its button does in one commit makes the layout change impossible to verify
+on its own.
+
+The ban-risk **text bloom** (F-002) did not come across. It existed to help a `Border Padding="8,2"`
+beside the theme picker get noticed; the same fact now leads the strip as a danger-coloured sentence
+under a danger-outlined chip. A glow on top of that is decoration for a problem that no longer exists.
