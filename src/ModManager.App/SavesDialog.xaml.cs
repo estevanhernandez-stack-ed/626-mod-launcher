@@ -87,6 +87,10 @@ public sealed partial class SavesDialog : ContentDialog
                           .Select(t => new SaveCloneTarget(t.Label, t.Extension)).ToList()))
             .ToList();
         SaveFileList.ItemsSource = rows;
+        // Which of the two empty states this is - the app not knowing the game's layout, or the
+        // folder being wrong - decides what the user should do next, so the rule lives in Core.
+        SaveFilesEmpty.Text = SaveListingEmptyState.MessageFor(
+            folderSet: !string.IsNullOrEmpty(_saveDir), declaresTypes: _saveTypes.Count > 0);
         SaveFilesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
