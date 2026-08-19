@@ -73,7 +73,9 @@ pointer. It is the least-touched thing in the dialog and currently sits in the m
 ## Sequence, and why it isn't first
 
 The entry says it and the day proved it: *"a redesign that nothing can verify is how the four bugs in
-0.18 got out."* Settings now has 31 automation ids and the harness drives it open and closed. Before
+0.18 got out."* Settings has 12 automation ids and the harness drives it open and closed. (An earlier draft said 31 —
+that was the app-wide count after the LibraryView conversion, misread as this dialog's. Corrected by
+a reviewer who ran the grep instead of trusting the sentence.) Before
 moving anything, the harness should assert the **groups** — that each heading exists and that the
 danger group carries the controls it claims. Then the move is verifiable rather than hopeful.
 
