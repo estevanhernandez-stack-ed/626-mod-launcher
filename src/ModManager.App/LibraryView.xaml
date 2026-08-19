@@ -162,9 +162,9 @@
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"
                                                     BorderThickness="1" BorderBrush="{StaticResource ThemeDanger}"
-                                                    ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
+                                                    ToolTipService.ToolTip="Modding this game for online play can get your account banned"
                                                     Visibility="{x:Bind BanRiskVisibility}">
-                                                <TextBlock AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
+                                                <TextBlock AutomationProperties.HelpText="Modding this game for online play can get your account banned" Text="BAN RISK" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                            Foreground="{StaticResource ThemeDanger}" />
                                             </Border>
                                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemeBarBg}"

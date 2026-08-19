@@ -60,7 +60,7 @@ public static class AgentWriteRules
         // agent can pass changes this answer.
         if (BanRiskRules.ShouldGateEnable(banRisk, acknowledged))
             return AgentWriteDecision.No(AgentRefusal.BanRiskNotAcknowledged,
-                "This game uses anti-cheat and the risk has not been acknowledged. An agent cannot "
+                "This game carries a ban risk that has not been acknowledged. An agent cannot "
                 + "acknowledge it — open the game in 626 and enable a mod there once, and the "
                 + "acknowledgement carries from then on.");
 

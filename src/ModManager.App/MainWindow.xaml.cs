@@ -597,7 +597,7 @@ public sealed partial class MainWindow : Window
         body.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Text = "This game uses anti-cheat. Enabling mods for online play can get your account banned. Disabling is always reversible.",
+            Text = "Modding this game for online play can get your account banned. Disabling is always reversible.",
         });
 
         // Safe-loader guidance: "The safe way to mod this game:" + one button per safe loader.

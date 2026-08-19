@@ -69,9 +69,17 @@ public static class GameStateStrip
         if (c is null) return chips;
 
         // 1. The only one whose cost lands outside this machine.
+        //
+        // It said "This game uses anti-cheat" for every flagged game, which is a claim about a
+        // MECHANISM that the manifest never tells us. Palworld is the counter-example: Pocketpair's
+        // own mod guideline bans mods on official servers under threat of suspension, and the game
+        // ships no anti-cheat at all. Telling a Palworld player their game "uses anti-cheat" invites
+        // them to disbelieve the one warning in this app that can cost them an account.
+        //
+        // What we actually know is the RISK, not its enforcement. So the sentence says only that.
         if (c.BanRisk)
             chips.Add(new GameStateChip("ban-risk", GameStateSeverity.Danger, "BAN RISK",
-                "This game uses anti-cheat — enabling mods for online play can get your account banned.",
+                "Modding this game for online play can get your account banned.",
                 null, Dismissible: false));
 
         // 2. Nothing loads at all until this is set.
