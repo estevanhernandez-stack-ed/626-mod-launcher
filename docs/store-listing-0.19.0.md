@@ -75,38 +75,51 @@ question of what else was not mentioned.
 
 ## Screenshots
 
-**Only `04-updates-view` needs retaking.** Este's call, 2026-08-19, and the current set is
-`docs/store-assets/screenshots-0.18/` — not the 0.17 Forge set the 0.18.1 listing had to argue about.
-That set was already remediated; the theme discrepancy is gone.
+**Retaken 2026-08-19 against this build: `docs/store-assets/screenshots-0.19/`.** All seven, all
+1920x1080, captured with `scripts/capture-store-screenshots.ps1 -Auto`, and every one looked at before
+being committed.
 
-I originally wrote here that all seven needed retaking because the layout changed. That was written
-without opening them, and it was wrong for most of the set. Checked shot by shot:
+Shot for shot, what they now show that `screenshots-0.18` did not:
 
-| Shot | State against this build |
+| Shot | Now shows |
 |---|---|
-| `01-library-home` | unchanged by this release |
-| `02-game-mods-view` | **six visible differences** — see below |
-| `03-browse-nexus` | unchanged |
-| `04-updates-view` | **retake** — the row fixes (A10 "unknown", A27 backwards arrows) landed after it |
-| `05-add-game` | *"Apply profile"* now reads *"Apply definition"* |
-| `06-settings` | *"Identity"* → *"Appearance"*, *"Nexus Mods"* → *"Accounts"* |
-| `07-saves-snapshots` | unchanged |
+| `01-library-home` | unchanged — six games with real cover art, ban-risk and update badges |
+| `02-game-mods-view` | `SHOW` / `MANAGE` / `GROUP BY`, both renamed doors, and the `UPDATED` chip with its sentence |
+| `03-browse-nexus` | 20 cards, every thumbnail loaded, "20 of 363" |
+| `04-updates-view` | the A10/A27 row fixes — no "unknown", no backwards arrows |
+| `05-add-game` | over the library, not over the updates list |
+| `06-settings` | the four-group shape — `Appearance` and `Accounts` headings |
+| `07-saves-snapshots` | **Elden Ring, not Windrose** — real save files, three characters, Clone and Edit |
 
-### What `02-game-mods-view` shows that the build no longer has
+Shot 7 changed game deliberately. On Windrose that dialog is three lines of *"No save files / No
+editable characters / No save mods installed"*, which is the opposite of the reversibility promise the
+shot exists to make. Elden Ring is a FromSoft title, so the save format is itemised and the dialog
+shows what the feature actually does.
 
-Recorded so nobody later assumes it went unexamined. Este's call is that these do not block; the
-evidence is here either way.
+### Three things to look at before uploading — your call, not blockers
 
-- Toolbar headings `LOADOUT`, `LIBRARY` and `VIEW` — now `SHOW`, `MANAGE` and `GROUP BY`.
-- `Browse Nexus` and `Find mods` — now `Find mods (in-app)` and `Find mods in browser`.
-- The Steam-updated notice as a **full-width bar with its own button**, which is exactly the pattern
-  the game-state strip replaced. It is a chip with an expanded sentence now.
+- **`07` shows a real save path** containing your Windows username and the leading digits of a Steam
+  ID, plus two character names. All truthful, none secret, and you publish under your own name anyway.
+  Worth a conscious yes rather than a default.
+- **`07` leads with `BAN RISK` and the anti-cheat sentence.** I would keep it: the Store SKU has the
+  EAC-disable mechanism sealed out entirely, so a shot of the app *warning* about anti-cheat is the
+  most accurate advert for that build there is. But it is a judgement call about first impressions.
+- **`04` shows two rows where the installed version reads newer than the listed one** — *"1.1 installed
+  · Nexus lists 1"* and *"1.0.1 installed · Nexus lists 1.0.0"*. Not a capture problem; possibly A27
+  residue in how freeform Nexus version strings compare. Worth its own look, separately from this
+  submission.
 
-Under requirement 10.1 the question is whether a shopper is misled about what the app does. Every
-control in that shot still exists and still does the same thing; four of them are differently worded
-and one moved into the strip. That is a weaker discrepancy than 0.18.1's colour argument had to carry,
-and it is not the kind of thing a reviewer rejects over — but if you are retaking `04` anyway, `02` is
-the one worth the extra two minutes.
+### Two traps the capture script now handles
+
+Both cost a set, and both are written into the script so they cannot cost another.
+
+- **A 1px window border let the desktop through.** The visible frame sizes to exactly 1920x1080, but
+  the client area inside it is 1918x1079 and the border is partly transparent. Every shot in the first
+  automated set carried the same 117 stray bright pixels along the bottom — identical across six
+  different screens, because it was never app content. The window is sized +2 and captured inset by 1.
+- **Tooltips get photographed.** Parking the mouse over a control long enough to capture is exactly
+  what a tooltip waits for; two shots caught one. The pointer is moved off-window and given time to
+  fade before every capture.
 
 ## Age rating
 
@@ -115,8 +128,7 @@ already has on disk or fetches from a source they connected themselves.
 
 ## Before you upload
 
-1. **Retake `04-updates-view`** (see above), and `02-game-mods-view` if you want it exact. The
-   rest of `screenshots-0.18/` stands.
+1. **Upload `docs/store-assets/screenshots-0.19/`** — the full set of seven, retaken against this build.
 2. Confirm the submodule pointer — `external/626-mod-plugins` is pinned at **`nexus-v0.14.0`**. The
    Store SKU compiles Nexus in from that pin; the GitHub SKU downloads a signed plugin from the feed.
    They do not advance together. See `docs/release-msstore.md`.
