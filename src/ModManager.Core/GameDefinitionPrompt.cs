@@ -3,10 +3,10 @@ namespace ModManager.Core;
 /// <summary>
 /// Builds the prompt a user hands to any LLM to author a game registration profile. The model
 /// returns JSON on the structured contract (relative/enum values only), which the launcher
-/// validates (<see cref="GameProfileImport"/>) and resolves. Twin of <see cref="ThemePrompt"/> —
+/// validates (<see cref="GameDefinitionImport"/>) and resolves. Twin of <see cref="ThemePrompt"/> —
 /// not agentic: the app crafts the ask and validates the answer.
 /// </summary>
-public static class GameProfilePrompt
+public static class GameDefinitionPrompt
 {
     public static string Build(string? gameName)
     {
@@ -42,7 +42,7 @@ public static class GameProfilePrompt
             throw new ArgumentException("At least one game name is required.", nameof(gameNames));
 
         var engines = string.Join(", ", EnginePresets.Presets.Keys);
-        var saveRoots = string.Join(", ", GameProfileImport.SaveRoots);
+        var saveRoots = string.Join(", ", GameDefinitionImport.SaveRoots);
         var games = string.Join("\n", gameNames.Select((n, i) => $"  {i + 1}. {n.Trim()}"));
         return
             "You are filling registration profiles for multiple PC games at once.\n\n" +

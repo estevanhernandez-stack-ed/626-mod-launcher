@@ -47,9 +47,20 @@ public sealed partial class MainWindow : Window
         void WireSegment(Border host, Button segment) =>
             Services.Bloom.AttachStateGlow(host, segment, Services.BloomToken.Accent,
                 () => ReferenceEquals(segment.Background, accentBrush), Button.BackgroundProperty);
-        WireSegment(LoadoutAllGlowHost, LoadoutAllSegment);
-        WireSegment(LoadoutMpGlowHost, LoadoutMpSegment);
-        WireSegment(LoadoutSpGlowHost, LoadoutSpSegment);
+        // Ctrl+, for Settings - the platform convention. Wired here rather than in XAML because the
+        // comma key is VK_OEM_COMMA (188), which the VirtualKey enum has no named member for and the
+        // XAML compiler will not take as a number.
+        var settingsKey = new Microsoft.UI.Xaml.Input.KeyboardAccelerator
+        {
+            Modifiers = Windows.System.VirtualKeyModifiers.Control,
+            Key = (Windows.System.VirtualKey)188,
+        };
+        settingsKey.Invoked += OnSettingsAccelerator;
+        RootGrid.KeyboardAccelerators.Add(settingsKey);
+
+        WireSegment(ShowAllGlowHost, LoadoutAllSegment);
+        WireSegment(ShowMpGlowHost, LoadoutMpSegment);
+        WireSegment(ShowSpGlowHost, LoadoutSpSegment);
 
         // Library home: build the VM + view, mount into the overlay host, wire its navigation events.
         // Open (card/Manage) collapses the overlay onto the game's mod view; Add routes the discovered
@@ -295,6 +306,49 @@ public sealed partial class MainWindow : Window
         if (CatalogHost.Visibility == Visibility.Visible) return; // no invisible rescans under the overlay (S1)
         if (ViewModel.RefreshCommand.CanExecute(null)) { ViewModel.RefreshCommand.Execute(null); args.Handled = true; }
     }
+
+    // Wave 10. Same guard as the two above: act only when the game view is live and the storefront
+    // overlay is not on top, and mark the key handled ONLY then, so it keeps its normal meaning
+    // everywhere else.
+    private bool GameKeysLive =>
+        ViewModel.HasGame && GameTitleControls.Visibility == Visibility.Visible
+        && CatalogHost.Visibility != Visibility.Visible;
+
+    // Ctrl+, - the platform convention for Settings, and the one accelerator here that is NOT gated
+    // on a live game view: Settings is reachable from the library home too.
+    private void OnSettingsAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (CatalogHost.Visibility == Visibility.Visible) return;
+        OnSettings(this, new RoutedEventArgs());
+        args.Handled = true;
+    }
+
+    private void OnAddModsAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!GameKeysLive) return;
+        OnAddMods(this, new RoutedEventArgs());
+        args.Handled = true;
+    }
+
+    private void OnProfilesAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!GameKeysLive) return;
+        OnProfiles(this, new RoutedEventArgs());
+        args.Handled = true;
+    }
+
+    // Ctrl+1/2/3 are only safe to bind because wave 6 made these segments a FILTER. Until then they
+    // enabled and disabled every mod in the game, and a number key that did that silently would have
+    // been the worst control in the app.
+    private void SetShowMode(string mode, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!GameKeysLive) return;
+        if (ViewModel.SetModeCommand.CanExecute(mode)) { ViewModel.SetModeCommand.Execute(mode); args.Handled = true; }
+    }
+
+    private void OnShowAllAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args) => SetShowMode("all", args);
+    private void OnShowMpAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args) => SetShowMode("mp", args);
+    private void OnShowSpAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args) => SetShowMode("sp", args);
 
     private void OnEscapeAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
     {
@@ -1056,7 +1110,7 @@ public sealed partial class MainWindow : Window
             });
             content.Children.Add(row);
         }
-        Add("BOTH",     "Active in both your SP and MP loadouts.");
+        Add("BOTH",     "Safe in both single-player and multiplayer.");
         Add("SP",       "Active only in your single-player loadout.");
         Add("MP",       "Active only in your multiplayer loadout.");
         Add("MP-SAFE",  "Author or verified-safe list says this works in MP.");

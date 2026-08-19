@@ -55,7 +55,7 @@ public class SaveManagerProTests : IDisposable
     {
         File.WriteAllText(Path.Combine(Save, "ER0000.co2"), "C"); // Seamless save also present
         var snap = SaveManager.Backup(Save, Snaps, "two types");
-        var types = GameProfiles.Resolve("fromsoft", null).SaveTypes;
+        var types = GameSaveTypesCatalog.Resolve("fromsoft", null).SaveTypes;
 
         var present = SaveManager.TypesInSnapshot(snap.Path, types).Select(t => t.Extension).ToList();
         Assert.Contains(".sl2", present);

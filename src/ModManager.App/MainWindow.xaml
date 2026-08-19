@@ -23,9 +23,22 @@
              body — including the moment you park the mouse mid-list to scroll. The accelerators
              still fire; only the unsolicited tip is suppressed. Per-control accelerators
              elsewhere keep their tips, which is where a tip is actually useful. -->
+        <!-- The whole app had THREE accelerators plus Space on a focused row, and none of them
+             reached the things a keyboard-first user presses most. Wave 10 adds the cheap ones.
+
+             Ctrl+1/2/3 drive the SHOW segments, which is only safe to bind now: until wave 6 those
+             three buttons were a bulk file operation, and a number key that silently enabled and
+             disabled every mod in the game would have been the worst control in the app. -->
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFilterAccelerator" />
             <KeyboardAccelerator Modifiers="Control" Key="R" Invoked="OnRefreshAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="O" Invoked="OnAddModsAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="P" Invoked="OnProfilesAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number1" Invoked="OnShowAllAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number2" Invoked="OnShowMpAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number3" Invoked="OnShowSpAccelerator" />
+            <!-- Ctrl+, is added in code (see the constructor): the comma key is VK_OEM_COMMA, which
+                 the VirtualKey enum has no named member for, and XAML will not take the number. -->
             <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
@@ -152,7 +165,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <!-- Left cluster: three self-sizing sections (MODS / LOADOUT / LIBRARY). Each section is
+            <!-- Left cluster: three self-sizing sections (MODS / SHOW / MANAGE). Each section is
                  a vertical StackPanel with the label on top and the button row below - the section
                  auto-sizes to MAX(label-width, button-row-width), so labels cannot drift out of
                  alignment with their cluster. Dividers sit between sections, bottom-anchored to
@@ -218,7 +231,8 @@
                                 </MenuFlyout>
                             </DropDownButton.Flyout>
                         </DropDownButton>
-                        <Button AutomationProperties.AutomationId="AddModsButton" Content="+ Add mods" Click="OnAddMods" />
+                        <Button AutomationProperties.AutomationId="AddModsButton" Content="+ Add mods" Click="OnAddMods"
+                                ToolTipService.ToolTip="Add mod archives or folders (Ctrl+O)" />
                         <!-- TwoWay so a VM-side clear (game switch, no-game reset) empties the BOX
                              too — a one-way box->VM flow left stale text stating a filter that
                              wasn't applied (B4.5 review catch). -->
@@ -230,9 +244,11 @@
                 </StackPanel>
                 <shapes:Rectangle Width="1" Height="32" Fill="{StaticResource ThemeBorder}"
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
-                <!-- LOADOUT: All / MP / SP filter (segmented) -->
+                <!-- SHOW: All / MP / SP (segmented). Was headed LOADOUT, which stopped being true in wave 6
+                     when these became a filter - they change what is listed and move no files. A heading
+                     reading LOADOUT over a view control tells the same lie the control used to. -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="LOADOUT" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
+                    <TextBlock Text="SHOW" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <Border CornerRadius="0" BorderThickness="1" BorderBrush="{StaticResource ThemeBorder}"
                             Background="{StaticResource ThemePanel}">
                         <StackPanel Orientation="Horizontal">
@@ -240,27 +256,27 @@
                                  bloom host behind it, lit only while that segment's fill is the accent
                                  (wired in the ctor via Bloom.AttachStateGlow on BackgroundProperty). -->
                             <Grid>
-                                <Border x:Name="LoadoutAllGlowHost" />
-                                <Button AutomationProperties.AutomationId="LoadoutAllSegment" x:Name="LoadoutAllSegment" Content="All" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
+                                <Border x:Name="ShowAllGlowHost" />
+                                <Button AutomationProperties.AutomationId="LoadoutAllSegment" x:Name="LoadoutAllSegment" Content="All" ToolTipService.ToolTip="Show every mod (Ctrl+1)" Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="all"
                                         BorderThickness="0" CornerRadius="0" MinWidth="44"
-                                        Background="{x:Bind ViewModel.LoadoutAllBrush, Mode=OneWay}"
-                                        Foreground="{x:Bind ViewModel.LoadoutAllForeground, Mode=OneWay}" />
+                                        Background="{x:Bind ViewModel.ShowAllBrush, Mode=OneWay}"
+                                        Foreground="{x:Bind ViewModel.ShowAllForeground, Mode=OneWay}" />
                             </Grid>
                             <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
                             <Grid>
-                                <Border x:Name="LoadoutMpGlowHost" />
-                                <Button AutomationProperties.AutomationId="LoadoutMpSegment" x:Name="LoadoutMpSegment" Content="MP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
+                                <Border x:Name="ShowMpGlowHost" />
+                                <Button AutomationProperties.AutomationId="LoadoutMpSegment" x:Name="LoadoutMpSegment" Content="MP" ToolTipService.ToolTip="Show only mods marked multiplayer-safe (Ctrl+2)"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="mp"
                                         BorderThickness="0" CornerRadius="0" MinWidth="44"
-                                        Background="{x:Bind ViewModel.LoadoutMpBrush, Mode=OneWay}"
-                                        Foreground="{x:Bind ViewModel.LoadoutMpForeground, Mode=OneWay}" />
+                                        Background="{x:Bind ViewModel.ShowMpBrush, Mode=OneWay}"
+                                        Foreground="{x:Bind ViewModel.ShowMpForeground, Mode=OneWay}" />
                             </Grid>
                             <shapes:Rectangle Width="1" Fill="{StaticResource ThemeBorder}" />
                             <Grid>
-                                <Border x:Name="LoadoutSpGlowHost" />
-                                <Button AutomationProperties.AutomationId="LoadoutSpSegment" x:Name="LoadoutSpSegment" Content="SP"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
+                                <Border x:Name="ShowSpGlowHost" />
+                                <Button AutomationProperties.AutomationId="LoadoutSpSegment" x:Name="LoadoutSpSegment" Content="SP" ToolTipService.ToolTip="Show only single-player mods (Ctrl+3)"  Command="{x:Bind ViewModel.SetModeCommand}" CommandParameter="sp"
                                         BorderThickness="0" CornerRadius="0" MinWidth="44"
-                                        Background="{x:Bind ViewModel.LoadoutSpBrush, Mode=OneWay}"
-                                        Foreground="{x:Bind ViewModel.LoadoutSpForeground, Mode=OneWay}" />
+                                        Background="{x:Bind ViewModel.ShowSpBrush, Mode=OneWay}"
+                                        Foreground="{x:Bind ViewModel.ShowSpForeground, Mode=OneWay}" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -269,12 +285,12 @@
                                   VerticalAlignment="Bottom" Margin="10,0,10,0" />
                 <!-- LIBRARY: rescan + reorder + saved-state surfaces -->
                 <StackPanel Orientation="Vertical" Spacing="2">
-                    <TextBlock Text="LIBRARY" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
+                    <TextBlock Text="MANAGE" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Button AutomationProperties.AutomationId="RefreshButton" AutomationProperties.Name="Refresh" Content="↻ Refresh" Command="{x:Bind ViewModel.RefreshCommand}"
                                 ToolTipService.ToolTip="Re-scan the game folder for mod changes, and refresh Nexus stats (endorsements, downloads, update flags) when connected" />
                         <Button AutomationProperties.AutomationId="ReorderButton" Content="Reorder" Click="OnUnlockLoadOrder" ToolTipService.ToolTip="Drag rows to set the load order" />
-                        <Button AutomationProperties.AutomationId="ProfilesButton" Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved loadouts" />
+                        <Button AutomationProperties.AutomationId="ProfilesButton" Content="Profiles" Click="OnProfiles" ToolTipService.ToolTip="Saved profiles - sets of mods you can switch between (Ctrl+P)" />
                         <Button AutomationProperties.AutomationId="SavesButton" Content="Saves" Click="OnSaves" ToolTipService.ToolTip="Save snapshots + installed save mods" />
                     </StackPanel>
                 </StackPanel>
@@ -305,7 +321,7 @@
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Bottom">
                 <!-- VIEW: how the mod list is grouped -->
                 <StackPanel Orientation="Vertical" Spacing="2" Margin="10,0,0,0">
-                    <TextBlock Text="VIEW" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
+                    <TextBlock Text="GROUP BY" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
                     <ComboBox AutomationProperties.AutomationId="GroupModeCombo" AutomationProperties.Name="Group the mod list" MinWidth="120" ToolTipService.ToolTip="Group the mod list"
                               ItemsSource="{x:Bind ViewModel.GroupModes}"
                               SelectedItem="{x:Bind ViewModel.GroupMode, Mode=TwoWay}" />

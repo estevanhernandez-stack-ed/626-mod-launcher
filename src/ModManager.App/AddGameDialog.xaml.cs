@@ -24,7 +24,7 @@ public sealed partial class AddGameDialog : ContentDialog
 
     // The applied agent profile, stashed so BuildInput can carry fields that have no visible wizard
     // control (windowTitle / fileExtensions / groupingRule / curseforgeGameId). Null on manual add.
-    private GameProfileDraft? _appliedDraft;
+    private GameDefinitionDraft? _appliedDraft;
 
     // Approved batch rows, populated by OnApplyBatch and consumed by MainWindow's register loop on
     // Primary. Empty in the single-game flow.
@@ -72,7 +72,7 @@ public sealed partial class AddGameDialog : ContentDialog
 
         // Save-root enum values for the picker. Set in code, not XAML (literal-bool/SelectedItem-in-markup
         // parse gotcha on this WinUI build).
-        SaveRootBox.ItemsSource = GameProfileImport.SaveRoots;
+        SaveRootBox.ItemsSource = GameDefinitionImport.SaveRoots;
 
         // Quick-add: plan each installed Steam game for one-click auto-add. Detectable-engine games
         // become checkable rows; undetectable ones are listed for manual setup (we never guess an engine).
@@ -113,7 +113,7 @@ public sealed partial class AddGameDialog : ContentDialog
     private void OnCopyProfilePrompt(object sender, RoutedEventArgs e)
     {
         var pkg = new DataPackage();
-        pkg.SetText(GameProfilePrompt.Build(AiGameNameBox.Text));
+        pkg.SetText(GameDefinitionPrompt.Build(AiGameNameBox.Text));
         Clipboard.SetContent(pkg);
         ShowProfileStatus("Prompt copied — run it in your agent, then paste the JSON back here.", "ThemeAccent");
     }
@@ -121,7 +121,7 @@ public sealed partial class AddGameDialog : ContentDialog
     // Parse + validate the pasted JSON, resolve it to machine paths, and pre-fill the wizard fields.
     private async void OnApplyProfile(object sender, RoutedEventArgs e)
     {
-        var result = GameProfileImport.Load(AiJsonBox.Text ?? "");
+        var result = GameDefinitionImport.Load(AiJsonBox.Text ?? "");
         if (result.Draft is null)
         {
             ShowProfileStatus(string.Join("  ", result.Errors), "ThemeDanger");
@@ -131,7 +131,7 @@ public sealed partial class AddGameDialog : ContentDialog
         _appliedDraft = d; // stash so BuildInput can carry fields with no visible control
 
         // Resolve + verify on disk (read-only). No browse attempted here — pass null so Steam detection runs.
-        var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
+        var resolver = App.AppHost.Services.GetRequiredService<GameDefinitionResolver>();
         var resolved = await resolver.ResolveAsync(d, browsedGameRoot: null);
 
         // Pre-fill the familiar wizard fields.
@@ -161,7 +161,7 @@ public sealed partial class AddGameDialog : ContentDialog
             return;
         }
         var pkg = new DataPackage();
-        pkg.SetText(GameProfilePrompt.BuildMany(picked.Select(g => g.Name).ToList()));
+        pkg.SetText(GameDefinitionPrompt.BuildMany(picked.Select(g => g.Name).ToList()));
         Clipboard.SetContent(pkg);
         ShowBatchStatus($"Batch prompt copied for {picked.Count} games — run it, paste the array back, then Apply all.", "ThemeAccent");
     }
@@ -171,7 +171,7 @@ public sealed partial class AddGameDialog : ContentDialog
     private async void OnApplyBatch(object sender, RoutedEventArgs e)
     {
         _batchApproved.Clear();
-        var results = GameProfileImport.LoadMany(BatchJsonBox.Text ?? "");
+        var results = GameDefinitionImport.LoadMany(BatchJsonBox.Text ?? "");
         if (results.Count == 0)
         {
             ShowBatchStatus("Empty array — nothing to apply.", "ThemeDanger");
@@ -180,7 +180,7 @@ public sealed partial class AddGameDialog : ContentDialog
         }
 
         var picked = BatchSteamList.SelectedItems.Cast<InstalledGame>().ToList();
-        var resolver = App.AppHost.Services.GetRequiredService<GameProfileResolver>();
+        var resolver = App.AppHost.Services.GetRequiredService<GameDefinitionResolver>();
         var rows = new List<BatchRowVM>();
         int ok = 0;
 

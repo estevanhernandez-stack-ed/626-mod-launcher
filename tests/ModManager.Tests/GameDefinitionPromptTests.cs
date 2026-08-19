@@ -7,7 +7,7 @@ public class GameProfilePromptTests
     [Fact]
     public void Build_pins_the_contract_for_the_named_game()
     {
-        var p = GameProfilePrompt.Build("Skyrim Special Edition");
+        var p = GameDefinitionPrompt.Build("Skyrim Special Edition");
         Assert.Contains("Skyrim Special Edition", p);
         Assert.Contains("engine", p);
         Assert.Contains("bethesda", p);          // an EnginePresets key is listed
@@ -20,7 +20,7 @@ public class GameProfilePromptTests
     [Fact]
     public void Build_asks_for_nexusGameDomain()
     {
-        var p = GameProfilePrompt.Build("Cyberpunk 2077");
+        var p = GameDefinitionPrompt.Build("Cyberpunk 2077");
         Assert.Contains("nexusGameDomain", p);
         // The contract: a Nexus URL slug, not a numeric id.
         Assert.Contains("slug", p, StringComparison.OrdinalIgnoreCase);
@@ -29,7 +29,7 @@ public class GameProfilePromptTests
     [Fact]
     public void BuildMany_pins_the_contract_for_a_list_of_games()
     {
-        var p = GameProfilePrompt.BuildMany(new[] { "Cyberpunk 2077", "Phasmophobia" });
+        var p = GameDefinitionPrompt.BuildMany(new[] { "Cyberpunk 2077", "Phasmophobia" });
         Assert.Contains("Cyberpunk 2077", p);
         Assert.Contains("Phasmophobia", p);
         Assert.Contains("JSON array", p);
@@ -44,6 +44,6 @@ public class GameProfilePromptTests
     [Fact]
     public void BuildMany_rejects_empty_list()
     {
-        Assert.Throws<ArgumentException>(() => GameProfilePrompt.BuildMany(Array.Empty<string>()));
+        Assert.Throws<ArgumentException>(() => GameDefinitionPrompt.BuildMany(Array.Empty<string>()));
     }
 }

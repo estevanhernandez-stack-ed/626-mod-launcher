@@ -52,7 +52,7 @@ public sealed partial class SavesDialog : ContentDialog
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
-        _saveTypes = GameProfiles.Resolve(ctx.Game.Engine, ctx.Game.SteamAppId).SaveTypes;
+        _saveTypes = GameSaveTypesCatalog.Resolve(ctx.Game.Engine, ctx.Game.SteamAppId).SaveTypes;
         _saveModPath = ctx.Game.SaveModPath;
         _saveModForbidden = ctx.Game.SaveModForbidden;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
