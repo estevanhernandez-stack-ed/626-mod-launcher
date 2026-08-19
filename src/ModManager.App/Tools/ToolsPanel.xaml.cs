@@ -126,9 +126,15 @@ public sealed partial class ToolsPanel : UserControl
             Title = $"Remove {m.DisplayName}?",
             Content = new TextBlock
             {
-                Text = $"The launcher will delete the {m.InstalledFiles.Count} file(s) it installed for "
-                       + $"{m.DisplayName}, from {m.InstallPath}. Mods that need it will stop loading until "
-                       + "you install it again. Nothing else in the game folder is touched.",
+                // "will delete N files" was measured against reality on the rig and found to be a lie in
+                // the common case: uninstalling UE4SS on Windrose deleted all 19 and then RESTORED 18 of
+                // them, because the launcher had installed over an existing copy and its snapshot put
+                // that copy back. Correct behaviour, wrong sentence - a user who reads "delete 19" and
+                // then finds 18 still there concludes it failed. Say what it actually does.
+                Text = $"The launcher will undo its own install of {m.DisplayName}: it removes the "
+                       + $"{m.InstalledFiles.Count} file(s) it added to {m.InstallPath}, and puts back "
+                       + "anything it replaced when it installed. Mods that need it will stop loading "
+                       + "until you install it again. Nothing else in the game folder is touched.",
                 TextWrapping = TextWrapping.Wrap,
             },
             PrimaryButtonText = "Remove it",

@@ -228,6 +228,69 @@ public class GameStateStripTests
         Assert.Equal(GameStateSeverity.Info, GameStateStrip.For(Only("vortex-managed"))[0].Severity);
     }
 
+    [Fact]
+    public void An_open_sentence_survives_a_rebuild()
+    {
+        // A toggle or a rescan must not yank the sentence someone is reading.
+        var chips = GameStateStrip.For(Everything() with { BanRisk = false, LaunchOptionsNeeded = false, MissingFrameworks = null });
+
+        Assert.Equal("steam-updated", GameStateStrip.ExpandedFor(chips, "steam-updated")!.Id);
+    }
+
+    [Fact]
+    public void But_it_yields_the_moment_something_worse_appears()
+    {
+        // FOUND ON THE RIG, not here. Uninstalling UE4SS from Windrose made framework-missing (Danger)
+        // appear while steam-updated (Warning) was open, and the Warning kept the sentence - so the app
+        // acquired a Danger condition and went on showing the milder one. The strip's whole thesis,
+        // inverted by a convenience that preserved state without being told what outranks it.
+        var before = GameStateStrip.For(new GameStateConditions { SteamUpdated = true });
+        Assert.Equal("steam-updated", GameStateStrip.ExpandedFor(before, "steam-updated")!.Id);
+
+        var after = GameStateStrip.For(new GameStateConditions
+        {
+            SteamUpdated = true,
+            MissingFrameworks = "UE4SS — runtime present, loader missing",
+        });
+
+        Assert.Equal("framework-missing", GameStateStrip.ExpandedFor(after, "steam-updated")!.Id);
+    }
+
+    [Fact]
+    public void A_lesser_condition_appearing_does_not_steal_the_sentence()
+    {
+        // The other direction has to hold too, or every rescan snaps you back to the top.
+        var chips = GameStateStrip.For(new GameStateConditions { BanRisk = true, VortexManaged = true });
+
+        Assert.Equal("ban-risk", GameStateStrip.ExpandedFor(chips, "ban-risk")!.Id);
+        Assert.Equal("ban-risk", GameStateStrip.ExpandedFor(chips, "vortex-managed")!.Id);
+    }
+
+    [Fact]
+    public void Equal_severity_keeps_what_the_user_had_open()
+    {
+        // launch-options and framework-missing are both Danger. Neither outranks the other, so the one
+        // being read stays - "at least as severe", not "strictly more severe".
+        var chips = GameStateStrip.For(new GameStateConditions
+        {
+            LaunchOptionsNeeded = true,
+            MissingFrameworks = "UE4SS — loader present, runtime missing",
+        });
+
+        Assert.Equal("framework-missing", GameStateStrip.ExpandedFor(chips, "framework-missing")!.Id);
+        Assert.Equal("launch-options", GameStateStrip.ExpandedFor(chips, null)!.Id);
+    }
+
+    [Fact]
+    public void A_chip_that_went_away_hands_the_sentence_to_the_lead()
+    {
+        var chips = GameStateStrip.For(new GameStateConditions { SteamUpdated = true, VortexManaged = true });
+
+        Assert.Equal("steam-updated", GameStateStrip.ExpandedFor(chips, "setup-drift")!.Id);
+        Assert.Null(GameStateStrip.ExpandedFor(GameStateStrip.For(Nothing), "steam-updated"));
+        Assert.Null(GameStateStrip.ExpandedFor(null, "steam-updated"));
+    }
+
     private static GameStateConditions Everything() => new()
     {
         BanRisk = true,

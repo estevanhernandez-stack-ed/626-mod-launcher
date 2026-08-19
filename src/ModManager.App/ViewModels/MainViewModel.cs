@@ -522,11 +522,15 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var chip in chips)
             StateChips.Add(new GameStateChipViewModel(chip, SelectChip, id => StateChipActionRequested?.Invoke(id), DismissChip));
 
-        // Keep whatever the user had open; otherwise open the most severe one. LeadFor returns null
-        // when nothing is Danger-level, so a game whose only news is "Vortex manages a folder" gets a
-        // quiet row of chips rather than a sentence demanding to be read.
-        var lead = StateChips.FirstOrDefault(c => c.Id == keepExpanded)
-                   ?? (GameStateStrip.LeadFor(chips) is { } l ? StateChips.FirstOrDefault(c => c.Id == l.Id) : null);
+        // Keep whatever the user had open UNLESS something worse has appeared since. That rule is
+        // GameStateStrip.ExpandedFor, in Core under test, because getting it wrong is not a display
+        // detail: keeping the open chip unconditionally meant a Danger condition could arrive while a
+        // Warning was expanded and the app would go on showing the milder one. Found by uninstalling
+        // UE4SS on the rig, and the second time this same "preserve what the user had" convenience
+        // produced it - the first was carrying an expansion across a game switch.
+        var lead = GameStateStrip.ExpandedFor(chips, keepExpanded) is { } l
+            ? StateChips.FirstOrDefault(c => c.Id == l.Id)
+            : null;
 
         ExpandedChip = lead;
         if (lead is not null) foreach (var c in StateChips) c.IsExpanded = ReferenceEquals(c, lead);

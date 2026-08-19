@@ -126,6 +126,33 @@ public class VocabularyTests
         Assert.Contains("Saved profiles", main);
     }
 
+    [Fact]
+    public void No_copy_sends_the_user_to_a_Settings_section_that_no_longer_exists()
+    {
+        // Wave 9 moved three inventories out of Settings, and FrameworkInstallDialog went on telling
+        // people the install was "Reversible from Settings → Installed frameworks" for a whole wave.
+        // Nothing caught it: the vocabulary guard reads two files, and a UIA walk cannot know that a
+        // sentence points somewhere that is gone. It surfaced only because a live install put the
+        // dialog on screen in front of someone reading it.
+        //
+        // Directions are copy, and copy about a surface that moved rots silently — worse than a wrong
+        // word, because the user follows it and finds nothing.
+        var app = Path.Combine(RepoRoot(), "src", "ModManager.App");
+        var stale = new[] { "Settings → Installed", "Settings → Direct-inject", "Settings -> Installed" };
+
+        var offenders = Directory
+            .EnumerateFiles(app, "*.*", SearchOption.AllDirectories)
+            .Where(f => (f.EndsWith(".xaml") || f.EndsWith(".cs"))
+                        && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                        && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Select(f => (File: Path.GetRelativePath(app, f), Text: File.ReadAllText(f)))
+            .Where(x => stale.Any(s => x.Text.Contains(s, StringComparison.OrdinalIgnoreCase)))
+            .Select(x => x.File)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Item 8 — the accelerators exist. A shortcut is not discoverable from a UIA walk, so this is the
     // only place that can hold the app to having them.
