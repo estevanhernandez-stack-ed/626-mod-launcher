@@ -80,11 +80,16 @@ public sealed class Mod
     /// exactly that, and the reason it survived is that "everything needs updating" is PLAUSIBLE to
     /// someone returning to an old install — a false positive shaped like the truth never gets reported.
     /// Not knowing what is installed is a reason to stay quiet, not a reason to claim a difference.</para></summary>
+    /// <para>And a difference is not enough on its own: it has to point FORWARDS. Nexus listing a
+    /// version we can prove is older than what is on disk is not an update, and A10's careful wording
+    /// for it ("1.0.1 installed · Nexus lists 1.0.0") made the row honest without making it right.
+    /// See <see cref="PendingUpdate.LatestIsProvablyOlder"/> — an unorderable pair still lists.</para>
     public bool UpdateAvailable =>
         NexusUpdateAvailable
         ?? (!string.IsNullOrWhiteSpace(NexusLatestVersion)
             && !string.IsNullOrWhiteSpace(Version)
-            && NexusLatestVersion != Version);
+            && NexusLatestVersion != Version
+            && !PendingUpdate.LatestIsProvablyOlder(Version, NexusLatestVersion));
 }
 
 /// <summary>A per-game metadata.json entry: the real title/credit/links for a mod base.</summary>

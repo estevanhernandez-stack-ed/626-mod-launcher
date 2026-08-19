@@ -96,7 +96,7 @@ editable characters / No save mods installed"*, which is the opposite of the rev
 shot exists to make. Elden Ring is a FromSoft title, so the save format is itemised and the dialog
 shows what the feature actually does.
 
-### Three things to look at before uploading — your call, not blockers
+### Two things to look at before uploading — your call, not blockers
 
 - **`07` shows a real save path** containing your Windows username and the leading digits of a Steam
   ID, plus two character names. All truthful, none secret, and you publish under your own name anyway.
@@ -104,10 +104,10 @@ shows what the feature actually does.
 - **`07` leads with `BAN RISK` and the anti-cheat sentence.** I would keep it: the Store SKU has the
   EAC-disable mechanism sealed out entirely, so a shot of the app *warning* about anti-cheat is the
   most accurate advert for that build there is. But it is a judgement call about first impressions.
-- **`04` shows two rows where the installed version reads newer than the listed one** — *"1.1 installed
-  · Nexus lists 1"* and *"1.0.1 installed · Nexus lists 1.0.0"*. Not a capture problem; possibly A27
-  residue in how freeform Nexus version strings compare. Worth its own look, separately from this
-  submission.
+**Fixed rather than shipped:** `04` used to show two rows where the installed version read newer than
+the listed one. That was a real defect, not a capture problem — the pending rule was string
+inequality and never asked which version was newer. Both rows are gone and the shot was retaken; the
+badge went from 4 to 2. See `an update is not just a difference` in the git log.
 
 ### Two traps the capture script now handles
 

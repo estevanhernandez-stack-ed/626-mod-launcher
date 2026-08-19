@@ -41,6 +41,22 @@ public sealed record PendingUpdate(string GameId, string GameName, string ModKey
     /// </summary>
     public bool LatestIsProvablyNewer => Compare(InstalledVersion, LatestVersion) is int c && c < 0;
 
+    /// <summary>True when the listed version is PROVABLY older than what is installed — both parse as
+    /// plain dotted numbers and the comparison descends.
+    ///
+    /// <para>This is the inclusion rule A10 never got to. A10 fixed what a row SAYS: it stopped
+    /// drawing "1.0.1 → 1.0.0", an arrow pointing backwards. It did not change whether the row
+    /// EXISTS, because the pending decision was string inequality — <c>latest != installed</c> —
+    /// which never asks which is newer. So both of A10's own named examples were still listed a wave
+    /// later, reading "1.0.1 installed · Nexus lists 1.0.0". Carefully worded, still an invitation to
+    /// update to an older release.</para>
+    ///
+    /// <para>Only the PROVABLE case is dropped. An unorderable pair like "1.0.0.1" against
+    /// "1.0.0.1-hotfix" stays listed and says nothing about direction: the hotfix probably is newer,
+    /// and refusing to guess has to cut both ways or it is not a principle.</para></summary>
+    public static bool LatestIsProvablyOlder(string? installed, string? latest)
+        => Compare(installed, latest) is int c && c > 0;
+
     /// <summary>Numeric-only ordering, or null when either side is not a plain dotted number. Null is
     /// the answer that matters: it means "not comparable", never "equal".</summary>
     internal static int? Compare(string? a, string? b)
@@ -173,7 +189,10 @@ public static class ModUpdateSummary
             // never told; and an unknown installed version can never be "behind", because not knowing
             // what you have is a reason to stay quiet rather than a difference.
             var behind = m.NexusUpdateAvailable
-                ?? (polled && !string.IsNullOrWhiteSpace(m.Version) && latest != m.Version);
+                ?? (polled && !string.IsNullOrWhiteSpace(m.Version) && latest != m.Version
+                    // ...and not a difference that points BACKWARDS. Inequality alone listed both of
+                    // A10's named examples for another two waves.
+                    && !PendingUpdate.LatestIsProvablyOlder(m.Version, latest));
             if (!behind) continue;
 
             var modName = string.IsNullOrWhiteSpace(m.Title) ? key : m.Title;
