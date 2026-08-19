@@ -75,17 +75,38 @@ question of what else was not mentioned.
 
 ## Screenshots
 
-**They are now wrong in a way that matters, and this is the release to fix it.**
+**Only `04-updates-view` needs retaking.** Este's call, 2026-08-19, and the current set is
+`docs/store-assets/screenshots-0.18/` — not the 0.17 Forge set the 0.18.1 listing had to argue about.
+That set was already remediated; the theme discrepancy is gone.
 
-The 0.17 set in `docs/store-assets/screenshots-0.17/` shows the Forge theme (a colour difference —
-argued in the 0.18.1 listing as acceptable under requirement 10.1, since the app really can look like
-that). That argument does **not** stretch to this release: the toolbar section headings, the Settings
-layout and the warning strip are all different now. Those screenshots show a **layout this build does
-not have**, not merely a colour it can wear.
+I originally wrote here that all seven needed retaking because the layout changed. That was written
+without opening them, and it was wrong for most of the set. Checked shot by shot:
 
-**Recommendation: retake before submitting.** Shoot on the main box — the 0.17 set shows six games
-with real cover art and the clean test PC has almost nothing in it. All seven or none; a half-swapped
-set reads as a rendering bug. Screenshot debt is tracked as D2 in `docs/2026-08-05-backlog.md`.
+| Shot | State against this build |
+|---|---|
+| `01-library-home` | unchanged by this release |
+| `02-game-mods-view` | **six visible differences** — see below |
+| `03-browse-nexus` | unchanged |
+| `04-updates-view` | **retake** — the row fixes (A10 "unknown", A27 backwards arrows) landed after it |
+| `05-add-game` | *"Apply profile"* now reads *"Apply definition"* |
+| `06-settings` | *"Identity"* → *"Appearance"*, *"Nexus Mods"* → *"Accounts"* |
+| `07-saves-snapshots` | unchanged |
+
+### What `02-game-mods-view` shows that the build no longer has
+
+Recorded so nobody later assumes it went unexamined. Este's call is that these do not block; the
+evidence is here either way.
+
+- Toolbar headings `LOADOUT`, `LIBRARY` and `VIEW` — now `SHOW`, `MANAGE` and `GROUP BY`.
+- `Browse Nexus` and `Find mods` — now `Find mods (in-app)` and `Find mods in browser`.
+- The Steam-updated notice as a **full-width bar with its own button**, which is exactly the pattern
+  the game-state strip replaced. It is a chip with an expanded sentence now.
+
+Under requirement 10.1 the question is whether a shopper is misled about what the app does. Every
+control in that shot still exists and still does the same thing; four of them are differently worded
+and one moved into the strip. That is a weaker discrepancy than 0.18.1's colour argument had to carry,
+and it is not the kind of thing a reviewer rejects over — but if you are retaking `04` anyway, `02` is
+the one worth the extra two minutes.
 
 ## Age rating
 
@@ -94,7 +115,8 @@ already has on disk or fetches from a source they connected themselves.
 
 ## Before you upload
 
-1. **Retake the screenshots** (see above). This is the blocking item, not the package.
+1. **Retake `04-updates-view`** (see above), and `02-game-mods-view` if you want it exact. The
+   rest of `screenshots-0.18/` stands.
 2. Confirm the submodule pointer — `external/626-mod-plugins` is pinned at **`nexus-v0.14.0`**. The
    Store SKU compiles Nexus in from that pin; the GitHub SKU downloads a signed plugin from the feed.
    They do not advance together. See `docs/release-msstore.md`.
