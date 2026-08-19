@@ -88,6 +88,36 @@ characters on the storefront.
 
 Written for a shopper, not a builder: what changed for them, no wave numbers, no internal names.
 
+## Short description and description
+
+Paste [`store/short-description-0.19.0.txt`](store/short-description-0.19.0.txt) (229 of 270 chars) and
+[`store/description-0.19.0.txt`](store/description-0.19.0.txt) (3154 of 10,000).
+
+Same problem as the feature list: both were written for **0.8.1** and neither mentions Nexus, which
+the Store SKU has had since 0.15.0.
+
+**One line needed more than adding to.** The old description said:
+
+> *"It is not a place to download or distribute mods."*
+
+With in-app browsing that reads as a contradiction, and it is the sort of sentence a certification
+reviewer weighs. The distinction it was reaching for is real and still true, so it is now stated
+precisely instead of broadly:
+
+> *"It does not host, bundle, or distribute anyone else's work. Browsing Nexus Mods shows you their
+> catalogue and sends you to their site to download, using your own account; no mod files or game
+> content are ever shipped with this app, and no code is downloaded to run inside it."*
+
+That last clause is worth keeping for its own sake — it is the same property `check-store-seal.ps1`
+enforces in the binary, said in a shopper's words.
+
+**Also changed:** *"single-player games they paid for"* became *"the games they paid for"*. The app
+classifies mods MP/SP, warns about anti-cheat, and supports co-op setups; narrowing the audience to
+single-player was never quite true and is less true now.
+
+**Not changed: the search terms.** Still the seven from 0.8.1. Adding "nexus" would help discovery and
+is somebody else's trademark — worth a deliberate decision rather than a quiet edit.
+
 ## Product features
 
 Paste [`store/product-features-0.19.0.txt`](store/product-features-0.19.0.txt) — one feature per
