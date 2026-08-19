@@ -8,8 +8,10 @@
 > genuine safety fix (a control that moved files while looking like a view filter), one destructive
 > action given a confirmation it never had, and a lot of rearranging.
 >
-> **The thing a reviewer will notice first** is that the toolbar and Settings do not match the last
-> approved build or the current listing screenshots. The letter says so in its opening paragraph.
+> **The screenshot claim was corrected on 2026-08-19.** This letter first said the listing shots did
+> not match the build — written without opening them. The `screenshots-0.18` set matches everywhere
+> except the updates view (being retaken) and some renamed labels in two shots. The opening paragraph
+> now says only what is true.
 
 ---
 
@@ -21,10 +23,11 @@ Thank you for your time on version 0.19.0.0.
 WHAT A REVIEWER WILL SEE FIRST
 
 The main toolbar and the Settings page are laid out differently from the
-last approved version, and differently from the screenshots currently on
-the listing. That is expected: this release is mostly a rearrangement of
-what the app already did. The screenshots are being retaken. Nothing about
-what the app does to a user's files changed with the layout.
+last approved version. Several section headings were renamed and a set of
+scattered warnings was consolidated into a single row above the mod list.
+That is what this release mostly is: a rearrangement of what the app
+already did. Nothing about what the app does to a user's files changed
+with the layout.
 
 WHAT CHANGED SINCE THE LAST APPROVED VERSION
 
