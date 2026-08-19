@@ -313,6 +313,11 @@
                      the letterforms. See Bloom.AttachTextShadow. -->
                 <Grid VerticalAlignment="Bottom" Margin="6,0,0,0"
                       Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
+                <!-- The id names the FACT, not the widget that happens to state it right now:
+                     "StateChip.ban-risk" is what this reads as once it moves into the state strip,
+                     so the harness assertion that proves it is reachable stays green across the
+                     move. An id given at the same moment as the move would verify the change
+                     everywhere except at the one place that matters. -->
                 <Border x:Name="BanRiskBanner" Padding="8,2" CornerRadius="0"
                         ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
                         Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
@@ -320,7 +325,7 @@
                         <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
                         <Grid>
                             <Border x:Name="BanRiskBloomHost" />
-                            <TextBlock x:Name="BanRiskText" AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
+                            <TextBlock x:Name="BanRiskText" AutomationProperties.AutomationId="StateChip.ban-risk" AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
                                        Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
                         </Grid>
                     </StackPanel>
