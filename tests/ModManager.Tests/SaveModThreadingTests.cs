@@ -39,7 +39,7 @@ public class SaveModThreadingTests
           "saveModForbidden": ["RocksDB_v2", "RocksDB_v2_Backups"]
         }
         """;
-        var result = GameProfileImport.Load(json);
+        var result = GameDefinitionImport.Load(json);
         Assert.Empty(result.Errors);
         Assert.Equal("RocksDB/{version}/Worlds", result.Draft!.SaveModPath);
         Assert.Contains("RocksDB_v2_Backups", result.Draft!.SaveModForbidden!);

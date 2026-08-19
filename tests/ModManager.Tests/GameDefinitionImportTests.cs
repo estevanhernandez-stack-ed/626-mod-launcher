@@ -13,7 +13,7 @@ public class GameProfileImportTests
     [Fact]
     public void Valid_profile_loads_with_no_errors()
     {
-        var r = GameProfileImport.Load(Valid);
+        var r = GameDefinitionImport.Load(Valid);
         Assert.Empty(r.Errors);
         Assert.NotNull(r.Draft);
         Assert.Equal("Elden Ring", r.Draft!.Name);
@@ -25,7 +25,7 @@ public class GameProfileImportTests
     [Fact]
     public void Bad_json_is_rejected_with_a_reason()
     {
-        var r = GameProfileImport.Load("{ not json ");
+        var r = GameDefinitionImport.Load("{ not json ");
         Assert.Null(r.Draft);
         Assert.NotEmpty(r.Errors);
     }
@@ -33,14 +33,14 @@ public class GameProfileImportTests
     [Fact]
     public void Unknown_engine_is_rejected_listing_allowed_keys()
     {
-        var r = GameProfileImport.Load("""{ "name":"X","engine":"frostbite","saveRoot":"AppData","saveSubPath":"X" }""");
+        var r = GameDefinitionImport.Load("""{ "name":"X","engine":"frostbite","saveRoot":"AppData","saveSubPath":"X" }""");
         Assert.Contains(r.Errors, e => e.Contains("engine", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
     public void SaveRoot_outside_the_enum_is_rejected()
     {
-        var r = GameProfileImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"Desktop","saveSubPath":"X" }""");
+        var r = GameDefinitionImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"Desktop","saveSubPath":"X" }""");
         Assert.Contains(r.Errors, e => e.Contains("saveRoot", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -51,14 +51,14 @@ public class GameProfileImportTests
     public void Absolute_or_traversal_paths_are_rejected(string modPath)
     {
         var json = $$"""{ "name":"X","engine":"bethesda","saveRoot":"AppData","saveSubPath":"X","modPath":"{{modPath}}" }""";
-        var r = GameProfileImport.Load(json);
+        var r = GameDefinitionImport.Load(json);
         Assert.Contains(r.Errors, e => e.Contains("path", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
     public void Missing_required_fields_are_rejected()
     {
-        var r = GameProfileImport.Load("""{ "engine":"bethesda" }"""); // no name/saveRoot/saveSubPath
+        var r = GameDefinitionImport.Load("""{ "engine":"bethesda" }"""); // no name/saveRoot/saveSubPath
         Assert.Contains(r.Errors, e => e.Contains("name", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(r.Errors, e => e.Contains("saveRoot", StringComparison.OrdinalIgnoreCase));
     }
@@ -66,9 +66,9 @@ public class GameProfileImportTests
     [Fact]
     public void Non_numeric_steamAppId_is_rejected_but_absent_is_ok()
     {
-        Assert.Contains(GameProfileImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"AppData","saveSubPath":"X","steamAppId":"abc" }""").Errors,
+        Assert.Contains(GameDefinitionImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"AppData","saveSubPath":"X","steamAppId":"abc" }""").Errors,
             e => e.Contains("steamAppId", StringComparison.OrdinalIgnoreCase));
-        Assert.Empty(GameProfileImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"AppData","saveSubPath":"X" }""").Errors);
+        Assert.Empty(GameDefinitionImport.Load("""{ "name":"X","engine":"bethesda","saveRoot":"AppData","saveSubPath":"X" }""").Errors);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class GameProfileImportTests
           { "name":"B","engine":"frostbite","saveRoot":"AppData","saveSubPath":"B" }
         ]
         """;
-        var results = GameProfileImport.LoadMany(json);
+        var results = GameDefinitionImport.LoadMany(json);
         Assert.Equal(2, results.Count);
         Assert.Empty(results[0].Errors);
         Assert.Equal("A", results[0].Draft!.Name);
@@ -101,7 +101,7 @@ public class GameProfileImportTests
     [Fact]
     public void LoadMany_rejects_non_array_root_with_one_error()
     {
-        var results = GameProfileImport.LoadMany("""{ "name":"X" }""");
+        var results = GameDefinitionImport.LoadMany("""{ "name":"X" }""");
         Assert.Single(results);
         Assert.Null(results[0].Draft);
         Assert.Contains(results[0].Errors, e => e.Contains("array", StringComparison.OrdinalIgnoreCase));
@@ -110,7 +110,7 @@ public class GameProfileImportTests
     [Fact]
     public void LoadMany_rejects_bad_json_with_one_error()
     {
-        var results = GameProfileImport.LoadMany("[ not json");
+        var results = GameDefinitionImport.LoadMany("[ not json");
         Assert.Single(results);
         Assert.Null(results[0].Draft);
         Assert.NotEmpty(results[0].Errors);
@@ -119,7 +119,7 @@ public class GameProfileImportTests
     [Fact]
     public void LoadMany_returns_empty_for_an_empty_array()
     {
-        var results = GameProfileImport.LoadMany("[]");
+        var results = GameDefinitionImport.LoadMany("[]");
         Assert.Empty(results);
     }
 
@@ -127,7 +127,7 @@ public class GameProfileImportTests
     public void Load_carries_nexusGameDomain_when_present()
     {
         var json = """{ "name":"Cyberpunk 2077","engine":"custom","saveRoot":"DocumentsMyGames","saveSubPath":"CD Projekt Red/Cyberpunk 2077","nexusGameDomain":"cyberpunk2077" }""";
-        var r = GameProfileImport.Load(json);
+        var r = GameDefinitionImport.Load(json);
         Assert.Empty(r.Errors);
         Assert.Equal("cyberpunk2077", r.Draft!.NexusGameDomain);
     }

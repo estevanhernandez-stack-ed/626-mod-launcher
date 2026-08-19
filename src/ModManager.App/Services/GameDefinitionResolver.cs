@@ -14,19 +14,19 @@ public sealed record ResolvedProfile(
     IReadOnlyList<ResolvedField> Checks);
 
 /// <summary>
-/// Resolves a validated <see cref="GameProfileDraft"/> to this machine's real paths and verifies
+/// Resolves a validated <see cref="GameDefinitionDraft"/> to this machine's real paths and verifies
 /// them on disk. Structure -> real paths: GameRoot from Steam (matched on app id) or a caller-supplied
 /// browse, save dir via <see cref="SaveLocator.DetectAsync"/> (Ludusavi-first then heuristics) falling
 /// back to the saveRoot enum, launcher under GameRoot. Read-only: only Directory/File.Exists checks —
 /// nothing is written or moved until the user confirms register. Warnings never block (the game's mods
 /// or saves may not exist on disk yet).
 /// </summary>
-public sealed class GameProfileResolver
+public sealed class GameDefinitionResolver
 {
     private readonly SteamService _steam;
     private readonly LudusaviService _ludu;
 
-    public GameProfileResolver(SteamService steam, LudusaviService ludu)
+    public GameDefinitionResolver(SteamService steam, LudusaviService ludu)
     {
         _steam = steam;
         _ludu = ludu;
@@ -36,7 +36,7 @@ public sealed class GameProfileResolver
     /// Resolve the draft. <paramref name="browsedGameRoot"/> overrides Steam detection when the user
     /// already picked a folder.
     /// </summary>
-    public async Task<ResolvedProfile> ResolveAsync(GameProfileDraft d, string? browsedGameRoot)
+    public async Task<ResolvedProfile> ResolveAsync(GameDefinitionDraft d, string? browsedGameRoot)
     {
         var checks = new List<ResolvedField>();
 

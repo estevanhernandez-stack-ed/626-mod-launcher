@@ -601,12 +601,12 @@ public sealed partial class MainViewModel : ObservableObject
     // bg-on-accent convention every other accent fill uses, re-themed live like ThemeInk.
     private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
 
-    public Brush LoadoutAllBrush => SegmentBrushFor("all");
-    public Brush LoadoutMpBrush  => SegmentBrushFor("mp");
-    public Brush LoadoutSpBrush  => SegmentBrushFor("sp");
-    public Brush LoadoutAllForeground => SegmentForegroundFor("all");
-    public Brush LoadoutMpForeground  => SegmentForegroundFor("mp");
-    public Brush LoadoutSpForeground  => SegmentForegroundFor("sp");
+    public Brush ShowAllBrush => SegmentBrushFor("all");
+    public Brush ShowMpBrush  => SegmentBrushFor("mp");
+    public Brush ShowSpBrush  => SegmentBrushFor("sp");
+    public Brush ShowAllForeground => SegmentForegroundFor("all");
+    public Brush ShowMpForeground  => SegmentForegroundFor("mp");
+    public Brush ShowSpForeground  => SegmentForegroundFor("sp");
 
     private Brush SegmentBrushFor(string mode)
         => string.Equals(ActiveMode, mode, StringComparison.OrdinalIgnoreCase)
@@ -653,12 +653,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void NotifyLoadoutBrushes()
     {
-        OnPropertyChanged(nameof(LoadoutAllBrush));
-        OnPropertyChanged(nameof(LoadoutMpBrush));
-        OnPropertyChanged(nameof(LoadoutSpBrush));
-        OnPropertyChanged(nameof(LoadoutAllForeground));
-        OnPropertyChanged(nameof(LoadoutMpForeground));
-        OnPropertyChanged(nameof(LoadoutSpForeground));
+        OnPropertyChanged(nameof(ShowAllBrush));
+        OnPropertyChanged(nameof(ShowMpBrush));
+        OnPropertyChanged(nameof(ShowSpBrush));
+        OnPropertyChanged(nameof(ShowAllForeground));
+        OnPropertyChanged(nameof(ShowMpForeground));
+        OnPropertyChanged(nameof(ShowSpForeground));
     }
 
     /// <summary>Refresh the theme list after an import and select (apply) the new one.</summary>
@@ -3747,7 +3747,7 @@ public sealed partial class MainViewModel : ObservableObject
             var saveSkipReasons = new List<string>();
             if (!string.IsNullOrEmpty(_ctx.SaveDir))
             {
-                var saveTypeExts = GameProfiles.Resolve(_ctx.Game.Engine, _ctx.Game.SteamAppId)
+                var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game.Engine, _ctx.Game.SteamAppId)
                     .SaveTypes.Select(t => t.Extension).ToList();
                 var verdicts = SaveModFlow.TryHandleDrops(
                     remaining, saveTypeExts,

@@ -31,7 +31,7 @@ public class NexusGameDomainTests
           "nexusGameDomain": "windrose"
         }
         """;
-        var result = GameProfileImport.Load(json);
+        var result = GameDefinitionImport.Load(json);
         Assert.Empty(result.Errors);
         Assert.Equal("windrose", result.Draft!.NexusGameDomain);
     }

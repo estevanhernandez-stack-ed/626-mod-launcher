@@ -98,14 +98,14 @@
                 <Button AutomationProperties.AutomationId="CopyProfilePromptButton" Content="Copy prompt" Click="OnCopyProfilePrompt" />
                 <TextBox AutomationProperties.AutomationId="AiJsonBox" x:Name="AiJsonBox" Header="Pasted JSON" AcceptsReturn="True" Height="150" TextWrapping="Wrap"
                          PlaceholderText="Paste the JSON the agent returned" />
-                <Button AutomationProperties.AutomationId="ApplyProfileButton" Content="Apply profile" Click="OnApplyProfile" />
+                <Button AutomationProperties.AutomationId="ApplyProfileButton" Content="Apply definition" Click="OnApplyProfile" />
                 <TextBlock x:Name="ProfileStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" />
             </StackPanel>
         </Expander>
         <Expander x:Name="BatchExpander" HorizontalAlignment="Stretch" Header="Batch from Steam (multiple games)">
             <StackPanel Spacing="{StaticResource SpaceM}" Width="400">
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
-                           Text="Pick the Steam games you want to onboard, copy the batch prompt into your agent, paste the JSON array back, then Apply all. Profiles that pass register on Add; the rest are skipped." />
+                           Text="Pick the Steam games you want to onboard, copy the batch prompt into your agent, paste the JSON array back, then Apply all. Definitions that pass register on Add; the rest are skipped." />
                 <ListView AutomationProperties.AutomationId="BatchSteamList" x:Name="BatchSteamList" SelectionMode="Multiple" Height="160"
                           BorderBrush="{ThemeResource ControlElevationBorderBrush}" BorderThickness="1">
                     <ListView.ItemTemplate>

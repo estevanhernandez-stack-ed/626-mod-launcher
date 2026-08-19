@@ -17,7 +17,7 @@
         <StackPanel Spacing="6">
             <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
                     AutomationProperties.AccessibilityView="Raw" />
-            <TextBlock Text="LOADOUTS // PROFILES" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
+            <TextBlock Text="APP // PROFILES" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
                        FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
                        Foreground="{StaticResource ThemeInkDim}" />
             <TextBlock Text="Profiles" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
@@ -27,17 +27,17 @@
 
     <StackPanel Spacing="12" Width="420">
         <TextBlock Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap"
-                   Text="A profile saves which mods are on/off. Save your current loadout, then switch between them." />
+                   Text="A profile saves which mods are on and which are off. Save the set you have now, then switch between saved sets." />
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox AutomationProperties.AutomationId="ProfileNameBox" x:Name="NameBox" Grid.Column="0" Header="Save current loadout as" PlaceholderText="e.g. Hardcore" />
+            <TextBox AutomationProperties.AutomationId="ProfileNameBox" x:Name="NameBox" Grid.Column="0" Header="Save the mods you have on now as" PlaceholderText="e.g. Hardcore" />
             <Button AutomationProperties.AutomationId="SaveProfileButton" Grid.Column="1" Content="Save" VerticalAlignment="Bottom" Click="OnSave" />
         </Grid>
 
-        <ListView AutomationProperties.AutomationId="ProfileList" AutomationProperties.Name="Saved loadouts" x:Name="ProfileList" MaxHeight="260" SelectionMode="None">
+        <ListView AutomationProperties.AutomationId="ProfileList" AutomationProperties.Name="Saved profiles" x:Name="ProfileList" MaxHeight="260" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ProfileRow">
                     <Grid ColumnSpacing="8" Padding="0,4">

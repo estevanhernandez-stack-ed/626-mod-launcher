@@ -41,7 +41,7 @@ public partial class App : Application
                 services.AddSingleton<SteamService>();
                 services.AddSingleton<IStoreLibrary>(sp => sp.GetRequiredService<SteamService>());
                 services.AddSingleton<LudusaviService>();
-                services.AddSingleton<GameProfileResolver>();
+                services.AddSingleton<GameDefinitionResolver>();
                 services.AddSingleton<NexusService>();
                 // The loopback PKCE OAuth flow. Config defaults to the baked public endpoints here; Task 10
                 // overlays the signed remote client_id at startup. RefreshAsync is wired into NexusService
