@@ -2324,6 +2324,91 @@
       "action": "Drive the offer's install door with a real archive.",
       "expect": "The existing FrameworkInstallDialog appears naming the files and the destination, and installing them makes the NEEDS chip go away. Human because it needs a real downloaded archive and writes into the game folder.",
       "humanReason": "Needs a real framework archive already downloaded, and the install writes into the game folder. The offer and the chip are harness-covered; driving a real file through FrameworkInstallDialog is not."
+    },
+    {
+      "id": "settings-groups-in-consequence-order",
+      "title": "Settings is four groups and a footer, in consequence order",
+      "surface": "Wave 9 / D1",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 9. Written BEFORE the regroup and confirmed RED first."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "Open Settings and read the group containers top to bottom.",
+      "expect": "SettingsGroup.appearance, .accounts, .restore, .reset in that vertical order, with SettingsFooter (About) below all of them. It was one scroll with NINE headings and About fourth. This assertion was written before any XAML moved and failed red on all four ids."
+    },
+    {
+      "id": "settings-nothing-under-reset-but-reset",
+      "title": "Nothing sits under Reset except the reset control",
+      "surface": "Wave 9 / D1",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 9. Written BEFORE the regroup and confirmed RED first."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "Count interactive controls inside SettingsGroup.reset.",
+      "expect": "Exactly one, ResetLauncherButton, with SettingsGroup.restore above it. Restore points are NOT danger - they are the undo for it, and filing them under a danger heading teaches someone to fear the control that saves them."
+    },
+    {
+      "id": "settings-plugin-button-never-hides",
+      "title": "The install / refresh Nexus plugin button is always present and enabled",
+      "surface": "Wave 9 / D1",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 9. Written BEFORE the regroup and confirmed RED first."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "Open Settings and read RefreshPluginButton.",
+      "expect": "Present and enabled under Accounts. Its failure mode is silent, and it is the control you need precisely when the app own judgment is the broken thing - so it must never be gated on things looking fine."
+    },
+    {
+      "id": "settings-inventories-moved-not-deleted",
+      "title": "The Settings inventories left, and their actions have new homes",
+      "surface": "Wave 9 / D1",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 9. Written BEFORE the regroup and confirmed RED first."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "On a game view, look for FrameworkChip.* / FrameworkUninstall.* and ModConfigOverride.*.",
+      "expect": "Framework uninstall lives on the framework chip and the direct-inject config override lives on the mod row. Both actions existed ONLY in the Settings inventories, so deleting those sections without rehoming them would have removed things the user can do. On this machine the framework half asserts (Windrose has UE4SS) and the config-override half reports NOT ASSERTED - no game here has a catalog-known direct-inject mod installed. The case says so in its detail rather than passing quietly."
+    },
+    {
+      "id": "direct-inject-override-round-trip",
+      "title": "The config-path override works from the mod row",
+      "surface": "Wave 9 / D1",
+      "coverage": "human",
+      "humanReason": "Needs a game with a catalog-known direct-inject mod installed (Seamless Co-op on Elden Ring) and a real config file to point at. None is installed on this machine, so the harness can only assert the control exists where it applies.",
+      "status": "pending",
+      "steps": [
+        "Open a game with a direct-inject mod (Elden Ring + Seamless Co-op).",
+        "Click the path button on that mod row.",
+        "Pick a config file somewhere other than the catalog default.",
+        "Re-open the row and confirm the INI pencil now opens the file you chose."
+      ],
+      "source": "docs/smoke-tests/smoke.json",
+      "action": "Drive ModConfigOverride.* on a real direct-inject mod.",
+      "expect": "The chosen absolute path is saved to the per-game override store and the row resolves to it. This moved off the Settings catalog browser in wave 9; the store itself is unchanged."
     }
   ]
 }

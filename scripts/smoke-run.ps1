@@ -411,6 +411,117 @@ Case 'settings-dialog' 'Settings surfaces / D1' {
     "$($found.Count)/$($need.Count) probed controls present"
 }
 
+Case 'settings-groups-in-consequence-order' 'Wave 9 / D1' {
+    # Written BEFORE any XAML moved, and it failed red - which is the point. A group assertion
+    # authored after the regroup asserts a brand-new layout against a brand-new expectation: green,
+    # and worth nothing. Same discipline as wave 7's ban-risk id.
+    $t = Get-Tree $root
+    Invoke-Node (Find-ById $t 'SettingsButton'); Wait-Idle 2500
+    try {
+        $t2 = Get-Tree $root
+        $want = @('SettingsGroup.appearance','SettingsGroup.accounts','SettingsGroup.restore','SettingsGroup.reset')
+        $miss = @($want | Where-Object { -not (Find-ById $t2 $_) })
+        Assert-True ($miss.Count -eq 0) "no such group(s): $($miss -join ', ')"
+
+        # Consequence order, top to bottom. Reset is LAST because bottom-of-scroll is the danger
+        # convention - and it is the reason this is one scroll rather than a rail, which would have
+        # put the most consequential control in the dialog behind a click.
+        #
+        # Read the order from the TREE, not from BoundingRectangle. Geometry lies here: Reset sits
+        # below the fold of a MaxHeight=640 ScrollViewer, reports IsOffscreen, and hands back a
+        # degenerate rect whose Top is 0 - so a geometric comparison said Reset was ABOVE everything.
+        # It failed loudly, which was lucky; the same shape one group shorter would have passed.
+        $order = @('SettingsGroup.appearance','SettingsGroup.accounts','SettingsGroup.restore','SettingsGroup.reset','SettingsFooter')
+        $seen = @($t2 | ForEach-Object { $_.Current.AutomationId } |
+                  Where-Object { $order -contains $_ })
+        Assert-True ($null -ne (Find-ById $t2 'SettingsFooter')) "no SettingsFooter - About has not been demoted"
+        Assert-True (($seen -join '|') -eq ($order -join '|')) "order is: $($seen -join ' -> ')"
+        "4 groups in order, About in the footer"
+    }
+    finally { Close-Dialog; Wait-Idle 800 }
+}
+
+Case 'settings-nothing-under-reset-but-reset' 'Wave 9 / D1' {
+    # D1 is emphatic: restore points are NOT danger, they are the undo FOR it. Filing them under a
+    # danger heading teaches the user to fear the control that saves them. So the reset group holds
+    # exactly one interactive control, and the restore list sits in its own group directly above.
+    $t = Get-Tree $root
+    Invoke-Node (Find-ById $t 'SettingsButton'); Wait-Idle 2500
+    try {
+        $t2 = Get-Tree $root
+        $reset = Find-ById $t2 'SettingsGroup.reset'
+        Assert-True ($null -ne $reset) "no SettingsGroup.reset"
+
+        $inside = @(Get-Tree $reset | Where-Object {
+            $_.Current.ControlType.ProgrammaticName -match 'Button|CheckBox|Edit|ComboBox'
+        })
+        Assert-True ($inside.Count -eq 1) "$($inside.Count) controls under Reset, expected exactly 1"
+        Assert-True ($inside[0].Current.AutomationId -eq 'ResetLauncherButton') "under Reset: '$($inside[0].Current.AutomationId)'"
+
+        # Tree order, not geometry - see settings-groups-in-consequence-order for why.
+        $ids = @($t2 | ForEach-Object { $_.Current.AutomationId })
+        $iRestore = [array]::IndexOf($ids, 'SettingsGroup.restore')
+        $iReset   = [array]::IndexOf($ids, 'SettingsGroup.reset')
+        Assert-True ($iRestore -ge 0) "restore points have no group of their own"
+        Assert-True ($iRestore -lt $iReset) "restore points sit below Reset"
+        "only ResetLauncherButton under Reset; restore points above it"
+    }
+    finally { Close-Dialog; Wait-Idle 800 }
+}
+
+Case 'settings-plugin-button-never-hides' 'Wave 9 / D1' {
+    # Its failure mode is SILENT, and it is the control you need precisely when the app's own
+    # judgment is the broken thing. Already true - pinned so a later tidy-up cannot quietly gate it
+    # on "things look fine".
+    $t = Get-Tree $root
+    Invoke-Node (Find-ById $t 'SettingsButton'); Wait-Idle 2500
+    try {
+        $t2 = Get-Tree $root
+        $b = Find-ById $t2 'RefreshPluginButton'
+        Assert-True ($null -ne $b) "RefreshPluginButton absent"
+        Assert-True ($b.Current.IsEnabled) "RefreshPluginButton is disabled at rest"
+        $g = Find-ById $t2 'SettingsGroup.accounts'
+        Assert-True ($null -ne $g) "no SettingsGroup.accounts to hold it"
+        "present and enabled, under Accounts"
+    }
+    finally { Close-Dialog; Wait-Idle 800 }
+}
+
+Case 'settings-inventories-moved-not-deleted' 'Wave 9 / D1' {
+    # The inventories leave Settings, but two of their actions lived ONLY there: framework Uninstall
+    # and the direct-inject config Override. Deleting the sections without rehoming those would
+    # remove things the user can do. This asserts the new homes exist.
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+
+    $rows = @(Find-AllByIdPrefix $t 'ModRow.')
+    Assert-True ($rows.Count -gt 0) "no mod rows to check"
+
+    $notes = @()
+
+    # Framework uninstall, on the chip. Assert it wherever a framework is installed.
+    $fw = @(Find-AllByIdPrefix $t 'FrameworkChip.')
+    if ($fw.Count -eq 0) {
+        $notes += "NOT ASSERTED: no frameworks installed on '$($script:gameId)'"
+    } else {
+        $un = @(Find-AllByIdPrefix $t 'FrameworkUninstall.')
+        Assert-True ($un.Count -eq $fw.Count) "$($fw.Count) framework chip(s) but $($un.Count) uninstall control(s)"
+        $notes += "$($fw.Count) framework chip(s), each with an uninstall"
+    }
+
+    # Per-mod config override, on the mod it configures. Only catalog-known direct-inject mods carry
+    # one, so a game with none cannot exercise this - and it says so rather than passing quietly.
+    # A green that never ran is the cherry-picked denominator wearing a different hat.
+    $ovr = @(Find-AllByIdPrefix $t 'ModConfigOverride.')
+    if ($ovr.Count -eq 0) {
+        $notes += "NOT ASSERTED: no direct-inject mods on '$($script:gameId)' to carry a config override"
+    } else {
+        $notes += "$($ovr.Count) config-override control(s)"
+    }
+
+    $notes -join '; '
+}
+
 Case 'add-game-dialog' 'fix/duplicate-add-guard' {
     $t = Get-Tree $root
     Invoke-Node (Find-ById $t 'AddGameButton'); Wait-Idle 3000

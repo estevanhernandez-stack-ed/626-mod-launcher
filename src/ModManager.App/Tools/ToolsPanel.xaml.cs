@@ -108,6 +108,40 @@ public sealed partial class ToolsPanel : UserControl
     // save + restore-previous). Reuses IniEditorDialog as-is — the modId slot becomes the framework id,
     // used only to bucket INI-history backups. The pencil is collapsed when the framework installed no
     // .ini (ConfigVisibility), but we re-check here defensively. Multiple INIs → a quick picker.
+    /// <summary>
+    /// Remove a framework the launcher installed (wave 9 - it used to live only in Settings).
+    ///
+    /// <para>It goes through a confirm the Settings version never had. A chip in the main window is a
+    /// far easier thing to hit by accident than a button at the bottom of a dialog, and this deletes
+    /// files from the game folder - reversibly, from the recorded manifest, but the user should still
+    /// be the one who said so. Filled danger belongs INSIDE a confirm and only there; the chip itself
+    /// is outlined. See .claude/rules/vsm-danger-buttons.md.</para>
+    /// </summary>
+    private async void OnUninstallFrameworkClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not FrameworkInstallManifest m) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = $"Remove {m.DisplayName}?",
+            Content = new TextBlock
+            {
+                Text = $"The launcher will delete the {m.InstalledFiles.Count} file(s) it installed for "
+                       + $"{m.DisplayName}, from {m.InstallPath}. Mods that need it will stop loading until "
+                       + "you install it again. Nothing else in the game folder is touched.",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = "Remove it",
+            CloseButtonText = "Keep it",
+            XamlRoot = XamlRoot,
+        };
+        ModManager.App.Services.DialogTheming.Apply(dialog);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        ViewModel.StatusText = ViewModel.UninstallFramework(m.FrameworkId);
+        await ViewModel.RefreshAsync();
+    }
+
     private async void OnEditFrameworkConfigClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement el || el.Tag is not FrameworkInstallManifest m || ViewModel is null) return;

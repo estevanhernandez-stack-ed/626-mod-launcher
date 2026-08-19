@@ -39,6 +39,25 @@ public static class DirectInjectModConfigResolver
         return resolved;
     }
 
+    /// <summary>
+    /// The config paths the catalog DECLARES for a mod, whether or not they exist on disk — which is
+    /// exactly the difference from <see cref="Resolve"/>.
+    ///
+    /// <para>Wave 9 needs it because the override affordance moved out of Settings and onto the mod
+    /// row. <c>Resolve</c> returns only files that exist, so a row would offer "override this path"
+    /// only when the path was already right — the one case where nobody needs it. Overriding is what
+    /// you reach for when the file is NOT where the catalog says.</para>
+    ///
+    /// <para>Returns an empty ModId when the display name matches no catalog entry.</para>
+    /// </summary>
+    public static (string ModId, IReadOnlyList<string> RelativePaths) Declared(string modDisplayName)
+    {
+        var entry = KnownDirectInjectMod.Catalog.FirstOrDefault(m => m.DisplayName == modDisplayName);
+        return entry is null
+            ? ("", Array.Empty<string>())
+            : (entry.ModId, entry.ConfigPaths);
+    }
+
     private static string ResolveInstallRoot(string installRootSymbol, string gameRoot)
     {
         return installRootSymbol switch

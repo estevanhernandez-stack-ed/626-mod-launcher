@@ -157,9 +157,16 @@
                         <DataTemplate x:DataType="vm:FrameworkRowViewModel">
                             <!-- A split affordance: the name opens the how-to toast; the pencil opens the
                                  framework's settings INI in the existing editor (snapshot-first). The pencil
-                                 is collapsed when the framework installed no editable .ini. -->
+                                 is collapsed when the framework installed no editable .ini.
+
+                                 Wave 9 added the third: Uninstall lived ONLY in the Settings inventory, and
+                                 that inventory left. Outlined danger here, filled danger inside the confirm,
+                                 per .claude/rules/vsm-danger-buttons.md — and it goes through a confirm the
+                                 Settings version never had, because a chip in the main window is a much
+                                 easier thing to hit by accident than a button at the bottom of a dialog. -->
                             <StackPanel Orientation="Horizontal" Spacing="2">
                                 <Button Padding="10,4"
+                                        AutomationProperties.AutomationId="{x:Bind ChipAutomationId}"
                                         AutomationProperties.Name="{x:Bind DisplayName}" Click="OnFrameworkClick"
                                         Tag="{x:Bind Manifest}"
                                         ToolTipService.ToolTip="How to use this — click for the in-game keys + mods folder">
@@ -171,6 +178,15 @@
                                         Visibility="{x:Bind ConfigVisibility}"
                                         ToolTipService.ToolTip="Edit this framework's settings (e.g. enable the UE4SS console)">
                                     <FontIcon Glyph="&#xE70F;" FontSize="{StaticResource BodyFontSize}" />
+                                </Button>
+                                <Button Padding="6,4"
+                                        AutomationProperties.AutomationId="{x:Bind UninstallAutomationId}"
+                                        AutomationProperties.Name="{x:Bind UninstallAutomationName}"
+                                        Click="OnUninstallFrameworkClick"
+                                        Tag="{x:Bind Manifest}"
+                                        Foreground="{StaticResource ThemeDanger}"
+                                        ToolTipService.ToolTip="Remove this framework — the launcher reverses its own install">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
                                 </Button>
                             </StackPanel>
                         </DataTemplate>

@@ -858,10 +858,15 @@ public sealed partial class MainViewModel : ObservableObject
                 //   - Folder-tracked rows: existing recursive *.ini glob, capped at 20 so a
                 //     pathological folder doesn't stall reload.
                 IReadOnlyList<string> iniFiles = Array.Empty<string>();
+                // Wave 9: the DECLARED paths too, not just the resolved ones. Resolve returns only
+                // files that exist, so a row would offer "override this path" exactly when the path was
+                // already right - the one case where nobody needs it.
+                var declaredConfig = ("", (IReadOnlyList<string>)Array.Empty<string>());
                 if (rep.Location == "direct-inject")
                 {
                     iniFiles = ModManager.Core.Catalog.DirectInjectModConfigResolver
                         .Resolve(rep.Name, _ctx.GameRoot, directInjectOverrides);
+                    declaredConfig = ModManager.Core.Catalog.DirectInjectModConfigResolver.Declared(rep.Name);
                 }
                 else if (!string.IsNullOrEmpty(folderAbs) && Directory.Exists(folderAbs))
                 {
@@ -939,6 +944,8 @@ public sealed partial class MainViewModel : ObservableObject
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
                     ModFolderAbs = folderAbs,
                     IniFiles = iniFiles,
+                    DirectInjectModId = declaredConfig.Item1,
+                    DirectInjectConfigRelPaths = declaredConfig.Item2,
                     ModId = modId,
                     VariantOptions = options,
                     MissingFrameworkName = primaryMissing?.Name ?? "",
@@ -2178,6 +2185,54 @@ public sealed partial class MainViewModel : ObservableObject
     // missing, and "Nexus has no page for this game". The first two are one step from working, and
     // saying nothing about either is what made the app present as though the in-app storefront had
     // never been built. ModBrowseRules decides; this only publishes it.
+    /// <summary>
+    /// Remove a framework the launcher installed, reversing its own install from the recorded
+    /// manifest (wave 9).
+    ///
+    /// <para>This lived in the Settings inventory and nowhere else, so moving that inventory out
+    /// without bringing it along would have removed something the user can do. It is scoped to the
+    /// ACTIVE game here, where the Settings copy walked every sibling game directory - Settings is
+    /// global and the tools row is not, and per-game is what "uninstall this chip" actually means.</para>
+    /// </summary>
+    public string UninstallFramework(string frameworkId)
+    {
+        if (_ctx is null) return "No active game.";
+        try
+        {
+            var match = FrameworkRegistry.List(_ctx.DataDir).FirstOrDefault(m => m.FrameworkId == frameworkId);
+            if (match is null) return $"{frameworkId} is not installed for this game.";
+            FrameworkRegistry.Uninstall(_ctx.DataDir, frameworkId, match.InstallPath);
+            return $"Uninstalled {match.DisplayName}.";
+        }
+        catch (Exception ex) { return $"Couldn't uninstall {frameworkId}: {ex.Message}"; }
+    }
+
+    /// <summary>
+    /// Point the launcher at a direct-inject mod's real config file (wave 9). The per-game override
+    /// store is unchanged - only where the user reaches it moved, from a Settings catalog browser onto
+    /// the mod row.
+    /// </summary>
+    public string SetDirectInjectConfigOverride(string modId, string relativePath, string absolutePath)
+    {
+        if (_ctx is null) return "No active game.";
+        try
+        {
+            var current = ModManager.Core.Catalog.DirectInjectConfigOverrides.Load(_ctx.DataDir);
+            var map = current.OverridesByModId.ToDictionary(kv => kv.Key, kv => new Dictionary<string, string>(kv.Value));
+            if (!map.TryGetValue(modId, out var forMod))
+            {
+                forMod = new Dictionary<string, string>();
+                map[modId] = forMod;
+            }
+            forMod[relativePath] = absolutePath;
+            ModManager.Core.Catalog.DirectInjectConfigOverrides.Save(
+                _ctx.DataDir,
+                new ModManager.Core.Catalog.DirectInjectConfigOverrides(map));
+            return $"Config path set to {absolutePath}.";
+        }
+        catch (Exception ex) { return $"Couldn't save the override: {ex.Message}"; }
+    }
+
     private BrowseAffordance Browse => ModBrowseRules.For(
         connected: NexusActionsAvailable,
         catalogCapable: NexusSource is IModCatalog,

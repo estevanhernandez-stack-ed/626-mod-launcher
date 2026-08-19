@@ -729,6 +729,55 @@ public sealed partial class MainWindow : Window
             OnSettings(this, new RoutedEventArgs());
     }
 
+    /// <summary>
+    /// Point the launcher at this mod's real config file (wave 9).
+    ///
+    /// <para>This was a Settings section listing EVERY catalog direct-inject mod whether or not the
+    /// user had it - a catalog browser filed under settings. It is per-mod configuration, so it lives
+    /// on the mod. One declared path goes straight to the picker; several ask which one first, the
+    /// same shape OnEditIniClick already uses.</para>
+    /// </summary>
+    private async void OnOverrideConfigPath(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not ModRowViewModel row) return;
+        if (!row.HasConfigOverride) return;
+
+        string rel;
+        if (row.DirectInjectConfigRelPaths.Count == 1)
+        {
+            rel = row.DirectInjectConfigRelPaths[0];
+        }
+        else
+        {
+            var list = new ListView
+            {
+                ItemsSource = row.DirectInjectConfigRelPaths,
+                SelectionMode = ListViewSelectionMode.Single,
+            };
+            var pick = new ContentDialog
+            {
+                Title = $"Which config file for {row.DisplayName}?",
+                Content = list,
+                PrimaryButtonText = "Choose file…",
+                CloseButtonText = "Cancel",
+                XamlRoot = Content.XamlRoot,
+            };
+            ModManager.App.Services.DialogTheming.Apply(pick);
+            if (await pick.ShowAsync() != ContentDialogResult.Primary) return;
+            if (list.SelectedItem is not string chosen) return;
+            rel = chosen;
+        }
+
+        var picker = new FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        foreach (var ext in new[] { ".ini", ".toml", ".cfg", "*" }) picker.FileTypeFilter.Add(ext);
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        ViewModel.StatusText = ViewModel.SetDirectInjectConfigOverride(row.DirectInjectModId, rel, file.Path);
+        await ViewModel.RefreshAsync();
+    }
+
     private async void OnAddMods(object sender, RoutedEventArgs e)
     {
         var picker = new FileOpenPicker();
