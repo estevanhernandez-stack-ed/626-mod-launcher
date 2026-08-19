@@ -41,11 +41,18 @@
     no cert is ever embedded. x64 first; ARM64 is a later bundle decision.
   -->
   <!--
-    Nexus-in-package (Microsoft Store) build: `-p:Configuration=Store -p:StoreNexus=true`.
+    Nexus-in-package (Microsoft Store) build. ON BY DEFAULT for Configuration=Store.
 
-    Opt-in ON TOP of Store rather than a new configuration, so plain `-p:Configuration=Store` keeps
-    producing exactly today's sealed, Nexus-free package — the SKU that is already certified. Nothing about
-    the existing submission path changes unless this flag is passed.
+    It was opt-in (`-p:StoreNexus=true`) so that a plain `-c Store` kept producing exactly the
+    already-certified Nexus-free package. That reasoning was sound when the Nexus-free SKU was the one
+    in the Store, and it quietly stopped being true: `release-msstore.yml` builds `-c Store` and never
+    passed the flag, so every package CI produced had NO NEXUS IN IT while everyone involved believed
+    otherwise. An opt-in that the only automated caller does not opt into is a default with extra steps.
+
+    So Store means Nexus-in-package now. `-p:StoreNexus=false` still builds the old sealed Nexus-free
+    variant if it is ever needed, and check-store-seal.ps1 asserts the compiled-in Nexus is actually
+    PRESENT rather than only checking what must be absent — a seal that only checks absence passes a
+    build with nothing in it, which is precisely how this got missed.
 
     The Nexus source is compiled in from the pinned submodule (external/626-mod-plugins) instead of being
     downloaded and loaded at runtime, so a Store package contains no dynamically-acquired code. The plugin
@@ -55,6 +62,10 @@
 
     The plugin LOADER is still compiled out either way — check-store-seal.ps1 must keep passing for both.
   -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Store' AND '$(StoreNexus)' == ''">
+    <StoreNexus>true</StoreNexus>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Store' AND '$(StoreNexus)' == 'true'">
     <DefineConstants>$(DefineConstants);STORE_NEXUS</DefineConstants>
   </PropertyGroup>

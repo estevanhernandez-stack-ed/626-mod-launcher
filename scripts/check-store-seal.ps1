@@ -18,6 +18,9 @@
 param(
     [string]$Configuration = "Store",
     [string]$Platform = "x64",
+    # Store means Nexus-in-package now, so the seal asserts it is actually THERE. Pass this only when
+    # deliberately scanning the legacy Nexus-free variant (-p:StoreNexus=false).
+    [switch]$AllowNoNexus,
     # CI builds the versioned bundle first, then runs the seal with -SkipBuild to scan that exact output
     # (no redundant rebuild at a different version). Local runs omit it and build fresh.
     [switch]$SkipBuild
@@ -85,12 +88,37 @@ foreach ($c in $checks) {
     }
 }
 
+# ---------------------------------------------------------------------------------------------
+# The other half of the seal: what must be PRESENT.
+#
+# This check only ever asserted absence, and a check that only asserts absence passes a build with
+# nothing in it. That is not hypothetical - release-msstore.yml built `-c Store` without the
+# then-required StoreNexus flag, so every package CI produced shipped with no Nexus source at all, and
+# this script called it sealed each time. Absence-only is how you certify an empty box.
+if (-not $AllowNoNexus) {
+    $appDll = Join-Path $outDir "ModManager.App.dll"
+    $latin1 = [System.Text.Encoding]::GetEncoding(28591)
+    $hay = $latin1.GetString([System.IO.File]::ReadAllBytes($appDll))
+    $missing = @()
+    foreach ($needed in @("ModManager.Plugin.Nexus", "NexusPlugin", "BuiltInModSources")) {
+        if ((Count-Symbol $hay $needed $latin1) -le 0) { $missing += $needed }
+    }
+    if ($missing.Count -gt 0) {
+        Write-Host "STORE SEAL FAILED - Nexus is not compiled into the Store build:" -ForegroundColor Red
+        $missing | ForEach-Object { Write-Host "  - missing '$_'" -ForegroundColor Red }
+        Write-Host "  Build with -p:Configuration=Store (Nexus is on by default), or pass -AllowNoNexus" -ForegroundColor Red
+        Write-Host "  if you meant to scan the legacy Nexus-free variant." -ForegroundColor Red
+        exit 1
+    }
+}
+
 if ($leaks.Count -gt 0) {
     Write-Host "STORE SEAL FAILED - forbidden symbols leaked into the Store build:" -ForegroundColor Red
     $leaks | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     exit 1
 }
 
-Write-Host "STORE seal OK - plugin loader + EAC-disable mechanism are absent from the Store binaries." -ForegroundColor Green
+$nexusNote = if ($AllowNoNexus) { "Nexus not required (-AllowNoNexus)" } else { "Nexus compiled in" }
+Write-Host "STORE seal OK - plugin loader + EAC-disable mechanism absent; $nexusNote." -ForegroundColor Green
 Write-Host "  scanned: $outDir" -ForegroundColor DarkGray
 exit 0
