@@ -1,0 +1,17 @@
+Version 0.19.0
+
+• Warnings no longer sit in two different places. Anti-cheat risk, missing prerequisites, setup problems and game updates are one row above your mod list now, ordered by how much each one costs you. The anti-cheat warning comes first and can't be dismissed.
+
+• The All / MP / SP buttons filter what you see. They used to turn mods on and off in bulk, which is not what a filter should do. Applying a set of mods is its own button now, and it tells you what it will change before it does it.
+
+• Enable all and Disable all save your current setup as a profile first, and tell you what it's called.
+
+• Removing an installed framework asks first, and names exactly what it will remove and from where.
+
+• Settings is grouped: Appearance, Accounts, Restore points, Reset.
+
+• The app explains itself where it used to go quiet — an empty mod list says why it's empty, and the in-app Nexus browser stays put and names the one step that would make it work instead of disappearing.
+
+• Keyboard shortcuts: Ctrl+, settings, Ctrl+O add mods, Ctrl+P profiles, Ctrl+1/2/3 to filter.
+
+• Fixed: a mod whose installed version was newer than the one listed no longer shows up as needing an update.

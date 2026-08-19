@@ -75,6 +75,19 @@ would make it work.
 
 **Keyboard:** Ctrl+, Settings · Ctrl+O add mods · Ctrl+P profiles · Ctrl+1/2/3 the show filter.
 
+## What's new in this version
+
+Paste [`store/whats-new-0.19.0.txt`](store/whats-new-0.19.0.txt) into Partner Center's **What's new in
+this version** field, verbatim.
+
+It is a separate file on purpose. That field is plain text with a 1500-character limit and no markdown
+rendering, so neither of the two documents that already describe this release fits it: the section
+below is prose written for a reviewer, and `docs/release-notes-v0.19.0.md` is shaped for a GitHub
+release body — headings, tables, links. Pasting either one produces a wall of literal `##` and `|`
+characters on the storefront.
+
+Written for a shopper, not a builder: what changed for them, no wave numbers, no internal names.
+
 ## Certification notes
 
 Paste [`store/reviewer-letter-0.19.0.0.md`](store/reviewer-letter-0.19.0.0.md) into the
