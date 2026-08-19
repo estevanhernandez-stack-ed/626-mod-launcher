@@ -88,6 +88,47 @@ characters on the storefront.
 
 Written for a shopper, not a builder: what changed for them, no wave numbers, no internal names.
 
+## Product features
+
+Paste [`store/product-features-0.19.0.txt`](store/product-features-0.19.0.txt) — one feature per
+line, in order. Partner Center allows 20 at 200 characters each; this is 17, longest 137.
+
+**Why this needed doing.** The live list was written for **0.8.1** and had not been touched in eleven
+releases. Its worst omission was not a stale phrase: it does not mention **Nexus at all**, because the
+Store SKU had none until 0.15.0. So the listing has been under-selling the single biggest capability
+this build has for three months.
+
+One edit, seven additions, nine unchanged:
+
+| | Feature |
+|---|---|
+| KEEP | Reads your installed games (Steam libraries detected automatically) and manages each one's mods in one place. |
+| KEEP | Installs mods by reading the archive first, then placing files where the game's loader expects them - engine-aware, not one-size-fits-all. |
+| KEEP | Turns mods on and off reversibly - disabling moves files to a holding folder, never deletes. |
+| KEEP | Manages load order for the loaders that care about it. |
+| KEEP | Snapshots your save files before you experiment, and restores them when you want to go back. |
+| KEEP | Edits mod config and INI files with a built-in editor that keeps a previous version you can restore. |
+| EDIT | Saves your current set of mods as a profile, so you can switch between setups. |
+| KEEP | Keeps restore points of your whole setup, so a bad afternoon is one click away from undone. |
+| KEEP | Warns you before enabling mods on games with anti-cheat, so an experiment doesn't cost you an account. |
+| NEW | Browse Nexus Mods inside the launcher - sorted, filterable, and marked with what you already have. Get opens the mod page to download. |
+| NEW | Tells you which of your installed mods have a newer version on Nexus, across every game at once. |
+| NEW | Endorse the mods you are using without leaving the app. |
+| NEW | Shows what needs your attention about a game in one row, worst first - anti-cheat risk, missing prerequisites, setup problems, game updates. |
+| NEW | Installs a mod's missing prerequisite from an archive you already have, instead of leaving you on a downloads page. |
+| NEW | Finds mods you installed by hand and adopts them, so an existing setup does not have to be rebuilt. |
+| NEW | Leaves folders another mod manager is already looking after alone, and tells you that it has. |
+| KEEP | Themes the whole app to taste. |
+
+- **EDIT** — *"Saves loadouts as profiles"* was the last public use of a word wave 10 retired. A
+  profile is the saved set of mods; "loadout" named that and two other things.
+- **NEW** — the three Nexus lines, the attention row from this release, prerequisite install,
+  adopting hand-installed mods, and co-existing with another manager.
+
+**Deliberately not claimed:** downloading a mod inside the app. `Get` opens the mod page in your
+browser — verified in `NexusCatalogView.OnGetClick` — so the feature says exactly that. Endorsing DOES
+happen in-app and is claimed plainly.
+
 ## Certification notes
 
 Paste [`store/reviewer-letter-0.19.0.0.md`](store/reviewer-letter-0.19.0.0.md) into the
