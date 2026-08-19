@@ -2212,6 +2212,22 @@
       "expect": "The status line reports what loaded. Verified on the rig: UE4SS.log moved from 2026-08-02 to 2026-08-18 18:56, the game process was found under the game root, and the line read \"Windrose started, and its loader loaded.\" A loader that had NOT run would be named with the date it last did.",
       "steps": [],
       "source": "src/ModManager.App/Services/LaunchVerifier.cs"
+    },
+    {
+      "id": "loadout-segments-filter-only",
+      "title": "The loadout segments filter and move no files",
+      "surface": "Wave 6 - the control that looked like a filter",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1+wave6",
+        "date": "2026-08-18",
+        "by": "harness + live probe on Windrose"
+      },
+      "action": "On a game with MP/SP-tagged mods, click MP, then ALL, reading the row count and the status line each time.",
+      "expect": "The listed row count changes and the enabled count does NOT. Verified on Windrose: ALL 27 rows, MP 11 rows, status held at \"27 of 27 enabled\" throughout. Before wave 6, clicking MP disabled 16 mods.",
+      "steps": [],
+      "source": "scripts/smoke-run.ps1"
     }
   ]
 }
