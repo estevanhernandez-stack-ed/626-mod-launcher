@@ -32,6 +32,61 @@ public static partial class SaveManager
             .ToList();
     }
 
+    /// <summary>One world: the folder name as it sits on disk, when it was last written, how big it
+    /// is, and how many files are in it.</summary>
+    public sealed record SaveWorld(string Name, DateTime LastWriteUtc, long Bytes, int FileCount);
+
+    /// <summary>
+    /// The worlds in a save folder - one per subdirectory that actually contains files.
+    ///
+    /// <para><see cref="ListSaveFiles"/> reads a single directory level, which is right for a game
+    /// that keeps several formats of one save side by side and useless for a game that keeps a folder
+    /// per world. Palworld is the latter: 74 .sav files, 72 of them a level down, and the only
+    /// top-level one is GlobalPalStorage.sav - shared storage, not anybody's save. Listing that single
+    /// file would have implied it WAS the save, which is worse than listing nothing.</para>
+    ///
+    /// <para>Size and date come from walking the folder, which also picks up the game's own
+    /// <c>backup</c> subfolder. Deliberate: the number answers "what does this world cost on disk",
+    /// and quietly excluding part of it would make the figure disagree with Explorer.</para>
+    ///
+    /// <para>A subdirectory holding no files at all is not a world - it is a leftover.</para>
+    /// </summary>
+    public static IReadOnlyList<SaveWorld> ListWorlds(string saveDir)
+    {
+        if (!Directory.Exists(saveDir)) return Array.Empty<SaveWorld>();
+
+        var worlds = new List<SaveWorld>();
+        foreach (var dir in Directory.GetDirectories(saveDir))
+        {
+            long bytes = 0;
+            var count = 0;
+            var last = DateTime.MinValue;
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    var info = new FileInfo(f);
+                    bytes += info.Length;
+                    count++;
+                    if (info.LastWriteTimeUtc > last) last = info.LastWriteTimeUtc;
+                }
+            }
+            catch
+            {
+                // An unreadable world is skipped rather than failing the list. The panel shows what it
+                // can see, and a snapshot covers everything either way.
+                continue;
+            }
+
+            if (count == 0) continue;
+            worlds.Add(new SaveWorld(Path.GetFileName(dir), last, bytes, count));
+        }
+
+        // Most recently played first: with GUID folder names the date is the only thing telling two
+        // worlds apart until they can be labelled.
+        return worlds.OrderByDescending(w => w.LastWriteUtc).ToList();
+    }
+
     /// <summary>
     /// Clone a save to another type — copy <paramref name="sourceFileName"/> to the same base name with
     /// <paramref name="targetExt"/> (e.g. ER0000.sl2 → ER0000.co2). The source is never touched; an

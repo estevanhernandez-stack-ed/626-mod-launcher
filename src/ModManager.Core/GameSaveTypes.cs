@@ -14,7 +14,22 @@ public sealed record SaveType(string Extension, string Label);
 /// which is what a profile means here and in every other mod manager. Two things sharing one word is
 /// the exact failure item 7 is about, and this one was invisible from the UI, which is worse.
 /// </summary>
-public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTypes);
+/// <summary>How a game arranges its saves on disk. Measured on real installs, not assumed - see
+/// docs/2026-08-19-saves-are-three-shapes.md.</summary>
+public enum SaveLayout
+{
+    /// <summary>Several formats of the same save, side by side in one folder: Elden Ring's
+    /// .sl2 / .co2 / .err. The only shape where "clone to another type" means anything.</summary>
+    TypedFiles,
+
+    /// <summary>One folder per world, each holding that world's files. Palworld: two worlds here, 74
+    /// .sav files, 72 of them nested a level below the folder the panel reads. Listing files would
+    /// find one top-level .sav and imply it was your save; the unit a player thinks in is the world.</summary>
+    Worlds,
+}
+
+public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTypes,
+    SaveLayout Layout = SaveLayout.TypedFiles);
 
 /// <summary>
 /// Resolves a <see cref="GameSaveTypes"/> for a game — engine-level defaults, with a per-App-ID
@@ -25,8 +40,17 @@ public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTy
 /// </summary>
 public static class GameSaveTypesCatalog
 {
+    // Palworld. The per-App-ID hook this method has always carried, finally used: layout is a
+    // per-GAME fact, not a per-engine one. Palworld and Windrose are both ue-pak and arrange saves
+    // completely differently - worlds in folders versus a RocksDB database - so keying this on engine
+    // would have been wrong for one of them whichever way it went.
+    private const string PalworldAppId = "1623730";
+
     public static GameSaveTypes Resolve(string? engine, string? steamAppId)
-        => new(engine ?? "", SaveTypesFor(engine));
+        => new(engine ?? "", SaveTypesFor(engine), LayoutFor(steamAppId));
+
+    private static SaveLayout LayoutFor(string? steamAppId)
+        => steamAppId == PalworldAppId ? SaveLayout.Worlds : SaveLayout.TypedFiles;
 
     private static IReadOnlyList<SaveType> SaveTypesFor(string? engine) => engine switch
     {
