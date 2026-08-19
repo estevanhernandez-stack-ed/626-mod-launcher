@@ -246,6 +246,19 @@ function Test-Visible {
     return [pscustomobject]@{ Realised = $true; Visible = -not $off }
 }
 
+# Set a text box's contents through UIA rather than through the keyboard. SendKeys goes to whatever
+# the SHELL thinks is foreground, which is not necessarily the window under test - and it needs a
+# System.Windows.Forms load that is not guaranteed in a bare pwsh session. ValuePattern needs neither.
+function Set-EditValue {
+    param($Element, [string]$Value)
+    if ($null -eq $Element) { throw "Set-EditValue: element is null" }
+    $p = $null
+    if (-not $Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$p)) {
+        throw "Set-EditValue: element exposes no ValuePattern"
+    }
+    $p.SetValue($Value)
+}
+
 function Get-Text {
     param($Element)
     if ($null -eq $Element) { return $null }

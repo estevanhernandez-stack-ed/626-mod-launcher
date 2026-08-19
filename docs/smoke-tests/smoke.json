@@ -2262,6 +2262,68 @@
       "source": "scripts/smoke-run.ps1",
       "action": "Open a game the library flags BAN RISK, then look for StateChip.ban-risk.",
       "expect": "Present, first in the strip, and the leading sentence mentions anti-cheat. Before wave 7 this warning had HelpText and no AutomationId, so it was the one banner a harness could not cleanly assert - and it rendered as a Border Padding=8,2 beside the theme picker."
+    },
+    {
+      "id": "browse-door-is-present-and-labelled",
+      "title": "The in-app storefront door does not vanish, and says where it lands",
+      "surface": "Wave 8 item 3",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 8. Re-run after any change to the surfaces it names."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "On a game view, read BrowseNexusButton and FindModsButton.",
+      "expect": "Both present when the game has a Nexus domain, reading different things, one naming in-app and one naming the browser. Before wave 8 the in-app door bound CatalogVisibility and disappeared when signed out or when the plugin was missing - both one step from working."
+    },
+    {
+      "id": "empty-list-is-never-wordless",
+      "title": "An empty mod list always says why and what to press",
+      "surface": "Wave 8 item 4",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 8. Re-run after any change to the surfaces it names."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "Type a string no mod can match into ModFilterBox.",
+      "expect": "Zero rows AND a ModListEmptyText naming the query. The old zero-match branch required search text, so wave 6's MP/SP filter could empty the list silently, and a registered game with no mods rendered a blank rectangle."
+    },
+    {
+      "id": "needs-chip-is-invokable",
+      "title": "The NEEDS chip is a button that offers the install",
+      "surface": "Wave 8 item 5",
+      "coverage": "harness",
+      "status": "pending",
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "Look for ModNeeds.* on a game with a missing framework.",
+      "expect": "Present and addressable, its name offering to install. It was a HyperlinkButton to a GitHub releases page - a list of files a first-time modder cannot choose between. NOT YET ASSERTED against a real chip: every framework a mod needs is installed on this machine, so the case returns \"nothing is missing a framework\" and passes without checking anything. It will assert the moment a chip exists. Recorded as pending rather than verified because a green that never ran is the cherry-picked denominator."
+    },
+    {
+      "id": "needs-chip-installs-from-a-file",
+      "title": "The NEEDS chip's offer installs a framework the user already downloaded",
+      "surface": "Wave 8 item 5",
+      "coverage": "human",
+      "status": "pending",
+      "steps": [
+        "Open a game with a NEEDS chip (Windrose shows UE4SS).",
+        "Click the chip.",
+        "Choose 'I already have the file' and pick a real framework archive.",
+        "Confirm the install dialog that appears."
+      ],
+      "source": "docs/smoke-tests/smoke.json",
+      "action": "Drive the offer's install door with a real archive.",
+      "expect": "The existing FrameworkInstallDialog appears naming the files and the destination, and installing them makes the NEEDS chip go away. Human because it needs a real downloaded archive and writes into the game folder.",
+      "humanReason": "Needs a real framework archive already downloaded, and the install writes into the game folder. The offer and the chip are harness-covered; driving a real file through FrameworkInstallDialog is not."
     }
   ]
 }

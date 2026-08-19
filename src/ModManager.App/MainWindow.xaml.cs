@@ -653,6 +653,82 @@ public sealed partial class MainWindow : Window
             ToggleSwitch.IsOnProperty, UIElement.VisibilityProperty);
     }
 
+    /// <summary>
+    /// The NEEDS / MAY NEED chip (wave 8, item 5).
+    ///
+    /// <para>It used to be a <c>HyperlinkButton</c> straight to a GitHub releases page, so the app's
+    /// answer to "you need UE4SS" was a list of files a first-time modder cannot choose between. That
+    /// is where the round table's new modder closed the app — seconds after a successful toggle.</para>
+    ///
+    /// <para>The launcher CAN install it, and always could: a dropped archive goes through
+    /// <c>AddModsAsync</c>, gets classified, shows <c>FrameworkInstallDialog</c> with exactly what
+    /// lands where, and is written by <c>FrameworkInstaller.Install</c> validate-then-extract. Nothing
+    /// here is a new install path — this is the existing one, finally reachable from the place that
+    /// says it is needed.</para>
+    /// </summary>
+    private async void OnMissingFramework(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ViewModels.ModRowViewModel row) return;
+        await ShowFrameworkOfferAsync(row.MissingFrameworkOffer, row.MissingFrameworkUrl);
+    }
+
+    /// <summary>Both doors, one dialog. Reached from the row chip and from the game-state strip's
+    /// FRAMEWORK chip, so the two cannot drift into offering different things for the same fact.</summary>
+    private async Task ShowFrameworkOfferAsync(ModManager.Core.FrameworkOffer offer, string? getUrl)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = offer.Title,
+            Content = new TextBlock { Text = offer.Consequence, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = offer.InstallLabel,
+            CloseButtonText = "Not now",
+            XamlRoot = Content.XamlRoot,
+        };
+        if (offer.GetLabel is not null) dialog.SecondaryButtonText = offer.GetLabel;
+        ModManager.App.Services.DialogTheming.Apply(dialog);
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            // The same picker + the same intake as + Add mods. A framework archive is recognised on
+            // the way in and routed to FrameworkInstallDialog, which shows the file list and the
+            // destination before anything is written.
+            var picker = new FileOpenPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            picker.FileTypeFilter.Add("*");
+            var files = await picker.PickMultipleFilesAsync();
+            if (files is { Count: > 0 })
+                await ViewModel.AddModsAsync(files.Select(f => f.Path).ToList());
+        }
+        else if (result == ContentDialogResult.Secondary && ModManager.Core.SafeUrl.IsHttpUrl(getUrl))
+        {
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(getUrl!) { UseShellExecute = true }); }
+            catch (Exception ex) { ViewModel.StatusText = ModManager.Core.ErrorRemedy.Describe(ex); }
+        }
+    }
+
+    /// <summary>
+    /// What the in-app storefront button does when it cannot browse (wave 8, item 3).
+    ///
+    /// <para>It used to render nothing at all in this situation, which is why the app presented as
+    /// though the in-app storefront had never been built. Both remedies are one Settings page away, so
+    /// the button says which one and opens it.</para>
+    /// </summary>
+    private async Task ShowBrowseRemedyAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = ModManager.Core.ModBrowseRules.InAppLabel,
+            Content = new TextBlock { Text = ViewModel.BrowseButtonDetail, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "Open settings",
+            CloseButtonText = "Not now",
+            XamlRoot = Content.XamlRoot,
+        };
+        ModManager.App.Services.DialogTheming.Apply(dialog);
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            OnSettings(this, new RoutedEventArgs());
+    }
+
     private async void OnAddMods(object sender, RoutedEventArgs e)
     {
         var picker = new FileOpenPicker();
@@ -1138,6 +1214,16 @@ public sealed partial class MainWindow : Window
     // anything older -> the original simple-list dialog, unchanged.
     private async void OnBrowseNexusInApp(object sender, RoutedEventArgs e)
     {
+        // Wave 8: this button stays on screen when in-app browsing is unavailable, because both
+        // reasons it can be - signed out, plugin missing - are one Settings page away and the app used
+        // to say nothing about either. A visible control that does nothing when pressed would be a
+        // worse lie than the vanishing one, so the press opens the remedy.
+        if (!ViewModel.BrowseCanAct)
+        {
+            await ShowBrowseRemedyAsync();
+            return;
+        }
+
         if (ViewModel.CatalogBrowseAvailable)
         {
             ShowCatalog();
@@ -1396,20 +1482,20 @@ public sealed partial class MainWindow : Window
             case "vortex-redeployed": OnTakeOverGame(this, e); break;
             // An ACTION, not a dismissal: it re-records the build baseline the warning compares to.
             case "steam-updated": ViewModel.DismissBuildWarningCommand.Execute(null); break;
-            case "framework-missing": OpenMissingFrameworkPage(); break;
+            case "framework-missing": _ = OfferMissingFrameworkAsync(); break;
         }
     }
 
-    // Today this is the same single canonical link the per-row NEEDS chip offers. It is a download
-    // page, not an install — which is exactly the dead end the round table's new modder walked into,
-    // and it is item 5 of the approved order, not this wave. Moving the chip and changing what its
-    // button does in one commit would make the layout change impossible to verify on its own.
-    private void OpenMissingFrameworkPage()
+    // The FRAMEWORK chip in the game-state strip. Wave 7 wired this straight to a download page and
+    // said in its own PR that item 5 would fix it; this is that. It opens the SAME offer the row chip
+    // opens, so two surfaces cannot drift into saying different things about one missing framework.
+    private async Task OfferMissingFrameworkAsync()
     {
-        var url = ViewModel.MissingFrameworks.Select(d => d.GetUrl).FirstOrDefault(ModManager.Core.SafeUrl.IsHttpUrl);
-        if (url is null) return;
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception ex) { ViewModel.StatusText = ModManager.Core.ErrorRemedy.Describe(ex); }
+        var dep = ViewModel.MissingFrameworks.FirstOrDefault();
+        if (dep is null) return;
+        await ShowFrameworkOfferAsync(
+            ModManager.Core.FrameworkOfferRules.For(dep.Name, dep.GetUrl, soft: false),
+            dep.GetUrl);
     }
 
     private async void OnCheckSetup(object sender, RoutedEventArgs e)

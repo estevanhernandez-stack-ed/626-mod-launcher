@@ -314,6 +314,17 @@ public sealed partial class ModRowViewModel : ObservableObject
 
     public Uri? MissingFrameworkUri => SafeUrl.IsHttpUrl(MissingFrameworkUrl) ? new Uri(MissingFrameworkUrl!) : null;
 
+    /// <summary>Stable id for the chip, keyed on the on-disk name for the same reason
+    /// <see cref="RowAutomationId"/> is.</summary>
+    public string MissingFrameworkAutomationId => $"ModNeeds.{Mod.Name}";
+
+    /// <summary>What the chip offers when pressed (wave 8, item 5). It was a HyperlinkButton to a
+    /// GitHub releases page - so the app's answer to "you need UE4SS" was a list of files a first-time
+    /// modder cannot choose between, which is where the round table's new modder closed the app. The
+    /// launcher can install it from a file the user already has; this is what says so.</summary>
+    public FrameworkOffer MissingFrameworkOffer =>
+        FrameworkOfferRules.For(MissingFrameworkName, MissingFrameworkUrl, LoaderHintIsSoft);
+
     // Cockpit (config + Lua surfacing). Built on demand by the parent VM, which holds the GameContext.
     public string ModFolderAbs { get; init; } = "";   // set by parent: the mod's folder (for folder mods)
     public bool HasCockpit => Mod.IsFolder && !string.IsNullOrEmpty(ModFolderAbs);

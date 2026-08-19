@@ -167,26 +167,40 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Button AutomationProperties.AutomationId="EnableAllButton" Content="Enable all" Command="{x:Bind ViewModel.AllOnCommand}" />
                         <Button AutomationProperties.AutomationId="DisableAllButton" Content="Disable all" Command="{x:Bind ViewModel.AllOffCommand}" />
-                        <!-- Browse Nexus is a first-class action, not a menu entry: it is the primary way to
-                             discover mods now, so it gets its own accent button (same primary treatment as
-                             Apply order / Launch options). It was buried in the Find mods flyout, which is
-                             about opening a BROWSER — wrong home, and two clicks deep. Gated on
-                             CatalogVisibility so it is absent on Store / no plugin / no domain / disconnected;
-                             the handler picks the rich storefront or the older simple dialog by capability. -->
+                        <!-- The in-app storefront is a first-class action, not a menu entry: it is the primary
+                             way to discover mods now, so it gets its own accent button (same primary treatment
+                             as Apply order / Launch options). It was buried in the Find mods flyout, which is
+                             about opening a BROWSER — wrong home, and two clicks deep.
+
+                             Wave 8: it no longer VANISHES. Binding CatalogVisibility collapsed three unrelated
+                             situations into the same nothing — not signed in, plugin missing, and "Nexus has
+                             no page for this game" — and the first two are ONE STEP from working. Saying
+                             nothing about either is what made the app present as though this was never built.
+                             It now shows whenever the game has a Nexus domain, and when it cannot act the
+                             press opens the remedy. ModBrowseRules decides; see BrowseButtonVisibility.
+
+                             The label says WHERE YOU LAND, not what it searches. It read "Browse Nexus" beside
+                             a button reading "Find mods" and neither said which one left the app. -->
                         <Button AutomationProperties.AutomationId="BrowseNexusButton" Click="OnBrowseNexusInApp"
-                                Visibility="{x:Bind ViewModel.CatalogVisibility, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind ViewModel.BrowseButtonLabel, Mode=OneWay}"
+                                AutomationProperties.HelpText="{x:Bind ViewModel.BrowseButtonDetail, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.BrowseButtonVisibility, Mode=OneWay}"
                                 Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
-                                ToolTipService.ToolTip="Browse this game's Nexus mods in the launcher — sorted, filterable, and marked with what you already have. Get opens the mod page to download.">
+                                ToolTipService.ToolTip="{x:Bind ViewModel.BrowseButtonDetail, Mode=OneWay}">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <FontIcon Glyph="&#xE721;" FontSize="{StaticResource BodyFontSize}" />
-                                <TextBlock Text="Browse Nexus" Foreground="{StaticResource ThemeAccent}" />
+                                <TextBlock Text="{x:Bind ViewModel.BrowseButtonLabel, Mode=OneWay}" Foreground="{StaticResource ThemeAccent}" />
                             </StackPanel>
                         </Button>
-                        <DropDownButton AutomationProperties.AutomationId="FindModsButton" AutomationProperties.Name="Find mods" ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
+                        <!-- The other door. Same job, different destination — and until wave 8 the only
+                             place that said so was the tooltip. Kept as its own DropDownButton: merging the
+                             two would reverse the decision above and cost the power user a click on his
+                             most-used path. -->
+                        <DropDownButton AutomationProperties.AutomationId="FindModsButton" AutomationProperties.Name="Find mods in browser" ToolTipService.ToolTip="Open Nexus Mods or CurseForge in your browser, searched for this game">
                             <DropDownButton.Content>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE721;" FontSize="{StaticResource BodyFontSize}" />
-                                    <TextBlock Text="Find mods" />
+                                    <FontIcon Glyph="&#xE8A7;" FontSize="{StaticResource BodyFontSize}" />
+                                    <TextBlock Text="Find mods in browser" />
                                 </StackPanel>
                             </DropDownButton.Content>
                             <DropDownButton.Flyout>
@@ -553,17 +567,23 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <HyperlinkButton AutomationProperties.Name="{x:Bind MissingFrameworkAutomationName}" NavigateUri="{x:Bind MissingFrameworkUri, Mode=OneWay}"
-                                             Padding="0" BorderThickness="0" Background="Transparent"
-                                             Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
-                                             ToolTipService.ToolTip="{x:Bind MissingFrameworkNote, Mode=OneWay}">
+                            <!-- Was a HyperlinkButton straight to a GitHub releases page, so the app's answer
+                                 to "you need UE4SS" was a list of files a first-time modder cannot choose
+                                 between. The launcher can install it from a file they already have — this
+                                 opens the offer that says so. Wave 8, item 5. -->
+                            <Button AutomationProperties.AutomationId="{x:Bind MissingFrameworkAutomationId}"
+                                    AutomationProperties.Name="{x:Bind MissingFrameworkAutomationName}"
+                                    Click="OnMissingFramework"
+                                    Padding="0" BorderThickness="0" Background="Transparent"
+                                    Visibility="{x:Bind MissingFrameworkVisibility, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind MissingFrameworkNote, Mode=OneWay}">
                                 <Border CornerRadius="0" Padding="6,2"
                                         BorderThickness="1" BorderBrush="{x:Bind MissingFrameworkBrush, Mode=OneWay}">
                                     <TextBlock Text="{x:Bind MissingFrameworkChip, Mode=OneWay}"
                                                FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}"
                                                Foreground="{x:Bind MissingFrameworkBrush, Mode=OneWay}" />
                                 </Border>
-                            </HyperlinkButton>
+                            </Button>
                             <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemePanel}"
                                     BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
                                     ToolTipService.ToolTip="Managed by another mod tool — shown read-only here"
@@ -677,13 +697,17 @@
             </ListView>
         </Grid>
 
-        <!-- Empty state -->
-        <TextBlock Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource ThemeInkDim}"
-                   Text="No game registered yet. Add one with + Game."
-                   Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}" />
+        <!-- The mod list's empty state. ONE TextBlock, four causes (wave 8, item 4).
 
-        <!-- Zero-match filter state (F-059): a blank list reads as broken — name the query. -->
-        <TextBlock Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource ThemeInkDim}"
+             There used to be two, and between them they left two holes. The first was hard-coded to
+             "No game registered yet" and bound HasGame, so a REGISTERED game with zero mods fell
+             straight through it. The second only fired on a search miss, so wave 6's MP/SP filter
+             could empty the list with no search text and hit nothing either. Both holes rendered a
+             blank rectangle with no words — the first at the moment the app most needs to say
+             "drop a zip here", the second in a way that reads as "the mods are gone". -->
+        <TextBlock AutomationProperties.AutomationId="ModListEmptyText" Grid.Row="3"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource ThemeInkDim}"
+                   TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480"
                    Text="{x:Bind ViewModel.FilterEmptyText, Mode=OneWay}"
                    Visibility="{x:Bind ViewModel.FilterEmptyVisibility, Mode=OneWay}" />
 
