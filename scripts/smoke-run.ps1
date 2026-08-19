@@ -297,6 +297,72 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
     }
 }
 
+Case 'browse-door-is-present-and-labelled' 'Wave 8 item 3' {
+    # It used to bind CatalogVisibility and VANISH whenever in-app browsing was unavailable, which
+    # made the app present as though the in-app storefront had never been built. It now shows whenever
+    # the game has a Nexus domain, and the label says WHERE YOU LAND rather than what it searches -
+    # it read "Browse Nexus" beside a button reading "Find mods" and neither said which one left the
+    # app.
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+    $inApp = Find-ById $t 'BrowseNexusButton'
+    $browser = Find-ById $t 'FindModsButton'
+
+    Assert-True ($null -ne $browser) "FindModsButton absent - the browser door should never be gated"
+    if ($null -eq $inApp) { return "no Nexus domain for '$($script:gameId)' - correctly absent" }
+
+    $a = Get-Text $inApp
+    $b = Get-Text $browser
+    Assert-True ($a -ne $b) "both doors read the same: '$a'"
+    Assert-True ($a -match 'in-app') "the in-app door does not say so: '$a'"
+    Assert-True ($b -match 'browser') "the browser door does not say so: '$b'"
+    "'$a' / '$b'"
+}
+
+Case 'empty-list-is-never-wordless' 'Wave 8 item 4' {
+    # Filter to something that cannot match and assert the app SAYS so. Before wave 8 the zero-match
+    # branch required search text, so wave 6's MP/SP filter could empty the list silently - and a
+    # blank list under a view control reads as "the mods are gone".
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+    $box = Find-ById $t 'ModFilterBox'
+    Assert-True ($null -ne $box) "ModFilterBox absent"
+
+    try {
+        # ValuePattern, not SendKeys: it needs no assembly load, does not depend on what the SHELL
+        # thinks is foreground, and cannot land the keystrokes in another window.
+        Set-EditValue $box 'zzqqxx'
+        Wait-Idle 1200
+        $t2 = Get-Tree $root
+        $rows = @(Find-AllByIdPrefix $t2 'ModRow.')
+        Assert-True ($rows.Count -eq 0) "filter matched $($rows.Count) rows - pick a less likely string"
+        $said = Get-Text (Find-ById $t2 'ModListEmptyText')
+        Assert-True (-not [string]::IsNullOrWhiteSpace($said)) "the list emptied and said nothing"
+        Assert-True ($said -match 'zzqqxx') "the message does not name the query: '$said'"
+        "empty list said '$said'"
+    }
+    finally {
+        # Put the search box back, including on failure - every later case reads this mod list.
+        $b2 = Find-ById (Get-Tree $root) 'ModFilterBox'
+        if ($b2) { Set-EditValue $b2 ''; Wait-Idle 1200 }
+    }
+}
+
+Case 'needs-chip-is-invokable' 'Wave 8 item 5' {
+    # The chip was a HyperlinkButton to a GitHub releases page - so the app's answer to "you need
+    # UE4SS" was a list of files a first-time modder cannot choose between. It is a Button now, onto
+    # an offer that includes the install the launcher can already perform. Assert it is REACHABLE and
+    # addressable; opening the picker behind it is a human case.
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+    $chips = @(Find-AllByIdPrefix $t 'ModNeeds.')
+    if ($chips.Count -eq 0) { return "nothing on '$($script:gameId)' is missing a framework" }
+
+    $names = @($chips | ForEach-Object { $_.Current.Name })
+    Assert-True ($names[0] -match 'Install') "the chip does not offer an install: '$($names[0])'"
+    "$($chips.Count) NEEDS chip(s), first reads '$($names[0])'"
+}
+
 Case 'group-combo-selection-without-opening' 'Group the mod list' {
     $t = Get-Tree $root
     Assert-OnGameView $t

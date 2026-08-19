@@ -145,8 +145,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GameVisibility))]
-    [NotifyPropertyChangedFor(nameof(EmptyVisibility))]
     private bool hasGame;
+
+    // The mod list's empty state depends on whether a game is active, so it recomputes when that
+    // changes. See RefreshEmptyState - one message, four causes.
+    partial void OnHasGameChanged(bool value) => RefreshEmptyState(_allRows.Count, Mods.Count);
 
     /// <summary>Framework dependencies the active game is missing — surfaced as a status banner.
     /// Refreshed at every <see cref="ReloadModsAsync"/>. Empty = nothing missing (banner hidden).</summary>
@@ -554,7 +557,10 @@ public sealed partial class MainViewModel : ObservableObject
     private bool isLoadOrderMode;
 
     public Visibility GameVisibility => HasGame ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility EmptyVisibility => HasGame ? Visibility.Collapsed : Visibility.Visible;
+    // EmptyVisibility (HasGame ? Collapsed : Visible) lived here and drove a TextBlock hard-coded to
+    // "No game registered yet". A registered game with zero mods fell straight through it and rendered
+    // a blank rectangle. ModListEmptyState answers the whole question now, so there is nothing left
+    // for a boolean to say - see FilterEmptyText.
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
@@ -742,6 +748,7 @@ public sealed partial class MainViewModel : ObservableObject
             Mods.Clear();
             _allRows = Array.Empty<ModRowViewModel>(); // no ghost rows through the filter (F-015/S7)
             ModFilterText = "";
+            RefreshEmptyState(0, 0);
             GameRootText = "";
             StatusText = "No game registered. Add one with + Game.";
             MissingFrameworks.Clear();
@@ -768,6 +775,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(ReDeployedBannerVisibility));
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
+        NotifyBrowse();
+            NotifyBrowse();
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
             OnPropertyChanged(nameof(CatalogBrowseVisibility));
             OnPropertyChanged(nameof(CatalogDetailAvailable));
@@ -1066,6 +1075,8 @@ public sealed partial class MainViewModel : ObservableObject
             // appear on switch.
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
+        NotifyBrowse();
+            NotifyBrowse();
             OnPropertyChanged(nameof(CatalogBrowseAvailable));
             OnPropertyChanged(nameof(CatalogBrowseVisibility));
             OnPropertyChanged(nameof(CatalogDetailAvailable));
@@ -1225,9 +1236,20 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnModFilterTextChanged(string value)
         => Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
 
-    // Zero-match empty state (F-059): a blank list reads as broken; name the query instead.
+    // The mod list's empty state (wave 8, item 4). F-059 named the query on a search miss and stopped
+    // there, so TWO holes stayed open: a registered game with zero mods rendered a blank rectangle
+    // with no words - the moment the app most needs to say "drop a zip here" - and wave 6's MP/SP
+    // filter could empty the list with no search text at all, which reads as "the mods are gone"
+    // because the control that emptied it is a VIEW control. ModListEmptyState decides all four.
     [ObservableProperty] private string filterEmptyText = "";
     [ObservableProperty] private Visibility filterEmptyVisibility = Visibility.Collapsed;
+
+    private void RefreshEmptyState(int totalRows, int visibleRows)
+    {
+        var msg = ModListEmptyState.MessageFor(HasGame, totalRows, visibleRows, ModFilterText, ActiveMode);
+        FilterEmptyText = msg ?? "";
+        FilterEmptyVisibility = msg is null ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     private List<ModRowViewModel> FilterRows(IEnumerable<ModRowViewModel> rows)
     {
@@ -1238,9 +1260,7 @@ public sealed partial class MainViewModel : ObservableObject
             .Where(r => Classification.ModeFilter(ActiveMode ?? "all", r.Mod.Class ?? "both"))
             .Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, r.FileTag, ModFilterText))
             .ToList();
-        var filteredToNothing = visible.Count == 0 && all.Count > 0 && !string.IsNullOrWhiteSpace(ModFilterText);
-        FilterEmptyText = filteredToNothing ? $"No mods match \"{ModFilterText.Trim()}\"." : "";
-        FilterEmptyVisibility = filteredToNothing ? Visibility.Visible : Visibility.Collapsed;
+        RefreshEmptyState(all.Count, visible.Count);
         // Re-stamp section dividers + the legend host over the VISIBLE sequence — a filtered-out
         // first row must not take its section header or the ? glossary button with it.
         string? prev = null;
@@ -2153,6 +2173,32 @@ public sealed partial class MainViewModel : ObservableObject
         NexusActionsAvailable && NexusSource is IModCatalog && ActiveGameHasNexusDomain;
     public Visibility CatalogVisibility => CatalogAvailable ? Visibility.Visible : Visibility.Collapsed;
 
+    // Wave 8, item 3. CatalogVisibility alone made the button VANISH whenever browsing was
+    // unavailable, collapsing three unrelated situations into the same nothing: not signed in, plugin
+    // missing, and "Nexus has no page for this game". The first two are one step from working, and
+    // saying nothing about either is what made the app present as though the in-app storefront had
+    // never been built. ModBrowseRules decides; this only publishes it.
+    private BrowseAffordance Browse => ModBrowseRules.For(
+        connected: NexusActionsAvailable,
+        catalogCapable: NexusSource is IModCatalog,
+        hasDomain: ActiveGameHasNexusDomain);
+
+    public Visibility BrowseButtonVisibility =>
+        HasGame && Browse.Show ? Visibility.Visible : Visibility.Collapsed;
+    public string BrowseButtonLabel => Browse.Label;
+    public string BrowseButtonDetail => Browse.Detail;
+    /// <summary>True when pressing it opens the storefront; false when it opens the remedy instead.</summary>
+    public bool BrowseCanAct => Browse.CanBrowse;
+    public BrowseRemedy BrowseRemedyNeeded => Browse.Remedy;
+
+    private void NotifyBrowse()
+    {
+        OnPropertyChanged(nameof(BrowseButtonVisibility));
+        OnPropertyChanged(nameof(BrowseButtonLabel));
+        OnPropertyChanged(nameof(BrowseButtonDetail));
+        OnPropertyChanged(nameof(BrowseCanAct));
+    }
+
     /// <summary>Adult-excluded Nexus catalog search for the active game. Self-timeouts (~10s) so a hung
     /// request can't wedge the dialog; never throws (empty list on any failure). Adult exclusion is
     /// server-side in the plugin — the launcher receives only clean hits.</summary>
@@ -2281,6 +2327,9 @@ public sealed partial class MainViewModel : ObservableObject
                     OnPropertyChanged(nameof(NexusActionsVisibility));
                     OnPropertyChanged(nameof(CatalogAvailable));
                     OnPropertyChanged(nameof(CatalogVisibility));
+        NotifyBrowse();
+                    NotifyBrowse();
+            NotifyBrowse();
                     OnPropertyChanged(nameof(CatalogBrowseAvailable));
                     OnPropertyChanged(nameof(CatalogBrowseVisibility));
                     OnPropertyChanged(nameof(CatalogDetailAvailable));
@@ -3527,6 +3576,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NexusUserFeaturesAvailable));
         OnPropertyChanged(nameof(CatalogAvailable));
         OnPropertyChanged(nameof(CatalogVisibility));
+        NotifyBrowse();
         OnPropertyChanged(nameof(CatalogBrowseAvailable));
         OnPropertyChanged(nameof(CatalogBrowseVisibility));
         OnPropertyChanged(nameof(CatalogDetailAvailable));
