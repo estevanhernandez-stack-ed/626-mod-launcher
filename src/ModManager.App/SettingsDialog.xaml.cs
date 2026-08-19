@@ -34,20 +34,6 @@ public sealed record InstalledFrameworkRow(
     public string UninstallFrameworkAutomationName => "Uninstall " + DisplayName;
 }
 
-/// <summary>One row in the Settings → Direct-inject mod configs list. Subtitle shows the
-/// effective path (override if set, else catalog default) so the user can see at a glance
-/// whether they've customized + which file the pencil icon would open.</summary>
-public sealed record DirectInjectConfigRow(
-    string ModId,
-    string DisplayName,
-    string RelativeConfigPath,
-    string EffectivePath,
-    string Title,
-    string Subtitle)
-{
-    public string RowAutomationId => $"DirectInjectConfig.{ModId}";
-    public string OverrideAutomationName => "Override the config path for " + DisplayName;
-}
 
 /// <summary>One row in the Settings → Restore points list. Detail pre-formats the game names
 /// and total size so the XAML template binds a plain string, no converter needed.</summary>
@@ -165,222 +151,17 @@ public sealed partial class SettingsDialog : ContentDialog
         _ = InitializeNexusSectionAsync();
 
         // Seed the About → Installed tools list. Pure file-read, fast — fine on the UI thread.
-        RefreshInstalledTools();
-        RefreshInstalledFrameworks();
-        RefreshDirectInjectConfigs();
         RefreshRestorePoints();
     }
 
-    /// <summary>
-    /// Populate the About → Installed tools list from every per-game <c>tools.json</c> under the
-    /// launcher's <c>_626mods</c> root. Falls back to "active game only" when the root can't be
-    /// resolved (no game loaded yet). Malformed registries are skipped silently — this surface
-    /// is informational, not load-bearing.
-    /// </summary>
-    private void RefreshInstalledTools()
-    {
-        var all = new List<SettingsToolRow>();
 
-        // The active game's DataDir is <_626mods>/<gameId>. Its parent is the _626mods root that
-        // holds every game's per-game data dir. Enumerate them all to list tools across games.
-        var activeDataDir = _vm.GameDataDirPublic();
-        var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
-
-        // Folder key -> display name via the games dropdown the VM already holds (F-068):
-        // "For ELDEN RING", not "For eldenring". Unregistered folders keep the key.
-        string? NameFor(string dir)
-            => _vm.Games.FirstOrDefault(g =>
-                string.Equals(g.Id, System.IO.Path.GetFileName(dir), StringComparison.OrdinalIgnoreCase))?.Name;
-
-        if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
-        {
-            foreach (var gameDir in Directory.EnumerateDirectories(modsRoot))
-            {
-                try { all.AddRange(ToolRegistry.Load(gameDir).Tools.Select(t => new SettingsToolRow(t, gameDir, NameFor(gameDir)))); }
-                catch { /* skip malformed per-game registries */ }
-            }
-        }
-        else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
-        {
-            // Fallback: read only the active game's registry.
-            try { all.AddRange(ToolRegistry.Load(activeDataDir).Tools.Select(t => new SettingsToolRow(t, activeDataDir, NameFor(activeDataDir)))); }
-            catch { /* skip */ }
-        }
-
-        InstalledToolsList.ItemsSource = all;
-        InstalledToolsEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    /// <summary>
-    /// Populate the About → Installed frameworks list. Mirrors RefreshInstalledTools' shape:
-    /// enumerate every per-game data dir under _626mods, read each one's framework manifests via
-    /// FrameworkRegistry.List, render rows with display name + author + install time + path.
-    /// </summary>
-    private void RefreshInstalledFrameworks()
-    {
-        var all = new List<InstalledFrameworkRow>();
-
-        var activeDataDir = _vm.GameDataDirPublic();
-        var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
-
-        var sources = new List<string>();
-        if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
-            sources.AddRange(Directory.EnumerateDirectories(modsRoot));
-        else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
-            sources.Add(activeDataDir);
-
-        foreach (var gameDataDir in sources)
-        {
-            try
-            {
-                foreach (var m in FrameworkRegistry.List(gameDataDir))
-                {
-                    all.Add(new InstalledFrameworkRow(
-                        FrameworkId: m.FrameworkId,
-                        DisplayName: m.DisplayName,
-                        Detail: $"by {m.Author}  ·  installed {m.InstalledUtc.ToLocalTime():g}  ·  {m.InstallPath}",
-                        GetUrl: GetUrlForFramework(m.FrameworkId)));
-                }
-            }
-            catch { /* skip malformed per-game registries */ }
-        }
-
-        InstalledFrameworksList.ItemsSource = all;
-        InstalledFrameworksEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
 
     private static string GetUrlForFramework(string frameworkId)
         => KnownFramework.Catalog.FirstOrDefault(f => f.FrameworkId == frameworkId)?.GetUrl ?? "";
 
-    /// <summary>Uninstall handler. Walks every per-game data dir and uninstalls the framework
-    /// from any game where it's currently installed. Idempotent — a missing manifest in one
-    /// game is no problem if another game still has it.</summary>
-    private void OnUninstallFramework(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button btn || btn.Tag is not string frameworkId) return;
 
-        var activeDataDir = _vm.GameDataDirPublic();
-        var modsRoot = string.IsNullOrEmpty(activeDataDir) ? null : System.IO.Path.GetDirectoryName(activeDataDir);
 
-        var sources = new List<string>();
-        if (!string.IsNullOrEmpty(modsRoot) && Directory.Exists(modsRoot))
-            sources.AddRange(Directory.EnumerateDirectories(modsRoot));
-        else if (!string.IsNullOrEmpty(activeDataDir) && Directory.Exists(activeDataDir))
-            sources.Add(activeDataDir);
 
-        foreach (var gameDataDir in sources)
-        {
-            try
-            {
-                var match = FrameworkRegistry.List(gameDataDir)
-                    .FirstOrDefault(m => m.FrameworkId == frameworkId);
-                if (match is null) continue;
-                FrameworkRegistry.Uninstall(gameDataDir, frameworkId, match.InstallPath);
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = $"Couldn't uninstall {frameworkId}: {ex.Message}";
-                return;
-            }
-        }
-
-        RefreshInstalledFrameworks();
-        Changed = true;  // Tell the main shell to reload mod rows (framework chip should reappear).
-        StatusText.Text = $"Uninstalled {frameworkId}.";
-    }
-
-    /// <summary>
-    /// Populate the Settings → Direct-inject mod configs list. One row per (catalog mod ×
-    /// ConfigPath). Subtitle shows the EFFECTIVE path (override if set, catalog default
-    /// otherwise) plus an "(override)" tag when the user has set a custom location.
-    /// </summary>
-    private void RefreshDirectInjectConfigs()
-    {
-        var rows = new List<DirectInjectConfigRow>();
-        var dataDir = _vm.GameDataDirPublic();
-        var gameRoot = _vm.GameRootText;
-        if (string.IsNullOrEmpty(gameRoot) || string.IsNullOrEmpty(dataDir))
-        {
-            DirectInjectConfigsList.ItemsSource = rows;
-            DirectInjectConfigsEmpty.Visibility = Visibility.Visible;
-            return;
-        }
-
-        var overrides = DirectInjectConfigOverrides.Load(dataDir);
-        var installRoot = ResolveInstallRoot(gameRoot);
-
-        foreach (var mod in KnownDirectInjectMod.Catalog)
-        {
-            if (mod.ConfigPaths.Count == 0) continue; // mods with no editable config are silent
-            overrides.OverridesByModId.TryGetValue(mod.ModId, out var modOverrides);
-            foreach (var rel in mod.ConfigPaths)
-            {
-                bool isOverridden = modOverrides is not null && modOverrides.TryGetValue(rel, out var customAbs);
-                string effective = isOverridden
-                    ? modOverrides![rel]
-                    : System.IO.Path.GetFullPath(System.IO.Path.Combine(installRoot, rel.Replace('/', System.IO.Path.DirectorySeparatorChar)));
-                rows.Add(new DirectInjectConfigRow(
-                    ModId: mod.ModId,
-                    DisplayName: mod.DisplayName,
-                    RelativeConfigPath: rel,
-                    EffectivePath: effective,
-                    Title: $"{mod.DisplayName} — {rel}",
-                    Subtitle: isOverridden ? $"{effective}  ·  (override)" : effective));
-            }
-        }
-
-        DirectInjectConfigsList.ItemsSource = rows;
-        DirectInjectConfigsEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private static string ResolveInstallRoot(string gameRoot)
-    {
-        if (string.IsNullOrEmpty(gameRoot)) return gameRoot;
-        var game = System.IO.Path.Combine(gameRoot, "Game");
-        return Directory.Exists(game) ? game : gameRoot;
-    }
-
-    /// <summary>
-    /// Override picker. File picker → save the chosen absolute path to the per-game override
-    /// store. Changed=true triggers a row reload on dialog close so the pencil icon updates.
-    /// </summary>
-    private async void OnDirectInjectOverrideClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button btn || btn.Tag is not DirectInjectConfigRow row) return;
-
-        var dataDir = _vm.GameDataDirPublic();
-        if (string.IsNullOrEmpty(dataDir))
-        {
-            StatusText.Text = "No active game to override against.";
-            return;
-        }
-
-        var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
-        picker.FileTypeFilter.Add(".ini");
-        picker.FileTypeFilter.Add(".toml");
-        picker.FileTypeFilter.Add(".cfg");
-        picker.FileTypeFilter.Add("*");
-        var file = await picker.PickSingleFileAsync();
-        if (file is null) return;
-
-        var current = DirectInjectConfigOverrides.Load(dataDir);
-        var newMap = current.OverridesByModId.ToDictionary(
-            kv => kv.Key,
-            kv => new Dictionary<string, string>(kv.Value));
-        if (!newMap.TryGetValue(row.ModId, out var modOverrides))
-        {
-            modOverrides = new Dictionary<string, string>();
-            newMap[row.ModId] = modOverrides;
-        }
-        modOverrides[row.RelativeConfigPath] = file.Path;
-
-        DirectInjectConfigOverrides.Save(dataDir, new DirectInjectConfigOverrides(newMap));
-
-        Changed = true; // re-render mod rows on close so the pencil icon picks up the new path
-        RefreshDirectInjectConfigs();
-        StatusText.Text = $"Override saved for {row.DisplayName} → {file.Path}.";
-    }
 
     private void OnBackdropChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -682,13 +463,4 @@ public sealed partial class SettingsDialog : ContentDialog
         Hide();
     }
 
-    private void OnToolConfigure(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is not SettingsToolRow row) return;
-        // WinUI 3 allows one ContentDialog per XamlRoot — same flag + Hide() hand-off as
-        // Reset/Restore/Delete: MainWindow.OnSettings opens the configure dialog after this
-        // one has fully closed, then reloads so the tool rail repaints (F-032).
-        ToolConfigureRequested = row;
-        Hide();
-    }
 }

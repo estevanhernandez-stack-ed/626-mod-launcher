@@ -679,6 +679,23 @@
                                     <TextBlock Text="INI" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Button>
+                            <!-- Where this mod's config file actually is, when it is not where the catalog
+                                 says. It was a Settings section listing EVERY catalog direct-inject mod
+                                 whether or not you had it — a catalog browser filed under settings. It is
+                                 per-mod configuration, so it lives on the mod, and now appears only for mods
+                                 that are installed. Wave 9. -->
+                            <Button AutomationProperties.AutomationId="{x:Bind ConfigOverrideAutomationId}"
+                                    AutomationProperties.Name="{x:Bind ConfigOverrideAutomationName}"
+                                    Click="OnOverrideConfigPath" VerticalAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="Point the launcher at this mod's config file, if it isn't where the catalog expects"
+                                    Visibility="{x:Bind ConfigOverrideVisibility, Mode=OneWay}"
+                                    Tag="{x:Bind}">
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Spacing="0">
+                                    <FontIcon Glyph="&#xE8DA;" FontSize="{StaticResource RowTitleFontSize}" HorizontalAlignment="Center" />
+                                    <TextBlock Text="path" FontSize="{StaticResource TagFontSize}" Foreground="{StaticResource ThemeInkSoft}" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
 
                         <Button AutomationProperties.Name="{x:Bind UninstallAutomationName}" Grid.Column="5" Click="OnUninstall" VerticalAlignment="Center"

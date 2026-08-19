@@ -318,6 +318,23 @@ public sealed partial class ModRowViewModel : ObservableObject
     /// <see cref="RowAutomationId"/> is.</summary>
     public string MissingFrameworkAutomationId => $"ModNeeds.{Mod.Name}";
 
+    // ---- Direct-inject config override (wave 9) --------------------------------------------------
+    // This lived in Settings as a catalog browser: every KnownDirectInjectMod with a config path,
+    // listed whether or not the user had the mod. It is per-MOD configuration, so it belongs on the
+    // mod - which also means it now appears only for mods that are actually installed.
+
+    /// <summary>Catalog mod id when this row IS a known direct-inject mod; empty otherwise.</summary>
+    public string DirectInjectModId { get; init; } = "";
+
+    /// <summary>The config paths the catalog DECLARES for it, existing or not. Not the resolved ones:
+    /// overriding is what you reach for when the file is NOT where the catalog says.</summary>
+    public IReadOnlyList<string> DirectInjectConfigRelPaths { get; init; } = Array.Empty<string>();
+
+    public bool HasConfigOverride => DirectInjectModId.Length > 0 && DirectInjectConfigRelPaths.Count > 0;
+    public Visibility ConfigOverrideVisibility => HasConfigOverride ? Visibility.Visible : Visibility.Collapsed;
+    public string ConfigOverrideAutomationId => $"ModConfigOverride.{Mod.Name}";
+    public string ConfigOverrideAutomationName => $"Override the config path for {DisplayName}";
+
     /// <summary>What the chip offers when pressed (wave 8, item 5). It was a HyperlinkButton to a
     /// GitHub releases page - so the app's answer to "you need UE4SS" was a list of files a first-time
     /// modder cannot choose between, which is where the round table's new modder closed the app. The
