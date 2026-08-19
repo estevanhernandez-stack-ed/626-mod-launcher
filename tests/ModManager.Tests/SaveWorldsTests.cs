@@ -111,3 +111,89 @@ public class SaveWorldsTests
         Assert.Equal(SaveLayout.TypedFiles, GameSaveTypesCatalog.Resolve("fromsoft", "1245620").Layout);
     }
 }
+
+/// <summary>
+/// Telling a hosted world from a joined one, read off the filesystem rather than out of the save
+/// format. Palworld keeps <c>Level.sav</c> for a world you host and only <c>LocalData.sav</c> for one
+/// you joined — which is why, on the machine this was measured on, one world is 25 MB and the other
+/// is 319 KB.
+/// </summary>
+public class SaveWorldRoleTests
+{
+    private static string Make(string root, string name, params string[] rel)
+    {
+        var dir = Path.Combine(root, name);
+        foreach (var r in rel)
+        {
+            var p = Path.Combine(dir, r.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+            File.WriteAllText(p, "x");
+        }
+        return dir;
+    }
+
+    [Fact]
+    public void A_world_holding_Level_sav_is_one_you_host()
+    {
+        var root = TestSupport.TempDir("role-hosted-");
+        Make(root, "w", "Level.sav", "LevelMeta.sav", "Players/0001.sav");
+
+        var w = Assert.Single(SaveManager.ListWorlds(root));
+
+        Assert.Equal(SaveManager.WorldRole.Hosted, w.Role);
+        Assert.Equal(1, w.PlayerCount);
+    }
+
+    [Fact]
+    public void A_world_with_only_local_data_is_one_you_joined()
+    {
+        // The real second world on the measured machine: LocalData.sav and a backup folder, no
+        // Level.sav, no Players. The world lives on the host's machine.
+        var root = TestSupport.TempDir("role-joined-");
+        Make(root, "w", "LocalData.sav", "backup/world/old.sav");
+
+        var w = Assert.Single(SaveManager.ListWorlds(root));
+
+        Assert.Equal(SaveManager.WorldRole.Joined, w.Role);
+        Assert.Contains("hosted by someone else", w.MultiplayerLabel);
+    }
+
+    [Fact]
+    public void More_than_one_player_file_means_others_have_played_here()
+    {
+        var root = TestSupport.TempDir("role-mp-");
+        Make(root, "w", "Level.sav", "Players/0001.sav", "Players/0002.sav", "Players/0003.sav");
+
+        var w = Assert.Single(SaveManager.ListWorlds(root));
+
+        Assert.Contains("Multiplayer", w.MultiplayerLabel);
+        Assert.Contains("3 players", w.MultiplayerLabel);
+    }
+
+    [Fact]
+    public void One_player_is_solo_SO_FAR_and_never_claimed_as_single_player()
+    {
+        // Nothing on disk separates a world nobody has joined YET from one that never will. Saying
+        // "single-player" would be inventing a fact to get a tidier label, and the label would be
+        // wrong the first time a friend drops in.
+        var root = TestSupport.TempDir("role-solo-");
+        Make(root, "w", "Level.sav", "Players/0001.sav");
+
+        var w = Assert.Single(SaveManager.ListWorlds(root));
+
+        Assert.Contains("Solo so far", w.MultiplayerLabel);
+        Assert.DoesNotContain("Single-player", w.MultiplayerLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_hosted_world_nobody_has_played_yet_still_reads_as_solo()
+    {
+        var root = TestSupport.TempDir("role-noplayers-");
+        Make(root, "w", "Level.sav", "LevelMeta.sav");
+
+        var w = Assert.Single(SaveManager.ListWorlds(root));
+
+        Assert.Equal(0, w.PlayerCount);
+        Assert.Contains("Solo so far", w.MultiplayerLabel);
+    }
+}

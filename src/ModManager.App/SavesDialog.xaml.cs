@@ -13,6 +13,13 @@ public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
 /// <summary>One "clone to" choice for a save file: the target type's label + extension.</summary>
 public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 
+/// <summary>One world in the saves panel. The folder name is a GUID, so the row leads with an ordinal
+/// and puts the identifying facts underneath: when it was last played, how many files, and what it
+/// costs on disk. Naming worlds properly is a separate decision - reading the name out of the save
+/// format means taking on somebody else's reverse-engineering of a format that can change under us.
+/// See docs/2026-08-19-saves-are-three-shapes.md.</summary>
+public sealed record SaveWorldRow(string Title, string Kind, string Detail, string Size);
+
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>
 public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets)
 {
@@ -36,6 +43,8 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
+    private readonly string? _engine;
+    private readonly string? _steamAppId;
     private readonly string? _saveModPath;
     private readonly IReadOnlyList<string>? _saveModForbidden;
     private string? _saveDir;
@@ -52,7 +61,9 @@ public sealed partial class SavesDialog : ContentDialog
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
-        _saveTypes = GameSaveTypesCatalog.Resolve(ctx.Game.Engine, ctx.Game.SteamAppId).SaveTypes;
+        _engine = ctx.Game.Engine;
+        _steamAppId = ctx.Game.SteamAppId;
+        _saveTypes = GameSaveTypesCatalog.Resolve(_engine, _steamAppId).SaveTypes;
         _saveModPath = ctx.Game.SaveModPath;
         _saveModForbidden = ctx.Game.SaveModForbidden;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
@@ -61,6 +72,7 @@ public sealed partial class SavesDialog : ContentDialog
         FolderBox.Text = _saveDir ?? "";
         Refresh();
         RefreshSaveFiles();
+        RefreshWorlds();
         RefreshSaveMods();
         RefreshCharacters();
         _loaded = true;
@@ -92,6 +104,39 @@ public sealed partial class SavesDialog : ContentDialog
         SaveFilesEmpty.Text = SaveListingEmptyState.MessageFor(
             folderSet: !string.IsNullOrEmpty(_saveDir), declaresTypes: _saveTypes.Count > 0);
         SaveFilesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Worlds, for a game that keeps a folder per world. Hidden entirely otherwise - an empty "Worlds"
+    // heading on Elden Ring would be a new way of saying nothing, which is what this panel was just
+    // fixed for.
+    private void RefreshWorlds()
+    {
+        var isWorlds = GameSaveTypesCatalog.Resolve(_engine, _steamAppId).Layout == SaveLayout.Worlds;
+        if (!isWorlds || string.IsNullOrEmpty(_saveDir))
+        {
+            WorldsHeading.Visibility = Visibility.Collapsed;
+            WorldList.Visibility = Visibility.Collapsed;
+            SaveFilesHeading.Visibility = Visibility.Visible;
+            SaveFileList.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var rows = SaveManager.ListWorlds(_saveDir).Select((w, i) => new SaveWorldRow(
+            $"World {i + 1}",
+            w.MultiplayerLabel,
+            $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}",
+            Human(w.Bytes))).ToList();
+
+        WorldList.ItemsSource = rows;
+        WorldsHeading.Visibility = Visibility.Visible;
+        WorldList.Visibility = rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // The file list has nothing to say for this shape, so it does not get to say it - and neither
+        // does its heading. Leaving "Save files" standing over nothing is the empty-heading problem
+        // this panel was just fixed for, reintroduced one section up.
+        SaveFilesEmpty.Visibility = Visibility.Collapsed;
+        SaveFilesHeading.Visibility = Visibility.Collapsed;
+        SaveFileList.Visibility = Visibility.Collapsed;
     }
 
     private void OnCloneMenuOpening(object sender, object e)
@@ -369,6 +414,7 @@ public sealed partial class SavesDialog : ContentDialog
         _svc.SetSaveDir(_gameId, _saveDir);
         Refresh();
         RefreshSaveFiles();
+        RefreshWorlds();
     }
 
     private void OnBackup(object sender, RoutedEventArgs e)
@@ -405,6 +451,11 @@ public sealed partial class SavesDialog : ContentDialog
         Refresh();
     }
 
+    // Gained a GB tier when worlds started using it: a Palworld world with a long-running base can
+    // pass a gigabyte, and "1434.7 MB" is a number you have to stop and convert.
     private static string Human(long b)
-        => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024.0:0.#} KB" : $"{b / 1024.0 / 1024:0.#} MB";
+        => b < 1024 ? $"{b} B"
+         : b < 1024L * 1024 ? $"{b / 1024.0:0.#} KB"
+         : b < 1024L * 1024 * 1024 ? $"{b / 1024.0 / 1024:0.#} MB"
+         : $"{b / 1024.0 / 1024 / 1024:0.#} GB";
 }

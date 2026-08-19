@@ -34,7 +34,35 @@ public static partial class SaveManager
 
     /// <summary>One world: the folder name as it sits on disk, when it was last written, how big it
     /// is, and how many files are in it.</summary>
-    public sealed record SaveWorld(string Name, DateTime LastWriteUtc, long Bytes, int FileCount);
+    /// <summary>Whether this is a world you host or one you joined.</summary>
+    public enum WorldRole
+    {
+        /// <summary>The world itself is here - you host it.</summary>
+        Hosted,
+        /// <summary>Only your local data is here; the world lives on someone else's machine.</summary>
+        Joined,
+    }
+
+    public sealed record SaveWorld(string Name, DateTime LastWriteUtc, long Bytes, int FileCount,
+        WorldRole Role, int PlayerCount)
+    {
+        /// <summary>What to call this world's multiplayer status, said only as far as the evidence goes.
+        ///
+        /// <para>Read off the filesystem, not out of the save format. A world you HOST keeps
+        /// <c>Level.sav</c> and a <c>Players</c> folder with one file per character who has played in
+        /// it. A world you JOINED keeps only <c>LocalData.sav</c> - the world itself is on the host's
+        /// machine, which is why one of these is 25 MB and the other is 319 KB.</para>
+        ///
+        /// <para>A hosted world with one player is "solo so far" rather than "single-player": nothing
+        /// on disk distinguishes a world nobody else has joined YET from one that never will, and
+        /// claiming the latter would be inventing a fact to make a tidier label.</para></summary>
+        public string MultiplayerLabel => Role switch
+        {
+            WorldRole.Joined => "Multiplayer - hosted by someone else",
+            _ when PlayerCount > 1 => $"Multiplayer - {PlayerCount} players have played here",
+            _ => "Solo so far - you are the only player in it",
+        };
+    }
 
     /// <summary>
     /// The worlds in a save folder - one per subdirectory that actually contains files.
@@ -79,7 +107,21 @@ public static partial class SaveManager
             }
 
             if (count == 0) continue;
-            worlds.Add(new SaveWorld(Path.GetFileName(dir), last, bytes, count));
+
+            // Level.sav is the world itself. Its absence means this folder holds only the local data
+            // kept for a world somebody else hosts - a distinction worth drawing, since restoring a
+            // joined world would not restore anything anyone else can see.
+            var hosted = File.Exists(Path.Combine(dir, "Level.sav"));
+            var players = 0;
+            try
+            {
+                var pdir = Path.Combine(dir, "Players");
+                if (Directory.Exists(pdir)) players = Directory.GetFiles(pdir, "*.sav").Length;
+            }
+            catch { /* an unreadable Players folder just means we do not know the count */ }
+
+            worlds.Add(new SaveWorld(Path.GetFileName(dir), last, bytes, count,
+                hosted ? WorldRole.Hosted : WorldRole.Joined, players));
         }
 
         // Most recently played first: with GUID folder names the date is the only thing telling two
