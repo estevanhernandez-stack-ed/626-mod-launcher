@@ -8,15 +8,26 @@
 > headings were renamed, Settings was regrouped, and eight scattered warnings became one row of chips
 > above the mod list. Say so up front rather than letting them find it.
 >
-> **Package to upload:** build and verify from master `c644025` or later.
+> **Package to upload — built and verified 2026-08-19 from master `5101293`:**
 >
 > ```text
-> Identity : 626LabsLLC.626ModLauncher
-> Publisher: CN=177BCE59-0966-4975-9962-10E36652141F
-> Version  : 0.19.0.0
-> Capability: runFullTrust (only)
-> Seal     : verify before upload — expect "loader + EAC-disable absent; Nexus compiled in"
+> File      : src/ModManager.App/AppPackages/ModManager.App_0.19.0.0_Store_Test/
+>             ModManager.App_0.19.0.0_x64_Store.msixbundle
+> Size      : 83.5 MB
+> SHA-256   : 9D21719D7118C6D0ABAD2CEAF8A5ADFB8771D71A21D8DB72DA264EA8310FEF01
+> Identity  : 626LabsLLC.626ModLauncher
+> Publisher : CN=177BCE59-0966-4975-9962-10E36652141F
+> Version   : 0.19.0.0            (application x64)
+> Capability: runFullTrust  — the only one declared
+> Target    : Windows.Desktop, min 10.0.17763.0
+> Seal      : OK — loader + EAC-disable absent; Nexus compiled in
+> Tests     : 2235 passing (Release)
 > ```
+>
+> Identity, version and capability above were read **out of the bundle** — `AppxBundleManifest.xml`
+> and the inner package's `AppxManifest.xml` — not off the manifest on disk. A build passing
+> `-p:Version=0.18.1.0` once produced a `0.17.0.0` package, which is why that distinction is written
+> down rather than assumed.
 
 ---
 
