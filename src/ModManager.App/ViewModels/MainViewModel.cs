@@ -1093,7 +1093,12 @@ public sealed partial class MainViewModel : ObservableObject
     private List<ModRowViewModel> FilterRows(IEnumerable<ModRowViewModel> rows)
     {
         var all = rows.ToList();
-        var visible = all.Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, r.FileTag, ModFilterText)).ToList();
+        // The mode segments are part of the FILTER now, not a file op. Classification.ModeFilter is
+        // the same pure rule the old bulk apply used - reused, never reimplemented.
+        var visible = all
+            .Where(r => Classification.ModeFilter(ActiveMode ?? "all", r.Mod.Class ?? "both"))
+            .Where(r => ModSearch.Matches(r.DisplayName, r.Mod.Author, r.FileTag, ModFilterText))
+            .ToList();
         var filteredToNothing = visible.Count == 0 && all.Count > 0 && !string.IsNullOrWhiteSpace(ModFilterText);
         FilterEmptyText = filteredToNothing ? $"No mods match \"{ModFilterText.Trim()}\"." : "";
         FilterEmptyVisibility = filteredToNothing ? Visibility.Visible : Visibility.Collapsed;
@@ -1326,6 +1331,11 @@ public sealed partial class MainViewModel : ObservableObject
         // Ban-risk gate ONCE before a bulk enable (never per-row, so no row can bypass it). A bulk
         // disable (on == false) is never gated — getting safer needs no friction.
         if (on && _ctx is not null && !await GateBanRiskEnableAsync()) return;
+
+        // Save the set BEFORE the sweep. The files all move reversibly; what does not survive is
+        // knowing which of them were on, and Enable all is not the undo for Disable all.
+        var saved = await SnapshotBeforeBulkAsync(on ? "enable all" : "disable all");
+
         await BulkAsync(() =>
         {
             // A bulk enable/disable is a manual state change too — clear the vanilla stash so the mode
@@ -1351,19 +1361,71 @@ public sealed partial class MainViewModel : ObservableObject
             }
             return Scanner.SetAllModsAsync(on, _ctx!);
         });
+        if (saved is not null) StatusText = BulkSnapshot.Reassurance(saved);
     }
 
-    [RelayCommand]
-    private async Task SetMode(string mode)
+    /// <summary>Save the current enabled set before a bulk operation, and say where it went.
+    ///
+    /// <para>Every file a bulk op moves is reversible. The KNOWLEDGE is not: Disable all on a 200-mod
+    /// install lands every file safely in holding, and the fact that 140 of them were on is gone —
+    /// Enable all does not undo it, it turns on all 200. The launcher already had the fix and never
+    /// connected it, because a profile saves exactly that set.</para>
+    ///
+    /// <para>Best-effort: a snapshot that fails must never block the operation the user asked for. It
+    /// returns the name so the caller can put it in the status line — an undo nobody is told about is
+    /// not an undo.</para></summary>
+    private async Task<string?> SnapshotBeforeBulkAsync(string operation)
     {
-        // No MP/SP split for Mod Engine 2, direct-inject, or loose-root mods — the mode buttons are
-        // a no-op there (Scanner.ApplyModeAsync must never run against a non-scanner world).
-        if (ConfigBacked || DirectInjectBacked || LooseRootBacked) { ActiveMode = mode; return; }
-        // Applying a mode enables the mods that match it — gate ONCE before the bulk apply. On cancel,
-        // abort without changing the active mode (nothing was enabled).
-        if (_ctx is not null && !await GateBanRiskEnableAsync()) return;
-        ActiveMode = mode;
+        if (_ctx is null) return null;
+        if (!_allRows.Any(r => r.Enabled)) return null;   // nothing on: nothing worth remembering
+        try
+        {
+            var name = BulkSnapshot.NameFor(operation, DateTime.Now);
+            await Scanner.SaveProfileAsync(name, _ctx);
+            return name;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Apply a mode for real — the act the segments used to perform silently. Named, explicit,
+    /// and it snapshots first. The ban-risk gate stays ahead of it, exactly where it was.</summary>
+    public async Task ApplyModeExplicitAsync(string mode)
+    {
+        if (_ctx is null) return;
+        // The engines the old code returned early on. Say so rather than doing nothing quietly.
+        if (ConfigBacked || DirectInjectBacked || LooseRootBacked)
+        {
+            StatusText = "These mods load independently — there is no MP/SP set to apply for this game.";
+            return;
+        }
+        if (!await GateBanRiskEnableAsync()) return;
+
+        var saved = await SnapshotBeforeBulkAsync($"apply {mode.ToUpperInvariant()}");
         await BulkAsync(() => Scanner.ApplyModeAsync(mode, _ctx!));
+        if (saved is not null) StatusText = BulkSnapshot.Reassurance(saved);
+    }
+
+    /// <summary>All / MP / SP now FILTER the list. They no longer move a single file.
+    ///
+    /// <para>They used to call <c>Scanner.ApplyModeAsync</c>, which walks every mod and enables the ones
+    /// matching the mode while disabling the ones that do not — a bulk file operation behind three
+    /// segmented buttons, in a control shape that means "change what I see" in every other application.
+    /// And it returned early as a cosmetic highlight on Mod Engine 2, direct-inject and loose-root games,
+    /// so the same buttons were a redeployment on one game and nothing at all on the next.</para>
+    ///
+    /// <para>Safe by the rule already written at <see cref="FilterRows"/>: Mods is the RENDER list,
+    /// <c>_allRows</c> is the STATE list, and every write, safety and status path reads the latter. A
+    /// typed filter cannot narrow a file op. Filtering also works on EVERY engine, which fixes the
+    /// inconsistency rather than papering over it.</para>
+    ///
+    /// <para>Applying a mode still exists — as an explicit, named action that says what it will change
+    /// before it does it. See <see cref="ApplyModeExplicitAsync"/>.</para></summary>
+    [RelayCommand]
+    private Task SetMode(string mode)
+    {
+        ActiveMode = mode;
+        Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
+        return Task.CompletedTask;
     }
 
     // The one toolbar "Refresh": re-scan the mod list, then — when Nexus is connected — refresh Nexus
@@ -1710,8 +1772,36 @@ public sealed partial class MainViewModel : ObservableObject
             if (!up) { StatusText = "Couldn't start Steam — open Steam, then launch again."; return; }
         }
         AutoBackupBeforeLaunch();
-        try { _svc.Launch(target, _ctx.Game.GameRoot); StampLaunch(); }
+        try
+        {
+            _svc.Launch(target, _ctx.Game.GameRoot);
+            StampLaunch();
+            WatchLaunch();
+        }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+    }
+
+    /// <summary>Watch the launch we just made and say whether the loaders actually ran (B5).
+    ///
+    /// <para>Fire and forget on purpose: the game is starting, the user is looking at it and not at us,
+    /// and nothing here may delay or fail a launch. The status line updates when there is something
+    /// worth saying and stays as it was when there is not — which is most launches.</para>
+    ///
+    /// <para>626 has always known exactly what it enabled and never found out whether any of it ran.
+    /// That is the A13 class of bug, whose only witness was the user at the crash.</para></summary>
+    private void WatchLaunch()
+    {
+        var ctx = _ctx;
+        if (ctx is null) return;
+        var launchedUtc = DateTime.UtcNow;
+        _ = Task.Run(async () =>
+        {
+            var line = await new Services.LaunchVerifier().WatchAsync(ctx, launchedUtc);
+            if (string.IsNullOrEmpty(line)) return;
+            // Back to the UI thread the same way every other background finisher here does.
+            if (_dispatcherQueue is { } dq) dq.TryEnqueue(() => StatusText = line);
+            else StatusText = line;
+        });
     }
 
     /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.</summary>

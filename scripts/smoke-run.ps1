@@ -427,6 +427,30 @@ Case 'uninstall-confirm-and-forget' 'A26 - the record goes with the file' {
     "uninstalled through its confirm dialog; row, file and record all gone"
 }
 
+Case 'loadout-segments-filter-only' 'Wave 6 - the segments filter, they do not move files' {
+    # The whole of wave 6, as an assertion. These three buttons used to call Scanner.ApplyMode, which
+    # enables every mod matching the mode and disables the rest - a bulk file operation behind a
+    # control shaped like a view filter. If the enabled count ever moves when a segment is clicked,
+    # the file op is back.
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+    $before = Get-Text (Find-ById $t 'AppStatusText')
+    $allRows = @(Find-AllByIdPrefix $t 'ModRow.').Count
+    Assert-True ($allRows -gt 0) "no rows to filter"
+
+    Invoke-Node (Find-ById $t 'LoadoutMpSegment'); Wait-Idle 2500
+    $t2 = Get-Tree $root
+    $mpRows = @(Find-AllByIdPrefix $t2 'ModRow.').Count
+    $after = Get-Text (Find-ById $t2 'AppStatusText')
+
+    Invoke-Node (Find-ById (Get-Tree $root) 'LoadoutAllSegment'); Wait-Idle 2500
+    $restored = @(Find-AllByIdPrefix (Get-Tree $root) 'ModRow.').Count
+
+    Assert-True ($after -eq $before) "the enabled count changed when a segment was clicked - the segments are moving files again (wave 6)"
+    Assert-True ($restored -eq $allRows) "ALL did not restore the full list"
+    "MP listed $mpRows of $allRows rows; enabled count unchanged at $before"
+}
+
 # ---------------------------------------------------------------- what a harness cannot do
 Write-Host ''
 Write-Host '  -- cases this harness cannot run --' -ForegroundColor White
