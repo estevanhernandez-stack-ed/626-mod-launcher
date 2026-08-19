@@ -21,15 +21,26 @@
 .PARAMETER Only
     Capture just these shot numbers, e.g. -Only 3,7 to redo two. Everything else is left alone.
 
+.PARAMETER Auto
+    Drive the navigation too, through scripts/uia-lib.ps1, instead of waiting at a prompt for a
+    person to click. Each shot carries a Nav block that puts the app in the right state and then
+    VERIFIES it arrived - a capture of the wrong screen is worse than no capture, because it looks
+    finished. A shot whose Nav cannot confirm its state is skipped and named in the summary rather
+    than photographed hopefully.
+
+    The interactive path is unchanged and is still the right one when a shot needs judgement.
+
 .EXAMPLE
     pwsh scripts/capture-store-screenshots.ps1
     pwsh scripts/capture-store-screenshots.ps1 -Only 3,7
+    pwsh scripts/capture-store-screenshots.ps1 -Auto -Version 0.19
 #>
 [CmdletBinding()]
 param(
     [string]$OutDir,
     [string]$Version = '0.18',
-    [int[]]$Only
+    [int[]]$Only,
+    [switch]$Auto
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,26 +60,134 @@ if (-not $OutDir) { $OutDir = Join-Path $repoRoot "docs/store-assets/screenshots
 $Shots = @(
     @{ N = 1; Name = '01-library-home'
        State = 'Home / library, scrolled to the top. Jump-back-in row visible with cover art.'
-       Watch = 'The hero shot. Make sure several games have real cover art and no row is mid-load.' }
+       Watch = 'The hero shot. Make sure several games have real cover art and no row is mid-load.'
+       Nav   = { Go-Home; (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'GameRow.')).Count -gt 3 } }
     @{ N = 2; Name = '02-game-mods-view'
        State = 'Open a game with a healthy mod list. Elden Ring or Windrose.'
-       Watch  = 'Show a mix of enabled and disabled so the toggle reads as a toggle.' }
+       Watch  = 'Show a mix of enabled and disabled so the toggle reads as a toggle.'
+       Nav    = { Open-Game 'windrose'; (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'ModRow.')).Count -gt 5 } }
     @{ N = 3; Name = '03-browse-nexus'
        State = 'Browse Nexus, results loaded.'
-       Watch  = 'Signed in, and let thumbnails finish. A grid of grey placeholders is a bad advert.' }
+       Watch  = 'Signed in, and let thumbnails finish. A grid of grey placeholders is a bad advert.'
+       Nav    = { Open-Game 'windrose'
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'BrowseNexusButton'
+                  if (-not $b) { return $false }
+                  $before = (@(Get-Tree (Get-AppRoot))).Count
+                  Invoke-Node $b
+                  # The cards carry no bound id - they are GridView items over a plain template - so
+                  # readiness is measured as the storefront chrome arriving AND the tree growing by a
+                  # gridful. Thumbnails then get a beat of their own: a grid of grey placeholders is
+                  # the one thing this shot must not be.
+                  if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'NexusQueryBox') } 25)) { return $false }
+                  Wait-For { (@(Get-Tree (Get-AppRoot))).Count -gt ($before + 40) } 25
+                  Start-Sleep -Seconds 6
+                  (@(Get-Tree (Get-AppRoot))).Count -gt ($before + 40) } }
     @{ N = 4; Name = '04-updates-view'
        State = 'The updates view with at least one update pending.'
-       Watch  = 'An empty updates list says nothing about the feature.' }
+       Watch  = 'An empty updates list says nothing about the feature.'
+       Nav    = { Go-Home
+                  $e = Find-ById (Get-Tree (Get-AppRoot)) 'LibraryUpdatesEntry'
+                  if (-not $e) { return $false }
+                  Invoke-Node $e
+                  Wait-For { (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'UpdateRow.')).Count -gt 0 } 20 } }
     @{ N = 5; Name = '05-add-game'
        State = 'The +Game dialog, open over the library.'
-       Watch  = 'Do not show a path containing anything you would not publish.' }
+       Watch  = 'Do not show a path containing anything you would not publish.'
+       Nav    = { Go-Home
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'AddGameButton'
+                  if (-not $b) { return $false }
+                  Invoke-Node $b
+                  if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'GameNameBox') } 20)) { return $false }
+                  # The Steam list draws its cover art asynchronously; shooting immediately gives a
+                  # column of grey rectangles next to the game names.
+                  Start-Sleep -Seconds 5
+                  $true } }
     @{ N = 6; Name = '06-settings'
-       State = 'Settings, scrolled to show the theme picker.'
-       Watch  = 'THE POINT OF THIS RETAKE. Confirm the selected theme is navy (626 Labs), not Forge.' }
+       State = 'Settings, open on Appearance.'
+       Watch  = 'THE POINT OF THIS RETAKE: the four-group shape. Appearance heading visible, and the ' +
+                'Accounts heading below it. The theme picker moved to the toolbar - it is not in here.'
+       Nav    = { Open-Game 'windrose'
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsButton'
+                  if (-not $b) { return $false }
+                  Invoke-Node $b
+                  Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.appearance') } 15 } }
     @{ N = 7; Name = '07-saves-snapshots'
        State = 'Saves / snapshots for a game that has some.'
-       Watch  = 'Real snapshots with real timestamps. This is the reversibility promise made visible.' }
+       Watch  = 'Real snapshots with real timestamps. This is the reversibility promise made visible.'
+       Nav    = { # Elden Ring, not Windrose: this is a FromSoft title, so the save format IS itemised
+                  # and the dialog shows real characters. On Windrose the same dialog is three lines
+                  # of "No save files / No editable characters / No save mods installed", which is
+                  # the exact opposite of the reversibility promise this shot is meant to make.
+                  Open-Game 'elden-ring'
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'SavesButton'
+                  if (-not $b) { return $false }
+                  Invoke-Node $b
+                  # Test-DialogOpen answers a different question - it looks for a Win32 common dialog
+                  # (#32770), and this is a WinUI ContentDialog. Wait on a control that only exists
+                  # inside it.
+                  Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'BackupNowButton') } 20 } }
 )
+
+# --- automated navigation (-Auto) ------------------------------------------------------------
+#
+# The capture half of this script was always reliable; the navigation half was the part that needed a
+# person. It does not any more - the same UIA library the smoke harness drives the app with can put
+# each screen up and, more importantly, CONFIRM it arrived. A screenshot of the wrong screen is worse
+# than a missing one: it looks finished.
+
+. (Join-Path $PSScriptRoot 'uia-lib.ps1')
+
+function Wait-For {
+    param([scriptblock]$Until, [int]$Seconds = 15)
+    $deadline = [datetime]::UtcNow.AddSeconds($Seconds)
+    while ([datetime]::UtcNow -lt $deadline) {
+        try { if (& $Until) { return $true } } catch { }
+        Start-Sleep -Milliseconds 700
+    }
+    return $false
+}
+
+function Close-AnyDialog {
+    # Esc, then confirm it actually went. Two shots open ContentDialogs and the one after each would
+    # otherwise photograph the dialog still sitting there.
+    Add-Type -AssemblyName System.Windows.Forms
+    for ($i = 0; $i -lt 3; $i++) {
+        if (-not (Test-ModalOpen -Root (Get-AppRoot))) { return $true }
+        [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+        Start-Sleep -Milliseconds 900
+    }
+    return (-not (Test-ModalOpen -Root (Get-AppRoot)))
+}
+
+function Go-Home {
+    Close-AnyDialog | Out-Null
+    # HomeButton is the game view's way back and does not exist on the full-screen sub-views. The
+    # updates view and the storefront each have their own back button, and missing that put the
+    # +Game dialog on top of the UPDATES list in the first automated set - a shot whose background
+    # was simply the wrong screen, which nothing in the capture path can notice.
+    foreach ($id in @('UpdatesBackButton', 'NexusBackButton')) {
+        $b = Find-ById (Get-Tree (Get-AppRoot)) $id
+        if ($b) { Invoke-Node $b; Start-Sleep -Seconds 3 }
+    }
+    $h = Find-ById (Get-Tree (Get-AppRoot)) 'HomeButton'
+    if ($h) { Invoke-Node $h; Start-Sleep -Seconds 3 }
+    Wait-For { (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'GameRow.')).Count -gt 0 } 15
+}
+
+function Open-Game {
+    param([string]$Id)
+    Close-AnyDialog | Out-Null
+    if (Find-ById (Get-Tree (Get-AppRoot)) 'HomeButton') {
+        # Already on a game view. Only navigate if it is the wrong game.
+        $picker = Find-ById (Get-Tree (Get-AppRoot)) 'GamePicker'
+        if ($picker -and (Get-Text $picker) -and (Get-Text $picker).Length -gt 0) { }
+    }
+    Go-Home | Out-Null
+    $row = Find-ById (Get-Tree (Get-AppRoot)) ("GameRow." + $Id)
+    if (-not $row) { return $false }
+    Invoke-Node $row
+    Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'HomeButton') } 20
+}
 
 Add-Type -AssemblyName System.Drawing
 
@@ -82,6 +201,12 @@ public class Win32Cap {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    // GetWindowRect returns the rect INCLUDING the invisible resize border and drop shadow Windows
+    // keeps around a window. Capturing that rect photographs a few pixels of whatever is behind, along
+    // the bottom and both sides - which is exactly how a terminal window ended up in the bottom edge of
+    // the first automated set. The DWM knows the real visible bounds; ask it.
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
 '@
@@ -97,6 +222,21 @@ function Get-AppWindow {
     return $p.MainWindowHandle
 }
 
+# DWMWA_EXTENDED_FRAME_BOUNDS
+$DwmExtendedFrameBounds = 9
+
+function Get-VisibleBounds {
+    param([IntPtr]$Handle)
+    $e = New-Object Win32Cap+RECT
+    $hr = [Win32Cap]::DwmGetWindowAttribute($Handle, $DwmExtendedFrameBounds, [ref]$e, 16)
+    if ($hr -ne 0) {
+        # Fall back to the outer rect rather than failing - a slightly-too-large capture beats none,
+        # and the dimension check at the end will catch it.
+        [void][Win32Cap]::GetWindowRect($Handle, [ref]$e)
+    }
+    return @{ X = $e.Left; Y = $e.Top; W = $e.Right - $e.Left; H = $e.Bottom - $e.Top }
+}
+
 function Set-WindowExact {
     param([IntPtr]$Handle)
     if ([Win32Cap]::IsIconic($Handle)) { [void][Win32Cap]::ShowWindow($Handle, 9) } # SW_RESTORE
@@ -105,9 +245,37 @@ function Set-WindowExact {
     [void][Win32Cap]::SetWindowPos($Handle, [IntPtr]::Zero, 0, 0, $TargetW, $TargetH, 0x0040)
     Start-Sleep -Milliseconds 400
 
-    $r = New-Object Win32Cap+RECT
-    [void][Win32Cap]::GetWindowRect($Handle, [ref]$r)
-    return @{ X = $r.Left; Y = $r.Top; W = $r.Right - $r.Left; H = $r.Bottom - $r.Top }
+    # Size the OUTER rect so that the VISIBLE frame lands at exactly TargetW x TargetH at 0,0. The
+    # shadow border is typically 7px on each side and the bottom; measuring it beats assuming it.
+    $outer = New-Object Win32Cap+RECT
+    [void][Win32Cap]::GetWindowRect($Handle, [ref]$outer)
+    $vis = Get-VisibleBounds -Handle $Handle
+    $padW = ($outer.Right - $outer.Left) - $vis.W
+    $padH = ($outer.Bottom - $outer.Top) - $vis.H
+    $offX = $vis.X - $outer.Left
+    $offY = $vis.Y - $outer.Top
+    # +2 in each dimension, then capture inset by 1. The visible frame sizes to exactly 1920x1080,
+    # but the CLIENT area inside it is 1918x1079 - there is a 1px window border down the left, right
+    # and bottom which is partly transparent, so the desktop shows through it. That is the 117 bright
+    # pixels that appeared in the bottom rows of every shot in the first automated set, identical
+    # across six different screens because it was never app content at all. Growing the window by two
+    # and taking the middle drops the border entirely and still yields exactly 1920x1080 of app.
+    [void][Win32Cap]::SetWindowPos($Handle, [IntPtr]::Zero, (0 - $offX - 1), (0 - $offY - 1),
+                                   ($TargetW + $padW + 2), ($TargetH + $padH + 2), 0x0040)
+    Start-Sleep -Milliseconds 400
+
+    $vis2 = Get-VisibleBounds -Handle $Handle
+    return @{ X = $vis2.X + 1; Y = $vis2.Y + 1; W = $TargetW; H = $TargetH }
+}
+
+function Hide-Pointer {
+    # Park the cursor off the window and wait for any tooltip to fade. The first automated set caught
+    # two: the settings gear's tooltip across the toolbar, and the updates entry's across a row. A
+    # tooltip is a truthful part of the UI and still wrong in a listing shot - it is transient, it
+    # covers content, and it advertises that a mouse was sitting still.
+    param([int]$X = 0, [int]$Y = 0)
+    [void][Win32Cap]::SetCursorPos(($TargetW + 200), ($TargetH - 100))
+    Start-Sleep -Milliseconds 1400
 }
 
 function Save-Capture {
@@ -161,11 +329,22 @@ if (-not $handle) {
 #
 # If a future release DOES change one of these views, this reasoning expires. Re-check the diff.
 
+if (-not $Auto) {
 Write-Host ''
 Write-Host '  STEP 0 - before anything else:' -ForegroundColor Magenta
 Write-Host '  Set the theme to 626 Labs (navy) in the toolbar theme picker. That is the entire point' -ForegroundColor Magenta
 Write-Host '  of this retake - the live listing shows Forge and the app now opens navy.' -ForegroundColor Magenta
 Read-Host '  Press Enter once the app is navy'
+}
+else {
+    # -Auto reads the theme rather than asking. It is a toolbar control now, so it can be checked.
+    $tp = Find-ById (Get-Tree (Get-AppRoot)) 'ThemePicker'
+    $theme = if ($tp) { Get-Text $tp } else { '(no ThemePicker found)' }
+    Write-Host ("  theme reads '{0}'" -f $theme) -ForegroundColor Cyan
+    if ($theme -notmatch '626') {
+        throw "Theme is '$theme', not 626 Labs. Switch it before capturing - the whole set has to match."
+    }
+}
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
@@ -178,6 +357,7 @@ Write-Host '  The window is resized for you. Navigate, then press Enter. S skips
 Write-Host ''
 
 $done = @()
+$failed = @()
 foreach ($shot in $plan) {
     Write-Host ("  [{0}/7] {1}" -f $shot.N, $shot.Name) -ForegroundColor White
     Write-Host ("        {0}" -f $shot.State) -ForegroundColor Gray
@@ -189,12 +369,29 @@ foreach ($shot in $plan) {
                     "minimum size. Capturing anyway; check the result.") -ForegroundColor Yellow
     }
 
-    $ans = Read-Host '        Ready? [Enter=capture / s=skip / q=quit]'
-    if ($ans -eq 'q') { Write-Host '        Stopped.' -ForegroundColor Yellow; break }
-    if ($ans -eq 's') { Write-Host '        Skipped.' -ForegroundColor DarkGray; Write-Host ''; continue }
+    if ($Auto) {
+        if (-not $shot.Nav) { Write-Host '        no Nav block - skipped.' -ForegroundColor Yellow; Write-Host ''; continue }
+        $ok = $false
+        try { $ok = [bool](& $shot.Nav | Select-Object -Last 1) } catch { $ok = $false }
+        if (-not $ok) {
+            # Named, not photographed hopefully. The summary lists what is missing and a partial set
+            # cannot be uploaded, so a failed Nav stops the set rather than poisoning it.
+            Write-Host '        could not reach this state - NOT captured.' -ForegroundColor Red
+            Write-Host ''
+            $failed += $shot.Name
+            continue
+        }
+        Start-Sleep -Milliseconds 900
+    }
+    else {
+        $ans = Read-Host '        Ready? [Enter=capture / s=skip / q=quit]'
+        if ($ans -eq 'q') { Write-Host '        Stopped.' -ForegroundColor Yellow; break }
+        if ($ans -eq 's') { Write-Host '        Skipped.' -ForegroundColor DarkGray; Write-Host ''; continue }
+    }
 
     # Re-assert position and give the prompt's focus steal time to settle before reading the desktop.
     $rect = Set-WindowExact -Handle $handle
+    Hide-Pointer
     Start-Sleep -Milliseconds 600
 
     $path = Join-Path $OutDir "$($shot.Name).png"
@@ -206,6 +403,9 @@ foreach ($shot in $plan) {
 }
 
 Write-Host '  ---' -ForegroundColor DarkGray
+if ($failed) {
+    Write-Host ("  {0} shot(s) could not be navigated to: {1}" -f $failed.Count, ($failed -join ', ')) -ForegroundColor Red
+}
 if ($done) {
     $done | Format-Table -AutoSize
     $bad = $done | Where-Object { $_.Dims -ne "${TargetW}x${TargetH}" }
