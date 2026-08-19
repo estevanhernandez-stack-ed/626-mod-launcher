@@ -142,4 +142,35 @@ public static class GameStateStrip
     /// <para>So severity decides COLOUR and ORDER. It does not decide whether the user is told.</para></summary>
     public static GameStateChip? LeadFor(IReadOnlyList<GameStateChip>? chips)
         => chips is null || chips.Count == 0 ? null : chips[0];
+
+    /// <summary>
+    /// Which chip should be showing its sentence, given what the user last had open.
+    ///
+    /// <para>Keeping the open chip across a rebuild is right: a toggle or a rescan should not yank the
+    /// sentence someone is reading. But it must NOT outrank a condition that has just appeared and is
+    /// worse than the one they were reading.</para>
+    ///
+    /// <para><b>Found on the rig, not in a test.</b> Uninstalling UE4SS from Windrose made
+    /// <c>framework-missing</c> (Danger) appear while <c>steam-updated</c> (Warning) was open — and the
+    /// Warning kept the sentence, so the app quietly acquired a Danger-level condition and went on
+    /// showing the milder one. That is this whole strip's thesis inverted, and it is the SECOND time
+    /// this mechanism produced it: the first was carrying an expansion across a game switch, which is
+    /// why the sameGame check exists at the call site. A convenience that preserves state has to be
+    /// told what outranks it.</para>
+    ///
+    /// <para>So: keep the previous chip only while it is still at least as severe as the lead.</para>
+    /// </summary>
+    public static GameStateChip? ExpandedFor(IReadOnlyList<GameStateChip>? chips, string? previouslyExpandedId)
+    {
+        if (chips is null || chips.Count == 0) return null;
+
+        var lead = chips[0];
+        if (previouslyExpandedId is null) return lead;
+
+        var kept = chips.FirstOrDefault(c => c.Id == previouslyExpandedId);
+        if (kept is null) return lead;
+
+        // Danger < Warning < Info by enum order, so "at least as severe" is <=.
+        return kept.Severity <= lead.Severity ? kept : lead;
+    }
 }

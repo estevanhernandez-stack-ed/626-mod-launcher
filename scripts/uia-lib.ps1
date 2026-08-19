@@ -349,7 +349,16 @@ function Test-ModalOpen {
             $ct = $e.Current.ControlType.ProgrammaticName
             if ($ct -match 'ControlType\.(Window|Dialog)$' -and $e.Current.Name) {
                 # The app's own top-level window is not a modal.
-                if ($e.Current.Name -ne $Root.Current.Name) { return $e.Current.Name }
+                if ($e.Current.Name -eq $Root.Current.Name) { continue }
+                # Neither is anything OFFSCREEN. A WinUI tooltip is a Popup, a Popup is a Window, and
+                # it lingers in the tree after a UIA Invoke - so adding a tooltip to + Add mods in
+                # wave 10 made this report "a modal is open ('Popup')" and failed two intake cases.
+                # The popup's whole content was the tooltip text. Whatever a modal is, it is on screen:
+                # asking "can I assert on the surface behind this" has no meaning for something that
+                # covers nothing. Red for a false reason is the safe direction to be wrong in, and it
+                # still cost two runs and a wrong first diagnosis ("stuck picker broker") to clear.
+                if ($e.Current.IsOffscreen) { continue }
+                return $e.Current.Name
             }
         } catch {}
     }

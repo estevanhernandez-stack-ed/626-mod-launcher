@@ -44,6 +44,6 @@
                    Visibility="Collapsed" />
         <TextBlock x:Name="LocationText" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap" />
         <TextBlock Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}" TextWrapping="Wrap"
-                   Text="Reversible from Settings → Installed frameworks. The launcher snapshots replaced files before extraction." />
+                   Text="Reversible — remove it from its chip in the tools row. The launcher snapshots replaced files before extraction and puts them back." />
     </StackPanel>
 </ContentDialog>

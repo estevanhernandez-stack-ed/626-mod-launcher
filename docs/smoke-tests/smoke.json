@@ -2302,18 +2302,24 @@
       "title": "The NEEDS chip is a button that offers the install",
       "surface": "Wave 8 item 5",
       "coverage": "harness",
-      "status": "pending",
+      "status": "verified",
       "steps": [],
       "source": "scripts/smoke-run.ps1",
       "action": "Look for ModNeeds.* on a game with a missing framework.",
-      "expect": "Present and addressable, its name offering to install. It was a HyperlinkButton to a GitHub releases page - a list of files a first-time modder cannot choose between. NOT YET ASSERTED against a real chip: every framework a mod needs is installed on this machine, so the case returns \"nothing is missing a framework\" and passes without checking anything. It will assert the moment a chip exists. Recorded as pending rather than verified because a green that never ran is the cherry-picked denominator."
+      "expect": "Present and addressable, its name offering to install. It was a HyperlinkButton to a GitHub releases page - a list of files a first-time modder cannot choose between. NOT YET ASSERTED against a real chip: every framework a mod needs is installed on this machine, so the case returns \"nothing is missing a framework\" and passes without checking anything. It will assert the moment a chip exists. Recorded as pending rather than verified because a green that never ran is the cherry-picked denominator.",
+      "lastVerified": {
+        "release": "v0.19.0",
+        "date": "2026-08-19",
+        "by": "agent",
+        "note": "Asserted against a REAL chip for the first time on 2026-08-19: uninstalling UE4SS from Windrose produced a live NEEDS UE4SS chip, the offer opened with both doors, and installing from a file through it restored all 27 rows. Windrose was restored byte-exact afterwards."
+      }
     },
     {
       "id": "needs-chip-installs-from-a-file",
       "title": "The NEEDS chip's offer installs a framework the user already downloaded",
       "surface": "Wave 8 item 5",
       "coverage": "human",
-      "status": "pending",
+      "status": "verified",
       "steps": [
         "Open a game with a NEEDS chip (Windrose shows UE4SS).",
         "Click the chip.",
@@ -2323,7 +2329,13 @@
       "source": "docs/smoke-tests/smoke.json",
       "action": "Drive the offer's install door with a real archive.",
       "expect": "The existing FrameworkInstallDialog appears naming the files and the destination, and installing them makes the NEEDS chip go away. Human because it needs a real downloaded archive and writes into the game folder.",
-      "humanReason": "Needs a real framework archive already downloaded, and the install writes into the game folder. The offer and the chip are harness-covered; driving a real file through FrameworkInstallDialog is not."
+      "humanReason": "Needs a real framework archive already downloaded, and the install writes into the game folder. The offer and the chip are harness-covered; driving a real file through FrameworkInstallDialog is not.",
+      "lastVerified": {
+        "release": "v0.19.0",
+        "date": "2026-08-19",
+        "by": "agent (Este supplied the archive)",
+        "note": "Driven end to end with UE4SS_v3.0.1.zip: NEEDS chip -> I already have the file -> picker -> FrameworkInstallDialog -> installed, chips cleared, 15 rows back to 27. Found that a 3.0.x zip extracts to the install ROOT rather than ue4ss/, producing a duplicate install alongside an existing one - filed separately."
+      }
     },
     {
       "id": "settings-groups-in-consequence-order",

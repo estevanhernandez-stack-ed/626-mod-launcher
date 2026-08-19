@@ -1227,13 +1227,11 @@ public sealed partial class MainWindow : Window
 
         var rp = App.AppHost.Services.GetRequiredService<Services.RestorePointService>();
 
-        if (dialog.ToolConfigureRequested is { } toolRow)
-        {
-            var cfg = new Tools.ToolConfigureDialog(toolRow.Entry, toolRow.DataDir) { XamlRoot = Content.XamlRoot };
-            await cfg.ShowAsync();
-            await ViewModel.RefreshAsync(); // repaint the tool rail if the active game's tool changed
-        }
-        else if (dialog.OpenSafeClearRequested)
+        // The tool-configure hand-off used to live here, fed by the Settings tools inventory. Wave 9
+        // moved that inventory out - ToolsPanel already had a Configure flyout on every tool chip - and
+        // this branch survived as a condition that could never be true: read on every Settings close,
+        // set by nothing. Dead code that still compiles is the quietest kind.
+        if (dialog.OpenSafeClearRequested)
         {
             var sc = new SafeClearDialog(hwnd, rp, rp.NexusConnected) { XamlRoot = Content.XamlRoot };
             await sc.ShowAsync();

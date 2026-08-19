@@ -16,23 +16,6 @@ using Windows.UI;
 
 namespace ModManager.App;
 
-/// <summary>One row in the Settings → Installed frameworks list. Pre-formats the detail
-/// string (author + install time + path) so the XAML template doesn't need a value converter.
-/// The Get-link is exposed as a Uri object because x:Bind requires the right binding type.</summary>
-public sealed record InstalledFrameworkRow(
-    string FrameworkId,
-    string DisplayName,
-    string Detail,
-    string GetUrl)
-{
-    public Uri? GetUriObj => string.IsNullOrEmpty(GetUrl) ? null : new Uri(GetUrl);
-
-    // Automation identity. Keyed on FrameworkId rather than DisplayName for the same reason the mod
-    // rows are keyed on the on-disk name: the display string is catalog metadata and can be retitled.
-    public string RowAutomationId => $"Framework.{FrameworkId}";
-    public string GetAutomationName => "Get " + DisplayName;
-    public string UninstallFrameworkAutomationName => "Uninstall " + DisplayName;
-}
 
 
 /// <summary>One row in the Settings → Restore points list. Detail pre-formats the game names
@@ -44,21 +27,6 @@ public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
     public string DeleteAutomationName => "Delete the restore point from " + Timestamp;
 }
 
-/// <summary>One Settings tool row: the entry plus the game data dir that owns it, so
-/// Configure can write back to the right registry (vibe-glow F-032).</summary>
-public sealed record SettingsToolRow(ToolEntry Entry, string DataDir, string? GameName = null)
-{
-    public string DisplayName => Entry.DisplayName;
-    /// <summary>Which game owns this copy — the same tool can be installed per-game, and
-    /// Configure→Uninstall must never ambiguate between copies. Display name when the
-    /// registry knows the game; folder key as the fallback (F-068).</summary>
-    public string GameLabel => $"For {(string.IsNullOrWhiteSpace(GameName) ? System.IO.Path.GetFileName(DataDir) : GameName)}";
-
-    /// <summary>The same tool can be installed per-game, so the name carries the owning game too —
-    /// otherwise two Configure buttons announce identically and a harness cannot tell the copies
-    /// apart, which is the exact ambiguity F-068 fixed for humans.</summary>
-    public string ConfigureAutomationName => $"Configure {DisplayName} ({GameLabel})";
-}
 
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
@@ -102,10 +70,6 @@ public sealed partial class SettingsDialog : ContentDialog
     /// first-ever connect) shows the consent dialog — neither can be nested under this ContentDialog, so we
     /// hand off: MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> after this dialog closes.</summary>
     public bool ConnectNexusRequested { get; private set; }
-
-    /// <summary>Set when the user clicks Configure… on a Settings tool row. MainWindow.OnSettings
-    /// opens ToolConfigureDialog after this dialog closes — same no-nesting hand-off pattern.</summary>
-    public SettingsToolRow? ToolConfigureRequested { get; private set; }
 
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
