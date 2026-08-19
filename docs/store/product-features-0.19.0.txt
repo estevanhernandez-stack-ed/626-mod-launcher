@@ -1,0 +1,17 @@
+Reads your installed games (Steam libraries detected automatically) and manages each one's mods in one place.
+Installs mods by reading the archive first, then placing files where the game's loader expects them - engine-aware, not one-size-fits-all.
+Turns mods on and off reversibly - disabling moves files to a holding folder, never deletes.
+Manages load order for the loaders that care about it.
+Snapshots your save files before you experiment, and restores them when you want to go back.
+Edits mod config and INI files with a built-in editor that keeps a previous version you can restore.
+Saves your current set of mods as a profile, so you can switch between setups.
+Keeps restore points of your whole setup, so a bad afternoon is one click away from undone.
+Warns you before enabling mods on games with anti-cheat, so an experiment doesn't cost you an account.
+Browse Nexus Mods inside the launcher - sorted, filterable, and marked with what you already have. Get opens the mod page to download.
+Tells you which of your installed mods have a newer version on Nexus, across every game at once.
+Endorse the mods you are using without leaving the app.
+Shows what needs your attention about a game in one row, worst first - anti-cheat risk, missing prerequisites, setup problems, game updates.
+Installs a mod's missing prerequisite from an archive you already have, instead of leaving you on a downloads page.
+Finds mods you installed by hand and adopts them, so an existing setup does not have to be rebuilt.
+Leaves folders another mod manager is already looking after alone, and tells you that it has.
+Themes the whole app to taste.
