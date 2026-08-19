@@ -42,12 +42,19 @@ jobs:
         run: dotnet test tests/ModManager.Tests/ModManager.Tests.csproj -c Release --logger "console;verbosity=minimal"
 
       - name: Build Store MSIX bundle
-        # Configuration=Store -> sealed core (FULL undefined) + single-project MSIX. Unsigned: the Store
-        # re-signs at submission, so no cert ever lives in CI. x64 bundle (ARM64 is a later decision).
+        # Configuration=Store -> sealed core (FULL undefined) + single-project MSIX + Nexus compiled in.
+        # Unsigned: the Store re-signs at submission, so no cert ever lives in CI. x64 bundle (ARM64 is a
+        # later decision).
+        #
+        # Nexus needs no flag here and deliberately so. It used to require -p:StoreNexus=true, this step
+        # never passed it, and so every package this workflow produced shipped with NO NEXUS while
+        # everyone believed otherwise. The default moved into the csproj; the seal below now fails if
+        # Nexus is missing, so the same mistake cannot be made silently twice.
         run: dotnet build src/ModManager.App/ModManager.App.csproj -c Store -p:Platform=x64 -p:Version=${{ github.event.inputs.version }}
 
       - name: Verify Store seal
-        # Fail the build if the plugin loader or the EAC-disable mechanism leaked into the Store binaries.
+        # Two halves: the plugin loader and the EAC-disable mechanism must be ABSENT, and the compiled-in
+        # Nexus must be PRESENT. Absence-only is how an empty box gets certified.
         # -SkipBuild scans the bundle we just built (no redundant rebuild at a different version).
         shell: pwsh
         run: ./scripts/check-store-seal.ps1 -SkipBuild
