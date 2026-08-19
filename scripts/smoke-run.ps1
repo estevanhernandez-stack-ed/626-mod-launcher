@@ -227,6 +227,76 @@ Case 'theme-picker-reads-current' 'road-to-zero B2 / D2' {
     "current theme reads '$(Get-Text $tp)'"
 }
 
+Case 'state-strip-coherent' 'Wave 7 game-state strip' {
+    # The invariant that matters, and the one the first build of this strip broke: a chip must never
+    # be the ONLY thing said. Gating the expanded sentence on Danger severity collapsed Windrose's
+    # "Steam updated this game" - a full-width banner with a one-click Mark as rechecked - down to a
+    # four-letter chip reading UPDATED with the sentence and the button both a tap away. Fewer
+    # surfaces has to mean less clutter, never less information.
+    $t = Get-Tree $root
+    Assert-OnGameView $t
+    $chips = @(Find-AllByIdPrefix $t 'StateChip.')
+    if ($chips.Count -eq 0) { return "no conditions hold on '$($script:gameId)' - strip correctly absent" }
+
+    Assert-True ($null -ne (Find-ById $t 'GameStateStrip')) "chips present but no GameStateStrip container"
+    $detail = Find-ById $t 'StateChipDetail'
+    Assert-True ($null -ne $detail) "$($chips.Count) chip(s) and no expanded sentence - a label is not information"
+    $sentence = Get-Text $detail
+    Assert-True (-not [string]::IsNullOrWhiteSpace($sentence)) "StateChipDetail is empty"
+    "$($chips.Count) chip(s), leading with '$sentence'"
+}
+
+Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
+    # The assertion that would have caught the original fault. Before this wave the highest-
+    # consequence line in the app had AutomationProperties.HelpText and NO AutomationId, so a harness
+    # could assert the low-stakes banners existed and could not cleanly assert this one did. It is
+    # keyed on the FACT (StateChip.ban-risk), which is why the same assertion held before and after
+    # the move.
+    $t = Get-Tree $root
+    if (Find-ById $t 'HomeButton') { Invoke-Node (Find-ById $t 'HomeButton'); Wait-Idle 3000 }
+
+    $rows = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.')
+    $target = $null
+    foreach ($r in $rows) {
+        $texts = @(Get-Tree $r | ForEach-Object { try { $_.Current.Name } catch { '' } })
+        if ($texts -contains 'BAN RISK') { $target = $r; break }
+    }
+    if ($null -eq $target) { throw "SKIP: no ban-risk game registered on this machine" }
+
+    $id = ($target.Current.AutomationId -replace '^GameRow\.','')
+    try {
+        Invoke-Node $target; Wait-Idle 5000
+        $t2 = Get-Tree $root
+        Assert-OnGameView $t2
+        $chip = Find-ById $t2 'StateChip.ban-risk'
+        Assert-True ($null -ne $chip) "'$id' is flagged ban-risk in the library and shows no ban-risk chip"
+
+        # First in the strip, not merely present. The whole fault was a true statement rendered small.
+        $chips = @(Find-AllByIdPrefix $t2 'StateChip.')
+        Assert-True ($chips[0].Current.AutomationId -eq 'StateChip.ban-risk') "ban risk is not the first chip"
+
+        # And the sentence on show is ITS sentence. This is what caught the bug: Palworld is both
+        # ban-risk and Steam-updated, and arriving from Windrose - where the Steam chip was expanded -
+        # kept the Steam sentence showing while BAN RISK sat first in the row, unread.
+        $said = Get-Text (Find-ById $t2 'StateChipDetail')
+        Assert-True ($said -match 'anti-cheat') "the leading sentence does not mention anti-cheat: '$said'"
+        "'$id': ban risk leads the strip, reading '$said'"
+    }
+    finally {
+        # Put the fixture back, INCLUDING on failure. This case navigates to a game of its own
+        # choosing, and the first run left the app parked on a no-mods game after the assertion threw:
+        # five later cases went red for a fixture reason and read as five new bugs. A harness that
+        # reorganises the app it just verified is its own bug; one that tidies up only when everything
+        # passed is worse, because it hides the mess exactly when there is one.
+        if ($script:gameId -and $id -ne $script:gameId) {
+            $h = Find-ById (Get-Tree $root) 'HomeButton'
+            if ($h) { Invoke-Node $h; Wait-Idle 3000 }
+            $back = Find-ById (Get-Tree $root) ("GameRow." + $script:gameId)
+            if ($back) { Invoke-Node $back; Wait-Idle 5000 }
+        }
+    }
+}
+
 Case 'group-combo-selection-without-opening' 'Group the mod list' {
     $t = Get-Tree $root
     Assert-OnGameView $t

@@ -2228,6 +2228,40 @@
       "expect": "The listed row count changes and the enabled count does NOT. Verified on Windrose: ALL 27 rows, MP 11 rows, status held at \"27 of 27 enabled\" throughout. Before wave 6, clicking MP disabled 16 mods.",
       "steps": [],
       "source": "scripts/smoke-run.ps1"
+    },
+    {
+      "id": "state-strip-coherent",
+      "title": "A state chip is never the only thing said",
+      "surface": "Wave 7 game-state strip",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 7. Re-run after any change to the game-state strip."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "On a game view, count StateChip.* and read StateChipDetail.",
+      "expect": "Either no chips at all, or chips PLUS an expanded sentence. The first build of this strip gated the sentence on Danger severity, which reduced Windrose's Steam-updated banner to a four-letter chip with its sentence and its one-click action both a tap away."
+    },
+    {
+      "id": "ban-risk-chip-addressable",
+      "title": "The ban-risk warning is reachable by id and leads the strip",
+      "surface": "Wave 7 game-state strip",
+      "coverage": "harness",
+      "status": "verified",
+      "lastVerified": {
+        "release": "v0.18.1",
+        "date": "2026-08-18",
+        "by": "harness",
+        "note": "Added with wave 7. Re-run after any change to the game-state strip."
+      },
+      "steps": [],
+      "source": "scripts/smoke-run.ps1",
+      "action": "Open a game the library flags BAN RISK, then look for StateChip.ban-risk.",
+      "expect": "Present, first in the strip, and the leading sentence mentions anti-cheat. Before wave 7 this warning had HelpText and no AutomationId, so it was the one banner a harness could not cleanly assert - and it rendered as a Border Padding=8,2 beside the theme picker."
     }
   ]
 }

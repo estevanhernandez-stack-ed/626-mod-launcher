@@ -283,58 +283,12 @@
                 <Button AutomationProperties.AutomationId="CancelOrderButton" Content="Cancel" Click="OnCancelOrder" />
             </StackPanel>
             <!-- Right cluster: VIEW (group-by) · SETTINGS (theme picker) · standalone Nexus indicator.
-                 Informational widgets (CoopHint / MpWarning / LaunchHint) sit at the left edge of this
-                 stack and don't belong to any labeled section - they're visibility-toggled status banners.
+                 Every control here belongs to a labeled section. The four status widgets that used to
+                 sit at the left edge of this stack - co-op hint, MP warning, ban risk, launch options -
+                 moved into the game-state strip above the mod list: they were STATE, not controls, and
+                 the most consequential of them was the smallest thing on the screen.
                  Nexus has no section label - its dot color (accent / danger) signals the state. -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Bottom">
-                <Button AutomationProperties.AutomationId="CoopHintButton" AutomationProperties.Name="Co-op hint" Click="OnCoopHint" Background="Transparent" BorderThickness="0" VerticalAlignment="Bottom"
-                        ToolTipService.ToolTip="Seamless Co-op is installed but its launcher is missing — co-op needs the full mod"
-                        Visibility="{x:Bind ViewModel.CoopHintVisibility, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
-                        <TextBlock Text="Co-op needs its launcher" Foreground="{StaticResource ThemeDanger}" />
-                    </StackPanel>
-                </Button>
-                <Border Padding="8,2" CornerRadius="0" VerticalAlignment="Bottom" Margin="6,0,0,0"
-                        ToolTipService.ToolTip="Some enabled mods may desync co-op — review before hosting or joining"
-                        Visibility="{x:Bind ViewModel.MpWarningVisibility, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
-                        <TextBlock AutomationProperties.HelpText="Some enabled mods may desync co-op — review before hosting or joining" Text="{x:Bind ViewModel.MpWarningText, Mode=OneWay}"
-                                   Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
-                <!-- Ban-risk banner: game-level anti-cheat exposure, distinct from the per-mod
-                     co-op-desync warning above. Both can be visible at once; they must read as two
-                     separate warnings. Stays up even after the enable gate is acked.
-                     Danger alerts are a sanctioned glow surface (F-002), but a rect bloom behind
-                     transparent danger text read red-on-red (Este's call) — the host now sits
-                     behind the TEXT and the shadow is glyph-masked: a slight drop shadow under
-                     the letterforms. See Bloom.AttachTextShadow. -->
-                <Grid VerticalAlignment="Bottom" Margin="6,0,0,0"
-                      Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
-                <Border x:Name="BanRiskBanner" Padding="8,2" CornerRadius="0"
-                        ToolTipService.ToolTip="This game uses anti-cheat — modding for online play can get your account banned"
-                        Visibility="{x:Bind ViewModel.BanRiskWarningVisibility, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeDanger}" />
-                        <Grid>
-                            <Border x:Name="BanRiskBloomHost" />
-                            <TextBlock x:Name="BanRiskText" AutomationProperties.HelpText="This game uses anti-cheat — modding for online play can get your account banned" Text="{x:Bind ViewModel.BanRiskWarningText, Mode=OneWay}"
-                                       Foreground="{StaticResource ThemeDanger}" VerticalAlignment="Center" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
-                </Grid>
-                <Button AutomationProperties.AutomationId="LaunchOptionsButton" AutomationProperties.Name="Launch options" Click="OnLaunchOptions" Foreground="{StaticResource ThemeAccent}" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
-                        VerticalAlignment="Bottom" Margin="6,0,0,0"
-                        ToolTipService.ToolTip="This game needs a launch option for mods to load"
-                        Visibility="{x:Bind ViewModel.LaunchHintVisibility, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource BodyFontSize}" />
-                        <TextBlock Text="Launch options" Foreground="{StaticResource ThemeAccent}" />
-                    </StackPanel>
-                </Button>
                 <!-- VIEW: how the mod list is grouped -->
                 <StackPanel Orientation="Vertical" Spacing="2" Margin="10,0,0,0">
                     <TextBlock Text="VIEW" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource TagFontSize}" FontFamily="{StaticResource StencilFontFamily}" FontStretch="Condensed" FontWeight="SemiBold" CharacterSpacing="80" />
@@ -390,65 +344,86 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Vortex-managed banners (owned + re-deployed). Stacked so both render cleanly if
-                 both ever apply at once. Dismiss collapses the whole area for the session. -->
-            <StackPanel x:Name="VortexBannerArea" Grid.Row="0">
-                <!-- Owned folders not yet taken over -->
-                <Border Visibility="{x:Bind ViewModel.OwnedBannerVisibility, Mode=OneWay}"
-                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
-                        BorderThickness="0,0,0,1" Padding="12,6">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="Some folders here are managed by Vortex." VerticalAlignment="Center" />
-                        <Button AutomationProperties.AutomationId="VortexTakeOverButton" Content="Take them over" Click="OnTakeOverGame" />
-                        <Button AutomationProperties.AutomationId="VortexDismissButton" Content="Dismiss" Click="OnDismissVortexBanner" />
-                    </StackPanel>
-                </Border>
+            <!-- The game-state strip.
 
-                <!-- Taken over, but a Vortex marker came back -->
-                <Border Visibility="{x:Bind ViewModel.ReDeployedBannerVisibility, Mode=OneWay}"
-                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeDanger}"
-                        BorderThickness="0,0,0,1" Padding="12,6">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="Vortex re-deployed into a folder you took over." VerticalAlignment="Center" />
-                        <Button AutomationProperties.AutomationId="VortexTakeOverAgainButton" Content="Take over again" Click="OnTakeOverGame" />
-                    </StackPanel>
-                </Border>
+                 What replaced what: four full-width banners stacked here in DECLARATION ORDER
+                 (Vortex-managed, Vortex re-deployed, setup drift, Steam updated), each with its own
+                 markup and its own dismiss grammar, plus four inline warnings in the command bar's
+                 right cluster (co-op, MP desync, BAN RISK, launch options). Eight surfaces, two
+                 registers, three ways to make one go away.
 
-                <!-- Setup banner: shown only when drift is provably costing something (no mods found
-                     AND a declared folder that isn't there). Same grammar as the Vortex banners —
-                     statement of fact, one verb, a Dismiss. -->
-                <Border x:Name="SetupBanner"
-                        Visibility="{x:Bind ViewModel.SetupBannerVisibility, Mode=OneWay}"
-                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
-                        BorderThickness="0,0,0,1" Padding="12,6">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="No mods found here, and the folder this game is set to look in doesn't exist."
-                                   VerticalAlignment="Center" TextWrapping="Wrap" />
-                        <Button AutomationProperties.AutomationId="SetupBannerCheckButton" Content="Check setup" Click="OnCheckSetup" />
-                        <Button AutomationProperties.AutomationId="SetupBannerDismissButton" Content="Dismiss" Click="OnDismissSetupBanner" />
-                    </StackPanel>
-                </Border>
+                 The weights ran backwards against consequence: the warning that can cost someone
+                 their account rendered as a Border Padding="8,2" beside the theme picker, while
+                 "another tool has files in a folder" took a full-width bar and pushed the mods down.
 
-                <!-- Steam updated this game since we last recorded its build — installed mods may need rechecking.
-                     Dismiss ("Mark as rechecked") re-baselines to the live build via the view-model. -->
-                <Border Visibility="{x:Bind ViewModel.SteamBuildWarningVisibility, Mode=OneWay}"
-                        Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeDanger}"
-                        BorderThickness="0,0,0,1" Padding="12,6">
-                    <Grid ColumnSpacing="8" VerticalAlignment="Center">
+                 One row of chips now, ordered by GameStateStrip.For in Core - the ranking is the
+                 arguable part, so it is a tested decision rather than whatever order someone added
+                 markup in. The most severe chip's sentence shows without anyone tapping anything.
+
+                 ONE dismiss grammar, stated once: a chip carries Dismiss only when dismissing hides
+                 nothing that is still true. Ban risk never can. "Mark as rechecked" is still here
+                 because it is an ACTION - it re-records the build baseline - not a dismissal. -->
+            <Border x:Name="GameStateStripHost" Grid.Row="0"
+                    Visibility="{x:Bind ViewModel.StateStripVisibility, Mode=OneWay}"
+                    Background="{StaticResource ThemeBarBg}" BorderBrush="{StaticResource ThemeBorder}"
+                    BorderThickness="0,0,0,1" Padding="12,6">
+                <StackPanel Spacing="6">
+                    <!-- Bound ids, not static ones: a static AutomationId inside a DataTemplate
+                         repeats on every chip and the walker picks whichever it reached first.
+                         See .claude/rules/automation-ids.md. -->
+                    <ItemsControl AutomationProperties.AutomationId="GameStateStrip"
+                                  AutomationProperties.Name="What is true about this game"
+                                  ItemsSource="{x:Bind ViewModel.StateChips, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GameStateChipViewModel">
+                                <Button AutomationProperties.AutomationId="{x:Bind ChipAutomationId}"
+                                        AutomationProperties.Name="{x:Bind ChipAutomationName}"
+                                        Command="{x:Bind SelectCommand}"
+                                        Background="Transparent" BorderBrush="{x:Bind Accent}"
+                                        BorderThickness="1" CornerRadius="0" Padding="8,2">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="{StaticResource BodyFontSize}"
+                                                  Foreground="{x:Bind Accent}" />
+                                        <TextBlock Text="{x:Bind Label}" Foreground="{x:Bind Accent}"
+                                                   FontFamily="{StaticResource StencilFontFamily}"
+                                                   FontStretch="Condensed" FontWeight="SemiBold"
+                                                   CharacterSpacing="80" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- The expanded chip's sentence. Says the CONSEQUENCE, never the definition. -->
+                    <Grid ColumnSpacing="8" VerticalAlignment="Center"
+                          Visibility="{x:Bind ViewModel.StateDetailVisibility, Mode=OneWay}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="{StaticResource RowTitleFontSize}" VerticalAlignment="Center"
-                                  Foreground="{StaticResource ThemeDanger}" />
-                        <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SteamBuildMessage, Mode=OneWay}"
+                        <TextBlock AutomationProperties.AutomationId="StateChipDetail" Grid.Column="0"
+                                   Text="{x:Bind ViewModel.StateDetailText, Mode=OneWay}"
+                                   Foreground="{x:Bind ViewModel.StateDetailAccent, Mode=OneWay}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />
-                        <Button AutomationProperties.AutomationId="MarkRecheckedButton" Grid.Column="2" Content="Mark as rechecked" VerticalAlignment="Center"
-                                Command="{x:Bind ViewModel.DismissBuildWarningCommand}" />
+                        <Button AutomationProperties.AutomationId="StateChipAction" Grid.Column="1"
+                                Content="{x:Bind ViewModel.StateDetailActionLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.RunStateChipActionCommand}"
+                                Visibility="{x:Bind ViewModel.StateDetailActionVisibility, Mode=OneWay}"
+                                VerticalAlignment="Center" />
+                        <Button AutomationProperties.AutomationId="StateChipDismiss" Grid.Column="2"
+                                Content="Dismiss"
+                                Command="{x:Bind ViewModel.DismissStateChipCommand}"
+                                Visibility="{x:Bind ViewModel.StateDetailDismissVisibility, Mode=OneWay}"
+                                VerticalAlignment="Center" />
                     </Grid>
-                </Border>
-            </StackPanel>
+                </StackPanel>
+            </Border>
 
             <!-- Mod list -->
             <ListView AutomationProperties.AutomationId="ModListView" AutomationProperties.Name="Mods" x:Name="ModListView" Grid.Row="1" Padding="8,4" KeyDown="OnModListKeyDown"

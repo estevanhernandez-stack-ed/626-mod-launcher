@@ -35,7 +35,10 @@ public sealed partial class MainWindow : Window
         // primary action blooms accent, the ban-risk banner blooms danger. Color + blur + alpha
         // come from the applied theme's accent_bloom; ThemeService.Apply re-styles them live.
         Services.Bloom.Attach(LaunchBloomHost, LaunchSplitButton, Services.BloomToken.Accent);
-        Services.Bloom.AttachTextShadow(BanRiskBloomHost, BanRiskText, Services.BloomToken.Danger);
+        // The ban-risk text shadow went with the inline warning it decorated. The glow existed to
+        // help a Border Padding="8,2" beside the theme picker get noticed; the same fact now leads
+        // the game-state strip as a danger-coloured sentence under a danger-outlined chip. A glow on
+        // top of that is decoration for a problem that no longer exists.
 
         // Active nav glow (F-077): a segment is lit exactly while its fill IS the shared accent
         // brush instance — the same signal the VM uses to mark it active. Reference equality is
@@ -108,16 +111,12 @@ public sealed partial class MainWindow : Window
                         Array.Empty<(string, ModManager.Plugins.Abstractions.SourceSearchHit)>());
             return (dialog.ApprovedAdoptions(), dialog.ApprovedIdentifications());
         };
-        // Keep a session dismiss of the Vortex banner sticky across reloads: when the VM recomputes
-        // the banner visibility, re-collapse the area if the user already dismissed it this session.
+        // A chip's action opens a dialog, and dialogs live here. The view-model says WHICH FACT the
+        // user pressed on; this decides what that opens. That split is what lets the ranking stay a
+        // pure Core decision with no view types anywhere near it.
+        ViewModel.StateChipActionRequested += OnStateChipAction;
         ViewModel.PropertyChanged += (_, args) =>
         {
-            if (_suppressVortexBanner
-                && (args.PropertyName == nameof(MainViewModel.OwnedBannerVisibility)
-                    || args.PropertyName == nameof(MainViewModel.ReDeployedBannerVisibility)))
-                VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
-            if (_suppressSetupBanner && args.PropertyName == nameof(MainViewModel.SetupBannerVisibility))
-                SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
             // The storefront is scoped to one game. Switching games from the title-bar switcher while it
             // is open would leave it labelled for the game you just left, so close it instead.
             if (args.PropertyName == nameof(MainViewModel.ActiveGame))
@@ -1370,13 +1369,11 @@ public sealed partial class MainWindow : Window
             await ViewModel.RemoveActiveGameAsync();
     }
 
-    // Session-level dismiss for the Vortex banner area (set from the Dismiss button).
-    private bool _suppressVortexBanner;
-
-    // Session-level dismiss for the setup banner (set from its Dismiss button). Same shape as
-    // _suppressVortexBanner: the x:Bind is OneWay to the VM, so a raw Visibility write here would
-    // just be overwritten the next time SetupBannerVisibility changes — the flag is what survives.
-    private bool _suppressSetupBanner;
+    // Session dismissal used to be two bool flags here plus a PropertyChanged listener writing
+    // Visibility straight onto named panels — necessary because the x:Bind was OneWay to the VM and
+    // any recompute would overwrite a raw write. The strip made that unnecessary: a dismissal is a
+    // set of chip ids in the view-model, so it survives a rebuild by construction and is cleared when
+    // the active game changes.
 
     // "Take them over" / "Take over again" — take over every Vortex-owned + re-deployed location
     // for the active game, then rescan (the VM flips the banners off when nothing's owned anymore).
@@ -1385,19 +1382,34 @@ public sealed partial class MainWindow : Window
         if (ViewModel is not null) await ViewModel.TakeOverGameAsync();
     }
 
-    // Dismiss collapses the whole banner area for the session — a re-scan may re-show it (acceptable).
-    private void OnDismissVortexBanner(object sender, RoutedEventArgs e)
+    // One chip id, one thing it opens. Every target here already existed — this wave moved where
+    // the user presses, not what happens when they do.
+    private void OnStateChipAction(string chipId)
     {
-        VortexBannerArea.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
-        _suppressVortexBanner = true;
+        var e = new RoutedEventArgs();
+        switch (chipId)
+        {
+            case "launch-options": OnLaunchOptions(this, e); break;
+            case "coop-launcher": OnCoopHint(this, e); break;
+            case "setup-drift": OnCheckSetup(this, e); break;
+            case "vortex-managed":
+            case "vortex-redeployed": OnTakeOverGame(this, e); break;
+            // An ACTION, not a dismissal: it re-records the build baseline the warning compares to.
+            case "steam-updated": ViewModel.DismissBuildWarningCommand.Execute(null); break;
+            case "framework-missing": OpenMissingFrameworkPage(); break;
+        }
     }
 
-    // Session-level dismiss, matching the Vortex banner: a later rescan may re-show it, which is
-    // acceptable — the alternative is a persisted "don't tell me" that outlives the problem.
-    private void OnDismissSetupBanner(object sender, RoutedEventArgs e)
+    // Today this is the same single canonical link the per-row NEEDS chip offers. It is a download
+    // page, not an install — which is exactly the dead end the round table's new modder walked into,
+    // and it is item 5 of the approved order, not this wave. Moving the chip and changing what its
+    // button does in one commit would make the layout change impossible to verify on its own.
+    private void OpenMissingFrameworkPage()
     {
-        SetupBanner.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
-        _suppressSetupBanner = true;
+        var url = ViewModel.MissingFrameworks.Select(d => d.GetUrl).FirstOrDefault(ModManager.Core.SafeUrl.IsHttpUrl);
+        if (url is null) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { ViewModel.StatusText = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private async void OnCheckSetup(object sender, RoutedEventArgs e)
