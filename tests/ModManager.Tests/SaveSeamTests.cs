@@ -40,12 +40,12 @@ public class SaveSeamTests
         // shape from the install.
         Assert.True(SaveSeam.IsPlayerPath("0.10.0/Players/1559DAC4/000001.sst", Windrose));
         Assert.True(SaveSeam.IsPlayerPath("0.10.0/Accounts/0A1C0FEA/000076.sst", Windrose));
-        Assert.True(SaveSeam.IsPlayerPath("76561197969211145/RocksDB/AccountDescription.json", Windrose));
-        Assert.True(SaveSeam.IsPlayerPath("76561197969211145/RocksDB_v2/0.10.0/Players/x/1.sst", Windrose));
+        Assert.True(SaveSeam.IsPlayerPath("steam-user/RocksDB/AccountDescription.json", Windrose));
+        Assert.True(SaveSeam.IsPlayerPath("steam-user/RocksDB_v2/0.10.0/Players/x/1.sst", Windrose));
 
         // Worlds are the place, at every depth.
         Assert.False(SaveSeam.IsPlayerPath("0.10.0/Worlds/0D4FA581/000123.sst", Windrose));
-        Assert.False(SaveSeam.IsPlayerPath("76561197969211145/RocksDB_v2/0.10.0/Worlds/x/1.sst", Windrose));
+        Assert.False(SaveSeam.IsPlayerPath("steam-user/RocksDB_v2/0.10.0/Worlds/x/1.sst", Windrose));
     }
 
     [Fact]

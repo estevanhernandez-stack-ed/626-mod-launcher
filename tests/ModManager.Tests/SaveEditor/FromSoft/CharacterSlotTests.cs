@@ -14,13 +14,13 @@ public class CharacterSlotTests
             Level: 120,
             Runes: 198_500,
             Vig: 40, Mnd: 16, End: 30, Str: 50, Dex: 12, Int: 12, Fai: 12, Arc: 12,
-            SteamId: "76561197969211145");
+            SteamId: "76500000000000000");
 
         Assert.Equal("Yuka", slot.Name);
         Assert.Equal(120, slot.Level);
         Assert.Equal(198_500u, slot.Runes);
         Assert.Equal(40, slot.Vig);
-        Assert.Equal("76561197969211145", slot.SteamId);
+        Assert.Equal("76500000000000000", slot.SteamId);
     }
 
     [Fact]

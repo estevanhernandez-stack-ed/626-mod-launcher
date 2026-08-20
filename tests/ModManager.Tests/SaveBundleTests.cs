@@ -522,7 +522,7 @@ public class PersonalDataScanTests
         var dir = TestSupport.TempDir("notice-src-");
         Directory.CreateDirectory(Path.Combine(dir, "W1"));
         File.WriteAllText(Path.Combine(dir, "W1", "Level.sav"), "world");
-        File.WriteAllText(Path.Combine(dir, "steam_autocloud.vdf"), "\"steam_autocloud.vdf\"\n{\n\"accountid\" \"8945417\"\n}");
+        File.WriteAllText(Path.Combine(dir, "steam_autocloud.vdf"), "\"steam_autocloud.vdf\"\n{\n\"accountid\" \"00000000\"\n}");
 
         var plan = SaveBundle.Plan(dir, new BundleGame("palworld", "1623730", "Palworld"),
                                    new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc));
