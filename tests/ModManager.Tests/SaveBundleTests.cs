@@ -334,3 +334,118 @@ public class BundleModLinkTests
         }
     }
 }
+
+/// <summary>
+/// One game's bundle standing alone as a file, and the same bundle sitting inside a bigger archive
+/// beside others. See <c>docs/superpowers/specs/2026-08-20-profile-archive-design.md</c>.
+///
+/// <para>This is the load-bearing property behind the profile archive: it is a bundle per game plus a
+/// registry, not a second format. If these two paths can disagree about credentials, exclusions or the
+/// manifest, the archive is a rewrite rather than a composition.</para>
+/// </summary>
+public class ComposableBundleTests
+{
+    private static readonly DateTime Stamp = new(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
+
+    private static string Save(string prefix, string marker)
+    {
+        var dir = TestSupport.TempDir(prefix);
+        Directory.CreateDirectory(Path.Combine(dir, "W1"));
+        File.WriteAllText(Path.Combine(dir, "W1", "Level.sav"), marker);
+        File.WriteAllText(Path.Combine(dir, "shared.sav"), marker + "-shared");
+        return dir;
+    }
+
+    [Fact]
+    public void Two_games_write_into_one_archive_and_either_can_be_restored_alone()
+    {
+        var pal = Save("compose-pal-", "palworld-world");
+        var eld = Save("compose-eld-", "elden-world");
+
+        var archive = Path.Combine(TestSupport.TempDir("compose-out-"), "profile.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(archive, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            SaveBundle.WriteInto(zip,
+                SaveBundle.Plan(pal, new BundleGame("palworld", "1623730", "Palworld"), Stamp,
+                                mods: new[] { new BundleMod("A Palworld Mod", "1", 5, true) }),
+                "games/palworld/");
+            SaveBundle.WriteInto(zip,
+                SaveBundle.Plan(eld, new BundleGame("elden-ring", "1245620", "Elden Ring"), Stamp),
+                "games/elden-ring/");
+        }
+
+        // Each game's manifest is readable on its own terms.
+        var palManifest = SaveBundle.ReadManifest(archive, "games/palworld/")!;
+        var eldManifest = SaveBundle.ReadManifest(archive, "games/elden-ring/")!;
+        Assert.Equal("palworld", palManifest.Game.Id);
+        Assert.Equal("elden-ring", eldManifest.Game.Id);
+        Assert.Equal("A Palworld Mod", Assert.Single(palManifest.Mods).Name);
+        Assert.Empty(eldManifest.Mods);
+
+        // And restoring one brings back only that game's files.
+        var target = TestSupport.TempDir("compose-dest-");
+        SaveBundle.Restore(archive, target, TestSupport.TempDir("compose-snaps-"), "elden-ring", "games/elden-ring/");
+
+        Assert.Equal("elden-world", File.ReadAllText(Path.Combine(target, "W1", "Level.sav")));
+        Assert.Equal("elden-world-shared", File.ReadAllText(Path.Combine(target, "shared.sav")));
+        Assert.Equal(2, Directory.GetFiles(target, "*", SearchOption.AllDirectories).Length);
+    }
+
+    [Fact]
+    public void The_wrong_game_is_still_refused_inside_an_archive()
+    {
+        // The guard has to survive composition, or a profile restore could put one game's save into
+        // another game's folder - twelve times, in one action.
+        var pal = Save("compose-guard-", "palworld-world");
+        var archive = Path.Combine(TestSupport.TempDir("compose-guard-out-"), "profile.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(archive, System.IO.Compression.ZipArchiveMode.Create))
+            SaveBundle.WriteInto(zip,
+                SaveBundle.Plan(pal, new BundleGame("palworld", "1623730", "Palworld"), Stamp),
+                "games/palworld/");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => SaveBundle.Restore(
+            archive, TestSupport.TempDir("compose-guard-dest-"), TestSupport.TempDir("compose-guard-snaps-"),
+            "elden-ring", "games/palworld/"));
+
+        Assert.Contains("different game", ex.Message);
+    }
+
+    [Fact]
+    public void A_prefix_is_forgiving_about_slashes_because_a_caller_will_get_it_wrong()
+    {
+        var pal = Save("compose-slash-", "palworld-world");
+        var archive = Path.Combine(TestSupport.TempDir("compose-slash-out-"), "profile.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(archive, System.IO.Compression.ZipArchiveMode.Create))
+            SaveBundle.WriteInto(zip,
+                SaveBundle.Plan(pal, new BundleGame("palworld", null, null), Stamp),
+                @"\games\palworld");     // no trailing slash, wrong separators
+
+        Assert.NotNull(SaveBundle.ReadManifest(archive, "games/palworld"));
+        Assert.NotNull(SaveBundle.ReadManifest(archive, "games/palworld/"));
+    }
+
+    [Fact]
+    public void The_standalone_file_and_the_composed_copy_hold_identical_payloads()
+    {
+        // The property that makes this ONE format rather than two that look alike.
+        var save = Save("compose-same-", "the-world");
+        var game = new BundleGame("palworld", "1623730", "Palworld");
+
+        var standalone = Path.Combine(TestSupport.TempDir("compose-same-a-"), "one" + SaveBundle.Extension);
+        SaveBundle.Create(save, standalone, game, Stamp);
+
+        var composed = Path.Combine(TestSupport.TempDir("compose-same-b-"), "profile.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(composed, System.IO.Compression.ZipArchiveMode.Create))
+            SaveBundle.WriteInto(zip, SaveBundle.Plan(save, game, Stamp), "games/palworld/");
+
+        string[] Payload(string path, string prefix)
+        {
+            using var z = System.IO.Compression.ZipFile.OpenRead(path);
+            return z.Entries.Select(e => e.FullName)
+                    .Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
+                    .Select(n => n[prefix.Length..]).OrderBy(n => n).ToArray();
+        }
+
+        Assert.Equal(Payload(standalone, "save/"), Payload(composed, "games/palworld/save/"));
+    }
+}

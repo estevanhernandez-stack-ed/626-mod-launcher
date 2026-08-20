@@ -26,6 +26,21 @@ public sealed record BundleExclusion(string Path, string Reason);
 public sealed record BundleMod(string Name, string? Version, int? NexusModId, bool Enabled);
 
 /// <summary>
+/// What a bundle would contain, decided but not yet written.
+///
+/// <para>Separating the decision from the writing is what lets one game's bundle stand alone as a
+/// file <b>and</b> sit inside a bigger archive alongside eleven others, without two code paths that
+/// have to agree about credentials, exclusions and the manifest. One format, tested once.</para>
+/// </summary>
+public sealed record BundlePlan(
+    SaveBundleManifest Manifest,
+    IReadOnlyList<BundlePlanFile> Files);
+
+/// <param name="Full">Absolute source path on this machine.</param>
+/// <param name="Relative">Where it goes inside the bundle, under the payload prefix.</param>
+public sealed record BundlePlanFile(string Full, string Relative);
+
+/// <summary>
 /// What a bundle declares about itself, stored as <c>bundle.json</c> inside the zip.
 /// </summary>
 public sealed record SaveBundleManifest
@@ -88,6 +103,34 @@ public static class SaveBundle
         BundleScope scope = BundleScope.Portable,
         IReadOnlyList<BundleMod>? mods = null)
     {
+        var plan = Plan(saveDir, game, createdUtc, scope, mods);
+
+        // Temp-then-rename, so a half-written bundle never appears under its final name.
+        var tmp = bundlePath + ".tmp";
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(bundlePath)!);
+        if (File.Exists(tmp)) File.Delete(tmp);
+
+        using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create))
+            WriteInto(zip, plan);
+
+        File.Move(tmp, bundlePath, overwrite: true);
+        return plan.Manifest;
+    }
+
+    /// <summary>
+    /// Decide what a bundle would hold, without writing anything.
+    ///
+    /// <para>Reads only. Every judgement that matters — which files are credentials, what the manifest
+    /// says, what was left out — happens here, so a bundle written on its own and a bundle written
+    /// into a profile archive cannot disagree.</para>
+    /// </summary>
+    public static BundlePlan Plan(
+        string saveDir,
+        BundleGame game,
+        DateTime createdUtc,
+        BundleScope scope = BundleScope.Portable,
+        IReadOnlyList<BundleMod>? mods = null)
+    {
         if (scope == BundleScope.Shareable)
             throw new NotSupportedException(
                 "A shareable bundle has to know which files are your character and which are the " +
@@ -117,44 +160,55 @@ public static class SaveBundle
             try { bytes += new FileInfo(full).Length; } catch { /* counted as zero rather than failing */ }
         }
 
-        var manifest = new SaveBundleManifest
-        {
-            Game = game,
-            Scope = scope.ToString().ToLowerInvariant(),
-            CreatedUtc = createdUtc.ToString("O"),
-            FileCount = included.Count,
-            Bytes = bytes,
-            Excluded = excluded,
-            Mods = mods ?? Array.Empty<BundleMod>(),
-        };
+        return new BundlePlan(
+            new SaveBundleManifest
+            {
+                Game = game,
+                Scope = scope.ToString().ToLowerInvariant(),
+                CreatedUtc = createdUtc.ToString("O"),
+                FileCount = included.Count,
+                Bytes = bytes,
+                Excluded = excluded,
+                Mods = mods ?? Array.Empty<BundleMod>(),
+            },
+            included.Select(x => new BundlePlanFile(x.Full, x.Relative)).ToList());
+    }
 
-        // Temp-then-rename, so a half-written bundle never appears under its final name.
-        var tmp = bundlePath + ".tmp";
-        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(bundlePath)!);
-        if (File.Exists(tmp)) File.Delete(tmp);
+    /// <summary>
+    /// Write a planned bundle into an open archive, optionally under a prefix.
+    ///
+    /// <para>Prefix empty: the bundle IS the file — <c>bundle.json</c> at the root. Prefix
+    /// <c>games/palworld/</c>: the same bundle sits inside a profile archive next to eleven others.
+    /// Same writer, same manifest, same exclusions.</para>
+    /// </summary>
+    public static void WriteInto(ZipArchive zip, BundlePlan plan, string prefix = "")
+    {
+        prefix = Normalise(prefix);
 
-        using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create))
-        {
-            var entry = zip.CreateEntry(ManifestEntry);
-            using (var w = new StreamWriter(entry.Open()))
-                w.Write(JsonSerializer.Serialize(manifest, Json));
+        var entry = zip.CreateEntry(prefix + ManifestEntry);
+        using (var w = new StreamWriter(entry.Open()))
+            w.Write(JsonSerializer.Serialize(plan.Manifest, Json));
 
-            foreach (var (full, rel) in included)
-                zip.CreateEntryFromFile(full, PayloadPrefix + rel);
-        }
+        foreach (var f in plan.Files)
+            zip.CreateEntryFromFile(f.Full, prefix + PayloadPrefix + f.Relative);
+    }
 
-        File.Move(tmp, bundlePath, overwrite: true);
-        return manifest;
+    /// <summary>A prefix is either empty or ends in a single forward slash. Nothing else is a prefix,
+    /// and a caller getting it slightly wrong would silently produce entries nothing can find.</summary>
+    private static string Normalise(string? prefix)
+    {
+        var p = (prefix ?? "").Replace('\\', '/').Trim('/');
+        return p.Length == 0 ? "" : p + "/";
     }
 
     /// <summary>Read a bundle's manifest without extracting anything — so the app can say what is in
     /// it, and which mods are missing, before touching a single save file.</summary>
-    public static SaveBundleManifest? ReadManifest(string bundlePath)
+    public static SaveBundleManifest? ReadManifest(string bundlePath, string prefix = "")
     {
         try
         {
             using var zip = ZipFile.OpenRead(bundlePath);
-            var entry = zip.GetEntry(ManifestEntry);
+            var entry = zip.GetEntry(Normalise(prefix) + ManifestEntry);
             if (entry is null) return null;
             using var r = new StreamReader(entry.Open());
             return JsonSerializer.Deserialize<SaveBundleManifest>(r.ReadToEnd(), Json);
@@ -173,9 +227,10 @@ public static class SaveBundle
     /// <para><b>Refuses a bundle from a different game.</b> Restoring Palworld over Elden Ring would
     /// look like a success and destroy a save. The game id travels in the manifest for exactly this.</para>
     /// </summary>
-    public static SaveBundleManifest Restore(string bundlePath, string saveDir, string snapshotsDir, string gameId)
+    public static SaveBundleManifest Restore(string bundlePath, string saveDir, string snapshotsDir,
+                                            string gameId, string prefix = "")
     {
-        var manifest = ReadManifest(bundlePath)
+        var manifest = ReadManifest(bundlePath, prefix)
             ?? throw new InvalidOperationException(
                 "That file is not a save bundle, or its description could not be read. Nothing was changed.");
 
@@ -197,14 +252,15 @@ public static class SaveBundle
         foreach (var f in Directory.GetFiles(saveDir)) File.Delete(f);
         foreach (var d in Directory.GetDirectories(saveDir)) Directory.Delete(d, recursive: true);
 
+        var payload = Normalise(prefix) + PayloadPrefix;
         using (var zip = ZipFile.OpenRead(bundlePath))
         {
             foreach (var entry in zip.Entries)
             {
-                if (!entry.FullName.StartsWith(PayloadPrefix, StringComparison.Ordinal)) continue;
+                if (!entry.FullName.StartsWith(payload, StringComparison.Ordinal)) continue;
                 if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
 
-                var rel = entry.FullName[PayloadPrefix.Length..];
+                var rel = entry.FullName[payload.Length..];
                 var dest = System.IO.Path.GetFullPath(System.IO.Path.Combine(saveDir, rel));
 
                 // Path traversal: a bundle is a file from somewhere else, so it is untrusted input.

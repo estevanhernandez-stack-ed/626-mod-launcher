@@ -158,10 +158,13 @@ setup. Step 3 is what makes it a refresh tool.
 
 ## Open questions
 
-- **Does a profile archive supersede per-game save bundles, or sit above them?** They share the
-  credential scan, the game-id check and the missing-mods report. The archive is plausibly *a bundle
-  per game plus the registry*, which would be less code and one format to test. Worth settling before
-  building rather than discovering later.
+- ~~Does a profile archive supersede per-game save bundles, or sit above them?~~ **Settled: a bundle
+  per game, plus the registry.** Proven rather than assumed — `SaveBundle` now splits deciding
+  (`Plan`) from writing (`WriteInto`), so the same planner produces a standalone `.626save` and a
+  `games/<id>/` section of a profile archive, and a test asserts the two payloads are identical entry
+  for entry. The game-id guard survives composition, which matters most here: a profile restore puts
+  twelve games back in one action, and one of them landing in another game's folder is the failure
+  that must be impossible. All 21 existing bundle tests passed the refactor unchanged.
 - **Loadouts and profiles reference mods by name.** If a mod is missing on restore, does its loadout
   entry survive as a ghost, or get dropped? Ghost entries are recoverable; dropped ones are not.
 - **What happens to a game the user no longer has registered?** Restoring a profile onto a machine
