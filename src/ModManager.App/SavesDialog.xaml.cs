@@ -13,19 +13,26 @@ public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
 /// <summary>One "clone to" choice for a save file: the target type's label + extension.</summary>
 public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 
-/// <summary>One world in the saves panel. The folder name is a GUID, so the row leads with an ordinal
-/// and puts the identifying facts underneath: when it was last played, how many files, and what it
-/// costs on disk. Naming worlds properly is a separate decision - reading the name out of the save
-/// format means taking on somebody else's reverse-engineering of a format that can change under us.
-/// See docs/2026-08-19-saves-are-three-shapes.md.</summary>
-public sealed record SaveWorldRow(string Id, string Title, string Kind, string Detail, string Size, int BackupCount)
+/// <summary>One world in the saves panel. The folder name is a GUID, so the row leads with the name
+/// the GAME has for this world - read straight out of its own save - and puts the identifying facts
+/// underneath: when it was last played, how many files, and what it costs on disk. A world with no
+/// readable name falls back to the user's label and then to an ordinal.
+/// See docs/superpowers/specs/2026-08-19-the-world-name-is-readable-design.md.</summary>
+/// <param name="NameBudgetBytes">How many BYTES a rename may occupy, 0 when the save has no name to
+/// change. Not characters.</param>
+public sealed record SaveWorldRow(string Id, string Title, string Kind, string Detail, string Size,
+                                  int BackupCount, int NameBudgetBytes)
 {
     public Visibility HasBackupsVisibility => BackupCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Whether a rename can reach the save, or only our own label.</summary>
+    public bool CanRenameInGame => NameBudgetBytes > 0;
 
     // Per-row automation names, keyed on the world id rather than the display title: a label is the
     // one thing here the user can rename at will, and a harness pinned to it would go red for a
     // rename. See .claude/rules/automation-ids.md.
-    public string RenameAutomationName  => $"Rename world {Id}";
+    public string RenameAutomationName    => $"Rename world {Id}";
+    public string DuplicateAutomationName => $"Duplicate world {Id}";
     public string BackupAutomationName  => $"Back up world {Id}";
     public string RestoreAutomationName => $"Restore world {Id}";
 }
@@ -50,6 +57,7 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly LauncherService _svc;
     private readonly IntPtr _hwnd;
     private readonly string _gameId;
+    private readonly GameEntry _game;   // for the running-game gate on anything that writes a save
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
@@ -68,6 +76,7 @@ public sealed partial class SavesDialog : ContentDialog
         _svc = svc;
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;
+        _game = ctx.Game;
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
@@ -134,11 +143,12 @@ public sealed partial class SavesDialog : ContentDialog
         var labels = WorldLabels.Load(_dataDir);
         var rows = SaveManager.ListWorlds(_saveDir).Select((w, i) => new SaveWorldRow(
             w.Name,
-            labels.Display(w.Name, i + 1),
+            labels.Display(w.Name, i + 1, w.GameName),
             w.MultiplayerLabel,
             $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}",
             Human(w.Bytes),
-            SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count)).ToList();
+            SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
+            w.NameBudgetBytes)).ToList();
 
         WorldList.ItemsSource = rows;
         WorldsHeading.Visibility = Visibility.Visible;
@@ -539,42 +549,193 @@ public sealed partial class SavesDialog : ContentDialog
         return SaveFolderSummary.Describe(SaveManager.ListWorlds(_saveDir).Count, files, bytes);
     }
 
-    // Rename. A Flyout rather than a dialog for the same reason the confirms are: this panel IS a
-    // ContentDialog and cannot host another one.
+    /// <summary>
+    /// Refuse anything that writes a save while the game is running.
+    ///
+    /// <para>Found the hard way: a world folder deleted while Palworld was open <b>came back on
+    /// exit</b> - the game holds a loaded world in memory and flushes it. An operation that silently
+    /// undoes itself is worse than one that refuses, because the user reports "it didn't work" and
+    /// there is nothing in the logs to see.</para>
+    ///
+    /// <para>Fails CLOSED: if the probe cannot enumerate processes it throws, and we treat that as
+    /// running rather than assume the coast is clear.</para>
+    /// </summary>
+    private bool GameIsRunning()
+    {
+        try { return new GameProcessProbe().AnyRunning(_game); }
+        catch { return true; }
+    }
+
+    /// <summary>Live byte counter shared by the rename and duplicate flyouts. Counts BYTES because
+    /// that is what the save measures - a five-character accented name costs ten.</summary>
+    private static void WireBudget(TextBox box, TextBlock counter, Button action, int budgetBytes)
+    {
+        var res = Application.Current.Resources;
+        void Recount()
+        {
+            var typed = box.Text.Trim();
+            if (budgetBytes <= 0) { counter.Text = ""; action.IsEnabled = typed.Length > 0; return; }
+            var used = PalworldWorldName.ByteLength(typed);
+            var over = used > budgetBytes;
+            counter.Text = $"{used} of {budgetBytes} bytes" + (over ? " - too long for the save" : "");
+            counter.Foreground = (Microsoft.UI.Xaml.Media.Brush)res[over ? "ThemeDanger" : "ThemeInkDim"];
+            action.IsEnabled = !over && typed.Length > 0;
+        }
+        box.TextChanged += (_, _) => Recount();
+        Recount();
+    }
+
+    /// <summary>
+    /// Rename a world - the name Palworld itself shows, when the save has room for it.
+    ///
+    /// <para>A Flyout rather than a dialog for the same reason the confirms are: this panel IS a
+    /// ContentDialog and cannot host another one.</para>
+    ///
+    /// <para>The budget is stated before anything is typed. Discovering a limit by being refused is
+    /// the failure this app keeps designing away from.</para>
+    /// </summary>
     private void OnRenameWorld(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 
-        var labels = WorldLabels.Load(_dataDir);
-        var box = new TextBox { PlaceholderText = "e.g. Ridgeline Base", Text = labels.For(row.Id) ?? "", MinWidth = 240 };
+        var res = Application.Current.Resources;
+        var box = new TextBox { PlaceholderText = "e.g. Ridgeline Base", Text = row.Title, MinWidth = 260 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "WorldNameBox");
+
+        var counter = new TextBlock { FontSize = 12 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(counter, "WorldNameBudget");
 
         var save = new Button { Content = "Save" };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(save, "WorldNameSaveButton");
 
-        var panel = new StackPanel { Spacing = 8, MaxWidth = 300 };
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 320 };
         panel.Children.Add(new TextBlock { Text = "Name this world", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         panel.Children.Add(new TextBlock
         {
-            Text = "The launcher keeps this name. Palworld never sees it, so it survives every update — "
-                 + "and clearing it puts the numbering back.",
+            Text = row.CanRenameInGame
+                ? "This is the name Palworld shows. The save keeps it in a fixed space, so a new one has "
+                  + "to fit - and Palworld's own settings screen will not let you change it at all."
+                : "This world has no name of its own - it is hosted on someone else's machine. The name "
+                  + "you type here is the launcher's, and Palworld will not see it.",
             TextWrapping = TextWrapping.Wrap,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeInkDim"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
         });
         panel.Children.Add(box);
+        panel.Children.Add(counter);
         panel.Children.Add(save);
 
         var flyout = new Flyout { Content = panel };
         save.Click += (_, _) =>
         {
-            WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, box.Text));
+            var name = box.Text.Trim();
             flyout.Hide();
-            RefreshWorlds();
-            StatusText.Text = string.IsNullOrWhiteSpace(box.Text)
-                ? "Cleared that world's name."
-                : $"Named it \"{box.Text.Trim()}\".";
+            try
+            {
+                if (row.CanRenameInGame)
+                {
+                    if (GameIsRunning())
+                    {
+                        StatusText.Text = "Close Palworld first - it holds the world open and would undo this on exit.";
+                        return;
+                    }
+                    PalworldWorldName.Write(System.IO.Path.Combine(_saveDir!, row.Id), name,
+                                            SaveManager.WorldSnapshotsDir(_savesDir, row.Id));
+                    // A successful rename CLEARS our own label rather than racing it: the label exists
+                    // only for names the save could not take, and a stale one would shadow this.
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, null));
+                    StatusText.Text = $"Renamed to \"{name}\". Palworld shows this too.";
+                }
+                else
+                {
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, name));
+                    StatusText.Text = $"Named it \"{name}\" here. Palworld will not see this one.";
+                }
+                RefreshWorlds();
+            }
+            catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
         };
+        WireBudget(box, counter, save, row.NameBudgetBytes);
         flyout.ShowAt(fe);
+    }
+
+    /// <summary>
+    /// Copy a world so there is somewhere safe to experiment.
+    ///
+    /// <para>Not confirmed - it creates, and destroys nothing. It does insist on a name, because a
+    /// copy that cannot be told apart from its original is the exact reason this feature was built
+    /// once, tested on the real game, and thrown away.</para>
+    /// </summary>
+    private void OnDuplicateWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        var res = Application.Current.Resources;
+        var suggested = row.CanRenameInGame
+            ? TruncateToBytes($"Copy of {row.Title}", row.NameBudgetBytes)
+            : $"Copy of {row.Title}";
+
+        var box = new TextBox { Text = suggested, MinWidth = 260 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "DuplicateWorldNameBox");
+
+        var counter = new TextBlock { FontSize = 12 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(counter, "DuplicateWorldBudget");
+
+        var go = new Button { Content = "Duplicate" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(go, "DuplicateWorldConfirmButton");
+
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 340 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Duplicate {row.Title}",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = row.CanRenameInGame
+                ? "The copy is a whole separate world you can play or wreck without touching this one. "
+                  + "Give it a different name now - Palworld shows both, and two worlds under one name "
+                  + "is how people delete the wrong thing."
+                : "The copy is a separate world. Palworld has no name of its own for this one, so the "
+                  + "name you give is the launcher's only.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+        });
+        panel.Children.Add(box);
+        panel.Children.Add(counter);
+        panel.Children.Add(go);
+
+        var flyout = new Flyout { Content = panel };
+        go.Click += (_, _) =>
+        {
+            var name = box.Text.Trim();
+            flyout.Hide();
+            if (GameIsRunning())
+            {
+                StatusText.Text = "Close Palworld first - it would undo the new world on exit.";
+                return;
+            }
+            try
+            {
+                var id = SaveManager.DuplicateWorld(_saveDir!, row.Id, row.CanRenameInGame ? name : null);
+                if (!row.CanRenameInGame && name.Length > 0)
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(id, name));
+                StatusText.Text = $"Duplicated. \"{name}\" is a separate world now - {row.Title} is untouched.";
+                RefreshWorlds();
+            }
+            catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        };
+        WireBudget(box, counter, go, row.NameBudgetBytes);
+        flyout.ShowAt(fe);
+    }
+
+    /// <summary>Trim a suggested name to a BYTE budget without splitting a character in half.</summary>
+    private static string TruncateToBytes(string s, int budgetBytes)
+    {
+        while (s.Length > 0 && PalworldWorldName.ByteLength(s) > budgetBytes) s = s[..^1];
+        return s.TrimEnd();
     }
 
     // Back up one world. Not confirmed: it creates a snapshot and destroys nothing, which is the same

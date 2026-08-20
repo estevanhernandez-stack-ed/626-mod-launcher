@@ -166,6 +166,19 @@ public class WorldLabelsTests
     }
 
     [Fact]
+    public void The_games_own_name_beats_an_ordinal_but_loses_to_a_label_the_user_typed()
+    {
+        // A label is only set now when the rename could NOT reach the save, so a label sitting beside
+        // a game name is the user's newer choice losing to the one they already tried to replace.
+        var labels = WorldLabels.Empty.With("a", "Ridgeline Base");
+
+        Assert.Equal("Ridgeline Base", labels.Display("a", 1, "Home"));      // label wins
+        Assert.Equal("ItjustEst Islands", labels.Display("b", 2, "ItjustEst Islands"));
+        Assert.Equal("World 3", labels.Display("c", 3, null));               // joined world, no name
+        Assert.Equal("World 4", labels.Display("d", 4, "   "));              // blank is not a name
+    }
+
+    [Fact]
     public void A_missing_or_broken_file_is_no_labels_and_never_a_throw()
     {
         var dir = TestSupport.TempDir("labels-bad-");

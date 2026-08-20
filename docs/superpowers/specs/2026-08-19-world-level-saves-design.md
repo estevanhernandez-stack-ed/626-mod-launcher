@@ -65,6 +65,14 @@ Three things this must do that the whole-folder restore does not:
 with mods may keep misbehaving after the mods are gone. The answer to that is putting *one world*
 back, not rolling your whole library to a point in time.
 
+## 3. Duplicate a world — dropped here, and later un-dropped
+
+> **Superseded by `2026-08-19-the-world-name-is-readable-design.md`.** The reasoning below is correct
+> about the symptom and wrong about the cause. `LevelMeta.sav` is 2 KB and its tail is plaintext — the
+> world name can be read and rewritten in place, so the copy CAN be told apart from its original, and
+> the feature shipped. The conclusion held only because the scan that produced it was run badly. Left
+> here unedited because the test it describes is real and the reasoning is worth being able to check.
+
 ## 3. Duplicate a world — tested, and dropped
 
 **Answered on the real game, 2026-08-19. The test cost ten minutes and saved building the wrong
@@ -131,7 +139,9 @@ proven and should be the default for anything touching saves.
 
 ## Non-goals
 
-- Reading or writing the `PlM1` container. Every item here is a folder operation.
+- ~~Reading or writing the `PlM1` container. Every item here is a folder operation.~~ **Retired** —
+  see the amendment. The world NAME is read and written in place, under a byte budget, with the
+  compressor still firmly out of scope.
 - Editing characters, levels, or inventories. See the format analysis — active-development game,
   compressed container, corruption rather than a wrong list as the failure mode.
 - Merging worlds. Nothing sane can be done there without understanding the format.

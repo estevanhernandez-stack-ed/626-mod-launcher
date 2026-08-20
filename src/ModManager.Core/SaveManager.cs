@@ -63,6 +63,59 @@ public static partial class SaveManager
         return Backup(worldDir, WorldSnapshotsDir(snapshotsDir, worldId), label, auto);
     }
 
+    /// <summary>The game's own backup history. A duplicate does not inherit twelve snapshots of
+    /// somebody else's past — it would multiply the copy's size for nothing.</summary>
+    private const string GameBackupDir = "backup";
+
+    /// <summary>
+    /// Copy a world into a fresh folder, optionally under a new name.
+    ///
+    /// <para><b>The rename is what makes this worth having.</b> Palworld reads a world's display name
+    /// from inside the save, not from the folder, so a plain folder copy produces two worlds with the
+    /// same name and no way to tell them apart in the game's own list — tested on a real install, and
+    /// the reason this feature was dropped once already. Patching the copy's name answers exactly that
+    /// objection. See <see cref="PalworldWorldName"/> for why the new name has a byte budget.</para>
+    ///
+    /// <para>Destroys nothing, so it needs no confirm and no snapshot. It does need the game closed:
+    /// Palworld holds a loaded world in memory and flushes it on exit, so folder changes made while it
+    /// runs are silently undone. That gate is the caller's — Core cannot see processes.</para>
+    /// </summary>
+    /// <returns>The new world's folder id.</returns>
+    public static string DuplicateWorld(string saveDir, string worldId, string? newName = null)
+    {
+        var src = Path.Combine(saveDir, worldId);
+        if (!Directory.Exists(src))
+            throw new DirectoryNotFoundException($"World not found: {worldId}");
+
+        var id = Guid.NewGuid().ToString("N").ToUpperInvariant();
+        var dst = Path.Combine(saveDir, id);
+        if (Directory.Exists(dst))
+            throw new InvalidOperationException($"A world folder called {id} already exists.");
+
+        Directory.CreateDirectory(dst);
+        foreach (var dir in Directory.GetDirectories(src))
+        {
+            if (string.Equals(Path.GetFileName(dir), GameBackupDir, StringComparison.OrdinalIgnoreCase)) continue;
+            CopyTree(dir, Path.Combine(dst, Path.GetFileName(dir)));
+        }
+        foreach (var f in Directory.GetFiles(src))
+            File.Copy(f, Path.Combine(dst, Path.GetFileName(f)));
+
+        // Only when there is a name to change. A joined world has no LevelMeta.sav, and asking for a
+        // rename there is not an error - there is simply nothing for Palworld to show.
+        if (!string.IsNullOrWhiteSpace(newName) && PalworldWorldName.Read(dst) is not null)
+            PalworldWorldName.Write(dst, newName!);
+
+        return id;
+    }
+
+    private static void CopyTree(string src, string dst)
+    {
+        Directory.CreateDirectory(dst);
+        foreach (var d in Directory.GetDirectories(src)) CopyTree(d, Path.Combine(dst, Path.GetFileName(d)));
+        foreach (var f in Directory.GetFiles(src)) File.Copy(f, Path.Combine(dst, Path.GetFileName(f)));
+    }
+
     /// <summary>That world's snapshots, newest first. Empty when it has never been backed up.</summary>
     public static IReadOnlyList<SaveSnapshot> ListWorldSnapshots(string snapshotsDir, string worldId)
         => ListSnapshots(WorldSnapshotsDir(snapshotsDir, worldId));
@@ -110,8 +163,14 @@ public static partial class SaveManager
         Joined,
     }
 
+    /// <param name="Name">The folder id on disk - a GUID.</param>
+    /// <param name="GameName">What the GAME calls this world, read out of its own save, or null when
+    /// there is nothing to read. A world somebody else hosts has no LevelMeta.sav at all. See
+    /// <see cref="PalworldWorldName"/>.</param>
+    /// <param name="NameBudgetBytes">How many BYTES a rename may occupy, or 0 when the name is not
+    /// writable. Not characters - see <see cref="PalworldWorldName"/>.</param>
     public sealed record SaveWorld(string Name, DateTime LastWriteUtc, long Bytes, int FileCount,
-        WorldRole Role, int PlayerCount)
+        WorldRole Role, int PlayerCount, string? GameName = null, int NameBudgetBytes = 0)
     {
         /// <summary>What to call this world's multiplayer status, said only as far as the evidence goes.
         ///
@@ -187,8 +246,13 @@ public static partial class SaveManager
             }
             catch { /* an unreadable Players folder just means we do not know the count */ }
 
+            // What the game itself calls this world. Cheap - LevelMeta.sav is ~2 KB - and it turns a
+            // panel full of GUIDs into a panel of names with nothing typed. Null is ordinary.
+            var site = PalworldWorldName.Read(dir);
+
             worlds.Add(new SaveWorld(Path.GetFileName(dir), last, bytes, count,
-                hosted ? WorldRole.Hosted : WorldRole.Joined, players));
+                hosted ? WorldRole.Hosted : WorldRole.Joined, players,
+                site?.Name, site?.BudgetBytes ?? 0));
         }
 
         // Most recently played first: with GUID folder names the date is the only thing telling two

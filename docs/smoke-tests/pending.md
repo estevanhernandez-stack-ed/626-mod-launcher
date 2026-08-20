@@ -1806,3 +1806,22 @@ Monster Hunter Wilds with downloads under `Games/MonsterHunterWilds/Mods/` and n
 5. **A sweep with no downloads at all (regression check).** EXPECT no Install button on the dialog.
    *Why it matters:* an Install button over nothing installable is the same overstatement in a new
    place.
+
+## Duplicate and rename a Palworld world
+
+Needs Palworld installed with at least one hosted world. **Close Palworld first** — the app refuses
+both operations while it runs, which is itself worth checking.
+
+1. Open Saves on Palworld. The world rows should lead with the world's REAL name (e.g. `ItjustEst
+   Islands`), not `World 1` — read straight out of `LevelMeta.sav`, nothing typed.
+2. **Rename** → the flyout states the byte budget before you type. Type past it: the counter turns
+   danger and Save disables. Type an accented character: it costs two bytes, not one.
+3. Rename to something shorter and Save. Status says Palworld shows it too. Launch Palworld — the new
+   name is in the world list.
+4. **Duplicate** → the suggested name is pre-trimmed to the budget. Confirm. A second world appears
+   with the new name; the original is untouched.
+5. Launch Palworld: both worlds listed, distinguishable, and the copy loads.
+6. With Palworld RUNNING, try Rename or Duplicate — both refuse with a sentence naming the game.
+
+A joined world (`LocalData.sav` only, no `LevelMeta.sav`) has no name to write: its rename flyout says
+so and sets the launcher's own label instead.

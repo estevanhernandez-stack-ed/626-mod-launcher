@@ -76,4 +76,18 @@ public sealed record WorldLabels(IReadOnlyDictionary<string, string> ByWorldId)
     /// <summary>What to show for a world: its label if it has one, else a positional fallback so the
     /// panel is never blank.</summary>
     public string Display(string worldId, int ordinal) => For(worldId) ?? $"World {ordinal}";
+
+    /// <summary>
+    /// What to show once the game's own name can be read too: <b>label, then the game's name, then the
+    /// ordinal.</b>
+    ///
+    /// <para>The label outranks the game deliberately. A label only gets set now when a rename could
+    /// NOT be written into the save - the name overran its byte budget, or the world is one somebody
+    /// else hosts and has no name at all - so a label present alongside a game name is the user's
+    /// newer, explicit choice losing to an older one they already tried to replace. A successful
+    /// rename clears the label instead of racing it.</para>
+    /// </summary>
+    public string Display(string worldId, int ordinal, string? gameName)
+        => For(worldId)
+        ?? (string.IsNullOrWhiteSpace(gameName) ? $"World {ordinal}" : gameName!.Trim());
 }

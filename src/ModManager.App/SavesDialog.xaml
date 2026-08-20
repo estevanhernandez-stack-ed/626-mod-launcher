@@ -118,6 +118,9 @@
                                        FontSize="{StaticResource MetaFontSize}" Margin="0,0,4,0" />
                             <Button AutomationProperties.Name="{x:Bind RenameAutomationName}" Content="Rename"
                                     Click="OnRenameWorld" Tag="{x:Bind}" VerticalAlignment="Center" />
+                            <Button AutomationProperties.Name="{x:Bind DuplicateAutomationName}" Content="Duplicate"
+                                    Click="OnDuplicateWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Copy this world so you can experiment on the copy" />
                             <Button AutomationProperties.Name="{x:Bind BackupAutomationName}" Content="Back up"
                                     Click="OnBackupWorld" Tag="{x:Bind}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Snapshot just this world" />
