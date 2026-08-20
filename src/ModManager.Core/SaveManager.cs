@@ -32,6 +32,73 @@ public static partial class SaveManager
             .ToList();
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Working on ONE world. See docs/superpowers/specs/2026-08-19-world-level-saves-design.md.
+    //
+    // Backup() is ZipFile.CreateFromDirectory and will happily zip a single world today - which is
+    // precisely the danger. A world zip sitting in the whole-folder snapshot list is indistinguishable
+    // from a whole-folder zip, and restoring it through Restore() would delete every OTHER world and
+    // extract that one world's files loose at the top level. Silent, total, and recoverable only via
+    // before-restore.
+    //
+    // So the two kinds are separated by LOCATION rather than by a naming convention somebody has to
+    // remember. ListSnapshots reads exactly one directory and never recurses, so it cannot see these -
+    // the separation is enforced by code that already exists.
+    // ---------------------------------------------------------------------------------------------
+
+    private const string WorldsSubdir = "worlds";
+
+    /// <summary>Where one world's snapshots live: <c>&lt;snapshotsDir&gt;/worlds/&lt;worldId&gt;</c>.</summary>
+    public static string WorldSnapshotsDir(string snapshotsDir, string worldId)
+        => Path.Combine(snapshotsDir, WorldsSubdir, worldId);
+
+    /// <summary>Snapshot a single world. Same naming and auto-prefix rules as the whole-folder
+    /// backup, in that world's own directory.</summary>
+    public static SaveSnapshot BackupWorld(string saveDir, string worldId, string snapshotsDir,
+                                           string? label = null, bool auto = false)
+    {
+        var worldDir = Path.Combine(saveDir, worldId);
+        if (!Directory.Exists(worldDir))
+            throw new DirectoryNotFoundException($"World not found: {worldId}");
+        return Backup(worldDir, WorldSnapshotsDir(snapshotsDir, worldId), label, auto);
+    }
+
+    /// <summary>That world's snapshots, newest first. Empty when it has never been backed up.</summary>
+    public static IReadOnlyList<SaveSnapshot> ListWorldSnapshots(string snapshotsDir, string worldId)
+        => ListSnapshots(WorldSnapshotsDir(snapshotsDir, worldId));
+
+    /// <summary>
+    /// Put one world back, leaving every other world and every top-level file untouched.
+    ///
+    /// <para><b>Refuses a snapshot belonging to a different world.</b> A zip taken from world A
+    /// extracted into world B is a silent corruption that looks like a successful restore - the panel
+    /// would say "Restored" and the player would find somebody else's base. The world id is in the
+    /// snapshot's own path, so the check is free and cannot be forgotten.</para>
+    /// </summary>
+    public static void RestoreWorld(string snapshotZip, string saveDir, string worldId, string snapshotsDir)
+    {
+        if (!File.Exists(snapshotZip))
+            throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
+
+        var owner = Path.GetFileName(Path.GetDirectoryName(snapshotZip) ?? "");
+        if (!string.Equals(owner, worldId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"That snapshot belongs to a different world ({owner}). Restoring it here would replace " +
+                $"{worldId} with somebody else's world.");
+
+        var worldDir = Path.Combine(saveDir, worldId);
+
+        // Same guarantee as the whole-folder restore, smaller blast radius.
+        if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
+            BackupWorld(saveDir, worldId, snapshotsDir, "before-restore", auto: true);
+
+        Directory.CreateDirectory(worldDir);
+        foreach (var f in Directory.GetFiles(worldDir)) File.Delete(f);
+        foreach (var d in Directory.GetDirectories(worldDir)) Directory.Delete(d, recursive: true);
+
+        ZipFile.ExtractToDirectory(snapshotZip, worldDir, overwriteFiles: true);
+    }
+
     /// <summary>One world: the folder name as it sits on disk, when it was last written, how big it
     /// is, and how many files are in it.</summary>
     /// <summary>Whether this is a world you host or one you joined.</summary>

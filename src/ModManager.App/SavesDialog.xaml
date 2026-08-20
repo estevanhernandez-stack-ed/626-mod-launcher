@@ -112,9 +112,20 @@
                             <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}"
                                        FontSize="{StaticResource BodyFontSize}" />
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Text="{x:Bind Size}" VerticalAlignment="Center"
-                                   Foreground="{StaticResource ThemeInkSoft}" FontFamily="{StaticResource MonoFontFamily}"
-                                   FontSize="{StaticResource MetaFontSize}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Size}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource ThemeInkSoft}" FontFamily="{StaticResource MonoFontFamily}"
+                                       FontSize="{StaticResource MetaFontSize}" Margin="0,0,4,0" />
+                            <Button AutomationProperties.Name="{x:Bind RenameAutomationName}" Content="Rename"
+                                    Click="OnRenameWorld" Tag="{x:Bind}" VerticalAlignment="Center" />
+                            <Button AutomationProperties.Name="{x:Bind BackupAutomationName}" Content="Back up"
+                                    Click="OnBackupWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Snapshot just this world" />
+                            <Button AutomationProperties.Name="{x:Bind RestoreAutomationName}" Content="Restore…"
+                                    Click="OnRestoreWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    Visibility="{x:Bind HasBackupsVisibility}"
+                                    ToolTipService.ToolTip="Put this world back from one of its own snapshots" />
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

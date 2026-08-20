@@ -18,7 +18,17 @@ public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 /// costs on disk. Naming worlds properly is a separate decision - reading the name out of the save
 /// format means taking on somebody else's reverse-engineering of a format that can change under us.
 /// See docs/2026-08-19-saves-are-three-shapes.md.</summary>
-public sealed record SaveWorldRow(string Title, string Kind, string Detail, string Size);
+public sealed record SaveWorldRow(string Id, string Title, string Kind, string Detail, string Size, int BackupCount)
+{
+    public Visibility HasBackupsVisibility => BackupCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    // Per-row automation names, keyed on the world id rather than the display title: a label is the
+    // one thing here the user can rename at will, and a harness pinned to it would go red for a
+    // rename. See .claude/rules/automation-ids.md.
+    public string RenameAutomationName  => $"Rename world {Id}";
+    public string BackupAutomationName  => $"Back up world {Id}";
+    public string RestoreAutomationName => $"Restore world {Id}";
+}
 
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>
 public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets)
@@ -121,11 +131,14 @@ public sealed partial class SavesDialog : ContentDialog
             return;
         }
 
+        var labels = WorldLabels.Load(_dataDir);
         var rows = SaveManager.ListWorlds(_saveDir).Select((w, i) => new SaveWorldRow(
-            $"World {i + 1}",
+            w.Name,
+            labels.Display(w.Name, i + 1),
             w.MultiplayerLabel,
             $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}",
-            Human(w.Bytes))).ToList();
+            Human(w.Bytes),
+            SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count)).ToList();
 
         WorldList.ItemsSource = rows;
         WorldsHeading.Visibility = Visibility.Visible;
@@ -524,6 +537,123 @@ public sealed partial class SavesDialog : ContentDialog
         }
         catch { /* an unreadable folder still gets a sentence rather than a crash */ }
         return SaveFolderSummary.Describe(SaveManager.ListWorlds(_saveDir).Count, files, bytes);
+    }
+
+    // Rename. A Flyout rather than a dialog for the same reason the confirms are: this panel IS a
+    // ContentDialog and cannot host another one.
+    private void OnRenameWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+
+        var labels = WorldLabels.Load(_dataDir);
+        var box = new TextBox { PlaceholderText = "e.g. Ridgeline Base", Text = labels.For(row.Id) ?? "", MinWidth = 240 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "WorldNameBox");
+
+        var save = new Button { Content = "Save" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(save, "WorldNameSaveButton");
+
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 300 };
+        panel.Children.Add(new TextBlock { Text = "Name this world", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "The launcher keeps this name. Palworld never sees it, so it survives every update — "
+                 + "and clearing it puts the numbering back.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeInkDim"],
+        });
+        panel.Children.Add(box);
+        panel.Children.Add(save);
+
+        var flyout = new Flyout { Content = panel };
+        save.Click += (_, _) =>
+        {
+            WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, box.Text));
+            flyout.Hide();
+            RefreshWorlds();
+            StatusText.Text = string.IsNullOrWhiteSpace(box.Text)
+                ? "Cleared that world's name."
+                : $"Named it \"{box.Text.Trim()}\".";
+        };
+        flyout.ShowAt(fe);
+    }
+
+    // Back up one world. Not confirmed: it creates a snapshot and destroys nothing, which is the same
+    // reason Back up now is not confirmed.
+    private void OnBackupWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var snap = SaveManager.BackupWorld(_saveDir, row.Id, _savesDir, row.Title);
+            StatusText.Text = $"Backed up {row.Title} — {Human(snap.SizeBytes)}.";
+            RefreshWorlds();
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>
+    /// Restore one world, from that world's own snapshots.
+    ///
+    /// <para>The flyout IS the confirmation. It states the consequence once at the top, then lists
+    /// this world's snapshots as danger-filled buttons — picking a specific dated snapshot out of a
+    /// labelled list is already a deliberate act, and a second confirm on top would be the
+    /// click-through training the confirming spec warns about.</para>
+    /// </summary>
+    private void OnRestoreWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        var snaps = SaveManager.ListWorldSnapshots(_savesDir, row.Id);
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 380 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Replace {row.Title}?",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Everything in this world is replaced. Your other worlds are not touched, and this "
+                 + "world is snapshotted as 'before-restore' first.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        var flyout = new Flyout { Content = panel };
+        var res = Application.Current.Resources;
+        foreach (var snap in snaps)
+        {
+            var b = new Button
+            {
+                Content = $"{snap.TakenUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
+                        + (snap.Label.Length > 0 ? $"  ·  {snap.Label}" : "")
+                        + $"  ·  {Human(snap.SizeBytes)}",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBg"],
+            };
+            // Filled danger has to survive the visual states - see .claude/rules/vsm-danger-buttons.md.
+            b.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+            b.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+            b.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+            b.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+            var chosen = snap;
+            b.Click += (_, _) => { flyout.Hide(); DoRestoreWorld(row, chosen); };
+            panel.Children.Add(b);
+        }
+        flyout.ShowAt(fe);
+    }
+
+    private void DoRestoreWorld(SaveWorldRow row, ModManager.Core.SaveSnapshot snap)
+    {
+        try
+        {
+            SaveManager.RestoreWorld(snap.Path, _saveDir!, row.Id, _savesDir);
+            StatusText.Text = $"Restored {row.Title}. Its previous state was snapshotted as 'before-restore' first.";
+            RefreshWorlds();
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     private void OnDelete(object sender, RoutedEventArgs e)
