@@ -377,6 +377,8 @@ public sealed partial class SavesDialog : ContentDialog
             SaveManager.RestoreType(pair.Item1, _saveDir, _savesDir, pair.Item2);
             StatusText.Text = "Restored that save type. Your previous state was snapshotted first.";
             Refresh();
+            RefreshSaveFiles();
+            RefreshWorlds();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
@@ -439,6 +441,8 @@ public sealed partial class SavesDialog : ContentDialog
             SaveManager.Restore(row.Snap.Path, _saveDir, _savesDir);
             StatusText.Text = "Restored. Your previous save was snapshotted as 'before-restore' first.";
             Refresh();
+            RefreshSaveFiles();
+            RefreshWorlds();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
