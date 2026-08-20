@@ -44,13 +44,10 @@ public static class GameSaveTypesCatalog
     // per-GAME fact, not a per-engine one. Palworld and Windrose are both ue-pak and arrange saves
     // completely differently - worlds in folders versus a RocksDB database - so keying this on engine
     // would have been wrong for one of them whichever way it went.
-    private const string PalworldAppId = "1623730";
-
+    /// <summary>Layout comes from the signed game manifest, so a folder-per-save game is a data PR
+    /// rather than an app release. See <see cref="SaveLayoutCatalog"/>.</summary>
     public static GameSaveTypes Resolve(string? engine, string? steamAppId)
-        => new(engine ?? "", SaveTypesFor(engine), LayoutFor(steamAppId));
-
-    private static SaveLayout LayoutFor(string? steamAppId)
-        => steamAppId == PalworldAppId ? SaveLayout.Worlds : SaveLayout.TypedFiles;
+        => new(engine ?? "", SaveTypesFor(engine), SaveLayoutCatalog.ByAppId(steamAppId));
 
     private static IReadOnlyList<SaveType> SaveTypesFor(string? engine) => engine switch
     {
