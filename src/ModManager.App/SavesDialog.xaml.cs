@@ -161,8 +161,9 @@ public sealed partial class SavesDialog : ContentDialog
         var rows = SaveManager.ListWorlds(_saveDir).Select((w, i) => new SaveWorldRow(
             w.Name,
             labels.Display(w.Name, i + 1, w.GameName),
-            w.MultiplayerLabel,
-            $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}",
+            w.RoleLabel,
+            $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}"
+                + (w.RoleCaveat.Length > 0 ? $"{Environment.NewLine}{w.RoleCaveat}" : ""),
             Human(w.Bytes),
             SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
             w.NameBudgetBytes,

@@ -173,22 +173,39 @@ public static partial class SaveManager
         WorldRole Role, int PlayerCount, string? GameName = null, int NameBudgetBytes = 0,
         bool HasOwnSave = false)
     {
-        /// <summary>What to call this world's multiplayer status, said only as far as the evidence goes.
+        /// <summary>
+        /// Who started this world, and how many characters have played in it.
         ///
-        /// <para>Read off the filesystem, not out of the save format. A world you HOST keeps
-        /// <c>Level.sav</c> and a <c>Players</c> folder with one file per character who has played in
-        /// it. A world you JOINED keeps only <c>LocalData.sav</c> - the world itself is on the host's
-        /// machine, which is why one of these is 25 MB and the other is 319 KB.</para>
+        /// <para><b>The axis is who started it, not single- versus multi-player</b> - a correction that
+        /// came from the game's own World Select screen. Both of the worlds there were hosted, and both
+        /// were marked <c>Multiplayer: ON</c>, while this label was calling one of them <i>"solo so
+        /// far"</i>. Two words for one object, and ours was the wrong one.</para>
         ///
-        /// <para>A hosted world with one player is "solo so far" rather than "single-player": nothing
-        /// on disk distinguishes a world nobody else has joined YET from one that never will, and
-        /// claiming the latter would be inventing a fact to make a tidier label.</para></summary>
-        public string MultiplayerLabel => Role switch
+        /// <para><b>We cannot read the multiplayer setting and must not imply we can.</b> It lives in
+        /// <c>WorldOption.sav</c>, whose property region - unlike <c>LevelMeta.sav</c>'s - is
+        /// compressed: 4,446 bytes yield exactly one readable string, <c>Difficulty</c>. So this says
+        /// only what the filesystem shows.</para>
+        ///
+        /// <para>What it shows is clear enough. A world you STARTED keeps <c>Level.sav</c> and a
+        /// <c>Players</c> folder with one file per character who has played in it. A world you JOINED
+        /// keeps only <c>LocalData.sav</c> - your character - because the world itself is on the host's
+        /// machine. That is why one of these is 32 MB and the other is 360 KB.</para>
+        /// </summary>
+        public string RoleLabel => Role switch
         {
-            WorldRole.Joined => "Multiplayer - hosted by someone else",
-            _ when PlayerCount > 1 => $"Multiplayer - {PlayerCount} players have played here",
-            _ => "Solo so far - you are the only player in it",
+            WorldRole.Joined => "Someone else's world - your character only",
+            _ when PlayerCount > 1 => $"You started this - {PlayerCount} characters have played here",
+            _ => "You started this - 1 character has played here",
         };
+
+        /// <summary>
+        /// The thing a player will otherwise think is a bug: a joined world is <b>not in Palworld's
+        /// World Select list at all</b>, because there is no world there to load. It appears when you
+        /// join the host's session. Empty for worlds the list does show.
+        /// </summary>
+        public string RoleCaveat => Role == WorldRole.Joined
+            ? "Palworld does not list this one - you reach it by joining the host."
+            : "";
     }
 
     /// <summary>

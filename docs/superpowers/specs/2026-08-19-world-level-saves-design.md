@@ -101,6 +101,23 @@ restore if it goes wrong. Same safety, one world in the list, nothing to confuse
 **Verified clean afterwards:** the original was byte-identical before and after the game ran with the
 duplicate present — 0 changed, 0 missing — and the copy was removed.
 
+## 3b. Who started the world, not single- versus multi-player
+
+**Corrected 2026-08-20 against the game's own World Select screen.** Both worlds listed there were
+hosted and both were marked `Multiplayer: ON`, while this panel was calling one of them *"Solo so far
+— you are the only player in it."* Two words for one object, and ours was the wrong one: we were
+counting character files and reporting it as though it were the game's setting.
+
+**We cannot read that setting.** It lives in `WorldOption.sav`, whose property region — unlike
+`LevelMeta.sav`'s — is compressed: 4,446 bytes yield exactly one readable string, `Difficulty`. So the
+label says only what the filesystem shows, which is who started the world and how many characters have
+played in it.
+
+A second thing the same screen settled: **a joined world is not in Palworld's list at all.** There is
+no world there to load — 360 KB of `LocalData.sav` against the host's 32 MB — and you reach it by
+joining their session. The panel showing it is right, because it is real disk worth backing up, but it
+now says so rather than leaving the player to notice the discrepancy and file it as a bug.
+
 ## 4. Name your worlds
 
 `World 1` and a GUID is not a thing anyone can choose between under pressure — and every operation

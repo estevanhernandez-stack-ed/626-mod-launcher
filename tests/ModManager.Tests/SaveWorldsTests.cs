@@ -155,7 +155,9 @@ public class SaveWorldRoleTests
         var w = Assert.Single(SaveManager.ListWorlds(root));
 
         Assert.Equal(SaveManager.WorldRole.Joined, w.Role);
-        Assert.Contains("hosted by someone else", w.MultiplayerLabel);
+        Assert.Contains("Someone else's world", w.RoleLabel);
+        // And the thing a player would otherwise report as a bug: the game does not list this one.
+        Assert.Contains("does not list this one", w.RoleCaveat);
     }
 
     [Fact]
@@ -166,8 +168,9 @@ public class SaveWorldRoleTests
 
         var w = Assert.Single(SaveManager.ListWorlds(root));
 
-        Assert.Contains("Multiplayer", w.MultiplayerLabel);
-        Assert.Contains("3 players", w.MultiplayerLabel);
+        Assert.Contains("You started this", w.RoleLabel);
+        Assert.Contains("3 characters", w.RoleLabel);
+        Assert.Empty(w.RoleCaveat);
     }
 
     [Fact]
@@ -181,8 +184,14 @@ public class SaveWorldRoleTests
 
         var w = Assert.Single(SaveManager.ListWorlds(root));
 
-        Assert.Contains("Solo so far", w.MultiplayerLabel);
-        Assert.DoesNotContain("Single-player", w.MultiplayerLabel, StringComparison.OrdinalIgnoreCase);
+        // Never "solo" and never "single-player". Palworld marks both of the real worlds
+        // Multiplayer: ON while only one character has played in them, so a headcount of one says
+        // nothing about the setting - and claiming otherwise is how the label got this wrong before.
+        Assert.Contains("You started this", w.RoleLabel);
+        Assert.Contains("1 character", w.RoleLabel);
+        Assert.DoesNotContain("solo", w.RoleLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("single-player", w.RoleLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("multiplayer", w.RoleLabel, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -194,6 +203,6 @@ public class SaveWorldRoleTests
         var w = Assert.Single(SaveManager.ListWorlds(root));
 
         Assert.Equal(0, w.PlayerCount);
-        Assert.Contains("Solo so far", w.MultiplayerLabel);
+        Assert.Contains("You started this", w.RoleLabel);
     }
 }
