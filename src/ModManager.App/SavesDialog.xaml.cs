@@ -436,9 +436,21 @@ public sealed partial class SavesDialog : ContentDialog
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        // Reversible, but it replaces EVERYTHING - and the undo is only useful to someone who knows
+        // before-restore exists. This is where they find that out.
+        ShowConfirm(fe,
+            "Replace your saves with this snapshot?",
+            $"Everything in the save folder is replaced - {DescribeSaveFolder()}.\n\n"
+            + "Your current saves are snapshotted as 'before-restore' first, so this is undoable.",
+            "Replace", "ConfirmRestoreButton", () => DoRestore(row));
+    }
+
+    private void DoRestore(SaveRow row)
+    {
         try
         {
-            SaveManager.Restore(row.Snap.Path, _saveDir, _savesDir);
+            SaveManager.Restore(row.Snap.Path, _saveDir!, _savesDir);
             StatusText.Text = "Restored. Your previous save was snapshotted as 'before-restore' first.";
             Refresh();
             RefreshSaveFiles();
@@ -447,19 +459,96 @@ public sealed partial class SavesDialog : ContentDialog
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
+    /// <summary>
+    /// A confirmation that works INSIDE this dialog.
+    ///
+    /// <para>SavesDialog is itself a ContentDialog, and one cannot be shown inside another — which is
+    /// why Settings hands its confirms back to MainWindow to run after it closes. That is correct and
+    /// heavy: it would close this panel and lose the reader's place in the list they are standing in.
+    /// A Flyout is a popup rather than a dialog, so it composes here, and it opens at the pixel the
+    /// user aimed at — which is also where the misclick happens.</para>
+    /// </summary>
+    private void ShowConfirm(FrameworkElement anchor, string title, string body, string confirmLabel,
+                             string confirmId, Action act)
+    {
+        var panel = new StackPanel { Spacing = 10, MaxWidth = 340 };
+        panel.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = body, TextWrapping = TextWrapping.Wrap });
+
+        var confirm = new Button { Content = confirmLabel };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(confirm, confirmId);
+        var cancel = new Button { Content = "Cancel" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(cancel, "ConfirmCancelButton");
+
+        // Filled danger, and it has to survive the visual states. A Style that only sets Background
+        // wins at rest and loses the moment the pointer arrives, because the stock template
+        // re-resolves ButtonBackgroundPointerOver via ThemeResource - the button would read danger
+        // until you reached for it, which is exactly backwards. Element-scope the state keys onto the
+        // button using the SAME live brush instances ThemeService.Apply mutates, never new ones.
+        // See .claude/rules/vsm-danger-buttons.md.
+        var res = Application.Current.Resources;
+        confirm.Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"];
+        confirm.Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBg"];
+        confirm.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+        confirm.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+        confirm.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+        confirm.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(confirm);
+        row.Children.Add(cancel);
+        panel.Children.Add(row);
+
+        var flyout = new Flyout { Content = panel };
+        confirm.Click += (_, _) => { flyout.Hide(); act(); };
+        cancel.Click += (_, _) => flyout.Hide();
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>What the save folder holds right now, for a confirm to say out loud. The counts are
+    /// gathered here (I/O) and phrased by <see cref="SaveFolderSummary"/> (pure, tested) — a confirm
+    /// that misreports what it is about to replace is worse than one that says nothing.</summary>
+    private string DescribeSaveFolder()
+    {
+        if (string.IsNullOrEmpty(_saveDir) || !System.IO.Directory.Exists(_saveDir))
+            return "an empty save folder";
+        long bytes = 0;
+        var files = 0;
+        try
+        {
+            foreach (var f in System.IO.Directory.EnumerateFiles(_saveDir, "*", System.IO.SearchOption.AllDirectories))
+            {
+                bytes += new System.IO.FileInfo(f).Length;
+                files++;
+            }
+        }
+        catch { /* an unreadable folder still gets a sentence rather than a crash */ }
+        return SaveFolderSummary.Describe(SaveManager.ListWorlds(_saveDir).Count, files, bytes);
+    }
+
     private void OnDelete(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveRow row) return;
+
+        // The only irreversible action in this panel, and it destroys the thing that makes the others
+        // safe. SaveManager.Delete is File.Delete - no recycle bin, no holding folder. It also sits on
+        // the same row as Restore, so the misclick is "I meant to go back to my last good save and
+        // instead permanently destroyed it".
+        ShowConfirm(fe,
+            "Delete this snapshot?",
+            $"{row.Title}  -  {row.Detail}\n\n"
+            + "This one is gone for good; snapshots are the only copy the launcher keeps.",
+            "Delete it", "ConfirmDeleteButton", () => DoDelete(row));
+    }
+
+    private void DoDelete(SaveRow row)
+    {
         SaveManager.Delete(row.Snap.Path);
         StatusText.Text = $"Deleted {row.Snap.FileName}.";
         Refresh();
     }
 
-    // Gained a GB tier when worlds started using it: a Palworld world with a long-running base can
-    // pass a gigabyte, and "1434.7 MB" is a number you have to stop and convert.
-    private static string Human(long b)
-        => b < 1024 ? $"{b} B"
-         : b < 1024L * 1024 ? $"{b / 1024.0:0.#} KB"
-         : b < 1024L * 1024 * 1024 ? $"{b / 1024.0 / 1024:0.#} MB"
-         : $"{b / 1024.0 / 1024 / 1024:0.#} GB";
+    // One formatter, in Core, shared with the confirm copy. This panel briefly had two and they
+    // disagreed above a gigabyte.
+    private static string Human(long b) => SaveFolderSummary.Human(b);
 }
