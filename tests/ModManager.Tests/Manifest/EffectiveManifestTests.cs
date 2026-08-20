@@ -223,44 +223,56 @@ public class ManifestMergeCompletenessTests
     [Fact]
     public void Every_optional_field_the_schema_declares_survives_the_merge()
     {
+        // The remote entry is BUILT by reflection, not hand-written. An earlier version of this test
+        // walked the properties but only asserted the ones a hand-written fixture happened to set -
+        // so a newly declared field was silently skipped, which is the exact hand-maintained-list
+        // failure the test exists to prevent. It passed while SaveLayout was unmerged.
         var embedded = new GameManifestEntry { Id = "g" };
-        var remote = new GameManifestEntry
-        {
-            Id = "g",
-            Name = "Remote Name",
-            Engine = "ue-pak",
-            NexusDomain = "remotedomain",
-            CurseforgeGameId = 4242,
-            ModPath = "Remote/Mods",
-            SaveDirHint = "Remote/Saves",
-            FileExtensions = new[] { ".remote" },
-            GroupingRule = "remote-rule",
-            Featured = 7,
-            BanRisk = "high",
-            SafeRoute = "offline",
-            SafeRouteHint = "Play offline.",
-        };
+        var remote = new GameManifestEntry { Id = "g" };
+        var wanted = new Dictionary<string, object?>();
 
-        // Through the real public entry point - no test-only seam. Same id on both sides is what
-        // triggers MergeEntry.
+        foreach (var prop in typeof(GameManifestEntry).GetProperties())
+        {
+            if (Composite.Contains(prop.Name)) continue;
+            var value = SampleFor(prop.PropertyType, prop.Name);
+            if (value is null) continue;                       // a type we cannot synthesise
+            wanted[prop.Name] = value;
+            remote = (GameManifestEntry)prop.DeclaringType!
+                .GetMethod("<Clone>$", System.Reflection.BindingFlags.Instance
+                                     | System.Reflection.BindingFlags.NonPublic
+                                     | System.Reflection.BindingFlags.Public)!
+                .Invoke(remote, null)!;
+            prop.SetValue(remote, value);
+        }
+
+        // Nothing was synthesisable? Then the test is asserting nothing and must say so.
+        Assert.NotEmpty(wanted);
+
         var merged = EffectiveManifest
             .Merge(new GameManifest { Games = new[] { embedded } },
                    new GameManifest { Games = new[] { remote } })
             .Games.Single(g => g.Id == "g");
 
-        var missed = new List<string>();
-        foreach (var prop in typeof(GameManifestEntry).GetProperties())
-        {
-            if (Composite.Contains(prop.Name)) continue;
-            var wanted = prop.GetValue(remote);
-            if (wanted is null) continue;   // the fixture did not set it; nothing to assert
-            var got = prop.GetValue(merged);
-            if (!Equals(FlattenForCompare(wanted), FlattenForCompare(got))) missed.Add(prop.Name);
-        }
+        var missed = typeof(GameManifestEntry).GetProperties()
+            .Where(p => wanted.ContainsKey(p.Name))
+            .Where(p => !Equals(FlattenForCompare(wanted[p.Name]), FlattenForCompare(p.GetValue(merged))))
+            .Select(p => p.Name)
+            .ToList();
 
         Assert.True(missed.Count == 0,
             "MergeEntry drops these fields the schema declares: " + string.Join(", ", missed) +
             ". Add them to the `embedded with { … }` list in EffectiveManifest.MergeEntry.");
+    }
+
+    /// <summary>A non-default value for a property type, so the merge has something to lose.</summary>
+    private static object? SampleFor(Type t, string name)
+    {
+        var u = Nullable.GetUnderlyingType(t) ?? t;
+        if (u == typeof(string)) return name == "BanRisk" ? "high" : "remote-" + name;
+        if (u == typeof(int)) return 4242;
+        if (u == typeof(bool)) return true;
+        if (typeof(IReadOnlyList<string>).IsAssignableFrom(t)) return new[] { "remote-" + name };
+        return null;
     }
 
     private static object? FlattenForCompare(object? v)

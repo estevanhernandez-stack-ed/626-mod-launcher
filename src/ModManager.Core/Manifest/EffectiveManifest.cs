@@ -87,6 +87,7 @@ public static class EffectiveManifest
             // elden-ring, dark-souls-iii and palworld: a game is in the embedded snapshot BECAUSE it
             // matters, so the bug fell exclusively on the games where a safe route matters most.
             // EveryOptionalFieldMerges pins this shape for whatever gets added next.
+            SaveLayout = remote.SaveLayout ?? embedded.SaveLayout,
             SafeRoute = remote.SafeRoute ?? embedded.SafeRoute,
             SafeRouteHint = remote.SafeRouteHint ?? embedded.SafeRouteHint,
             Provenance = embedded.Provenance with { Sources = sources, Status = status },
