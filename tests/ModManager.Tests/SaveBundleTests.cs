@@ -265,12 +265,13 @@ public class SaveBundleTests
     [Fact]
     public void A_shareable_bundle_is_refused_rather_than_approximated()
     {
-        // It needs the world/character seam, which differs per game and is not guessable. Guessing it
-        // ships a stranger somebody's character.
+        // A programming guard, not a message anybody reads. The panel does not offer share-a-world for
+        // a game whose seam is unknown, nor for a game that HAS no world - the control is absent, not
+        // present-and-refusing. Reaching this throw means a caller asked something the UI cannot ask.
         var ex = Assert.Throws<NotSupportedException>(() => SaveBundle.Create(
             SaveDir("bundle-share-"), BundlePath("bundle-share-out-"), Game, Stamp, BundleScope.Shareable));
 
-        Assert.Contains("character", ex.Message);
+        Assert.Contains("seam", ex.Message);
     }
 
     [Fact]

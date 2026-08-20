@@ -139,11 +139,13 @@ public static class SaveBundle
         BundleScope scope = BundleScope.Portable,
         IReadOnlyList<BundleMod>? mods = null)
     {
+        // A programming guard, not user-facing copy. The UI does not offer share-a-world for a game
+        // whose seam is unknown, or for a game that has no world at all - the control is absent rather
+        // than present-and-refusing. Reaching here means a caller asked for something the panel is not
+        // supposed to be able to ask.
         if (scope == BundleScope.Shareable)
             throw new NotSupportedException(
-                "A shareable bundle has to know which files are your character and which are the " +
-                "world, and that is different for every game. Only a portable bundle - everything of " +
-                "yours - can be made right now.");
+                "Shareable needs this game's world/character seam, which is not curated.");
 
         if (!Directory.Exists(saveDir))
             throw new DirectoryNotFoundException($"Save folder not found: {saveDir}");

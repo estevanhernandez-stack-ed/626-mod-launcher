@@ -90,14 +90,28 @@ The seam is per-game and it is not guessable:
 **Where we do not know the seam, we offer *portable* and say so.** Never guess a split — the failure
 mode is shipping a stranger someone's character.
 
-**So `Shareable` needs three refusals, not one.** It currently throws a single message. They are three
-different facts and only one of them is a gap in our data:
+**And then the refusals mostly stop existing.** A first draft of this gave `Shareable` three different
+messages — one per reason it might not work. Este killed it, correctly:
 
-- *world game, seam known* — build it
-- *world game, seam not curated yet* — "we haven't worked out which files are your character for this
-  game." A to-do.
-- *character game* — "this game has no world to share; the save **is** your character." Not a to-do,
-  an answer.
+> *"Couldn't that world area just go away for character games? Does the user need an explanation if the
+> character's there?"*
+
+No. **The share-a-world control simply is not there unless we can do it.** A control whose only job is
+to explain why it does nothing is the `NEEDS ___` chip again — it names a problem and offers nothing,
+and the user has to read a paragraph to learn that a button they can see is not for them.
+
+| | what the panel shows |
+|---|---|
+| world game, seam known | share-the-world, next to the portable export |
+| world game, seam not curated | nothing. **Our gap, not their problem** — a to-do in this repo, not an apology in their UI |
+| character game | nothing. The panel already lists their characters; that IS the explanation |
+
+The last row is the one worth being deliberate about. A character game has nothing missing — telling
+someone *"this game has no world to share"* answers a question they never asked, in a place they were
+not asking it.
+
+`SaveBundle.Create` still throws on `Shareable` when there is no seam, but that is now a **programming
+guard** rather than user-facing copy: the UI is not supposed to be able to ask.
 
 ---
 
