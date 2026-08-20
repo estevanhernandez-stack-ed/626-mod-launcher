@@ -38,6 +38,42 @@ internal static class PalworldMetaFixture
         return b.ToArray();
     }
 
+    /// <summary>
+    /// The shape Palworld leaves behind after it re-saves a world whose name did NOT fill its budget.
+    ///
+    /// <para>Copied byte-for-byte in structure from the real thing. A six-byte name was padded to
+    /// seventeen; overnight the game re-saved the world and the payload came back three bytes shorter,
+    /// because the codec turned the eleven-space run into a back-reference. The markers and both length
+    /// bytes are still literal - it is the name itself that stopped being one.</para>
+    /// </summary>
+    public static byte[] MetaAfterGameResave()
+    {
+        var b = new List<byte>();
+        b.AddRange(new byte[] { 0xb7, 0x08, 0, 0, 0xd0, 0x07, 0, 0 });   // uncompressed unchanged, compressed SHORTER
+        b.AddRange(Encoding.ASCII.GetBytes("PlM1"));
+        b.AddRange(new byte[] { 0x8c, 0x0a, 0x00, 0x07, 0xcd, 0x30 });
+
+        void Str(string s)
+        {
+            b.Add((byte)(s.Length + 1));
+            b.AddRange(Encoding.UTF8.GetBytes(s));
+            b.Add(0);
+        }
+
+        Str("WorldName");
+        Str("StrProperty");
+        b.Add(0x16);                                                      // property size, still literal
+        b.Add(0x12);                                                      // string length, still literal
+        // ...but the 18 bytes that should follow are now compression tokens, so nothing NUL-terminates
+        // at the declared length.
+        b.AddRange(new byte[] { 0x20 });
+        b.AddRange(Encoding.UTF8.GetBytes("Padded"));
+        b.AddRange(new byte[] { 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00 });
+        b.AddRange(Encoding.UTF8.GetBytes("HostPlayerName"));
+        b.AddRange(new byte[] { 0x00, 0x0c, 0x00, 0x00, 0x00 });
+        return b.ToArray();
+    }
+
     /// <summary>A world folder containing just the meta file.</summary>
     public static string World(string prefix, string name, int budget)
     {
@@ -149,6 +185,38 @@ public class PalworldWorldNameTests
     }
 
     [Fact]
+    public void A_padded_name_the_game_has_re_saved_reads_as_null_but_the_save_is_still_there()
+    {
+        // Found by the smoke, on the real game, overnight. A name that did not fill its budget was
+        // padded with spaces; Palworld re-saved the world and the codec compressed the run away, so the
+        // name region stopped being literal bytes. We can no longer read or rewrite it - and the panel
+        // MUST tell those two apart, because "this world never had a name" and "we can no longer change
+        // the name it has" want completely different sentences.
+        var dir = TestSupport.TempDir("pwn-resaved-");
+        File.WriteAllBytes(Path.Combine(dir, PalworldWorldName.MetaFileName),
+                           PalworldMetaFixture.MetaAfterGameResave());
+
+        Assert.Null(PalworldWorldName.Read(dir));      // unreadable...
+        Assert.True(PalworldWorldName.HasOwnSave(dir)); // ...but it is not a joined world
+    }
+
+    [Fact]
+    public void A_name_that_fills_its_budget_exactly_is_the_durable_one()
+    {
+        // The other half of the same finding: no padding means no run for the codec to collapse. The
+        // real world called ItjustEst Islands fills its 17 bytes and has survived months of re-saves.
+        var dir = PalworldMetaFixture.World("pwn-exactfit-", "ItjustEst Islands", 17);
+
+        PalworldWorldName.Write(dir, "COPY - TEST WORLD");   // also exactly 17
+
+        var site = PalworldWorldName.Read(dir)!;
+        Assert.Equal("COPY - TEST WORLD", site.Name);
+        // The property that makes it durable: the stored name fills the budget, so there is no run of
+        // padding for the codec to collapse into a back-reference next time the game saves.
+        Assert.Equal(site.BudgetBytes, PalworldWorldName.ByteLength(site.Name));
+    }
+
+    [Fact]
     public void A_joined_world_has_no_meta_file_and_that_is_an_answer_not_a_failure()
     {
         // The second world on the real install is LocalData.sav and nothing else - the world itself is
@@ -157,6 +225,7 @@ public class PalworldWorldNameTests
         File.WriteAllText(Path.Combine(dir, "LocalData.sav"), "local");
 
         Assert.Null(PalworldWorldName.Read(dir));
+        Assert.False(PalworldWorldName.HasOwnSave(dir));
         var ex = Assert.Throws<InvalidOperationException>(() => PalworldWorldName.Write(dir, "Nope"));
         Assert.Contains("somebody else hosts", ex.Message);
     }

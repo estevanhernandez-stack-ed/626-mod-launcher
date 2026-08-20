@@ -38,6 +38,40 @@ hash manifest of the real tree before and after. The real tree verified `IDENTIC
 3. **Space padding is invisible.** A 6-byte name in the 17-byte budget renders as `Padded` in the
    world list, which is left-aligned, so the trailing bytes have nowhere to show.
 
+## What the smoke found the next morning
+
+Two things the three original runs could not see, because both need the game to save on its own
+schedule rather than on ours.
+
+### A name that does not fill its budget may stop being readable
+
+The world renamed to `Padded` — six bytes in a seventeen-byte budget — was re-saved by Palworld
+overnight and came back with a **shorter payload**: 2003 bytes down to 2000, uncompressed still 2231.
+The codec turned the eleven-space run into a back-reference, so the name region stopped being literal
+bytes. The markers and both length fields are still there; the name between them is not.
+
+The world still shows `Padded` in-game, correctly, forever. We simply cannot read or rewrite it again.
+And the world that fills its budget exactly — `ItjustEst Islands` — has survived months of the same
+re-saves and still parses, because an exact fit introduces no run to collapse.
+
+Three consequences, all shipped:
+
+- **A rename always records the launcher's label too**, rather than clearing it. The label is the
+  durable display record; the bytes in the save are the part Palworld reads. Losing the second must
+  never cost the user the first. Duplicate records one for the same reason.
+- **There is a third state, and it gets its own sentence.** "This world never had a name" and "we can
+  no longer change the name it has" are different facts, and `Read` returning null for both is not a
+  reason to say the same thing. `PalworldWorldName.HasOwnSave` tells them apart.
+- **The rename copy says which names last.** *"A name that fills the space exactly is the one that
+  stays changeable."*
+
+### Steam Cloud puts deleted worlds back
+
+A test copy deleted with the game closed, verified gone, was **back the next morning** — the folder
+carries `steam_autocloud.vdf`, and the cloud re-synced it on the next launch. This is a second,
+independent reason a Delete cannot simply remove a folder, on top of the game's own flush-on-exit.
+Nothing here ships a delete; when one is designed, it starts from this.
+
 ## The two laws this creates
 
 ### The name has a byte budget, and it is the current name's length
@@ -111,7 +145,12 @@ Core, pure, against fixture bytes rather than a real save:
 - a joined world (no `LevelMeta.sav`) reads as null and falls back to its label
 - duplicate produces a new GUID folder, omits `backup/`, and leaves the source byte-identical
 
-**The end-to-end stays on a copy**, per the method that has now caught two wrong conclusions.
+**The end-to-end stays on a copy**, per the method that has now caught three wrong conclusions. Run
+2026-08-20 against a copy of the real tree with `games.json` repointed: all three name states rendered
+correctly, the budget counter refused a 40-byte name into 17 and enabled an exact fit, a duplicate left
+its source byte-identical at 65 files and dropped 29 MB of the game's backup history, a rename wrote
+its label and its `before-rename` snapshot where `ListSnapshots` cannot see them, and with Palworld
+running both operations refused and wrote nothing at all. The real tree verified IDENTICAL, 89 files.
 
 ## Non-goals, restated
 

@@ -21,12 +21,29 @@ public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 /// <param name="NameBudgetBytes">How many BYTES a rename may occupy, 0 when the save has no name to
 /// change. Not characters.</param>
 public sealed record SaveWorldRow(string Id, string Title, string Kind, string Detail, string Size,
-                                  int BackupCount, int NameBudgetBytes)
+                                  int BackupCount, int NameBudgetBytes, bool HasOwnSave)
 {
     public Visibility HasBackupsVisibility => BackupCount > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Whether a rename can reach the save, or only our own label.</summary>
     public bool CanRenameInGame => NameBudgetBytes > 0;
+
+    /// <summary>
+    /// Why a rename cannot reach the save - the two reasons need different sentences.
+    ///
+    /// <para><b>No save of its own:</b> a world somebody else hosts keeps only LocalData.sav. There has
+    /// never been a name in it.</para>
+    ///
+    /// <para><b>A save we can no longer read the name out of:</b> Palworld re-saved the world and the
+    /// codec compressed a padded name into a back-reference. The world still shows the right name
+    /// in-game - we just cannot change it from here any more.</para>
+    /// </summary>
+    public string WhyNotInGame => HasOwnSave
+        ? "Palworld has re-saved this world since it was last named, and its own copy of the name is no "
+          + "longer in a form the launcher can change. It still shows correctly in-game. The name you "
+          + "type here is the launcher's."
+        : "This world has no save of its own - it is hosted on someone else's machine. The name you type "
+          + "here is the launcher's, and Palworld will not see it.";
 
     // Per-row automation names, keyed on the world id rather than the display title: a label is the
     // one thing here the user can rename at will, and a harness pinned to it would go red for a
@@ -148,7 +165,8 @@ public sealed partial class SavesDialog : ContentDialog
             $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}",
             Human(w.Bytes),
             SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
-            w.NameBudgetBytes)).ToList();
+            w.NameBudgetBytes,
+            w.HasOwnSave)).ToList();
 
         WorldList.ItemsSource = rows;
         WorldsHeading.Visibility = Visibility.Visible;
@@ -615,9 +633,9 @@ public sealed partial class SavesDialog : ContentDialog
         {
             Text = row.CanRenameInGame
                 ? "This is the name Palworld shows. The save keeps it in a fixed space, so a new one has "
-                  + "to fit - and Palworld's own settings screen will not let you change it at all."
-                : "This world has no name of its own - it is hosted on someone else's machine. The name "
-                  + "you type here is the launcher's, and Palworld will not see it.",
+                  + "to fit - and Palworld's own settings screen will not let you change it at all. A "
+                  + "name that fills the space exactly is the one that stays changeable."
+                : row.WhyNotInGame,
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
         });
@@ -641,9 +659,11 @@ public sealed partial class SavesDialog : ContentDialog
                     }
                     PalworldWorldName.Write(System.IO.Path.Combine(_saveDir!, row.Id), name,
                                             SaveManager.WorldSnapshotsDir(_savesDir, row.Id));
-                    // A successful rename CLEARS our own label rather than racing it: the label exists
-                    // only for names the save could not take, and a stale one would shadow this.
-                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, null));
+                    // The label is written too, NOT cleared. A name that does not fill its budget can
+                    // stop being readable the next time Palworld saves - the codec compresses the
+                    // padding away - and the panel must not lose the name at that point. The label is
+                    // the durable record; the bytes in the save are what Palworld reads.
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, name));
                     StatusText.Text = $"Renamed to \"{name}\". Palworld shows this too.";
                 }
                 else
@@ -698,8 +718,7 @@ public sealed partial class SavesDialog : ContentDialog
                 ? "The copy is a whole separate world you can play or wreck without touching this one. "
                   + "Give it a different name now - Palworld shows both, and two worlds under one name "
                   + "is how people delete the wrong thing."
-                : "The copy is a separate world. Palworld has no name of its own for this one, so the "
-                  + "name you give is the launcher's only.",
+                : "The copy is a separate world. " + row.WhyNotInGame,
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
         });
@@ -720,7 +739,10 @@ public sealed partial class SavesDialog : ContentDialog
             try
             {
                 var id = SaveManager.DuplicateWorld(_saveDir!, row.Id, row.CanRenameInGame ? name : null);
-                if (!row.CanRenameInGame && name.Length > 0)
+                // The label goes in either way, for the same reason a rename writes one: a name that
+                // does not fill its budget can stop being readable the next time Palworld saves, and
+                // the copy must not lose the name that is the entire point of making it.
+                if (name.Length > 0)
                     WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(id, name));
                 StatusText.Text = $"Duplicated. \"{name}\" is a separate world now - {row.Title} is untouched.";
                 RefreshWorlds();

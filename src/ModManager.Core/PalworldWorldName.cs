@@ -25,6 +25,17 @@ public sealed record WorldNameSite(int Offset, int BudgetBytes, string Name);
 /// there and pads the rest with spaces. Palworld's world list is left-aligned, so the padding has
 /// nowhere to show.</para>
 ///
+/// <para><b>A name that does not fill its budget may not stay readable.</b> Observed on the real
+/// game: a six-byte name padded to seventeen was re-saved by Palworld overnight and came back three
+/// bytes shorter - the codec turned the eleven-space run into a back-reference, so the name region
+/// stopped being literal bytes. The world still shows the right name in-game; we simply cannot read
+/// or rewrite it again. A name that fills its budget EXACTLY introduces no run and is durable - the
+/// world called ItjustEst Islands has survived months of re-saves.</para>
+///
+/// <para>So a rename always records the launcher's own label too. The label is the durable display
+/// record; the bytes in the save are the part Palworld reads. Losing the second must never cost the
+/// user the first.</para>
+///
 /// <para><b>Bytes, not characters.</b> UTF-8: an accented letter costs two and an emoji four. Every
 /// measurement here is <see cref="Encoding.UTF8"/>, and any UI counting characters instead would be
 /// lying to everyone who does not type ASCII.</para>
@@ -39,6 +50,17 @@ public static class PalworldWorldName
 
     private static readonly byte[] Marker = Encoding.ASCII.GetBytes("WorldName\0");
     private static readonly byte[] StrProp = Encoding.ASCII.GetBytes("StrProperty\0");
+
+    /// <summary>
+    /// Whether this world has a save of its own at all - as opposed to having one whose name we cannot
+    /// currently locate. Two different answers that <see cref="Read"/> returns null for alike, and the
+    /// user deserves a different sentence for each.
+    /// </summary>
+    public static bool HasOwnSave(string worldDir)
+    {
+        try { return File.Exists(Path.Combine(worldDir, MetaFileName)); }
+        catch { return false; }
+    }
 
     /// <summary>How many bytes a name costs on disk. The number the budget is measured against.</summary>
     public static int ByteLength(string? name) => Encoding.UTF8.GetByteCount(name ?? "");

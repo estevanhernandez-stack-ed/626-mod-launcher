@@ -170,7 +170,8 @@ public static partial class SaveManager
     /// <param name="NameBudgetBytes">How many BYTES a rename may occupy, or 0 when the name is not
     /// writable. Not characters - see <see cref="PalworldWorldName"/>.</param>
     public sealed record SaveWorld(string Name, DateTime LastWriteUtc, long Bytes, int FileCount,
-        WorldRole Role, int PlayerCount, string? GameName = null, int NameBudgetBytes = 0)
+        WorldRole Role, int PlayerCount, string? GameName = null, int NameBudgetBytes = 0,
+        bool HasOwnSave = false)
     {
         /// <summary>What to call this world's multiplayer status, said only as far as the evidence goes.
         ///
@@ -252,7 +253,7 @@ public static partial class SaveManager
 
             worlds.Add(new SaveWorld(Path.GetFileName(dir), last, bytes, count,
                 hosted ? WorldRole.Hosted : WorldRole.Joined, players,
-                site?.Name, site?.BudgetBytes ?? 0));
+                site?.Name, site?.BudgetBytes ?? 0, PalworldWorldName.HasOwnSave(dir)));
         }
 
         // Most recently played first: with GUID folder names the date is the only thing telling two
