@@ -681,33 +681,9 @@ public sealed partial class SavesDialog : ContentDialog
             Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
         });
 
-        // The sentence this feature exists for. A save that needs mods you do not have will not behave,
-        // and nothing else in the chain knows which they are.
-        var missing = SaveBundle.MissingMods(manifest, _mods.Select(m => m.Name).ToList());
-        if (missing.Count > 0)
-        {
-            var tb = new TextBlock
-            {
-                Text = $"Built with {manifest.Mods.Count} mod{(manifest.Mods.Count == 1 ? "" : "s")}, and "
-                     + $"{missing.Count} {(missing.Count == 1 ? "is" : "are")} not installed here: "
-                     + string.Join(", ", missing.Take(6).Select(m => m.Name))
-                     + (missing.Count > 6 ? ", …" : "")
-                     + ". The save will still load; parts of it may not behave until you add them.",
-                TextWrapping = TextWrapping.Wrap,
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "SaveBundleMissingMods");
-            panel.Children.Add(tb);
-        }
-        else if (manifest.Mods.Count > 0)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = $"Built with {manifest.Mods.Count} mod{(manifest.Mods.Count == 1 ? "" : "s")}, and you "
-                     + "have all of them.",
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
-            });
-        }
+        // The reason a mod manager is the right place for this. A save built on mods you do not have
+        // will not behave, and nothing else in the chain knows WHICH they are.
+        AddMissingModsSection(panel, manifest, res);
 
         var go = new Button
         {
@@ -743,6 +719,98 @@ public sealed partial class SavesDialog : ContentDialog
             catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
         };
         flyout.ShowAt(anchor);
+    }
+
+    /// <summary>
+    /// Say which of a bundle's mods are missing here, and offer somewhere to get them.
+    ///
+    /// <para><b>Naming them is not enough.</b> A list of names the user then has to go and search for
+    /// one by one is the same dead end the NEEDS ___ chip used to be: it states a problem and offers
+    /// nothing. Each mod the bundle recorded an id for becomes a link.</para>
+    ///
+    /// <para><b>The link is built here, never taken from the bundle.</b> A bundle arrives from another
+    /// person and is untrusted input; a URL inside it is a destination somebody else chose, and a
+    /// phishing page under a real mod's name - rendered by an app the user trusts, right next to that
+    /// mod's name - is the obvious attack. <see cref="SaveBundle.NexusUrlFor"/> builds it from the
+    /// numeric id and the domain WE resolve for this game, so a stranger can name a mod but can never
+    /// choose where the user is sent.</para>
+    ///
+    /// <para>Nothing installs itself. This is a statement with a door beside it, not an action.</para>
+    /// </summary>
+    private void AddMissingModsSection(StackPanel panel, SaveBundleManifest manifest, ResourceDictionary res)
+    {
+        if (manifest.Mods.Count == 0) return;
+
+        var missing = SaveBundle.MissingMods(manifest, _mods.Select(m => m.Name).ToList());
+        var total = manifest.Mods.Count;
+
+        if (missing.Count == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Built with {total} mod{(total == 1 ? "" : "s")}, and you have all of them.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+            });
+            return;
+        }
+
+        var heading = new TextBlock
+        {
+            Text = $"Built with {total} mod{(total == 1 ? "" : "s")}. {missing.Count} "
+                 + $"{(missing.Count == 1 ? "is" : "are")} not installed here - the save will still "
+                 + "load, but parts of it may not behave until you add them.",
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "SaveBundleMissingMods");
+        panel.Children.Add(heading);
+
+        var domain = NexusDomains.Effective(_game);
+        var list = new StackPanel { Spacing = 2, Margin = new Thickness(0, 2, 0, 0) };
+
+        // Capped, because a bundle from a 194-mod Cyberpunk save would otherwise be a wall inside a
+        // flyout. The count above is always the whole truth.
+        const int Shown = 8;
+        foreach (var mod in missing.Take(Shown))
+        {
+            var url = SaveBundle.NexusUrlFor(mod, domain);
+            var label = mod.Name + (string.IsNullOrWhiteSpace(mod.Version) ? "" : $"  ({mod.Version})");
+
+            if (url is not null && SafeUrl.IsHttpUrl(url))
+            {
+                var link = new HyperlinkButton
+                {
+                    Content = label,
+                    NavigateUri = new Uri(url),
+                    Padding = new Thickness(0),
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(link, $"MissingMod.{mod.Name}");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(link, $"Get {mod.Name} on Nexus");
+                list.Children.Add(link);
+            }
+            else
+            {
+                // No id recorded, or this game has no Nexus domain. Name it without inventing a
+                // destination - a link that goes somewhere plausible-but-wrong is worse than none.
+                var tb = new TextBlock
+                {
+                    Text = label,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkSoft"],
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, $"MissingMod.{mod.Name}");
+                list.Children.Add(tb);
+            }
+        }
+
+        if (missing.Count > Shown)
+            list.Children.Add(new TextBlock
+            {
+                Text = $"and {missing.Count - Shown} more.",
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+            });
+
+        panel.Children.Add(list);
     }
 
     /// <summary>

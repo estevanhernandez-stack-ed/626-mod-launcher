@@ -286,3 +286,51 @@ public class SaveBundleTests
                                      TestSupport.TempDir("bundle-junk-snaps-"), "palworld"));
     }
 }
+
+/// <summary>
+/// Where the import screen sends someone for a mod they are missing.
+/// </summary>
+public class BundleModLinkTests
+{
+    [Fact]
+    public void The_link_is_built_from_the_id_and_our_domain_not_from_the_bundle()
+    {
+        var mod = new BundleMod("Enhanced Palworld Visuals", "1.33", 1481, true);
+
+        Assert.Equal("https://www.nexusmods.com/palworld/mods/1481",
+            SaveBundle.NexusUrlFor(mod, "palworld"));
+    }
+
+    [Fact]
+    public void No_id_or_no_domain_means_no_link_rather_than_an_invented_one()
+    {
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, null, true), "palworld"));
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, 0, true), "palworld"));
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, 12, true), null));
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, 12, true), ""));
+        Assert.Null(SaveBundle.NexusUrlFor(null, "palworld"));
+    }
+
+    [Fact]
+    public void A_domain_that_is_not_a_slug_is_refused_rather_than_interpolated()
+    {
+        // Defensive. The domain comes from our own manifest, but it still lands in a URL the user
+        // clicks, and a feed entry is data rather than code.
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, 12, true), "pal/../../evil"));
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, 12, true), "evil.com/x"));
+        Assert.Null(SaveBundle.NexusUrlFor(new BundleMod("M", null, 12, true), "pal world"));
+    }
+
+    [Fact]
+    public void Every_link_it_produces_points_at_nexus_and_passes_the_http_guard()
+    {
+        // The property that matters: a bundle from a stranger can name a mod, but it can never choose
+        // where the user is sent.
+        foreach (var domain in new[] { "palworld", "cyberpunk2077", "eldenring", "sons-of-the-forest" })
+        {
+            var url = SaveBundle.NexusUrlFor(new BundleMod("M", null, 7, true), domain);
+            Assert.StartsWith("https://www.nexusmods.com/", url);
+            Assert.True(SafeUrl.IsHttpUrl(url));
+        }
+    }
+}

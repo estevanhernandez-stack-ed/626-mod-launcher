@@ -220,6 +220,31 @@ public static class SaveBundle
         return manifest;
     }
 
+    /// <summary>
+    /// Where to get a mod the bundle says it needs.
+    ///
+    /// <para><b>Built here, never carried in the bundle.</b> A bundle arrives from another person and
+    /// is untrusted input, so a URL inside it is a link somebody else chose — a phishing page under a
+    /// real mod's name is the obvious attack, and it would be rendered next to that mod's name by an
+    /// app the user trusts. Constructing it from the numeric mod id and the domain WE resolve for the
+    /// game means the link can only ever point at that game's page on Nexus.</para>
+    ///
+    /// <para>Null when the bundle did not record an id, or the game has no Nexus domain. The UI names
+    /// the mod without a link rather than inventing somewhere to send people.</para>
+    /// </summary>
+    public static string? NexusUrlFor(BundleMod? mod, string? nexusDomain)
+    {
+        if (mod?.NexusModId is not { } id || id <= 0) return null;
+        if (string.IsNullOrWhiteSpace(nexusDomain)) return null;
+
+        // The domain comes from our own manifest, but it is still interpolated into a URL - keep it to
+        // the shape Nexus slugs actually take rather than trusting it blind.
+        foreach (var c in nexusDomain)
+            if (!char.IsAsciiLetterOrDigit(c) && c != '-') return null;
+
+        return $"https://www.nexusmods.com/{nexusDomain}/mods/{id}";
+    }
+
     /// <summary>Which of a bundle's mods are not installed here, by name. The sentence the import
     /// screen exists to say.</summary>
     public static IReadOnlyList<BundleMod> MissingMods(
