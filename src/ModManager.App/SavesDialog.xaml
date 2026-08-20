@@ -163,8 +163,19 @@
                             <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Headline}" FontWeight="SemiBold" />
                             <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Edit" Click="OnEditCharacter" VerticalAlignment="Center"
-                                ToolTipService.ToolTip="Edit stats, runes, name — snapshots before applying" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <!-- The game's own record that mods were loaded when this was saved. Only
+                                 shown when the game SAYS so; silence is not a claim of the opposite. -->
+                            <TextBlock Text="MADE WITH MODS" VerticalAlignment="Center"
+                                       Visibility="{x:Bind ModsVisibility}"
+                                       Foreground="{StaticResource ThemeAccent}"
+                                       FontSize="{StaticResource MetaFontSize}" />
+                            <Button AutomationProperties.AutomationId="{x:Bind EditAutomationId}"
+                                    AutomationProperties.Name="{x:Bind EditAutomationName}"
+                                    Content="Edit" Click="OnEditCharacter" VerticalAlignment="Center"
+                                    Visibility="{x:Bind EditVisibility}"
+                                    ToolTipService.ToolTip="Edit stats, runes, name — snapshots before applying" />
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

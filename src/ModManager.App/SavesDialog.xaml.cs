@@ -79,9 +79,27 @@ public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail)
 
 /// <summary>One character-row for the editor. Bridges the Core CharacterSlot to the
 /// data-template's two-line display.</summary>
+/// <summary>One character row. <c>Slot</c> is present only for formats we can WRITE - reading is the
+/// common case and editing is the rare one, which is the distinction this row exists to keep.</summary>
 public sealed record CharacterRow(
-    string SavePath, ModManager.Core.SaveEditor.FromSoft.CharacterSlot Slot,
-    string Headline, string Detail);
+    string Id, string Headline, string Detail,
+    string? SavePath = null,
+    ModManager.Core.SaveEditor.FromSoft.CharacterSlot? Slot = null,
+    bool? MadeWithMods = null)
+{
+    /// <summary>Edit is offered only where a writer exists. Cyberpunk's sav.dat is chunked LZ4 and we
+    /// have no business writing it, so the button is ABSENT rather than present-and-failing.</summary>
+    public Visibility EditVisibility => Slot is not null ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Only when the GAME said so. Null means it does not record the fact, which is not the
+    /// same as "no mods" and must never be shown as one.</summary>
+    public Visibility ModsVisibility => MadeWithMods == true ? Visibility.Visible : Visibility.Collapsed;
+
+    // Frozen identity off the character's own key, never the display line - see
+    // .claude/rules/automation-ids.md.
+    public string EditAutomationId => $"CharacterEdit.{Id}";
+    public string EditAutomationName => $"Edit {Headline}";
+}
 
 public sealed partial class SavesDialog : ContentDialog
 {
@@ -258,11 +276,35 @@ public sealed partial class SavesDialog : ContentDialog
         SaveModEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// Cyberpunk 2077. Dispatching on the Steam app id rather than the engine, because a READER is
+    /// compiled code and cannot live in the manifest - and because engine predicts nothing about save
+    /// format: four ue-pak games on one machine have four unrelated shapes.
+    /// </summary>
+    private const string Cyberpunk2077AppId = "1091500";
+
     private void RefreshCharacters()
     {
         var rows = new List<CharacterRow>();
         int filesScanned = 0;
         string? firstReadError = null;
+
+        // Games we can describe but would never write. Listing is not editing, and treating them as
+        // the same job is why this section used to tell Cyberpunk players their 93 saves "aren't
+        // itemized yet".
+        if (!string.IsNullOrEmpty(_saveDir) && _steamAppId == Cyberpunk2077AppId)
+        {
+            foreach (var c in ModManager.Core.Characters.CyberpunkCharacters.ReadCharacters(_saveDir!))
+                rows.Add(new CharacterRow(c.Id, c.Headline, c.Detail, MadeWithMods: c.MadeWithMods));
+
+            CharacterList.ItemsSource = rows;
+            CharactersEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (rows.Count == 0)
+                CharactersEmpty.Text = "No saved characters found in this folder.";
+            EditorCredit.Text = "Read from the game's own save metadata. Nothing here is written.";
+            return;
+        }
+
         if (!string.IsNullOrEmpty(_saveDir))
         {
             var svc = App.AppHost.Services
@@ -292,10 +334,11 @@ public sealed partial class SavesDialog : ContentDialog
                     foreach (var slot in slots)
                     {
                         rows.Add(new CharacterRow(
-                            SavePath: savePath,
-                            Slot: slot,
+                            Id: $"{System.IO.Path.GetFileName(savePath)}#{slot.SlotIndex}",
                             Headline: $"{slot.Name}  ·  {st.Label}",
-                            Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}"));
+                            Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}",
+                            SavePath: savePath,
+                            Slot: slot));
                     }
                 }
             }
@@ -341,8 +384,9 @@ public sealed partial class SavesDialog : ContentDialog
         // hide this dialog → open the editor → re-show this dialog with refreshed lists. Hide()
         // makes the outer ShowAsync return None; MainWindow.OnSaves doesn't act on the result.
         var xamlRoot = this.XamlRoot;
-        var slot = row.Slot;
-        var savePath = row.SavePath;
+        // Only rows with a writer carry these, and the Edit button is hidden without one - but the
+        // handler must not depend on a Visibility binding for its safety.
+        if (row.Slot is not { } slot || row.SavePath is not { } savePath) return;
         this.Hide();
 
         var dialog = new CharacterEditDialog(slot) { XamlRoot = xamlRoot };
