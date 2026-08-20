@@ -45,13 +45,26 @@ public sealed record SaveWorldRow(string Id, string Title, string Kind, string D
         : "This world has no save of its own - it is hosted on someone else's machine. The name you type "
           + "here is the launcher's, and Palworld will not see it.";
 
-    // Per-row automation names, keyed on the world id rather than the display title: a label is the
-    // one thing here the user can rename at will, and a harness pinned to it would go red for a
-    // rename. See .claude/rules/automation-ids.md.
+    // FROZEN IDENTITY, per .claude/rules/automation-ids.md. Bound off the world's folder id, which is
+    // the one thing here that never changes - not the title (the user renames it at will) and not the
+    // noun. "World" is PALWORLD's word; a game that keeps a folder per save calls it a save, and when
+    // this panel serves more than one game that noun has to come from the game. A harness pinned to
+    // the Name would go red the day that happens, for no behavioural reason at all.
+    // No row-level id: the row template's outer element is a Grid, which is not a control-view
+    // element and would never reach the tree an agent walks - the same trap as putting one on a
+    // Border. The three action buttons carry per-row identity instead, and a walk confirms they
+    // surface. Verified: 6 SaveUnit* ids for two worlds.
+    public string RenameAutomationId    => $"SaveUnitRename.{Id}";
+    public string DuplicateAutomationId => $"SaveUnitDuplicate.{Id}";
+    public string BackupAutomationId    => $"SaveUnitBackup.{Id}";
+    public string RestoreAutomationId   => $"SaveUnitRestore.{Id}";
+
+    // And the accessibility labels, which are what a screen reader announces and ARE allowed to
+    // follow the copy. Different job from the ids above - both belong.
     public string RenameAutomationName    => $"Rename world {Id}";
     public string DuplicateAutomationName => $"Duplicate world {Id}";
-    public string BackupAutomationName  => $"Back up world {Id}";
-    public string RestoreAutomationName => $"Restore world {Id}";
+    public string BackupAutomationName    => $"Back up world {Id}";
+    public string RestoreAutomationName   => $"Restore world {Id}";
 }
 
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>

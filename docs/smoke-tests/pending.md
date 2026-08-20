@@ -1825,3 +1825,11 @@ both operations while it runs, which is itself worth checking.
 
 A joined world (`LocalData.sav` only, no `LevelMeta.sav`) has no name to write: its rename flyout says
 so and sets the launcher's own label instead.
+
+**Drive this by AutomationId, never by button text.** `SaveUnitRename.<folder-id>`,
+`SaveUnitDuplicate.<folder-id>`, `SaveUnitBackup.<folder-id>`, `SaveUnitRestore.<folder-id>`, plus
+`WorldNameBox` / `WorldNameBudget` / `WorldNameSaveButton` and `DuplicateWorldNameBox` /
+`DuplicateWorldBudget` / `DuplicateWorldConfirmButton` in the flyouts. The visible noun is *world*
+because that is Palworld's word; a game that keeps a folder per save calls it a save, and the day this
+panel serves both, a harness pinned to the label goes red for nothing. `SaveUnitRestore.*` is absent
+until that unit has at least one snapshot — absence there is correct, not a miss.

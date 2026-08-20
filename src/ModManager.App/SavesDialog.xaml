@@ -116,15 +116,19 @@
                             <TextBlock Text="{x:Bind Size}" VerticalAlignment="Center"
                                        Foreground="{StaticResource ThemeInkSoft}" FontFamily="{StaticResource MonoFontFamily}"
                                        FontSize="{StaticResource MetaFontSize}" Margin="0,0,4,0" />
-                            <Button AutomationProperties.Name="{x:Bind RenameAutomationName}" Content="Rename"
+                            <Button AutomationProperties.AutomationId="{x:Bind RenameAutomationId}"
+                                    AutomationProperties.Name="{x:Bind RenameAutomationName}" Content="Rename"
                                     Click="OnRenameWorld" Tag="{x:Bind}" VerticalAlignment="Center" />
-                            <Button AutomationProperties.Name="{x:Bind DuplicateAutomationName}" Content="Duplicate"
+                            <Button AutomationProperties.AutomationId="{x:Bind DuplicateAutomationId}"
+                                    AutomationProperties.Name="{x:Bind DuplicateAutomationName}" Content="Duplicate"
                                     Click="OnDuplicateWorld" Tag="{x:Bind}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Copy this world so you can experiment on the copy" />
-                            <Button AutomationProperties.Name="{x:Bind BackupAutomationName}" Content="Back up"
+                            <Button AutomationProperties.AutomationId="{x:Bind BackupAutomationId}"
+                                    AutomationProperties.Name="{x:Bind BackupAutomationName}" Content="Back up"
                                     Click="OnBackupWorld" Tag="{x:Bind}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Snapshot just this world" />
-                            <Button AutomationProperties.Name="{x:Bind RestoreAutomationName}" Content="Restore…"
+                            <Button AutomationProperties.AutomationId="{x:Bind RestoreAutomationId}"
+                                    AutomationProperties.Name="{x:Bind RestoreAutomationName}" Content="Restore…"
                                     Click="OnRestoreWorld" Tag="{x:Bind}" VerticalAlignment="Center"
                                     Visibility="{x:Bind HasBackupsVisibility}"
                                     ToolTipService.ToolTip="Put this world back from one of its own snapshots" />
