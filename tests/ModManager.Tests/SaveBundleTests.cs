@@ -6,14 +6,34 @@ using ModManager.Core.Transport;
 namespace ModManager.Tests;
 
 /// <summary>
+/// A token of exactly the right SHAPE and none of the substance: three base64url segments, header and
+/// payload both starting <c>eyJ</c>, issued by the RFC 2606 reserved example domain and "signed" with
+/// the literal word <c>signature</c>. A real HS256 signature is 32 bytes — 43 base64url characters.
+///
+/// <para><b>Assembled at runtime rather than pasted.</b> A pasted literal is indistinguishable from a
+/// live credential to a secret scanner, and it failed GitGuardian on every pull request that touched
+/// this file. A red security check people learn to scroll past is worse than no check, so the fixture
+/// gives up its literal rather than the repo giving up its alarm.</para>
+/// </summary>
+internal static class FakeToken
+{
+    public static string Jwt(string issuer = "accounts.example.com")
+        => Seg("{\"alg\":\"HS256\",\"typ\":\"JWT\"}")
+         + "." + Seg("{\"iss\":\"" + issuer + "\"}")
+         + "." + Seg("signature");
+
+    private static string Seg(string s)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes(s))
+                  .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+}
+
+/// <summary>
 /// Finding auth tokens among save files. See
 /// <c>docs/superpowers/plans/2026-08-20-save-transport-and-the-data-it-needs.md</c>.
 /// </summary>
 public class CredentialScanTests
 {
-    // Shaped like the real thing: three base64url segments, header and payload both starting eyJ.
-    private const string Jwt =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhY2NvdW50cy5leGFtcGxlLmNvbSJ9.c2lnbmF0dXJl";
+    private static string Jwt => FakeToken.Jwt();
 
     [Fact]
     public void A_token_is_found_even_when_it_is_buried_in_other_text()
@@ -66,8 +86,7 @@ public class CredentialScanTests
 /// </summary>
 public class SaveBundleTests
 {
-    private const string Jwt =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhY2NvdW50cy5leGFtcGxlLmNvbSJ9.c2ln";
+    private static string Jwt => FakeToken.Jwt();
 
     private static readonly DateTime Stamp = new(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
     private static readonly BundleGame Game = new("palworld", "1623730", "Palworld");
