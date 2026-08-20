@@ -82,6 +82,13 @@ public static class EffectiveManifest
             GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,
             Featured = remote.Featured ?? embedded.Featured,
             BanRisk = BanRiskRules.MaxString(embedded.BanRisk, remote.BanRisk),
+            // Added late, and forgotten here when they were - so for the three ids the feed and the
+            // snapshot BOTH carry, the remote value was silently dropped. Those three were
+            // elden-ring, dark-souls-iii and palworld: a game is in the embedded snapshot BECAUSE it
+            // matters, so the bug fell exclusively on the games where a safe route matters most.
+            // EveryOptionalFieldMerges pins this shape for whatever gets added next.
+            SafeRoute = remote.SafeRoute ?? embedded.SafeRoute,
+            SafeRouteHint = remote.SafeRouteHint ?? embedded.SafeRouteHint,
             Provenance = embedded.Provenance with { Sources = sources, Status = status },
         };
     }
