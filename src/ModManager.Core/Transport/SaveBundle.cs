@@ -22,6 +22,11 @@ public sealed record BundleGame(string Id, string? SteamAppId, string? Name);
 /// <summary>A file left out of the bundle, and why. An honest artifact says what it is missing.</summary>
 public sealed record BundleExclusion(string Path, string Reason);
 
+/// <summary>A file the bundle DOES carry that identifies its owner. Correctly included - the restore
+/// needs it - and worth saying out loud, because a user who does not know what is in a file cannot
+/// decide who to give it to. See <see cref="PersonalDataScan"/>.</summary>
+public sealed record BundleNotice(string Path, string Reason);
+
 /// <summary>One mod the save was made with. The part no general-purpose save tool can produce.</summary>
 public sealed record BundleMod(string Name, string? Version, int? NexusModId, bool Enabled);
 
@@ -52,6 +57,9 @@ public sealed record SaveBundleManifest
     public int FileCount { get; init; }
     public long Bytes { get; init; }
     public IReadOnlyList<BundleExclusion> Excluded { get; init; } = Array.Empty<BundleExclusion>();
+
+    /// <summary>Carried, but identifying. Not a warning - a disclosure.</summary>
+    public IReadOnlyList<BundleNotice> Notices { get; init; } = Array.Empty<BundleNotice>();
     public IReadOnlyList<BundleMod> Mods { get; init; } = Array.Empty<BundleMod>();
 }
 
@@ -141,6 +149,7 @@ public static class SaveBundle
             throw new DirectoryNotFoundException($"Save folder not found: {saveDir}");
 
         var excluded = new List<BundleExclusion>();
+        var notices = new List<BundleNotice>();
         var included = new List<(string Full, string Relative)>();
 
         foreach (var full in Directory.EnumerateFiles(saveDir, "*", SearchOption.AllDirectories))
@@ -151,6 +160,7 @@ public static class SaveBundle
                 excluded.Add(new BundleExclusion(rel, CredentialScan.Reason));
                 continue;
             }
+            if (PersonalDataScan.ReasonFor(rel) is { } why) notices.Add(new BundleNotice(rel, why));
             included.Add((full, rel));
         }
 
@@ -169,6 +179,7 @@ public static class SaveBundle
                 FileCount = included.Count,
                 Bytes = bytes,
                 Excluded = excluded,
+                Notices = notices,
                 Mods = mods ?? Array.Empty<BundleMod>(),
             },
             included.Select(x => new BundlePlanFile(x.Full, x.Relative)).ToList());

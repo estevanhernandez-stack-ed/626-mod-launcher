@@ -468,3 +468,67 @@ public class ComposableBundleTests
         Assert.Equal(Payload(standalone, "save/"), Payload(composed, "games/palworld/save/"));
     }
 }
+
+/// <summary>
+/// Saying what a bundle carries about its owner.
+///
+/// <para>Distinct from the credential scan, and the distinction is the whole design. A credential is
+/// EXCLUDED — it can be used against you. This is data that is correctly included, needed by the
+/// restore, and happens to identify you. Removing it would break the feature; saying nothing would let
+/// someone post a file publicly without knowing what is in it.</para>
+/// </summary>
+public class PersonalDataScanTests
+{
+    [Fact]
+    public void Steams_cloud_marker_is_recognised_wherever_it_sits()
+    {
+        Assert.Equal("steam-account-id", PersonalDataScan.ReasonFor("steam_autocloud.vdf"));
+        Assert.Equal("steam-account-id", PersonalDataScan.ReasonFor("W1/steam_autocloud.vdf"));
+        Assert.Equal("steam-account-id", PersonalDataScan.ReasonFor(@"W1\STEAM_AUTOCLOUD.VDF"));
+    }
+
+    [Fact]
+    public void Ordinary_save_files_are_not_flagged()
+    {
+        // This must stay quiet on real save data, or the disclosure becomes noise and gets ignored -
+        // which costs more than never having said anything.
+        Assert.Null(PersonalDataScan.ReasonFor("W1/Level.sav"));
+        Assert.Null(PersonalDataScan.ReasonFor("Players/0001.sav"));
+        Assert.Null(PersonalDataScan.ReasonFor("metadata.9.json"));
+    }
+
+    [Fact]
+    public void The_sentence_says_what_it_is_why_it_is_fine_and_where_it_is_not()
+    {
+        var msg = PersonalDataScan.MessageFor(new[] { new BundleNotice("steam_autocloud.vdf", "steam-account-id") });
+
+        Assert.Contains("Steam account id", msg);
+        Assert.Contains("your own machines", msg);      // why it is fine here
+        Assert.Contains("not a file to post publicly", msg);   // and where it is not
+    }
+
+    [Fact]
+    public void Nothing_to_disclose_says_nothing()
+    {
+        Assert.Equal("", PersonalDataScan.MessageFor(null));
+        Assert.Equal("", PersonalDataScan.MessageFor(Array.Empty<BundleNotice>()));
+        Assert.Equal("", PersonalDataScan.MessageFor(new[] { new BundleNotice("x", "something-else") }));
+    }
+
+    [Fact]
+    public void A_real_bundle_records_what_it_carries_about_you()
+    {
+        var dir = TestSupport.TempDir("notice-src-");
+        Directory.CreateDirectory(Path.Combine(dir, "W1"));
+        File.WriteAllText(Path.Combine(dir, "W1", "Level.sav"), "world");
+        File.WriteAllText(Path.Combine(dir, "steam_autocloud.vdf"), "\"steam_autocloud.vdf\"\n{\n\"accountid\" \"8945417\"\n}");
+
+        var plan = SaveBundle.Plan(dir, new BundleGame("palworld", "1623730", "Palworld"),
+                                   new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc));
+
+        // Carried, not excluded - the restore needs it and Steam expects it.
+        Assert.Equal(2, plan.Manifest.FileCount);
+        Assert.Empty(plan.Manifest.Excluded);
+        Assert.Equal("steam_autocloud.vdf", Assert.Single(plan.Manifest.Notices).Path);
+    }
+}

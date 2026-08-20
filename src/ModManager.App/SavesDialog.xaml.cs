@@ -620,9 +620,15 @@ public sealed partial class SavesDialog : ContentDialog
                 ? ""
                 : $" {manifest.Excluded.Count} sign-in file{(manifest.Excluded.Count == 1 ? " was" : "s were")} left out - "
                   + "those are account tokens, not save data.";
+
+            // What it CARRIES about you, as opposed to what was kept out. Different category, and it
+            // needs saying: a user who does not know what is in a file cannot decide who to give it to.
+            var carries = PersonalDataScan.MessageFor(manifest.Notices);
+
             StatusText.Text =
                 $"Packed {manifest.FileCount} file{(manifest.FileCount == 1 ? "" : "s")} ({Human(manifest.Bytes)}) "
-                + $"and {_mods.Count} mod{(_mods.Count == 1 ? "" : "s")}.{left}";
+                + $"and {_mods.Count} mod{(_mods.Count == 1 ? "" : "s")}.{left}"
+                + (carries.Length > 0 ? " " + carries : "");
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
