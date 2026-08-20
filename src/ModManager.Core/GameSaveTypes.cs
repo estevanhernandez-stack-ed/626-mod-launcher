@@ -14,7 +14,22 @@ public sealed record SaveType(string Extension, string Label);
 /// which is what a profile means here and in every other mod manager. Two things sharing one word is
 /// the exact failure item 7 is about, and this one was invisible from the UI, which is worse.
 /// </summary>
-public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTypes);
+/// <summary>How a game arranges its saves on disk. Measured on real installs, not assumed - see
+/// docs/2026-08-19-saves-are-three-shapes.md.</summary>
+public enum SaveLayout
+{
+    /// <summary>Several formats of the same save, side by side in one folder: Elden Ring's
+    /// .sl2 / .co2 / .err. The only shape where "clone to another type" means anything.</summary>
+    TypedFiles,
+
+    /// <summary>One folder per world, each holding that world's files. Palworld: two worlds here, 74
+    /// .sav files, 72 of them nested a level below the folder the panel reads. Listing files would
+    /// find one top-level .sav and imply it was your save; the unit a player thinks in is the world.</summary>
+    Worlds,
+}
+
+public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTypes,
+    SaveLayout Layout = SaveLayout.TypedFiles);
 
 /// <summary>
 /// Resolves a <see cref="GameSaveTypes"/> for a game — engine-level defaults, with a per-App-ID
@@ -25,8 +40,17 @@ public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTy
 /// </summary>
 public static class GameSaveTypesCatalog
 {
+    // Palworld. The per-App-ID hook this method has always carried, finally used: layout is a
+    // per-GAME fact, not a per-engine one. Palworld and Windrose are both ue-pak and arrange saves
+    // completely differently - worlds in folders versus a RocksDB database - so keying this on engine
+    // would have been wrong for one of them whichever way it went.
+    private const string PalworldAppId = "1623730";
+
     public static GameSaveTypes Resolve(string? engine, string? steamAppId)
-        => new(engine ?? "", SaveTypesFor(engine));
+        => new(engine ?? "", SaveTypesFor(engine), LayoutFor(steamAppId));
+
+    private static SaveLayout LayoutFor(string? steamAppId)
+        => steamAppId == PalworldAppId ? SaveLayout.Worlds : SaveLayout.TypedFiles;
 
     private static IReadOnlyList<SaveType> SaveTypesFor(string? engine) => engine switch
     {
@@ -39,4 +63,38 @@ public static class GameSaveTypesCatalog
         },
         _ => Array.Empty<SaveType>(),
     };
+}
+
+/// <summary>
+/// What the saves panel says when it can list nothing.
+///
+/// <para><b>Two different situations, one sentence.</b> The panel said <i>"No save files of this
+/// game's known types here. Check the save folder above"</i> in both, and for Palworld that is advice
+/// pointing at the one thing that is not wrong: the folder is right, the saves are in it, and the app
+/// simply does not know this game's layout. <c>GameSaveTypesCatalog</c> declares types for
+/// <c>fromsoft</c> and nothing else, so every other game gets told to go re-check a correct setting.</para>
+///
+/// <para>Sending someone to verify a setting that is already correct is worse than saying nothing:
+/// they change it, and then the snapshots that WERE covering everything start covering the wrong
+/// folder.</para>
+/// </summary>
+public static class SaveListingEmptyState
+{
+    /// <param name="declaresTypes">Whether this game declares any save types at all.</param>
+    /// <param name="folderSet">Whether a save folder has been resolved.</param>
+    public static string MessageFor(bool folderSet, bool declaresTypes)
+    {
+        if (!folderSet)
+            return "No save folder set for this game yet. Set one above and snapshots can start covering it.";
+
+        // The app's own gap, not the user's. Say so, and say what still protects them - the snapshot
+        // is a whole-folder zip and it recurses, which is exactly what this case needs them to trust.
+        if (!declaresTypes)
+            return "This game's save format isn't itemized yet, so there's nothing to list here. "
+                 + "Snapshots still back up the whole folder, subfolders and all.";
+
+        // Types ARE declared and none were found. Here the folder genuinely is the thing to look at.
+        return "No save files of this game's known types in this folder. Check the folder above — "
+             + "snapshots still cover everything in it.";
+    }
 }

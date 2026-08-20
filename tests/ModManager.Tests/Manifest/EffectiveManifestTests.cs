@@ -198,3 +198,71 @@ public class BanRiskMergeTests
         Assert.Equal("high", merged.Games[0].BanRisk);
     }
 }
+
+/// <summary>
+/// The merge must not quietly forget a field.
+///
+/// <para><c>MergeEntry</c> builds <c>embedded with { … }</c> and names each field by hand, so a field
+/// added to the schema and not added to that list is silently dropped for every id the feed and the
+/// embedded snapshot both carry — and it fails <b>only</b> on those ids, which are the important ones,
+/// because being important is what puts a game in the snapshot.</para>
+///
+/// <para>That is exactly what happened to <c>safeRoute</c> / <c>safeRouteHint</c>: shipped in the
+/// schema, wired through the miner, never added to the merge. Three games lost it — elden-ring,
+/// dark-souls-iii, palworld — and nothing noticed because no UI consumed it yet.</para>
+///
+/// <para>This test walks the record by reflection rather than listing fields, so a NEW field is
+/// covered the moment it is declared. That is the whole point: a hand-written list is the thing that
+/// failed.</para>
+/// </summary>
+public class ManifestMergeCompletenessTests
+{
+    // Composite fields with their own merge rules and their own tests: unioned, not overwritten.
+    private static readonly HashSet<string> Composite = new() { "Id", "Stores", "Provenance" };
+
+    [Fact]
+    public void Every_optional_field_the_schema_declares_survives_the_merge()
+    {
+        var embedded = new GameManifestEntry { Id = "g" };
+        var remote = new GameManifestEntry
+        {
+            Id = "g",
+            Name = "Remote Name",
+            Engine = "ue-pak",
+            NexusDomain = "remotedomain",
+            CurseforgeGameId = 4242,
+            ModPath = "Remote/Mods",
+            SaveDirHint = "Remote/Saves",
+            FileExtensions = new[] { ".remote" },
+            GroupingRule = "remote-rule",
+            Featured = 7,
+            BanRisk = "high",
+            SafeRoute = "offline",
+            SafeRouteHint = "Play offline.",
+        };
+
+        // Through the real public entry point - no test-only seam. Same id on both sides is what
+        // triggers MergeEntry.
+        var merged = EffectiveManifest
+            .Merge(new GameManifest { Games = new[] { embedded } },
+                   new GameManifest { Games = new[] { remote } })
+            .Games.Single(g => g.Id == "g");
+
+        var missed = new List<string>();
+        foreach (var prop in typeof(GameManifestEntry).GetProperties())
+        {
+            if (Composite.Contains(prop.Name)) continue;
+            var wanted = prop.GetValue(remote);
+            if (wanted is null) continue;   // the fixture did not set it; nothing to assert
+            var got = prop.GetValue(merged);
+            if (!Equals(FlattenForCompare(wanted), FlattenForCompare(got))) missed.Add(prop.Name);
+        }
+
+        Assert.True(missed.Count == 0,
+            "MergeEntry drops these fields the schema declares: " + string.Join(", ", missed) +
+            ". Add them to the `embedded with { … }` list in EffectiveManifest.MergeEntry.");
+    }
+
+    private static object? FlattenForCompare(object? v)
+        => v is IEnumerable<string> seq ? string.Join("|", seq) : v;
+}

@@ -13,6 +13,60 @@ public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
 /// <summary>One "clone to" choice for a save file: the target type's label + extension.</summary>
 public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 
+/// <summary>One world in the saves panel. The folder name is a GUID, so the row leads with the name
+/// the GAME has for this world - read straight out of its own save - and puts the identifying facts
+/// underneath: when it was last played, how many files, and what it costs on disk. A world with no
+/// readable name falls back to the user's label and then to an ordinal.
+/// See docs/superpowers/specs/2026-08-19-the-world-name-is-readable-design.md.</summary>
+/// <param name="NameBudgetBytes">How many BYTES a rename may occupy, 0 when the save has no name to
+/// change. Not characters.</param>
+public sealed record SaveWorldRow(string Id, string Title, string Kind, string Detail, string Size,
+                                  int BackupCount, int NameBudgetBytes, bool HasOwnSave)
+{
+    public Visibility HasBackupsVisibility => BackupCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Whether a rename can reach the save, or only our own label.</summary>
+    public bool CanRenameInGame => NameBudgetBytes > 0;
+
+    /// <summary>
+    /// Why a rename cannot reach the save - the two reasons need different sentences.
+    ///
+    /// <para><b>No save of its own:</b> a world somebody else hosts keeps only LocalData.sav. There has
+    /// never been a name in it.</para>
+    ///
+    /// <para><b>A save we can no longer read the name out of:</b> Palworld re-saved the world and the
+    /// codec compressed a padded name into a back-reference. The world still shows the right name
+    /// in-game - we just cannot change it from here any more.</para>
+    /// </summary>
+    public string WhyNotInGame => HasOwnSave
+        ? "Palworld has re-saved this world since it was last named, and its own copy of the name is no "
+          + "longer in a form the launcher can change. It still shows correctly in-game. The name you "
+          + "type here is the launcher's."
+        : "This world has no save of its own - it is hosted on someone else's machine. The name you type "
+          + "here is the launcher's, and Palworld will not see it.";
+
+    // FROZEN IDENTITY, per .claude/rules/automation-ids.md. Bound off the world's folder id, which is
+    // the one thing here that never changes - not the title (the user renames it at will) and not the
+    // noun. "World" is PALWORLD's word; a game that keeps a folder per save calls it a save, and when
+    // this panel serves more than one game that noun has to come from the game. A harness pinned to
+    // the Name would go red the day that happens, for no behavioural reason at all.
+    // No row-level id: the row template's outer element is a Grid, which is not a control-view
+    // element and would never reach the tree an agent walks - the same trap as putting one on a
+    // Border. The three action buttons carry per-row identity instead, and a walk confirms they
+    // surface. Verified: 6 SaveUnit* ids for two worlds.
+    public string RenameAutomationId    => $"SaveUnitRename.{Id}";
+    public string DuplicateAutomationId => $"SaveUnitDuplicate.{Id}";
+    public string BackupAutomationId    => $"SaveUnitBackup.{Id}";
+    public string RestoreAutomationId   => $"SaveUnitRestore.{Id}";
+
+    // And the accessibility labels, which are what a screen reader announces and ARE allowed to
+    // follow the copy. Different job from the ids above - both belong.
+    public string RenameAutomationName    => $"Rename world {Id}";
+    public string DuplicateAutomationName => $"Duplicate world {Id}";
+    public string BackupAutomationName    => $"Back up world {Id}";
+    public string RestoreAutomationName   => $"Restore world {Id}";
+}
+
 /// <summary>A save-file row: its name + type, and the other types it can be cloned to.</summary>
 public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets)
 {
@@ -33,9 +87,12 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly LauncherService _svc;
     private readonly IntPtr _hwnd;
     private readonly string _gameId;
+    private readonly GameEntry _game;   // for the running-game gate on anything that writes a save
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
+    private readonly string? _engine;
+    private readonly string? _steamAppId;
     private readonly string? _saveModPath;
     private readonly IReadOnlyList<string>? _saveModForbidden;
     private string? _saveDir;
@@ -49,10 +106,13 @@ public sealed partial class SavesDialog : ContentDialog
         _svc = svc;
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;
+        _game = ctx.Game;
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
-        _saveTypes = GameSaveTypesCatalog.Resolve(ctx.Game.Engine, ctx.Game.SteamAppId).SaveTypes;
+        _engine = ctx.Game.Engine;
+        _steamAppId = ctx.Game.SteamAppId;
+        _saveTypes = GameSaveTypesCatalog.Resolve(_engine, _steamAppId).SaveTypes;
         _saveModPath = ctx.Game.SaveModPath;
         _saveModForbidden = ctx.Game.SaveModForbidden;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
@@ -61,6 +121,7 @@ public sealed partial class SavesDialog : ContentDialog
         FolderBox.Text = _saveDir ?? "";
         Refresh();
         RefreshSaveFiles();
+        RefreshWorlds();
         RefreshSaveMods();
         RefreshCharacters();
         _loaded = true;
@@ -87,7 +148,50 @@ public sealed partial class SavesDialog : ContentDialog
                           .Select(t => new SaveCloneTarget(t.Label, t.Extension)).ToList()))
             .ToList();
         SaveFileList.ItemsSource = rows;
+        // Which of the two empty states this is - the app not knowing the game's layout, or the
+        // folder being wrong - decides what the user should do next, so the rule lives in Core.
+        SaveFilesEmpty.Text = SaveListingEmptyState.MessageFor(
+            folderSet: !string.IsNullOrEmpty(_saveDir), declaresTypes: _saveTypes.Count > 0);
         SaveFilesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Worlds, for a game that keeps a folder per world. Hidden entirely otherwise - an empty "Worlds"
+    // heading on Elden Ring would be a new way of saying nothing, which is what this panel was just
+    // fixed for.
+    private void RefreshWorlds()
+    {
+        var isWorlds = GameSaveTypesCatalog.Resolve(_engine, _steamAppId).Layout == SaveLayout.Worlds;
+        if (!isWorlds || string.IsNullOrEmpty(_saveDir))
+        {
+            WorldsHeading.Visibility = Visibility.Collapsed;
+            WorldList.Visibility = Visibility.Collapsed;
+            SaveFilesHeading.Visibility = Visibility.Visible;
+            SaveFileList.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var labels = WorldLabels.Load(_dataDir);
+        var rows = SaveManager.ListWorlds(_saveDir).Select((w, i) => new SaveWorldRow(
+            w.Name,
+            labels.Display(w.Name, i + 1, w.GameName),
+            w.RoleLabel,
+            $"Last played {w.LastWriteUtc.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {w.FileCount} file{(w.FileCount == 1 ? "" : "s")}  ·  {w.Name}"
+                + (w.RoleCaveat.Length > 0 ? $"{Environment.NewLine}{w.RoleCaveat}" : ""),
+            Human(w.Bytes),
+            SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
+            w.NameBudgetBytes,
+            w.HasOwnSave)).ToList();
+
+        WorldList.ItemsSource = rows;
+        WorldsHeading.Visibility = Visibility.Visible;
+        WorldList.Visibility = rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // The file list has nothing to say for this shape, so it does not get to say it - and neither
+        // does its heading. Leaving "Save files" standing over nothing is the empty-heading problem
+        // this panel was just fixed for, reintroduced one section up.
+        SaveFilesEmpty.Visibility = Visibility.Collapsed;
+        SaveFilesHeading.Visibility = Visibility.Collapsed;
+        SaveFileList.Visibility = Visibility.Collapsed;
     }
 
     private void OnCloneMenuOpening(object sender, object e)
@@ -328,6 +432,8 @@ public sealed partial class SavesDialog : ContentDialog
             SaveManager.RestoreType(pair.Item1, _saveDir, _savesDir, pair.Item2);
             StatusText.Text = "Restored that save type. Your previous state was snapshotted first.";
             Refresh();
+            RefreshSaveFiles();
+            RefreshWorlds();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
@@ -365,6 +471,7 @@ public sealed partial class SavesDialog : ContentDialog
         _svc.SetSaveDir(_gameId, _saveDir);
         Refresh();
         RefreshSaveFiles();
+        RefreshWorlds();
     }
 
     private void OnBackup(object sender, RoutedEventArgs e)
@@ -384,11 +491,364 @@ public sealed partial class SavesDialog : ContentDialog
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        // Reversible, but it replaces EVERYTHING - and the undo is only useful to someone who knows
+        // before-restore exists. This is where they find that out.
+        ShowConfirm(fe,
+            "Replace your saves with this snapshot?",
+            $"Everything in the save folder is replaced - {DescribeSaveFolder()}.\n\n"
+            + "Your current saves are snapshotted as 'before-restore' first, so this is undoable.",
+            "Replace", "ConfirmRestoreButton", () => DoRestore(row));
+    }
+
+    private void DoRestore(SaveRow row)
+    {
         try
         {
-            SaveManager.Restore(row.Snap.Path, _saveDir, _savesDir);
+            SaveManager.Restore(row.Snap.Path, _saveDir!, _savesDir);
             StatusText.Text = "Restored. Your previous save was snapshotted as 'before-restore' first.";
             Refresh();
+            RefreshSaveFiles();
+            RefreshWorlds();
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>
+    /// A confirmation that works INSIDE this dialog.
+    ///
+    /// <para>SavesDialog is itself a ContentDialog, and one cannot be shown inside another — which is
+    /// why Settings hands its confirms back to MainWindow to run after it closes. That is correct and
+    /// heavy: it would close this panel and lose the reader's place in the list they are standing in.
+    /// A Flyout is a popup rather than a dialog, so it composes here, and it opens at the pixel the
+    /// user aimed at — which is also where the misclick happens.</para>
+    /// </summary>
+    private void ShowConfirm(FrameworkElement anchor, string title, string body, string confirmLabel,
+                             string confirmId, Action act)
+    {
+        var panel = new StackPanel { Spacing = 10, MaxWidth = 340 };
+        panel.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = body, TextWrapping = TextWrapping.Wrap });
+
+        var confirm = new Button { Content = confirmLabel };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(confirm, confirmId);
+        var cancel = new Button { Content = "Cancel" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(cancel, "ConfirmCancelButton");
+
+        // Filled danger, and it has to survive the visual states. A Style that only sets Background
+        // wins at rest and loses the moment the pointer arrives, because the stock template
+        // re-resolves ButtonBackgroundPointerOver via ThemeResource - the button would read danger
+        // until you reached for it, which is exactly backwards. Element-scope the state keys onto the
+        // button using the SAME live brush instances ThemeService.Apply mutates, never new ones.
+        // See .claude/rules/vsm-danger-buttons.md.
+        var res = Application.Current.Resources;
+        confirm.Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"];
+        confirm.Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBg"];
+        confirm.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+        confirm.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+        confirm.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+        confirm.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(confirm);
+        row.Children.Add(cancel);
+        panel.Children.Add(row);
+
+        var flyout = new Flyout { Content = panel };
+        confirm.Click += (_, _) => { flyout.Hide(); act(); };
+        cancel.Click += (_, _) => flyout.Hide();
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>What the save folder holds right now, for a confirm to say out loud. The counts are
+    /// gathered here (I/O) and phrased by <see cref="SaveFolderSummary"/> (pure, tested) — a confirm
+    /// that misreports what it is about to replace is worse than one that says nothing.</summary>
+    private string DescribeSaveFolder()
+    {
+        if (string.IsNullOrEmpty(_saveDir) || !System.IO.Directory.Exists(_saveDir))
+            return "an empty save folder";
+        long bytes = 0;
+        var files = 0;
+        try
+        {
+            foreach (var f in System.IO.Directory.EnumerateFiles(_saveDir, "*", System.IO.SearchOption.AllDirectories))
+            {
+                bytes += new System.IO.FileInfo(f).Length;
+                files++;
+            }
+        }
+        catch { /* an unreadable folder still gets a sentence rather than a crash */ }
+        return SaveFolderSummary.Describe(SaveManager.ListWorlds(_saveDir).Count, files, bytes);
+    }
+
+    /// <summary>
+    /// Refuse anything that writes a save while the game is running.
+    ///
+    /// <para>Found the hard way: a world folder deleted while Palworld was open <b>came back on
+    /// exit</b> - the game holds a loaded world in memory and flushes it. An operation that silently
+    /// undoes itself is worse than one that refuses, because the user reports "it didn't work" and
+    /// there is nothing in the logs to see.</para>
+    ///
+    /// <para>Fails CLOSED: if the probe cannot enumerate processes it throws, and we treat that as
+    /// running rather than assume the coast is clear.</para>
+    /// </summary>
+    private bool GameIsRunning()
+    {
+        try { return new GameProcessProbe().AnyRunning(_game); }
+        catch { return true; }
+    }
+
+    /// <summary>Live byte counter shared by the rename and duplicate flyouts. Counts BYTES because
+    /// that is what the save measures - a five-character accented name costs ten.</summary>
+    private static void WireBudget(TextBox box, TextBlock counter, Button action, int budgetBytes)
+    {
+        var res = Application.Current.Resources;
+        void Recount()
+        {
+            var typed = box.Text.Trim();
+            if (budgetBytes <= 0) { counter.Text = ""; action.IsEnabled = typed.Length > 0; return; }
+            var used = PalworldWorldName.ByteLength(typed);
+            var over = used > budgetBytes;
+            counter.Text = $"{used} of {budgetBytes} bytes" + (over ? " - too long for the save" : "");
+            counter.Foreground = (Microsoft.UI.Xaml.Media.Brush)res[over ? "ThemeDanger" : "ThemeInkDim"];
+            action.IsEnabled = !over && typed.Length > 0;
+        }
+        box.TextChanged += (_, _) => Recount();
+        Recount();
+    }
+
+    /// <summary>
+    /// Rename a world - the name Palworld itself shows, when the save has room for it.
+    ///
+    /// <para>A Flyout rather than a dialog for the same reason the confirms are: this panel IS a
+    /// ContentDialog and cannot host another one.</para>
+    ///
+    /// <para>The budget is stated before anything is typed. Discovering a limit by being refused is
+    /// the failure this app keeps designing away from.</para>
+    /// </summary>
+    private void OnRenameWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        var res = Application.Current.Resources;
+        var box = new TextBox { PlaceholderText = "e.g. Ridgeline Base", Text = row.Title, MinWidth = 260 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "WorldNameBox");
+
+        var counter = new TextBlock { FontSize = 12 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(counter, "WorldNameBudget");
+
+        var save = new Button { Content = "Save" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(save, "WorldNameSaveButton");
+
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 320 };
+        panel.Children.Add(new TextBlock { Text = "Name this world", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock
+        {
+            Text = row.CanRenameInGame
+                ? "This is the name Palworld shows. The save keeps it in a fixed space, so a new one has "
+                  + "to fit - and Palworld's own settings screen will not let you change it at all. A "
+                  + "name that fills the space exactly is the one that stays changeable."
+                : row.WhyNotInGame,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+        });
+        panel.Children.Add(box);
+        panel.Children.Add(counter);
+        panel.Children.Add(save);
+
+        var flyout = new Flyout { Content = panel };
+        save.Click += (_, _) =>
+        {
+            var name = box.Text.Trim();
+            flyout.Hide();
+            try
+            {
+                if (row.CanRenameInGame)
+                {
+                    if (GameIsRunning())
+                    {
+                        StatusText.Text = "Close Palworld first - it holds the world open and would undo this on exit.";
+                        return;
+                    }
+                    PalworldWorldName.Write(System.IO.Path.Combine(_saveDir!, row.Id), name,
+                                            SaveManager.WorldSnapshotsDir(_savesDir, row.Id));
+                    // The label is written too, NOT cleared. A name that does not fill its budget can
+                    // stop being readable the next time Palworld saves - the codec compresses the
+                    // padding away - and the panel must not lose the name at that point. The label is
+                    // the durable record; the bytes in the save are what Palworld reads.
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, name));
+                    StatusText.Text = $"Renamed to \"{name}\". Palworld shows this too.";
+                }
+                else
+                {
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(row.Id, name));
+                    StatusText.Text = $"Named it \"{name}\" here. Palworld will not see this one.";
+                }
+                RefreshWorlds();
+            }
+            catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        };
+        WireBudget(box, counter, save, row.NameBudgetBytes);
+        flyout.ShowAt(fe);
+    }
+
+    /// <summary>
+    /// Copy a world so there is somewhere safe to experiment.
+    ///
+    /// <para>Not confirmed - it creates, and destroys nothing. It does insist on a name, because a
+    /// copy that cannot be told apart from its original is the exact reason this feature was built
+    /// once, tested on the real game, and thrown away.</para>
+    /// </summary>
+    private void OnDuplicateWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        var res = Application.Current.Resources;
+        var suggested = row.CanRenameInGame
+            ? TruncateToBytes($"Copy of {row.Title}", row.NameBudgetBytes)
+            : $"Copy of {row.Title}";
+
+        var box = new TextBox { Text = suggested, MinWidth = 260 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "DuplicateWorldNameBox");
+
+        var counter = new TextBlock { FontSize = 12 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(counter, "DuplicateWorldBudget");
+
+        var go = new Button { Content = "Duplicate" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(go, "DuplicateWorldConfirmButton");
+
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 340 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Duplicate {row.Title}",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = row.CanRenameInGame
+                ? "The copy is a whole separate world you can play or wreck without touching this one. "
+                  + "Give it a different name now - Palworld shows both, and two worlds under one name "
+                  + "is how people delete the wrong thing."
+                : "The copy is a separate world. " + row.WhyNotInGame,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+        });
+        panel.Children.Add(box);
+        panel.Children.Add(counter);
+        panel.Children.Add(go);
+
+        var flyout = new Flyout { Content = panel };
+        go.Click += (_, _) =>
+        {
+            var name = box.Text.Trim();
+            flyout.Hide();
+            if (GameIsRunning())
+            {
+                StatusText.Text = "Close Palworld first - it would undo the new world on exit.";
+                return;
+            }
+            try
+            {
+                var id = SaveManager.DuplicateWorld(_saveDir!, row.Id, row.CanRenameInGame ? name : null);
+                // The label goes in either way, for the same reason a rename writes one: a name that
+                // does not fill its budget can stop being readable the next time Palworld saves, and
+                // the copy must not lose the name that is the entire point of making it.
+                if (name.Length > 0)
+                    WorldLabels.Save(_dataDir, WorldLabels.Load(_dataDir).With(id, name));
+                StatusText.Text = $"Duplicated. \"{name}\" is a separate world now - {row.Title} is untouched.";
+                RefreshWorlds();
+            }
+            catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        };
+        WireBudget(box, counter, go, row.NameBudgetBytes);
+        flyout.ShowAt(fe);
+    }
+
+    /// <summary>Trim a suggested name to a BYTE budget without splitting a character in half.</summary>
+    private static string TruncateToBytes(string s, int budgetBytes)
+    {
+        while (s.Length > 0 && PalworldWorldName.ByteLength(s) > budgetBytes) s = s[..^1];
+        return s.TrimEnd();
+    }
+
+    // Back up one world. Not confirmed: it creates a snapshot and destroys nothing, which is the same
+    // reason Back up now is not confirmed.
+    private void OnBackupWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var snap = SaveManager.BackupWorld(_saveDir, row.Id, _savesDir, row.Title);
+            StatusText.Text = $"Backed up {row.Title} — {Human(snap.SizeBytes)}.";
+            RefreshWorlds();
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>
+    /// Restore one world, from that world's own snapshots.
+    ///
+    /// <para>The flyout IS the confirmation. It states the consequence once at the top, then lists
+    /// this world's snapshots as danger-filled buttons — picking a specific dated snapshot out of a
+    /// labelled list is already a deliberate act, and a second confirm on top would be the
+    /// click-through training the confirming spec warns about.</para>
+    /// </summary>
+    private void OnRestoreWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        var snaps = SaveManager.ListWorldSnapshots(_savesDir, row.Id);
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 380 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Replace {row.Title}?",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Everything in this world is replaced. Your other worlds are not touched, and this "
+                 + "world is snapshotted as 'before-restore' first.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        var flyout = new Flyout { Content = panel };
+        var res = Application.Current.Resources;
+        foreach (var snap in snaps)
+        {
+            var b = new Button
+            {
+                Content = $"{snap.TakenUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
+                        + (snap.Label.Length > 0 ? $"  ·  {snap.Label}" : "")
+                        + $"  ·  {Human(snap.SizeBytes)}",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBg"],
+            };
+            // Filled danger has to survive the visual states - see .claude/rules/vsm-danger-buttons.md.
+            b.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+            b.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+            b.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+            b.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+            var chosen = snap;
+            b.Click += (_, _) => { flyout.Hide(); DoRestoreWorld(row, chosen); };
+            panel.Children.Add(b);
+        }
+        flyout.ShowAt(fe);
+    }
+
+    private void DoRestoreWorld(SaveWorldRow row, ModManager.Core.SaveSnapshot snap)
+    {
+        try
+        {
+            SaveManager.RestoreWorld(snap.Path, _saveDir!, row.Id, _savesDir);
+            StatusText.Text = $"Restored {row.Title}. Its previous state was snapshotted as 'before-restore' first.";
+            RefreshWorlds();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
@@ -396,11 +856,26 @@ public sealed partial class SavesDialog : ContentDialog
     private void OnDelete(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveRow row) return;
+
+        // The only irreversible action in this panel, and it destroys the thing that makes the others
+        // safe. SaveManager.Delete is File.Delete - no recycle bin, no holding folder. It also sits on
+        // the same row as Restore, so the misclick is "I meant to go back to my last good save and
+        // instead permanently destroyed it".
+        ShowConfirm(fe,
+            "Delete this snapshot?",
+            $"{row.Title}  -  {row.Detail}\n\n"
+            + "This one is gone for good; snapshots are the only copy the launcher keeps.",
+            "Delete it", "ConfirmDeleteButton", () => DoDelete(row));
+    }
+
+    private void DoDelete(SaveRow row)
+    {
         SaveManager.Delete(row.Snap.Path);
         StatusText.Text = $"Deleted {row.Snap.FileName}.";
         Refresh();
     }
 
-    private static string Human(long b)
-        => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024.0:0.#} KB" : $"{b / 1024.0 / 1024:0.#} MB";
+    // One formatter, in Core, shared with the confirm copy. This panel briefly had two and they
+    // disagreed above a gigabyte.
+    private static string Human(long b) => SaveFolderSummary.Human(b);
 }
