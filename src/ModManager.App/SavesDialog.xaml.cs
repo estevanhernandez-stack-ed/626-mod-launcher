@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.App.Services;
 using ModManager.Core;
+using ModManager.Core.Transport;
 using Windows.Storage.Pickers;
 
 namespace ModManager.App;
@@ -88,6 +89,11 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly IntPtr _hwnd;
     private readonly string _gameId;
     private readonly GameEntry _game;   // for the running-game gate on anything that writes a save
+
+    /// <summary>The mods this game has installed, supplied by the caller rather than rescanned. A
+    /// bundle carries them so the machine at the other end can say what it is missing - the part no
+    /// general-purpose save tool can produce.</summary>
+    private readonly IReadOnlyList<BundleMod> _mods;
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
@@ -98,7 +104,8 @@ public sealed partial class SavesDialog : ContentDialog
     private string? _saveDir;
     private bool _loaded; // suppress persist during initial control setup
 
-    public SavesDialog(GameContext ctx, LauncherService svc, IntPtr hwnd)
+    public SavesDialog(GameContext ctx, LauncherService svc, IntPtr hwnd,
+                      IReadOnlyList<BundleMod>? mods = null)
     {
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
@@ -107,6 +114,7 @@ public sealed partial class SavesDialog : ContentDialog
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;
         _game = ctx.Game;
+        _mods = mods ?? Array.Empty<BundleMod>();
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
@@ -579,6 +587,162 @@ public sealed partial class SavesDialog : ContentDialog
         }
         catch { /* an unreadable folder still gets a sentence rather than a crash */ }
         return SaveFolderSummary.Describe(SaveManager.ListWorlds(_saveDir).Count, files, bytes);
+    }
+
+    /// <summary>
+    /// Pack this save into one file that can move to another machine.
+    ///
+    /// <para>Reads only — the save is never modified, which is what makes this safe to sit beside the
+    /// destructive operations in the same panel. Secrets are left out by construction: an artifact
+    /// meant to leave the machine cannot carry an account token. See
+    /// <see cref="ModManager.Core.Transport.CredentialScan"/>.</para>
+    /// </summary>
+    private async void OnExportBundle(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeChoices.Add("626 save bundle", new List<string> { SaveBundle.Extension });
+            picker.SuggestedFileName = $"{_game.Id}-save-{DateTime.Now:yyyyMMdd-HHmm}";
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            StatusText.Text = "Packing…";
+            var manifest = await Task.Run(() => SaveBundle.Create(
+                _saveDir!, file.Path,
+                new BundleGame(_game.Id, _game.SteamAppId, _game.GameName),
+                DateTime.UtcNow, BundleScope.Portable, _mods));
+
+            var left = manifest.Excluded.Count == 0
+                ? ""
+                : $" {manifest.Excluded.Count} sign-in file{(manifest.Excluded.Count == 1 ? " was" : "s were")} left out - "
+                  + "those are account tokens, not save data.";
+            StatusText.Text =
+                $"Packed {manifest.FileCount} file{(manifest.FileCount == 1 ? "" : "s")} ({Human(manifest.Bytes)}) "
+                + $"and {_mods.Count} mod{(_mods.Count == 1 ? "" : "s")}.{left}";
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>
+    /// Bring in a save packed on another machine.
+    ///
+    /// <para>The manifest is read and shown BEFORE anything is touched — including which of its mods
+    /// are missing here, which is the whole reason a mod manager is the right place for this. Nothing
+    /// is installed automatically; the list is a statement, not an action.</para>
+    /// </summary>
+    private async void OnImportBundle(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeFilter.Add(SaveBundle.Extension);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+
+            var manifest = SaveBundle.ReadManifest(file.Path);
+            if (manifest is null)
+            {
+                StatusText.Text = "That file is not a save bundle. Nothing was changed.";
+                return;
+            }
+            ShowImportConfirm(sender as FrameworkElement ?? ImportBundleButton, file.Path, manifest);
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    private void ShowImportConfirm(FrameworkElement anchor, string bundlePath, SaveBundleManifest manifest)
+    {
+        var res = Application.Current.Resources;
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 400 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Replace this game's saves?",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        DateTime.TryParse(manifest.CreatedUtc, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var made);
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{manifest.FileCount} file{(manifest.FileCount == 1 ? "" : "s")} ({Human(manifest.Bytes)})"
+                 + (made == default ? "" : $", packed {made.ToLocalTime():yyyy-MM-dd HH:mm}")
+                 + ". Everything in your save folder is replaced, and your current save is snapshotted "
+                 + "as 'before-restore' first.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+        });
+
+        // The sentence this feature exists for. A save that needs mods you do not have will not behave,
+        // and nothing else in the chain knows which they are.
+        var missing = SaveBundle.MissingMods(manifest, _mods.Select(m => m.Name).ToList());
+        if (missing.Count > 0)
+        {
+            var tb = new TextBlock
+            {
+                Text = $"Built with {manifest.Mods.Count} mod{(manifest.Mods.Count == 1 ? "" : "s")}, and "
+                     + $"{missing.Count} {(missing.Count == 1 ? "is" : "are")} not installed here: "
+                     + string.Join(", ", missing.Take(6).Select(m => m.Name))
+                     + (missing.Count > 6 ? ", …" : "")
+                     + ". The save will still load; parts of it may not behave until you add them.",
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "SaveBundleMissingMods");
+            panel.Children.Add(tb);
+        }
+        else if (manifest.Mods.Count > 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Built with {manifest.Mods.Count} mod{(manifest.Mods.Count == 1 ? "" : "s")}, and you "
+                     + "have all of them.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+            });
+        }
+
+        var go = new Button
+        {
+            Content = "Replace my saves",
+            Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBg"],
+        };
+        // Filled danger has to survive the visual states - see .claude/rules/vsm-danger-buttons.md.
+        go.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+        go.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+        go.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+        go.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(go, "SaveBundleImportConfirmButton");
+        panel.Children.Add(go);
+
+        var flyout = new Flyout { Content = panel };
+        go.Click += (_, _) =>
+        {
+            flyout.Hide();
+            if (GameIsRunning())
+            {
+                StatusText.Text = $"Close {_game.GameName} first - it would overwrite this on exit.";
+                return;
+            }
+            try
+            {
+                SaveBundle.Restore(bundlePath, _saveDir!, _savesDir, _game.Id);
+                StatusText.Text = "Save brought in. Your previous save was snapshotted as 'before-restore' first.";
+                Refresh();
+                RefreshSaveFiles();
+                RefreshWorlds();
+            }
+            catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        };
+        flyout.ShowAt(anchor);
     }
 
     /// <summary>

@@ -1053,7 +1053,14 @@ public sealed partial class MainWindow : Window
         }
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dialog = new SavesDialog(ctx, svc, hwnd) { XamlRoot = Content.XamlRoot };
+        // The mods this save was made with, taken from the UNFILTERED rows - a bundle must carry
+        // what the save actually used, not what the search box happens to be showing.
+        var mods = ViewModel.AllModRowsPublic
+            .Select(r => new ModManager.Core.Transport.BundleMod(
+                r.Mod.Name, r.Mod.Version, r.NexusModId, r.Mod.Enabled))
+            .ToList();
+
+        var dialog = new SavesDialog(ctx, svc, hwnd, mods) { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
     }
 

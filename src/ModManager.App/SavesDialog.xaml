@@ -53,6 +53,18 @@
             <Button AutomationProperties.AutomationId="BackupNowButton" x:Name="BackupButton" Grid.Column="1" Content="Back up now" VerticalAlignment="Bottom" Click="OnBackup" />
         </Grid>
 
+        <!-- Moving a save to another machine. A snapshot lives here and belongs to this PC; a bundle
+             is made to leave, which is why it is a separate pair of controls and not another button on
+             the snapshot row. See docs/superpowers/plans/2026-08-20-save-transport-and-the-data-it-needs.md. -->
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button AutomationProperties.AutomationId="SaveBundleExportButton" x:Name="ExportBundleButton"
+                    Content="Move to another PC…" Click="OnExportBundle"
+                    ToolTipService.ToolTip="Pack this save, and the list of mods it was made with, into one file" />
+            <Button AutomationProperties.AutomationId="SaveBundleImportButton" x:Name="ImportBundleButton"
+                    Content="Bring a save in…" Click="OnImportBundle"
+                    ToolTipService.ToolTip="Restore a save packed on another machine" />
+        </StackPanel>
+
         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
             <CheckBox AutomationProperties.AutomationId="AutoBackupCheck" x:Name="AutoBackupCheck" Content="Auto-backup before launch"
                       Checked="OnAutoBackupChanged" Unchecked="OnAutoBackupChanged"
