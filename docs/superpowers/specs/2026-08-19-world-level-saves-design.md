@@ -65,34 +65,33 @@ Three things this must do that the whole-folder restore does not:
 with mods may keep misbehaving after the mods are gone. The answer to that is putting *one world*
 back, not rolling your whole library to a point in time.
 
-## 3. Duplicate a world — blocked on one question
+## 3. Duplicate a world — tested, and dropped
 
-A copy to experiment on: the risky thing happens somewhere safe, which is most of what people want
-character editing for.
+**Answered on the real game, 2026-08-19. The test cost ten minutes and saved building the wrong
+feature.**
 
-Mechanically trivial — copy `<saveDir>/<src>` to `<saveDir>/<newId>`. **But the folder name IS the
-world id, and we do not know whether Palworld also stores that id inside the save.** If it does, a
-copy under a fresh GUID may not appear in-game, may appear but collide with its source, or may work
-fine. Finding out by reading the file means decoding `PlM1` — the exact dependency this whole approach
-exists to avoid.
+A hosted world was copied to a fresh GUID folder and Palworld launched. Result:
 
-**So this is not designed further until it is answered empirically**, which takes about ten minutes and
-no code:
+> *"Yeah they are both there and have the same name so I do not know which is the original."*
 
-1. Copy a world folder to a new GUID by hand.
-2. Launch Palworld.
-3. Does the copy appear in the world list? Does the original still load?
+So the copy **does** appear and the original **does** still load — the outcome that looked like a
+green light. It is not one. Palworld reads a world's display name from **inside** the save, not from
+the folder, so a duplicate produces two worlds with the same name and no way to tell them apart in the
+game's own list.
 
-Three outcomes, three different features:
+That defeats the entire purpose. The point of duplicating was *"experiment somewhere safe"*, and you
+cannot experiment safely on a world you cannot reliably identify. Shipping it would hand people a
+button whose most likely outcome is playing — or deleting — the wrong one.
 
-| Result | What we build |
-|---|---|
-| Copy appears and both load | Duplicate as described. Cheap and safe. |
-| Copy does not appear | Duplicate to an *archive* location instead — a stash you restore *from*, never play directly. Still useful, honestly labelled. |
-| Copy appears but breaks the original | Build nothing. Say so in the panel. |
+Renaming the copy so the two are distinguishable means writing into the `PlM1` container. That is the
+dependency this whole approach exists to avoid, and it would sit on the *destructive* side of the app
+rather than the display side.
 
-Speccing past an untested assumption is how a feature gets built twice. **This is the one thing in
-this document that needs the game run, and it is worth doing before any of it.**
+**Dropped, because 1 and 2 already deliver its value.** Back up one world, experiment on the real one,
+restore if it goes wrong. Same safety, one world in the list, nothing to confuse.
+
+**Verified clean afterwards:** the original was byte-identical before and after the game ran with the
+duplicate present — 0 changed, 0 missing — and the copy was removed.
 
 ## 4. Name your worlds
 
@@ -114,7 +113,7 @@ not rename the world you are looking at.
 
 ## Order
 
-**4, then 1, then 2. 3 only after the ten-minute test.**
+**4, then 1, then 2. 3 was tested and dropped — see above.**
 
 Naming first because it is the cheapest and it makes the other two legible — a confirm that says
 *"Replace **Ridgeline Base** with the backup from Tuesday"* is a different sentence from one naming a
