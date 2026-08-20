@@ -63,7 +63,7 @@
                        ToolTipService.ToolTip="How many auto snapshots to keep before pruning the oldest. Your named backups are never pruned." />
         </StackPanel>
 
-        <TextBlock Text="Save files" FontWeight="SemiBold" />
+        <TextBlock x:Name="SaveFilesHeading" Text="Save files" FontWeight="SemiBold" />
         <ListView AutomationProperties.AutomationId="SaveFileList" AutomationProperties.Name="Save files" x:Name="SaveFileList" MaxHeight="168" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SaveFileRow">
@@ -87,7 +87,56 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="SaveFilesEmpty" Text="No save files of this game's known types here. Check the save folder above — snapshots still cover everything in it." Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
+        <TextBlock x:Name="SaveFilesEmpty" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
+
+        <!-- Worlds. A game that keeps a folder per world (Palworld) has nothing useful in the file
+             list above: 72 of its 74 save files live a level down, and the one at the top is shared
+             storage rather than anybody's save. The unit a player thinks in is the world, so that is
+             what gets listed. Collapsed entirely for games that do not work this way. -->
+        <TextBlock x:Name="WorldsHeading" Text="Worlds" FontWeight="SemiBold" Visibility="Collapsed" />
+        <ListView AutomationProperties.AutomationId="WorldList" AutomationProperties.Name="Worlds"
+                  x:Name="WorldList" MaxHeight="220" SelectionMode="None" Visibility="Collapsed">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:SaveWorldRow">
+                    <Grid ColumnSpacing="8" Padding="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Title}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind Kind}" Foreground="{StaticResource ThemeAccent}"
+                                           FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}"
+                                       FontSize="{StaticResource BodyFontSize}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Size}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource ThemeInkSoft}" FontFamily="{StaticResource MonoFontFamily}"
+                                       FontSize="{StaticResource MetaFontSize}" Margin="0,0,4,0" />
+                            <Button AutomationProperties.AutomationId="{x:Bind RenameAutomationId}"
+                                    AutomationProperties.Name="{x:Bind RenameAutomationName}" Content="Rename"
+                                    Click="OnRenameWorld" Tag="{x:Bind}" VerticalAlignment="Center" />
+                            <Button AutomationProperties.AutomationId="{x:Bind DuplicateAutomationId}"
+                                    AutomationProperties.Name="{x:Bind DuplicateAutomationName}" Content="Duplicate"
+                                    Click="OnDuplicateWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Copy this world so you can experiment on the copy" />
+                            <Button AutomationProperties.AutomationId="{x:Bind BackupAutomationId}"
+                                    AutomationProperties.Name="{x:Bind BackupAutomationName}" Content="Back up"
+                                    Click="OnBackupWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Snapshot just this world" />
+                            <Button AutomationProperties.AutomationId="{x:Bind RestoreAutomationId}"
+                                    AutomationProperties.Name="{x:Bind RestoreAutomationName}" Content="Restore…"
+                                    Click="OnRestoreWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    Visibility="{x:Bind HasBackupsVisibility}"
+                                    ToolTipService.ToolTip="Put this world back from one of its own snapshots" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
 
         <TextBlock Text="Characters" FontWeight="SemiBold" />
         <ListView AutomationProperties.AutomationId="CharacterList" AutomationProperties.Name="Characters" x:Name="CharacterList" MaxHeight="200" SelectionMode="None">
