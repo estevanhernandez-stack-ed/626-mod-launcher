@@ -10,7 +10,7 @@ public class LudusaviNormalizeTests
     {
         var games = new[]
         {
-            new LudusaviGame("Elden Ring") { SteamAppId = "1245620", SavePaths = new[] { "<home>/EldenRing" } },
+            new LudusaviGame("Elden Ring") { SteamAppId = "1245620", SaveEntries = new[] { new LudusaviSavePath("<home>/EldenRing", new[]{"save"}, Array.Empty<string>(), Array.Empty<string>()) } },
         };
 
         var entries = LudusaviNormalize.ToCandidates(games);
@@ -48,7 +48,7 @@ public class LudusaviNormalizeTests
     [Fact]
     public void Derives_a_save_dir_hint_when_present()
     {
-        var games = new[] { new LudusaviGame("X") { SteamAppId = "9", SavePaths = new[] { "<home>/X/Saves" } } };
+        var games = new[] { new LudusaviGame("X") { SteamAppId = "9", SaveEntries = new[] { new LudusaviSavePath("<home>/X/Saves", new[]{"save"}, Array.Empty<string>(), Array.Empty<string>()) } } };
         var e = Assert.Single(LudusaviNormalize.ToCandidates(games));
         Assert.False(string.IsNullOrEmpty(e.SaveDirHint));
     }

@@ -80,3 +80,48 @@ public class GameManifestJsonTests
         Assert.Equal("high", back!.Games[0].BanRisk);
     }
 }
+
+public class SaveLayoutManifestFieldTests
+{
+    [Fact]
+    public void It_round_trips_as_camelCase_on_disk()
+    {
+        var entry = new GameManifestEntry { Id = "palworld", SaveLayout = "worlds" };
+
+        var json = JsonSerializer.Serialize(entry, ManifestJson.Options);
+
+        Assert.Contains("\"saveLayout\"", json);        // the assertion that actually protects it:
+        Assert.DoesNotContain("\"SaveLayout\"", json);  // deserialization is case-insensitive
+        Assert.Equal("worlds", JsonSerializer.Deserialize<GameManifestEntry>(json, ManifestJson.Options)!.SaveLayout);
+    }
+
+    [Fact]
+    public void An_unknown_value_from_a_newer_feed_does_not_take_the_whole_manifest_down()
+    {
+        // Modelled as a string, not the SaveLayout enum, for exactly this. System.Text.Json throws a
+        // JsonException on an unrecognised enum member, and ManifestLoader catches JsonException by
+        // returning null - which drops the ENTIRE feed, all 150 games, over one unknown word.
+        var json = """{"id":"g","saveLayout":"somethingWeHaveNeverHeardOf"}""";
+
+        var entry = JsonSerializer.Deserialize<GameManifestEntry>(json, ManifestJson.Options);
+
+        Assert.NotNull(entry);
+        Assert.Equal("somethingWeHaveNeverHeardOf", entry!.SaveLayout);
+    }
+
+    [Fact]
+    public void An_entry_without_it_is_silent_rather_than_claiming_a_default()
+    {
+        // "Nobody looked" and "we looked and it is flat" must stay distinguishable in the DATA. The
+        // runtime collapses them to TypedFiles; the manifest must not.
+        //
+        // The key is present and null rather than absent - ManifestJson.Options does not set
+        // DefaultIgnoreCondition, and every shipped entry already writes its unset fields this way.
+        // Null is the absence of a claim either way; what matters is that it never round-trips into a
+        // value.
+        var json = JsonSerializer.Serialize(new GameManifestEntry { Id = "g" }, ManifestJson.Options);
+
+        Assert.DoesNotContain("\"saveLayout\": \"", json);   // no value, in particular not a default
+        Assert.Null(JsonSerializer.Deserialize<GameManifestEntry>(json, ManifestJson.Options)!.SaveLayout);
+    }
+}

@@ -35,7 +35,7 @@ public class LudusaviParserTests
         var example = games.Single(g => g.Name == "An Example Game");
         Assert.Equal("12345", example.SteamAppId);
         Assert.Contains("ExampleGame", example.InstallDirs);
-        Assert.Contains(example.SavePaths, p => p.Contains("Example/saves"));
+        Assert.Contains(example.SaveEntries, p => p.Path.Contains("Example/saves"));
 
         var noSteam = games.Single(g => g.Name == "No Steam Game");
         Assert.Null(noSteam.SteamAppId); // absent steam block -> null (normalize will drop it)

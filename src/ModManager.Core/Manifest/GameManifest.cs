@@ -41,6 +41,21 @@ public sealed record GameManifestEntry
     // Ban-risk nuance (batch 4): does a DOCUMENTED safe modding route exist despite the risk?
     // "offline" | "private-server" | "official-mods" | "none" | "unclear" | null (unresearched).
     // Descriptive only, like BanRisk — the warn-and-ack mechanism stays compiled code.
+    /// <summary>
+    /// How this game arranges its saves: <c>"typedFiles"</c> (several formats of one save side by
+    /// side, Elden Ring's .sl2/.co2/.err) or <c>"worlds"</c> (a folder per world or slot, Palworld,
+    /// Cyberpunk, Stellaris). <b>Absent means nobody has checked</b> — not "flat".
+    ///
+    /// <para>Descriptive, like <see cref="BanRisk"/> and <see cref="GroupingRule"/>: it says what the
+    /// folder looks like, never how to write to it. The reader stays compiled.</para>
+    ///
+    /// <para>A string rather than the <c>SaveLayout</c> enum on purpose. An unrecognised value from a
+    /// newer feed must degrade to the default; an enum would throw during deserialization, and
+    /// ManifestLoader catches JsonException by returning null — which drops the ENTIRE feed, all 150
+    /// games, over one unknown word.</para>
+    /// </summary>
+    public string? SaveLayout { get; init; }
+
     public string? SafeRoute { get; init; }
     public string? SafeRouteHint { get; init; }       // one user-facing sentence naming the route (or the absence of one)
     public ManifestProvenance Provenance { get; init; } = new();
