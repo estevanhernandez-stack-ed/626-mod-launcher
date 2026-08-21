@@ -1833,3 +1833,72 @@ so and sets the launcher's own label instead.
 because that is Palworld's word; a game that keeps a folder per save calls it a save, and the day this
 panel serves both, a harness pinned to the label goes red for nothing. `SaveUnitRestore.*` is absent
 until that unit has at least one snapshot — absence there is correct, not a miss.
+
+## Save transport — bundles, sharing, and the character list
+
+Covers `.626save` export/import, share-a-world, and the characters section. Needs Palworld (a curated
+world game), Cyberpunk 2077 (a character game), and Elden Ring (an editable one). **Close each game
+before touching its saves** — the app refuses while it runs, which is itself step 6.
+
+**Drive by AutomationId, never by button text.** `SaveBundleExportButton`, `SaveBundleImportButton`,
+`SaveBundleImportConfirmButton`, `SaveBundleMissingMods`, `MissingMod.<name>`, and per-unit
+`SaveUnitShare.<folder-id>` / `SaveUnitRename.<folder-id>` / `SaveUnitDuplicate.<folder-id>` /
+`SaveUnitBackup.<folder-id>` / `SaveUnitRestore.<folder-id>`, plus `CharacterEdit.<file>#<slot>`.
+
+### 1. Export a portable bundle (Palworld)
+
+Saves → **Move to another PC…** → pick a path. The status line should name the file count, the size,
+**and the mods**. It must also disclose what the bundle carries about you:
+
+> *"It also carries your Steam account id (steam_autocloud.vdf) … not a file to post publicly."*
+
+Open the `.626save` as a zip: `bundle.json` at the root, everything else under `save/`, **nothing
+outside those two**.
+
+### 2. Import, and read before it acts
+
+**Bring a save in…** → pick the bundle. A confirm appears *before anything is touched*, naming the file
+count, the size, when it was packed, and that your current save is snapshotted first. Dismiss with Esc
+— nothing should be written. Verify the save folder is unchanged.
+
+### 3. The missing-mods report
+
+Import a bundle whose mod list exceeds what is installed. Each missing mod with a recorded Nexus id is
+a **link**; one without an id is **named and not linked**. Check a link's target is
+`nexusmods.com/<domain>/mods/<id>` — **built by the launcher, never taken from the bundle**, because a
+bundle is untrusted input.
+
+### 4. Share a world without your character (Palworld)
+
+A world row shows **Share…** only for a game whose seam is curated. Share one, then open the zip:
+
+- `Level.sav`, `LevelMeta.sav`, `WorldOption.sav` present
+- **no `Players/`, no `LocalData.sav`, no `steam_autocloud.vdf` — at any depth**
+- `backup/world/<stamp>/Level.sav` present (the world's history is the place, not the person)
+- `bundle.json` → `scope: "shareable"`, exclusions all reason `character`
+
+**The depth check is the point.** A first attempt excluded 2 files and shipped 36 copies of the
+character out of `backup/`. Grep the whole payload, not just the top level.
+
+### 5. Share is absent where it cannot work
+
+Open Saves on **Cyberpunk 2077** and on any uncurated game. There must be **no Share control at all**
+— not a disabled one, not one that explains itself. A character game has no world to share and the
+panel does not discuss it.
+
+### 6. Everything that writes refuses while the game runs
+
+With Palworld running: Rename, Duplicate and bundle Import each refuse with a sentence naming the
+game, and **write nothing**. Export and Share still work — they only read.
+
+### 7. Characters
+
+**Cyberpunk** — one row per *playthrough*, not per save. 93 saves should read as 2 characters, each
+showing life path, level, street cred, the save count, and `(N incomplete)` where saves have no
+payload. `MADE WITH MODS` only where the game recorded it. **No Edit button.**
+
+**Elden Ring** — one row per slot, across `.sl2` / `.co2` / `.err`, each with an Edit button. A
+Seamless Co-op player's `.sl2` is legitimately empty; the characters live in `.co2`.
+
+*The characters section sits below the fold. Realise the list (`FindAll` on `CharacterList`) before
+concluding anything is missing — walking the tree and finding nothing is not evidence.*
