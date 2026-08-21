@@ -135,6 +135,11 @@
                                     AutomationProperties.Name="{x:Bind DuplicateAutomationName}" Content="Duplicate"
                                     Click="OnDuplicateWorld" Tag="{x:Bind}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Copy this world so you can experiment on the copy" />
+                            <Button AutomationProperties.AutomationId="{x:Bind ShareAutomationId}"
+                                    AutomationProperties.Name="{x:Bind ShareAutomationName}" Content="Share…"
+                                    Click="OnShareWorld" Tag="{x:Bind}" VerticalAlignment="Center"
+                                    Visibility="{x:Bind ShareVisibility}"
+                                    ToolTipService.ToolTip="Pack this world without your character, to give to someone else" />
                             <Button AutomationProperties.AutomationId="{x:Bind BackupAutomationId}"
                                     AutomationProperties.Name="{x:Bind BackupAutomationName}" Content="Back up"
                                     Click="OnBackupWorld" Tag="{x:Bind}" VerticalAlignment="Center"

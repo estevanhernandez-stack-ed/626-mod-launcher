@@ -17,6 +17,11 @@ namespace ModManager.Core.Transport;
 /// </summary>
 public static class PersonalDataScan
 {
+    /// <summary>The reason recorded when identifying data is left OUT rather than carried. A portable
+    /// bundle carries it and says so; a shareable one cannot, because it is meant to reach strangers.
+    /// Same scan, opposite verdict, decided by where the artifact is going.</summary>
+    public const string Reason = "personal";
+
     /// <summary>Why a carried file is worth mentioning, or null when it is not.</summary>
     public static string? ReasonFor(string relativePath)
     {

@@ -22,8 +22,17 @@ public sealed record SaveCloneTarget(string TypeLabel, string Ext);
 /// <param name="NameBudgetBytes">How many BYTES a rename may occupy, 0 when the save has no name to
 /// change. Not characters.</param>
 public sealed record SaveWorldRow(string Id, string Title, string Kind, string Detail, string Size,
-                                  int BackupCount, int NameBudgetBytes, bool HasOwnSave)
+                                  int BackupCount, int NameBudgetBytes, bool HasOwnSave,
+                                  bool CanShare = false)
 {
+    /// <summary>Share-a-world exists only where the manifest curates this game's world/character
+    /// seam. Absent otherwise - a control whose only job is to explain why it does nothing is the
+    /// NEEDS ___ chip again. See the transport plan.</summary>
+    public Visibility ShareVisibility => CanShare ? Visibility.Visible : Visibility.Collapsed;
+
+    public string ShareAutomationId => $"SaveUnitShare.{Id}";
+    public string ShareAutomationName => $"Share world {Id}";
+
     public Visibility HasBackupsVisibility => BackupCount > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Whether a rename can reach the save, or only our own label.</summary>
@@ -206,7 +215,8 @@ public sealed partial class SavesDialog : ContentDialog
             Human(w.Bytes),
             SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
             w.NameBudgetBytes,
-            w.HasOwnSave)).ToList();
+            w.HasOwnSave,
+            SaveSeamCatalog.CanShare(_steamAppId))).ToList();
 
         WorldList.ItemsSource = rows;
         WorldsHeading.Visibility = Visibility.Visible;
@@ -861,6 +871,60 @@ public sealed partial class SavesDialog : ContentDialog
             });
 
         panel.Children.Add(list);
+    }
+
+    /// <summary>
+    /// Pack one world WITHOUT your character, so it can go to somebody else.
+    ///
+    /// <para>Same folder as a portable bundle, different cut. The cut is curated per game in the
+    /// signed manifest, because it is a fact about how a studio arranged a save folder and there is no
+    /// way to derive it — Palworld keeps you in <c>Players/</c> and <c>LocalData.sav</c>, and the game
+    /// confirms it: a world you JOINED keeps only <c>LocalData.sav</c> locally.</para>
+    ///
+    /// <para>Reads only. The world on disk is never touched.</para>
+    /// </summary>
+    private async void OnShareWorld(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+
+        var seam = SaveSeamCatalog.ByAppId(_steamAppId);
+        if (seam.Count == 0) return;      // the button should not exist; belt and braces
+
+        try
+        {
+            var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeChoices.Add("626 save bundle", new List<string> { SaveBundle.Extension });
+            picker.SuggestedFileName = $"{Slug(row.Title)}-world";
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            StatusText.Text = "Packing…";
+            var worldDir = System.IO.Path.Combine(_saveDir!, row.Id);
+            var manifest = await Task.Run(() => SaveBundle.Create(
+                worldDir, file.Path,
+                new BundleGame(_game.Id, _game.SteamAppId, _game.GameName),
+                DateTime.UtcNow, BundleScope.Shareable, _mods, seam));
+
+            var dropped = manifest.Excluded.Count;
+            StatusText.Text =
+                $"Packed {row.Title} to share - {manifest.FileCount} file"
+                + $"{(manifest.FileCount == 1 ? "" : "s")} ({Human(manifest.Bytes)}). "
+                + $"Your character was left out ({dropped} file{(dropped == 1 ? "" : "s")}), "
+                + "so whoever loads this starts in your world as themselves.";
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>A filename-safe stand-in for a world's display name.</summary>
+    private static string Slug(string s)
+    {
+        var chars = s.Trim().Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-').ToArray();
+        var slug = new string(chars).Trim('-');
+        while (slug.Contains("--")) slug = slug.Replace("--", "-");
+        return slug.Length == 0 ? "world" : slug;
     }
 
     /// <summary>
