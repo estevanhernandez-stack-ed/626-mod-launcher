@@ -1643,6 +1643,11 @@ public sealed partial class MainViewModel : ObservableObject
     /// takeover dialog (to resolve a row's folder ownership). Read-only passthrough.</summary>
     public GameContext? ActiveContextPublic => _ctx;
 
+    /// <summary>Every mod row, unfiltered. `Mods` is the FILTERED view - what the search box and the
+    /// group picker left visible - and a save bundle has to carry the mods the save was actually made
+    /// with, not the ones that happen to match a filter when the dialog opened.</summary>
+    public IReadOnlyList<ModRowViewModel> AllModRowsPublic => _allRows;
+
     /// <summary>Take over one Vortex-owned folder, then rescan so its rows flip to managed.</summary>
     public async Task TakeOverFolderAsync(string folderAbs)
     {

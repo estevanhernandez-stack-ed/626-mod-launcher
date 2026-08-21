@@ -24,6 +24,19 @@ public static class SaveLocator
         if (!string.IsNullOrEmpty(steamAppId))
         {
             var tokens = WindowsTokens(gameRoot, steamUserId);
+
+            // The CURATED hint first. Ludusavi lists every path a game touches and we take the first
+            // that exists, which is usually right and occasionally precisely wrong - Stellaris resolves
+            // to the game's config directory that way, because it is listed first and it does exist.
+            // A hand-checked hint beats a first match, and it is the folder saveLayout describes.
+            var curated = ModManager.Core.SaveDirHints.ByAppId(steamAppId);
+            if (curated is not null)
+            {
+                var hinted = ModManager.Core.LudusaviPaths.Resolve(curated, tokens);
+                try { if (hinted is not null && Directory.Exists(hinted)) return hinted; }
+                catch { /* fall through to Ludusavi's own list */ }
+            }
+
             foreach (var template in await ludusavi.SaveTemplatesAsync(steamAppId))
             {
                 var resolved = LudusaviPaths.Resolve(template, tokens);

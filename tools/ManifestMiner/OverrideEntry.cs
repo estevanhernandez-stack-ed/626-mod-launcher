@@ -14,6 +14,7 @@ public sealed record OverrideEntry
     public int? Featured { get; init; }
     public string? BanRisk { get; init; }
     public string? SaveLayout { get; init; }
+    public IReadOnlyList<string>? SavePlayerPaths { get; init; }
     public string? SafeRoute { get; init; }          // ban-risk nuance: documented safe modding route (batch 4)
     public string? SafeRouteHint { get; init; }      // one user-facing sentence for the route
     public string? SaveDirHint { get; init; }

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.App.Services;
 using ModManager.Core;
+using ModManager.Core.Transport;
 using Windows.Storage.Pickers;
 
 namespace ModManager.App;
@@ -78,9 +79,27 @@ public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail)
 
 /// <summary>One character-row for the editor. Bridges the Core CharacterSlot to the
 /// data-template's two-line display.</summary>
+/// <summary>One character row. <c>Slot</c> is present only for formats we can WRITE - reading is the
+/// common case and editing is the rare one, which is the distinction this row exists to keep.</summary>
 public sealed record CharacterRow(
-    string SavePath, ModManager.Core.SaveEditor.FromSoft.CharacterSlot Slot,
-    string Headline, string Detail);
+    string Id, string Headline, string Detail,
+    string? SavePath = null,
+    ModManager.Core.SaveEditor.FromSoft.CharacterSlot? Slot = null,
+    bool? MadeWithMods = null)
+{
+    /// <summary>Edit is offered only where a writer exists. Cyberpunk's sav.dat is chunked LZ4 and we
+    /// have no business writing it, so the button is ABSENT rather than present-and-failing.</summary>
+    public Visibility EditVisibility => Slot is not null ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Only when the GAME said so. Null means it does not record the fact, which is not the
+    /// same as "no mods" and must never be shown as one.</summary>
+    public Visibility ModsVisibility => MadeWithMods == true ? Visibility.Visible : Visibility.Collapsed;
+
+    // Frozen identity off the character's own key, never the display line - see
+    // .claude/rules/automation-ids.md.
+    public string EditAutomationId => $"CharacterEdit.{Id}";
+    public string EditAutomationName => $"Edit {Headline}";
+}
 
 public sealed partial class SavesDialog : ContentDialog
 {
@@ -88,6 +107,11 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly IntPtr _hwnd;
     private readonly string _gameId;
     private readonly GameEntry _game;   // for the running-game gate on anything that writes a save
+
+    /// <summary>The mods this game has installed, supplied by the caller rather than rescanned. A
+    /// bundle carries them so the machine at the other end can say what it is missing - the part no
+    /// general-purpose save tool can produce.</summary>
+    private readonly IReadOnlyList<BundleMod> _mods;
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
@@ -98,7 +122,8 @@ public sealed partial class SavesDialog : ContentDialog
     private string? _saveDir;
     private bool _loaded; // suppress persist during initial control setup
 
-    public SavesDialog(GameContext ctx, LauncherService svc, IntPtr hwnd)
+    public SavesDialog(GameContext ctx, LauncherService svc, IntPtr hwnd,
+                      IReadOnlyList<BundleMod>? mods = null)
     {
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this); // vibe-glow wave 1: popup-scope theme brushes
@@ -107,6 +132,7 @@ public sealed partial class SavesDialog : ContentDialog
         _hwnd = hwnd;
         _gameId = ctx.Game.Id;
         _game = ctx.Game;
+        _mods = mods ?? Array.Empty<BundleMod>();
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
@@ -250,11 +276,35 @@ public sealed partial class SavesDialog : ContentDialog
         SaveModEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// Cyberpunk 2077. Dispatching on the Steam app id rather than the engine, because a READER is
+    /// compiled code and cannot live in the manifest - and because engine predicts nothing about save
+    /// format: four ue-pak games on one machine have four unrelated shapes.
+    /// </summary>
+    private const string Cyberpunk2077AppId = "1091500";
+
     private void RefreshCharacters()
     {
         var rows = new List<CharacterRow>();
         int filesScanned = 0;
         string? firstReadError = null;
+
+        // Games we can describe but would never write. Listing is not editing, and treating them as
+        // the same job is why this section used to tell Cyberpunk players their 93 saves "aren't
+        // itemized yet".
+        if (!string.IsNullOrEmpty(_saveDir) && _steamAppId == Cyberpunk2077AppId)
+        {
+            foreach (var c in ModManager.Core.Characters.CyberpunkCharacters.ReadCharacters(_saveDir!))
+                rows.Add(new CharacterRow(c.Id, c.Headline, c.Detail, MadeWithMods: c.MadeWithMods));
+
+            CharacterList.ItemsSource = rows;
+            CharactersEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (rows.Count == 0)
+                CharactersEmpty.Text = "No saved characters found in this folder.";
+            EditorCredit.Text = "Read from the game's own save metadata. Nothing here is written.";
+            return;
+        }
+
         if (!string.IsNullOrEmpty(_saveDir))
         {
             var svc = App.AppHost.Services
@@ -284,10 +334,11 @@ public sealed partial class SavesDialog : ContentDialog
                     foreach (var slot in slots)
                     {
                         rows.Add(new CharacterRow(
-                            SavePath: savePath,
-                            Slot: slot,
+                            Id: $"{System.IO.Path.GetFileName(savePath)}#{slot.SlotIndex}",
                             Headline: $"{slot.Name}  ·  {st.Label}",
-                            Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}"));
+                            Detail: $"Lv {slot.Level}  ·  {slot.Runes:N0} runes  ·  {(string.IsNullOrEmpty(slot.Class) ? "—" : slot.Class)}",
+                            SavePath: savePath,
+                            Slot: slot));
                     }
                 }
             }
@@ -333,8 +384,9 @@ public sealed partial class SavesDialog : ContentDialog
         // hide this dialog → open the editor → re-show this dialog with refreshed lists. Hide()
         // makes the outer ShowAsync return None; MainWindow.OnSaves doesn't act on the result.
         var xamlRoot = this.XamlRoot;
-        var slot = row.Slot;
-        var savePath = row.SavePath;
+        // Only rows with a writer carry these, and the Edit button is hidden without one - but the
+        // handler must not depend on a Visibility binding for its safety.
+        if (row.Slot is not { } slot || row.SavePath is not { } savePath) return;
         this.Hide();
 
         var dialog = new CharacterEditDialog(slot) { XamlRoot = xamlRoot };
@@ -579,6 +631,236 @@ public sealed partial class SavesDialog : ContentDialog
         }
         catch { /* an unreadable folder still gets a sentence rather than a crash */ }
         return SaveFolderSummary.Describe(SaveManager.ListWorlds(_saveDir).Count, files, bytes);
+    }
+
+    /// <summary>
+    /// Pack this save into one file that can move to another machine.
+    ///
+    /// <para>Reads only — the save is never modified, which is what makes this safe to sit beside the
+    /// destructive operations in the same panel. Secrets are left out by construction: an artifact
+    /// meant to leave the machine cannot carry an account token. See
+    /// <see cref="ModManager.Core.Transport.CredentialScan"/>.</para>
+    /// </summary>
+    private async void OnExportBundle(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeChoices.Add("626 save bundle", new List<string> { SaveBundle.Extension });
+            picker.SuggestedFileName = $"{_game.Id}-save-{DateTime.Now:yyyyMMdd-HHmm}";
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            StatusText.Text = "Packing…";
+            var manifest = await Task.Run(() => SaveBundle.Create(
+                _saveDir!, file.Path,
+                new BundleGame(_game.Id, _game.SteamAppId, _game.GameName),
+                DateTime.UtcNow, BundleScope.Portable, _mods));
+
+            var left = manifest.Excluded.Count == 0
+                ? ""
+                : $" {manifest.Excluded.Count} sign-in file{(manifest.Excluded.Count == 1 ? " was" : "s were")} left out - "
+                  + "those are account tokens, not save data.";
+
+            // What it CARRIES about you, as opposed to what was kept out. Different category, and it
+            // needs saying: a user who does not know what is in a file cannot decide who to give it to.
+            var carries = PersonalDataScan.MessageFor(manifest.Notices);
+
+            StatusText.Text =
+                $"Packed {manifest.FileCount} file{(manifest.FileCount == 1 ? "" : "s")} ({Human(manifest.Bytes)}) "
+                + $"and {_mods.Count} mod{(_mods.Count == 1 ? "" : "s")}.{left}"
+                + (carries.Length > 0 ? " " + carries : "");
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>
+    /// Bring in a save packed on another machine.
+    ///
+    /// <para>The manifest is read and shown BEFORE anything is touched — including which of its mods
+    /// are missing here, which is the whole reason a mod manager is the right place for this. Nothing
+    /// is installed automatically; the list is a statement, not an action.</para>
+    /// </summary>
+    private async void OnImportBundle(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeFilter.Add(SaveBundle.Extension);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+
+            var manifest = SaveBundle.ReadManifest(file.Path);
+            if (manifest is null)
+            {
+                StatusText.Text = "That file is not a save bundle. Nothing was changed.";
+                return;
+            }
+            ShowImportConfirm(sender as FrameworkElement ?? ImportBundleButton, file.Path, manifest);
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    private void ShowImportConfirm(FrameworkElement anchor, string bundlePath, SaveBundleManifest manifest)
+    {
+        var res = Application.Current.Resources;
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 400 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Replace this game's saves?",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        DateTime.TryParse(manifest.CreatedUtc, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var made);
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{manifest.FileCount} file{(manifest.FileCount == 1 ? "" : "s")} ({Human(manifest.Bytes)})"
+                 + (made == default ? "" : $", packed {made.ToLocalTime():yyyy-MM-dd HH:mm}")
+                 + ". Everything in your save folder is replaced, and your current save is snapshotted "
+                 + "as 'before-restore' first.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+        });
+
+        // The reason a mod manager is the right place for this. A save built on mods you do not have
+        // will not behave, and nothing else in the chain knows WHICH they are.
+        AddMissingModsSection(panel, manifest, res);
+
+        var go = new Button
+        {
+            Content = "Replace my saves",
+            Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBg"],
+        };
+        // Filled danger has to survive the visual states - see .claude/rules/vsm-danger-buttons.md.
+        go.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+        go.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+        go.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+        go.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(go, "SaveBundleImportConfirmButton");
+        panel.Children.Add(go);
+
+        var flyout = new Flyout { Content = panel };
+        go.Click += (_, _) =>
+        {
+            flyout.Hide();
+            if (GameIsRunning())
+            {
+                StatusText.Text = $"Close {_game.GameName} first - it would overwrite this on exit.";
+                return;
+            }
+            try
+            {
+                SaveBundle.Restore(bundlePath, _saveDir!, _savesDir, _game.Id);
+                StatusText.Text = "Save brought in. Your previous save was snapshotted as 'before-restore' first.";
+                Refresh();
+                RefreshSaveFiles();
+                RefreshWorlds();
+            }
+            catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        };
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>
+    /// Say which of a bundle's mods are missing here, and offer somewhere to get them.
+    ///
+    /// <para><b>Naming them is not enough.</b> A list of names the user then has to go and search for
+    /// one by one is the same dead end the NEEDS ___ chip used to be: it states a problem and offers
+    /// nothing. Each mod the bundle recorded an id for becomes a link.</para>
+    ///
+    /// <para><b>The link is built here, never taken from the bundle.</b> A bundle arrives from another
+    /// person and is untrusted input; a URL inside it is a destination somebody else chose, and a
+    /// phishing page under a real mod's name - rendered by an app the user trusts, right next to that
+    /// mod's name - is the obvious attack. <see cref="SaveBundle.NexusUrlFor"/> builds it from the
+    /// numeric id and the domain WE resolve for this game, so a stranger can name a mod but can never
+    /// choose where the user is sent.</para>
+    ///
+    /// <para>Nothing installs itself. This is a statement with a door beside it, not an action.</para>
+    /// </summary>
+    private void AddMissingModsSection(StackPanel panel, SaveBundleManifest manifest, ResourceDictionary res)
+    {
+        if (manifest.Mods.Count == 0) return;
+
+        var missing = SaveBundle.MissingMods(manifest, _mods.Select(m => m.Name).ToList());
+        var total = manifest.Mods.Count;
+
+        if (missing.Count == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Built with {total} mod{(total == 1 ? "" : "s")}, and you have all of them.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+            });
+            return;
+        }
+
+        var heading = new TextBlock
+        {
+            Text = $"Built with {total} mod{(total == 1 ? "" : "s")}. {missing.Count} "
+                 + $"{(missing.Count == 1 ? "is" : "are")} not installed here - the save will still "
+                 + "load, but parts of it may not behave until you add them.",
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "SaveBundleMissingMods");
+        panel.Children.Add(heading);
+
+        var domain = NexusDomains.Effective(_game);
+        var list = new StackPanel { Spacing = 2, Margin = new Thickness(0, 2, 0, 0) };
+
+        // Capped, because a bundle from a 194-mod Cyberpunk save would otherwise be a wall inside a
+        // flyout. The count above is always the whole truth.
+        const int Shown = 8;
+        foreach (var mod in missing.Take(Shown))
+        {
+            var url = SaveBundle.NexusUrlFor(mod, domain);
+            var label = mod.Name + (string.IsNullOrWhiteSpace(mod.Version) ? "" : $"  ({mod.Version})");
+
+            if (url is not null && SafeUrl.IsHttpUrl(url))
+            {
+                var link = new HyperlinkButton
+                {
+                    Content = label,
+                    NavigateUri = new Uri(url),
+                    Padding = new Thickness(0),
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(link, $"MissingMod.{mod.Name}");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(link, $"Get {mod.Name} on Nexus");
+                list.Children.Add(link);
+            }
+            else
+            {
+                // No id recorded, or this game has no Nexus domain. Name it without inventing a
+                // destination - a link that goes somewhere plausible-but-wrong is worse than none.
+                var tb = new TextBlock
+                {
+                    Text = label,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkSoft"],
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, $"MissingMod.{mod.Name}");
+                list.Children.Add(tb);
+            }
+        }
+
+        if (missing.Count > Shown)
+            list.Children.Add(new TextBlock
+            {
+                Text = $"and {missing.Count - Shown} more.",
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+            });
+
+        panel.Children.Add(list);
     }
 
     /// <summary>

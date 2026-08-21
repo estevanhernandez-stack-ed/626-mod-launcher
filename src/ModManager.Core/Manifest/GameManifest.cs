@@ -56,6 +56,19 @@ public sealed record GameManifestEntry
     /// </summary>
     public string? SaveLayout { get; init; }
 
+    /// <summary>
+    /// Globs, relative to a save UNIT, naming the files that are the PLAYER rather than the place.
+    /// Palworld: <c>["Players/**", "LocalData.sav"]</c>. Windrose:
+    /// <c>["**/Accounts/**", "**/Players/**", "**/AccountDescription.json"]</c>.
+    ///
+    /// <para>A unit is one world folder when <see cref="SaveLayout"/> is <c>worlds</c>, and the whole
+    /// save folder otherwise — which is exactly why those two examples look different.</para>
+    ///
+    /// <para><b>Absent means nobody has curated it</b>, never "this game has no character data".
+    /// Descriptive, like the rest: it says where the line is, never how to cut it.</para>
+    /// </summary>
+    public IReadOnlyList<string>? SavePlayerPaths { get; init; }
+
     public string? SafeRoute { get; init; }
     public string? SafeRouteHint { get; init; }       // one user-facing sentence naming the route (or the absence of one)
     public ManifestProvenance Provenance { get; init; } = new();

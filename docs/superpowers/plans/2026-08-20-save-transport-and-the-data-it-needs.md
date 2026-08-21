@@ -43,7 +43,41 @@ YOU      LocalData.sav 128K · Players/<char>.sav 21K
 The proof is the *joined* world: when the world belongs to someone else, the only thing Palworld keeps
 locally is `LocalData.sav`. The game has already drawn the line we need.
 
-But the seam is per-game and it is not guessable:
+### First: does the player make a world at all?
+
+**A correction, and it came from Este rather than from the code.** The model above assumes every game
+has a world half and a character half. Many do not.
+
+> *"Cyberpunk isn't a world-building game. The world already exists. You don't build in it. There would
+> be some games where you just have characters — like Elden Ring."*
+
+That is right, and it changes what `savePlayerPaths` even means. In Cyberpunk and Elden Ring the world
+belongs to CDPR and FromSoft; your save is your character's state inside somebody else's world. There
+is no world half to keep, so *"share the world without my character"* is not a smaller version of the
+request — it is not a coherent request.
+
+So shape comes first, and only world games get a seam:
+
+| | what the save is | what "share" means |
+|---|---|---|
+| **world** | a place you made, plus who you are in it | the place, without you |
+| **character** | you, inside a world the studio made | **you** — a different act, different consequences |
+
+Sharing a character is a real thing people do — Elden Ring saves circulate on Nexus. But it is not the
+same feature and must not wear the same word. And it carries a trap the world case does not:
+
+**A character save is often account-stamped.** Every Elden Ring `CharacterSlot` the launcher already
+parses carries a `SteamId`, and the `.sl2` holds ten of them in one file. That is why save re-signing
+tools exist — a shared FromSoft save does not work for the recipient until the id is patched. So there,
+"share" would mean writing an account id into somebody else's save: a long way from a folder copy, and
+not something to do quietly.
+
+Cyberpunk's metadata carries a `playthroughID` but no account id, so its saves look portable between
+accounts — still your V, though, not a world.
+
+### Then: where the seam is, for the games that have one
+
+The seam is per-game and it is not guessable:
 
 - **Terraria, Valheim** — world and character are separate files in separate directories. Nothing to
   strip; this is why world-sharing is routine in those communities.
@@ -55,6 +89,29 @@ But the seam is per-game and it is not guessable:
 
 **Where we do not know the seam, we offer *portable* and say so.** Never guess a split — the failure
 mode is shipping a stranger someone's character.
+
+**And then the refusals mostly stop existing.** A first draft of this gave `Shareable` three different
+messages — one per reason it might not work. Este killed it, correctly:
+
+> *"Couldn't that world area just go away for character games? Does the user need an explanation if the
+> character's there?"*
+
+No. **The share-a-world control simply is not there unless we can do it.** A control whose only job is
+to explain why it does nothing is the `NEEDS ___` chip again — it names a problem and offers nothing,
+and the user has to read a paragraph to learn that a button they can see is not for them.
+
+| | what the panel shows |
+|---|---|
+| world game, seam known | share-the-world, next to the portable export |
+| world game, seam not curated | nothing. **Our gap, not their problem** — a to-do in this repo, not an apology in their UI |
+| character game | nothing. The panel already lists their characters; that IS the explanation |
+
+The last row is the one worth being deliberate about. A character game has nothing missing — telling
+someone *"this game has no world to share"* answers a question they never asked, in a place they were
+not asking it.
+
+`SaveBundle.Create` still throws on `Shareable` when there is no seam, but that is now a **programming
+guard** rather than user-facing copy: the UI is not supposed to be able to ask.
 
 ---
 

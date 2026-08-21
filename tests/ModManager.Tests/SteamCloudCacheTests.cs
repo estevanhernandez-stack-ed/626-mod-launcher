@@ -150,6 +150,6 @@ public class SteamCloudCacheTests
     [Fact]
     public void The_cache_path_is_composed_the_way_steam_lays_it_out()
         => Assert.Equal(
-            Path.Combine("C:/Steam", "userdata", "8945417", "1623730", "remotecache.vdf"),
-            SteamCloudCache.PathFor("C:/Steam", "8945417", "1623730"));
+            Path.Combine("C:/Steam", "userdata", "00000000", "1623730", "remotecache.vdf"),
+            SteamCloudCache.PathFor("C:/Steam", "00000000", "1623730"));
 }
