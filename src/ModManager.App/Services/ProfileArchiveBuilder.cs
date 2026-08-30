@@ -11,6 +11,10 @@ namespace ModManager.App.Services;
 /// stays pure and takes the result. That split is what lets the archive be tested without a machine
 /// full of games.</para>
 ///
+/// <para><b>Every mod path is led by the NAME of the location it came from.</b> A game can keep mods
+/// in more than one place — Windrose keeps two — and a flat list loses which is which, so two
+/// same-named mods in different locations collide in the archive and one silently wins.</para>
+///
 /// <para><b>Mods are collected as the scanner's file list, never a folder.</b> Mods sit intermixed
 /// with game content — measuring the mod folders gave 159 GB, mostly Palworld's base-game paks and
 /// Death Stranding's entire data directory, against a real answer of 3.5 GB. A folder-level copy would
@@ -45,7 +49,10 @@ public sealed class ProfileArchiveBuilder
                 Directory.Exists(game.SaveDir ?? "") ? game.SaveDir : null,
                 modFiles,
                 mods,
-                Directory.Exists(ctx.DataDir) ? ctx.DataDir : null));
+                Directory.Exists(ctx.DataDir) ? ctx.DataDir : null)
+            {
+                ModLocations = ctx.Locations.Select(l => l.Name).ToList(),
+            });
         }
 
         return sources;
@@ -84,7 +91,7 @@ public sealed class ProfileArchiveBuilder
                 {
                     foreach (var f in Directory.EnumerateFiles(asFolder, "*", SearchOption.AllDirectories))
                         files.Add(new BundlePlanFile(f,
-                            Path.Combine(m.Name, Path.GetRelativePath(asFolder, f)).Replace('\\', '/')));
+                            loc.Name + "/" + Path.Combine(m.Name, Path.GetRelativePath(asFolder, f)).Replace('\\', '/')));
                 }
                 else
                 {
@@ -93,7 +100,8 @@ public sealed class ProfileArchiveBuilder
                     foreach (var rel in m.Files)
                     {
                         var p = Path.Combine(loc.Abs, rel);
-                        if (File.Exists(p)) files.Add(new BundlePlanFile(p, rel.Replace('\\', '/')));
+                        if (File.Exists(p))
+                            files.Add(new BundlePlanFile(p, loc.Name + "/" + rel.Replace('\\', '/')));
                     }
                 }
             }

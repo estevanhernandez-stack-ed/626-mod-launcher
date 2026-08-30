@@ -36,8 +36,9 @@ public class ProfileRestoreTests
         {
             new ProfileGameSource(
                 new BundleGame(gameId, "1", gameId), save,
-                new[] { new BundlePlanFile(Path.Combine(modRoot, "cool.pak"), "cool.pak") },
-                new[] { new BundleMod("Cool", "1", 7, true) }, data),
+                new[] { new BundlePlanFile(Path.Combine(modRoot, "cool.pak"), "mods/cool.pak") },
+                new[] { new BundleMod("Cool", "1", 7, true) }, data)
+            { ModLocations = new[] { "mods" } },
         }, path, Stamp, "0.19.0");
         return path;
     }
@@ -242,5 +243,101 @@ public class ProfileRestoreTests
 
         Assert.Throws<InvalidOperationException>(
             () => ProfileRestore.Restore(path, Array.Empty<RestoreRequest>(), NotRunning));
+    }
+
+    /// <summary>An archive whose mods came from two named locations.</summary>
+    private static string TwoLocationArchive(string prefix)
+    {
+        var a = TestSupport.TempDir(prefix + "-a-");
+        var b = TestSupport.TempDir(prefix + "-b-");
+        File.WriteAllText(Path.Combine(a, "x.pak"), "from-mods");
+        File.WriteAllText(Path.Combine(b, "x.pak"), "from-mods2");
+
+        var path = Path.Combine(TestSupport.TempDir(prefix + "-out-"), "p" + ProfileArchive.Extension);
+        ProfileArchive.Create(new[]
+        {
+            new ProfileGameSource(new BundleGame("windrose", "1", "Windrose"), null,
+                new[]
+                {
+                    new BundlePlanFile(Path.Combine(a, "x.pak"), "mods/Same/x.pak"),
+                    new BundlePlanFile(Path.Combine(b, "x.pak"), "mods2/Same/x.pak"),
+                },
+                new[] { new BundleMod("Same", "1", null, true) }, null)
+            { ModLocations = new[] { "mods", "mods2" } },
+        }, path, Stamp, "0.19.0");
+        return path;
+    }
+
+    [Fact]
+    public void Each_locations_mods_go_back_to_THAT_location_on_this_machine()
+    {
+        // The archive records which folder a mod came from; the restore resolves that name against
+        // where this machine keeps it. Same-named mods in two locations must not land on each other.
+        var mods = TestSupport.TempDir("res-loc-mods-");
+        var mods2 = TestSupport.TempDir("res-loc-mods2-");
+
+        var result = ProfileRestore.Restore(TwoLocationArchive("res-loc"), new[]
+        {
+            new RestoreRequest("windrose", RestoreParts.Mods, null, mods)
+            {
+                ModDirsByLocation = new Dictionary<string, string> { ["mods"] = mods, ["mods2"] = mods2 },
+            },
+        }, NotRunning);
+
+        Assert.Equal("from-mods",  File.ReadAllText(Path.Combine(mods,  "Same", "x.pak")));
+        Assert.Equal("from-mods2", File.ReadAllText(Path.Combine(mods2, "Same", "x.pak")));
+        Assert.Equal(2, result.TotalFiles);
+    }
+
+    [Fact]
+    public void A_mod_folder_this_machine_does_not_have_lands_in_the_main_one_and_SAYS_so()
+    {
+        // Silently dropping the files loses mods; silently moving them is the wrong-place failure this
+        // whole format change exists to stop. So: put them somewhere real, and name what happened.
+        var mods = TestSupport.TempDir("res-unknown-mods-");
+
+        var result = ProfileRestore.Restore(TwoLocationArchive("res-unknown"), new[]
+        {
+            new RestoreRequest("windrose", RestoreParts.Mods, null, mods)
+            {
+                ModDirsByLocation = new Dictionary<string, string> { ["mods"] = mods },   // no mods2 here
+            },
+        }, NotRunning);
+
+        var g = Assert.Single(result.Games);
+        Assert.Equal(2, g.FileCount);
+        Assert.Equal(1, g.RelocatedModFiles);
+
+        // The homeless one keeps its location name, so it does NOT land on the same-named mod that
+        // does have a home here - the very collision this format change exists to stop.
+        Assert.Equal("from-mods",  File.ReadAllText(Path.Combine(mods, "Same", "x.pak")));
+        Assert.Equal("from-mods2", File.ReadAllText(Path.Combine(mods, "mods2", "Same", "x.pak")));
+        Assert.Contains("1 mod file", result.Summary);
+        Assert.Contains("different folder", result.Summary);
+    }
+
+    [Fact]
+    public void An_archive_from_before_locations_were_recorded_still_restores_to_the_main_folder()
+    {
+        // Format 1 wrote mods flat, with no record of where they came from. The honest reading of that
+        // is "everything to the main folder" - guessing a location out of a mod name would be a lie.
+        var dir = TestSupport.TempDir("res-v1-");
+        var path = Path.Combine(dir, "old" + ProfileArchive.Extension);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            using (var w = new StreamWriter(zip.CreateEntry(ProfileArchive.ManifestEntry).Open()))
+                w.Write("""{"archiveVersion":1,"games":[{"game":{"id":"palworld"}}]}""");
+            using var e = new StreamWriter(zip.CreateEntry("games/palworld/mods/Cool/x.pak").Open());
+            e.Write("v1-mod");
+        }
+
+        var mods = TestSupport.TempDir("res-v1-mods-");
+        var result = ProfileRestore.Restore(path, new[]
+        {
+            new RestoreRequest("palworld", RestoreParts.Mods, null, mods),
+        }, NotRunning);
+
+        Assert.Equal("v1-mod", File.ReadAllText(Path.Combine(mods, "Cool", "x.pak")));
+        Assert.Equal(0, Assert.Single(result.Games).RelocatedModFiles);   // nothing was moved; there was nowhere else
     }
 }

@@ -43,11 +43,12 @@ public class ProfileArchiveTests
             save,
             new[]
             {
-                new BundlePlanFile(Path.Combine(modRoot, "cool.pak"), "cool.pak"),
-                new BundlePlanFile(Path.Combine(modRoot, "other.pak"), "other.pak"),
+                new BundlePlanFile(Path.Combine(modRoot, "cool.pak"), "mods/cool.pak"),
+                new BundlePlanFile(Path.Combine(modRoot, "other.pak"), "mods/other.pak"),
             },
             new[] { new BundleMod("Cool Mod", "1.0", 7, true) },
-            data);
+            data)
+        { ModLocations = new[] { "mods" } };
     }
 
     private static List<string> Entries(string path)
@@ -67,7 +68,7 @@ public class ProfileArchiveTests
         Assert.Contains(ProfileArchive.ManifestEntry, entries);
         Assert.Contains("games/palworld/bundle.json", entries);
         Assert.Contains("games/palworld/save/W1/Level.sav", entries);
-        Assert.Contains("games/palworld/mods/cool.pak", entries);
+        Assert.Contains("games/palworld/mods/mods/cool.pak", entries);
         Assert.Contains("games/palworld/data/metadata.json", entries);
         Assert.Contains("games/windrose/save/W1/Level.sav", entries);
 
@@ -225,5 +226,43 @@ public class ProfileArchiveTests
         var path = Path.Combine(TestSupport.TempDir("prof-junk-"), "junk" + ProfileArchive.Extension);
         File.WriteAllText(path, "not a zip");
         Assert.Null(ProfileArchive.ReadManifest(path));
+    }
+
+    [Fact]
+    public void Mods_are_filed_under_the_LOCATION_they_came_from()
+    {
+        // Windrose keeps mods in two places. Flattening them into one namespace loses which is which,
+        // and two same-named mods in different locations collide outright - one silently wins.
+        var a = TestSupport.TempDir("prof-loc-a-");
+        var b = TestSupport.TempDir("prof-loc-b-");
+        File.WriteAllText(Path.Combine(a, "x.pak"), "from-mods");
+        File.WriteAllText(Path.Combine(b, "x.pak"), "from-mods2");
+
+        var path = Out("prof-loc-");
+        var m = ProfileArchive.Create(new[]
+        {
+            new ProfileGameSource(new BundleGame("windrose", "1", "Windrose"), null,
+                new[]
+                {
+                    new BundlePlanFile(Path.Combine(a, "x.pak"), "mods/Same/x.pak"),
+                    new BundlePlanFile(Path.Combine(b, "x.pak"), "mods2/Same/x.pak"),
+                },
+                new[] { new BundleMod("Same", "1", null, true) }, null)
+            { ModLocations = new[] { "mods", "mods2" } },
+        }, path, Stamp, "0.19.0");
+
+        var entries = Entries(path);
+        Assert.Contains("games/windrose/mods/mods/Same/x.pak", entries);
+        Assert.Contains("games/windrose/mods/mods2/Same/x.pak", entries);
+        Assert.Equal(2, Assert.Single(m.Games).ModFileCount);          // neither one lost to a collision
+        Assert.Equal(new[] { "mods", "mods2" }, Assert.Single(m.Games).ModLocations);
+    }
+
+    [Fact]
+    public void The_archive_declares_its_format_so_a_reader_knows_which_shape_it_holds()
+    {
+        var path = Out("prof-ver-");
+        ProfileArchive.Create(new[] { Game("palworld", "pal") }, path, Stamp, "0.19.0");
+        Assert.Equal(2, ProfileArchive.ReadManifest(path)!.ArchiveVersion);
     }
 }

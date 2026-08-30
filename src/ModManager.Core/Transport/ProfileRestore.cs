@@ -28,7 +28,18 @@ public sealed record RestoreRequest(
     string? SaveDir = null,
     string? ModDir = null,
     string? DataDir = null,
-    string? SnapshotsDir = null);
+    string? SnapshotsDir = null)
+{
+    /// <summary>Where each NAMED mod location lives on this machine, resolved now.
+    ///
+    /// <para>A game can keep mods in more than one place, and the archive records which one each file
+    /// came from. A name that is absent here has no home on this machine — those files go to
+    /// <see cref="ModDir"/> and are counted in <see cref="RestoreOutcome.RelocatedModFiles"/>, because
+    /// quietly filing a mod somewhere the loader will not look is the failure this map exists to
+    /// prevent.</para></summary>
+    public IReadOnlyDictionary<string, string> ModDirsByLocation { get; init; }
+        = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
 
 /// <summary>What actually happened to one game — including what did not, and why.</summary>
 public sealed record RestoreOutcome(
@@ -37,7 +48,13 @@ public sealed record RestoreOutcome(
     int FileCount,
     long Bytes,
     bool SnapshotTaken,
-    string? Skipped = null);
+    string? Skipped = null)
+{
+    /// <summary>Mod files whose original location does not exist on this machine, so they went to the
+    /// main mod folder instead. Reported rather than hidden — they are restored, but not necessarily
+    /// where their loader expects them.</summary>
+    public int RelocatedModFiles { get; init; }
+}
 
 /// <summary>What the whole run did.</summary>
 public sealed record RestoreResult
@@ -61,6 +78,11 @@ public sealed record RestoreResult
                 ? "Nothing was restored."
                 : $"Restored {did.Count} game{(did.Count == 1 ? "" : "s")} — "
                   + $"{TotalFiles:N0} file{(TotalFiles == 1 ? "" : "s")} ({ProfileReportText.Human(TotalBytes)}).";
+
+            var moved = Games.Sum(g => g.RelocatedModFiles);
+            if (moved > 0)
+                head += $" {moved} mod file{(moved == 1 ? "" : "s")} came from a different folder than"
+                      + " this machine uses, and went to the main mod folder.";
 
             if (Skipped.Count == 0) return head;
             return head + $" {Skipped.Count} skipped: "
@@ -136,13 +158,13 @@ public static class ProfileRestore
                 continue;
             }
 
-            outcomes.Add(RestoreOne(zip, req));
+            outcomes.Add(RestoreOne(zip, req, manifest.ArchiveVersion));
         }
 
         return new RestoreResult { Games = outcomes };
     }
 
-    private static RestoreOutcome RestoreOne(ZipArchive zip, RestoreRequest req)
+    private static RestoreOutcome RestoreOne(ZipArchive zip, RestoreRequest req, int archiveVersion)
     {
         var prefix = ProfileArchive.GamesPrefix + req.GameId + "/";
         var done = RestoreParts.None;
@@ -157,9 +179,11 @@ public static class ProfileRestore
             if (n > 0) { done |= RestoreParts.Saves; files += n; bytes += b; }
         }
 
+        var relocated = 0;
         if (req.Parts.HasFlag(RestoreParts.Mods) && !string.IsNullOrEmpty(req.ModDir))
         {
-            var (n, b) = Extract(zip, prefix + ProfileArchive.ModsFolder, req.ModDir!);
+            var (n, b, moved) = ExtractMods(zip, prefix + ProfileArchive.ModsFolder, req, archiveVersion);
+            relocated = moved;
             if (n > 0) { done |= RestoreParts.Mods; files += n; bytes += b; }
         }
 
@@ -171,7 +195,7 @@ public static class ProfileRestore
 
         return done == RestoreParts.None
             ? new RestoreOutcome(req.GameId, done, 0, 0, snapshotTaken, "this backup holds nothing for the parts you chose")
-            : new RestoreOutcome(req.GameId, done, files, bytes, snapshotTaken);
+            : new RestoreOutcome(req.GameId, done, files, bytes, snapshotTaken) { RelocatedModFiles = relocated };
     }
 
     /// <summary>Snapshot what is about to be replaced. Same guarantee and the same label the rest of
@@ -186,6 +210,73 @@ public static class ProfileRestore
             return true;
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Put mods back where they came FROM, not merely where mods generally go.
+    ///
+    /// <para>A game can keep mods in more than one place — Windrose keeps two — and format 2 leads each
+    /// path with the name of the location it was taken from. That name is resolved against where THIS
+    /// machine keeps that location. Format 1 recorded no location at all, so its files can only go to
+    /// the main folder; guessing one out of a mod name would be a lie dressed as a feature.</para>
+    ///
+    /// <para>A location name this machine does not have keeps its name as a folder under the main one.
+    /// The files are neither lost nor landed on top of a same-named mod from a different location —
+    /// which is the exact collision this format change exists to stop — and the run says so afterwards
+    /// rather than leaving somebody to find them.</para>
+    /// </summary>
+    private static (int Files, long Bytes, int Relocated) ExtractMods(
+        ZipArchive zip, string prefix, RestoreRequest req, int archiveVersion)
+    {
+        if (archiveVersion < 2)
+        {
+            var (f, b) = Extract(zip, prefix, req.ModDir!);
+            return (f, b, 0);
+        }
+
+        var files = 0;
+        long bytes = 0;
+        var relocated = 0;
+
+        foreach (var entry in zip.Entries)
+        {
+            if (!entry.FullName.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+
+            var rel = entry.FullName[prefix.Length..];
+            var cut = rel.IndexOf('/');
+            if (cut <= 0) continue;                       // a bare file with no location: not ours to place
+
+            var location = rel[..cut];
+            var rest = rel[(cut + 1)..];
+
+            string root;
+            if (req.ModDirsByLocation.Count == 0)
+            {
+                // No map at all means the caller has ONE place, not none. Strip the location and use
+                // it - inventing subfolders for a game that keeps mods in a single folder would be
+                // the wrong-place failure arriving from the opposite direction.
+                root = Path.GetFullPath(req.ModDir!);
+            }
+            else if (req.ModDirsByLocation.TryGetValue(location, out var known))
+            {
+                root = Path.GetFullPath(known);
+            }
+            else
+            {
+                root = Path.GetFullPath(req.ModDir!);
+                rest = location + "/" + rest;             // keep the name, so nothing lands on anything
+                relocated++;
+            }
+
+            var dest = SafeExtractPath.ResolveOrThrow(root, rest);
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            entry.ExtractToFile(dest, overwrite: true);
+            files++;
+            bytes += entry.Length;
+        }
+
+        return (files, bytes, relocated);
     }
 
     /// <summary>
