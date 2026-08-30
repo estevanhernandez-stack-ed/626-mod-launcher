@@ -175,8 +175,9 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button AutomationProperties.AutomationId="ArchiveCreateButton" x:Name="ArchiveCreateButton"
                             Content="Back up everything…" Click="OnCreateProfileArchive" />
-                    <!-- Reading is a separate act from writing, and there is deliberately no restore
-                         button next to it yet: this screen exists to answer "what is in this thing?" -->
+                    <!-- Reading is a separate act from writing. The restore controls hang off the
+                         REPORT this opens, not off this button: you read what a backup holds before
+                         anything offers to put it back. -->
                     <Button AutomationProperties.AutomationId="ArchiveInspectButton" x:Name="ArchiveInspectButton"
                             Content="Look inside a backup…" Click="OnInspectProfileArchive"
                             ToolTipService.ToolTip="Open a backup file and see what it holds. Nothing is restored." />
