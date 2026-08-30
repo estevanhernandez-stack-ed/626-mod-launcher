@@ -1,0 +1,17 @@
+Version 0.20.0
+
+• Move your whole modded setup to another PC. One file holds every game's mods, saves and settings — for a new machine, or a fresh reinstall of this one.
+
+• Read a backup before it touches anything. It says what is inside and how much of it this machine can already use. There is no restore button on that screen until you tick something.
+
+• Put back only what you choose, per game and per part. Saves, mods and settings are separate, and a part is only offered when the backup actually holds it.
+
+• Games you have not reinstalled yet can wait. Their mods are held until the game turns up, and land wherever you install it — a different drive is fine.
+
+• Nothing is deleted putting a backup back. Saves are snapshotted before they are replaced, mods are added over what is there, and a restore refuses while the game is running.
+
+• Sign-in tokens are left out of backups, and the app tells you what a backup does carry about you.
+
+• Fixed: for games that keep mods in more than one folder, a backup now puts each mod back in the folder it came from.
+
+• Fixed: the Settings scrollbar sat on top of the text, and the icon box could render blank.
