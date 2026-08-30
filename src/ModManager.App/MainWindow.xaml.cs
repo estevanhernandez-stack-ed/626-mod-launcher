@@ -1220,6 +1220,8 @@ public sealed partial class MainWindow : Window
                 : System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
             if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         }
+        // A restore rewrote files under the active game; the list on screen is now stale.
+        if (dialog.RestoreHappened) await ViewModel.RefreshAsync();
 
         // ── Post-close hand-offs ─────────────────────────────────────────────────────────────────
         // WinUI 3 forbids nesting a second ContentDialog while the first is still open. For any

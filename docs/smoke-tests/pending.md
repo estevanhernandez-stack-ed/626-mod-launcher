@@ -1930,3 +1930,44 @@ to check hardest, because the restore half does not exist yet.
 
 *A game with no saves still contributes its mods and settings — the common case on a fresh machine
 where a game is installed and modded but never played.*
+
+---
+
+## Putting a backup back (profile restore, step 3)
+
+Settings → **Look inside a backup…** → tick parts → **Put chosen parts back…**. This is the half that
+writes, so it is the half worth being suspicious of.
+
+**Most of this is automated.** `scripts/smoke-profile-restore.ps1` drives the real app through the
+whole path — back up, read back, tick, arm, confirm, verify — against a **throwaway game registration
+pointing at temp folders**. That indirection is not squeamishness: a restore writes into save and mod
+folders, and pointing a smoke test at a real one would put junk in somebody's Palworld saves to prove
+a checkbox works. Register the throwaway game first (two mod locations, a mod in each, one save file),
+then run the script with `-Fixture` and `-ArchivePath`. 15 assertions; all must pass.
+
+What the automation cannot judge, and a human should look at once:
+
+1. **The parts offered match what the file holds.** A game whose backup carried no settings must show
+   no Settings box. A ticked box for something the archive does not have reads as a promise, and the
+   run would quietly do nothing.
+2. **Games that are not set up here get no boxes at all** — they appear under *Waiting on the game*
+   with no controls. There is nowhere to put a game's files until the game itself is registered.
+3. **One press arms, the second acts.** The first press must change the button to *Confirm — overwrite
+   files for N games* and write nothing. Settings is itself a ContentDialog, so a second dialog cannot
+   open over it; the confirm is the button's own second press. Changing any tick disarms it — otherwise
+   a confirm could act on a different set than the one it named.
+4. **Mods go back to the folder they came from.** On a real profile Windrose spans three locations —
+   `mods`, `mods2` and `ue4ss-mods` — and 42 of its 81 mod files are UE4SS Lua mods. If those land in
+   the paks folder the game loads none of them and says nothing. Check `games/windrose/mods/` in the
+   archive holds all three location folders, and that a restore puts each back under its own.
+5. **A location this machine does not have.** Files keep their location name as a folder under the main
+   one, and the summary says how many moved. They are neither lost nor landed on a same-named mod.
+6. **The snapshot happened.** A `*before-restore*.zip` under the game's `_626mods/<id>/saves/`. Without
+   it the restore is a one-way door, which is the one thing this app does not build.
+7. **Nothing else moved.** Untick every other game and confirm the file count in the summary matches
+   only what you ticked.
+
+*Known and out of scope: two mods with the SAME filename in two different locations of one game are
+collapsed by the scanner into a single entry before the archive ever sees them, so only one survives.
+That is a scanner limitation, not the archive format's — the launcher cannot tell them apart for
+toggling either.*

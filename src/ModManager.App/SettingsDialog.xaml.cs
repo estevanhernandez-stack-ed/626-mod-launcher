@@ -59,6 +59,11 @@ public sealed partial class SettingsDialog : ContentDialog
     /// ContentDialogs simultaneously, which is fragile in WinUI 3.</summary>
     public bool OpenSafeClearRequested { get; private set; }
 
+    /// <summary>True when a profile restore actually wrote something. Separate from
+    /// <see cref="Changed"/> because that one refreshes the theme list and the title-bar icon, and a
+    /// restore needs the MOD LIST re-read instead — the files under it just changed.</summary>
+    public bool RestoreHappened { get; private set; }
+
     /// <summary>Set when the user clicks "Restore" on a restore-point row. MainWindow.OnSettings
     /// reads this after ShowAsync() returns and shows the confirm + performs the restore — same
     /// flag-then-hide pattern used by OpenSafeClearRequested, no nested ContentDialog.</summary>
@@ -129,11 +134,11 @@ public sealed partial class SettingsDialog : ContentDialog
     }
 
     /// <summary>
-    /// Open a backup and say what is in it. <b>Nothing is restored.</b>
+    /// Open a backup, say what is in it, and — once you have read that — put chosen parts of it back.
     ///
-    /// <para>Step two of the profile archive, and deliberately shippable before step three: the report
-    /// is the part that has to be right, and the acting is the part that can wait. It is also the
-    /// screen a restore will later hang off, so getting the reading correct first is not a detour.</para>
+    /// <para>The reading came first and shipped on its own, which is why the acting hangs off it here
+    /// rather than sitting behind a button of its own. Nothing is written until parts are ticked and
+    /// the confirm is pressed; the report is still the whole screen until then.</para>
     ///
     /// <para>A Flyout rather than a dialog for the reason the saves panel found: Settings IS a
     /// ContentDialog and WinUI allows only one at a time per XamlRoot.</para>
@@ -162,7 +167,7 @@ public sealed partial class SettingsDialog : ContentDialog
             var report = ProfileInspector.Inspect(manifest, installed);
 
             ArchiveStatusText.Text = report.Headline;
-            ShowArchiveReport(sender as FrameworkElement ?? ArchiveInspectButton, report);
+            ShowArchiveReport(sender as FrameworkElement ?? ArchiveInspectButton, report, file.Path);
         }
         catch (Exception ex) { ArchiveStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
@@ -182,7 +187,7 @@ public sealed partial class SettingsDialog : ContentDialog
         return map;
     }
 
-    private void ShowArchiveReport(FrameworkElement anchor, ProfileReport report)
+    private void ShowArchiveReport(FrameworkElement anchor, ProfileReport report, string archivePath)
     {
         var res = Application.Current.Resources;
         var panel = new StackPanel { Spacing = 10, MaxWidth = 460 };
@@ -196,7 +201,12 @@ public sealed partial class SettingsDialog : ContentDialog
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(head, "ArchiveReportHeadline");
         panel.Children.Add(head);
 
-        void Section(string title, IReadOnlyList<ModManager.Core.Transport.ProfileGameReport> games, string id)
+        // Ticked per game, per part. Only games this machine actually has get boxes - there is
+        // nowhere to put a game's files until the game itself is registered here.
+        var picks = new List<(string GameId, RestoreParts Part, CheckBox Box)>();
+
+        void Section(string title, IReadOnlyList<ModManager.Core.Transport.ProfileGameReport> games, string id,
+                     bool offerRestore = false)
         {
             if (games.Count == 0) return;
             var heading = new TextBlock
@@ -234,12 +244,42 @@ public sealed partial class SettingsDialog : ContentDialog
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(detail, $"ArchiveGameDetail.{g.Game.Game.Id}");
                 row.Children.Add(detail);
 
+                if (offerRestore)
+                {
+                    var parts = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 12,
+                        Margin = new Thickness(0, 2, 0, 4),
+                    };
+
+                    // A part is only offered when the backup HOLDS it. A ticked box for something the
+                    // file does not carry reads as a promise, and the run would quietly do nothing.
+                    void Part(string label, RestoreParts part, bool present)
+                    {
+                        if (!present) return;
+                        var box = new CheckBox { Content = label, IsChecked = true, MinWidth = 0 };
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                            box, $"ArchiveRestorePart.{g.Game.Game.Id}.{part.ToString().ToLowerInvariant()}");
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                            box, $"{label} for {g.Game.Game.Name ?? g.Game.Game.Id}");
+                        parts.Children.Add(box);
+                        picks.Add((g.Game.Game.Id, part, box));
+                    }
+
+                    Part("Saves", RestoreParts.Saves, g.Game.SaveIncluded);
+                    Part("Mods", RestoreParts.Mods, g.Game.ModFileCount > 0);
+                    Part("Settings", RestoreParts.Settings, g.Game.DataFileCount > 0);
+
+                    if (parts.Children.Count > 0) row.Children.Add(parts);
+                }
+
                 list.Children.Add(row);
             }
             panel.Children.Add(list);
         }
 
-        Section("Set up on this machine", report.Here, "ArchiveGamesHere");
+        Section("Set up on this machine", report.Here, "ArchiveGamesHere", offerRestore: true);
         Section("Waiting on the game", report.NotHere, "ArchiveGamesNotHere");
 
         // What was deliberately left out, and what it carries about its owner. Both were decided when
@@ -277,19 +317,181 @@ public sealed partial class SettingsDialog : ContentDialog
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
             });
 
-        // Says what this screen does NOT do, because a wall of detail about a backup invites the
-        // question, and the honest answer today is "not yet".
-        panel.Children.Add(new TextBlock
+        // ---- putting it back -------------------------------------------------------------------
+        // Below everything the file says about itself, because reading comes before acting and the
+        // order on the screen is the order of the decision.
+        if (picks.Count > 0)
         {
-            Text = "Nothing has been restored — this only reads the file.",
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 6, 0, 0),
-        });
+            panel.Children.Add(new Border
+            {
+                Height = 1,
+                Background = (Microsoft.UI.Xaml.Media.Brush)res["ThemeBorder"],
+                Margin = new Thickness(0, 10, 0, 4),
+            });
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Nothing here deletes. Saves are snapshotted before they are replaced, and mods "
+                     + "are added over what is there rather than clearing it — a mod folder holds the "
+                     + "game's own content too.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+                FontSize = 12,
+            });
+
+            var status = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed,
+                Margin = new Thickness(0, 2, 0, 0),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(status, "ArchiveRestoreStatus");
+
+            // Outlined danger at the entry, per .claude/rules/vsm-danger-buttons.md - filled danger is
+            // sanctioned only inside a confirm, and Settings IS a ContentDialog so a second one cannot
+            // open over it. The confirm is therefore the button's own second press: it names the count
+            // it is about to act on, so an accidental first click cannot become an overwrite.
+            var restore = new Button
+            {
+                Content = "Put chosen parts back…",
+                BorderBrush = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeDanger"],
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 6, 0, 0),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(restore, "ArchiveRestoreButton");
+
+            var armed = false;
+            restore.Click += async (_, _) =>
+            {
+                var chosen = picks.Where(p => p.Box.IsChecked == true).ToList();
+                if (chosen.Count == 0)
+                {
+                    armed = false;
+                    restore.Content = "Put chosen parts back…";
+                    status.Visibility = Visibility.Visible;
+                    status.Text = "Nothing is ticked, so there is nothing to put back.";
+                    return;
+                }
+
+                if (!armed)
+                {
+                    armed = true;
+                    var n = chosen.Select(c => c.GameId).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                    restore.Content = $"Confirm — overwrite files for {n} game{(n == 1 ? "" : "s")}";
+                    return;
+                }
+
+                armed = false;
+                restore.Content = "Put chosen parts back…";
+                await PutBackAsync(archivePath, chosen, status, restore);
+            };
+
+            // Changing what is ticked disarms it. Otherwise a confirm could act on a different set
+            // than the one it named.
+            foreach (var (_, _, box) in picks)
+            {
+                void Disarm(object _, RoutedEventArgs __)
+                {
+                    if (!armed) return;
+                    armed = false;
+                    restore.Content = "Put chosen parts back…";
+                }
+                box.Checked += Disarm;
+                box.Unchecked += Disarm;
+            }
+
+            panel.Children.Add(restore);
+            panel.Children.Add(status);
+        }
+        else
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "None of these games are set up on this machine yet, so there is nowhere to put "
+                     + "them back. Add a game, then open this backup again.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0),
+            });
+        }
 
         new Flyout
         {
             Content = new ScrollViewer { Content = panel, MaxHeight = 420, Padding = new Thickness(0, 0, 12, 0) },
         }.ShowAt(anchor);
+    }
+
+    /// <summary>
+    /// Run the restore for what was ticked.
+    ///
+    /// <para><b>Every path is resolved HERE, from the registry, now.</b> The archive records what a
+    /// game HAD, never where it lived — a fresh install has a different Steam library, a different
+    /// drive and different folders, and reusing the recorded path is how a restore writes into
+    /// somebody else's machine layout.</para>
+    ///
+    /// <para>Mod locations are passed by NAME so each mod goes back to the folder it came from. A game
+    /// can keep mods in more than one place, and the primary is not always the right answer.</para>
+    /// </summary>
+    private async Task PutBackAsync(
+        string archivePath,
+        IReadOnlyList<(string GameId, RestoreParts Part, CheckBox Box)> chosen,
+        TextBlock status,
+        Button button)
+    {
+        var wanted = new Dictionary<string, RestoreParts>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, part, _) in chosen)
+            wanted[id] = wanted.TryGetValue(id, out var have) ? have | part : part;
+
+        var svc = App.AppHost.Services.GetRequiredService<LauncherService>();
+        var games = svc.LoadRegistry().Games.ToDictionary(g => g.Id, StringComparer.OrdinalIgnoreCase);
+
+        var requests = new List<RestoreRequest>();
+        var unresolved = new List<string>();
+        foreach (var (id, parts) in wanted)
+        {
+            if (!games.TryGetValue(id, out var game)) { unresolved.Add(id); continue; }
+
+            ModManager.Core.GameContext ctx;
+            try { ctx = ModManager.Core.Scanner.GameContext(game); }
+            catch { unresolved.Add(id); continue; }
+
+            requests.Add(new RestoreRequest(
+                id,
+                parts,
+                SaveDir: string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
+                ModDir: ctx.Locations.Count > 0 ? ctx.Locations[0].Abs : null,
+                DataDir: ctx.DataDir,
+                SnapshotsDir: ctx.SavesDir)
+            {
+                ModDirsByLocation = ctx.Locations.ToDictionary(
+                    l => l.Name, l => l.Abs, StringComparer.OrdinalIgnoreCase),
+            });
+        }
+
+        button.IsEnabled = false;
+        status.Visibility = Visibility.Visible;
+        status.Text = "Putting things back…";
+        try
+        {
+            var probe = new GameProcessProbe();
+
+            // Fails CLOSED both ways: a game the registry no longer knows counts as running, and the
+            // probe's own enumeration failure propagates for Core to catch as the same answer. A
+            // folder changed under a live game is silently undone on exit.
+            var result = await Task.Run(() => ProfileRestore.Restore(
+                archivePath, requests,
+                gameId => !games.TryGetValue(gameId, out var g) || probe.AnyRunning(g)));
+
+            var text = result.Summary;
+            if (unresolved.Count > 0)
+                text += $" {unresolved.Count} could not be located on this machine: "
+                      + string.Join(", ", unresolved) + ".";
+            status.Text = text;
+
+            if (result.TotalFiles > 0) RestoreHappened = true;
+        }
+        catch (Exception ex) { status.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        finally { button.IsEnabled = true; }
     }
 
     private static string Human(long bytes)
