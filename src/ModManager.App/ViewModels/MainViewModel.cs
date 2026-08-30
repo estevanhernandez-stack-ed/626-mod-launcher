@@ -495,7 +495,17 @@ public sealed partial class MainViewModel : ObservableObject
         MpWarning = MpRiskyEnabledCount > 0 ? MpWarningText + "." : null,
         VortexReDeployed = HasReDeployedLocations,
         VortexManaged = HasOwnedLocations,
+        // Step 4. A backup was opened on a machine that did not have this game yet, so its contents
+        // were held rather than guessed at a path. The game exists now, which is the first moment
+        // there is anywhere to put it.
+        HeldBackup = HeldForActiveGame is { } h ? ModManager.Core.Transport.PendingRestore.Describe(h) : null,
     };
+
+    /// <summary>What is being held for the active game, or null. Read fresh rather than cached: it
+    /// changes when the user holds something in Settings or puts one back, and both happen while this
+    /// view-model is alive.</summary>
+    public ModManager.Core.Transport.HeldGame? HeldForActiveGame
+        => App.AppHost.Services.GetRequiredService<Services.HeldBackupsService>().For(_ctx?.Game.Id);
 
     public void RebuildStateChips()
     {

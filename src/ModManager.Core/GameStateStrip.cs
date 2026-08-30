@@ -42,6 +42,11 @@ public sealed record GameStateConditions
     public string? MpWarning { get; init; }
     public bool VortexReDeployed { get; init; }
     public bool VortexManaged { get; init; }
+
+    /// <summary>Non-empty when a profile backup is being held for this game, describing what it
+    /// carries — e.g. "12 mods and 79 save files". Set once the game is registered here, which is the
+    /// first moment there is anywhere to put it.</summary>
+    public string? HeldBackup { get; init; }
 }
 
 /// <summary>
@@ -114,13 +119,23 @@ public static class GameStateStrip
             chips.Add(new GameStateChip("mp-desync", GameStateSeverity.Warning, "MP RISK",
                 c.MpWarning!.Trim(), null, Dismissible: false));
 
-        // 8. A takeover was undone behind the user's back — worse than never having taken over.
+        // 8. The good news case, and the only chip here that is not about something being wrong:
+        // somebody rebuilt a machine, reinstalled a game, and their mods are already on the disk
+        // waiting. It sits below everything that is actually broken - reinstalling a game is exactly
+        // when a framework goes missing, so these turn up together more often than either alone.
+        if (!string.IsNullOrWhiteSpace(c.HeldBackup))
+            chips.Add(new GameStateChip("backup-waiting", GameStateSeverity.Info, "BACKUP",
+                c.HeldBackup!.Trim() + " from an earlier backup are waiting for this game — "
+                + "nothing is put back until you say so.",
+                "Put it back", Dismissible: true));
+
+        // 9. A takeover was undone behind the user's back — worse than never having taken over.
         if (c.VortexReDeployed)
             chips.Add(new GameStateChip("vortex-redeployed", GameStateSeverity.Warning, "VORTEX",
                 "Vortex re-deployed into a folder you took over.",
                 "Take over again", Dismissible: false));
 
-        // 9. True, worth knowing, costs nothing.
+        // 10. True, worth knowing, costs nothing.
         else if (c.VortexManaged)
             chips.Add(new GameStateChip("vortex-managed", GameStateSeverity.Info, "VORTEX",
                 "Some folders here are managed by Vortex, so 626 leaves them alone.",

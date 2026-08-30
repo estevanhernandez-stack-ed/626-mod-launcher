@@ -205,8 +205,13 @@ public sealed partial class SettingsDialog : ContentDialog
         // nowhere to put a game's files until the game itself is registered here.
         var picks = new List<(string GameId, RestoreParts Part, CheckBox Box)>();
 
+        // Games this machine does not have yet. Nothing can be restored for them - but their contents
+        // can be KEPT, so the backup file itself does not have to stay findable for a week while Steam
+        // downloads. Nothing is resolved now; a game can come back on a different drive.
+        var holds = new List<(string GameId, CheckBox Box)>();
+
         void Section(string title, IReadOnlyList<ModManager.Core.Transport.ProfileGameReport> games, string id,
-                     bool offerRestore = false)
+                     bool offerRestore = false, bool offerHold = false)
         {
             if (games.Count == 0) return;
             var heading = new TextBlock
@@ -273,6 +278,22 @@ public sealed partial class SettingsDialog : ContentDialog
 
                     if (parts.Children.Count > 0) row.Children.Add(parts);
                 }
+                else if (offerHold)
+                {
+                    var box = new CheckBox
+                    {
+                        Content = "Hold for later",
+                        IsChecked = false,
+                        MinWidth = 0,
+                        Margin = new Thickness(0, 2, 0, 4),
+                    };
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                        box, $"ArchiveHold.{g.Game.Game.Id}");
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                        box, $"Hold {g.Game.Game.Name ?? g.Game.Game.Id} for later");
+                    row.Children.Add(box);
+                    holds.Add((g.Game.Game.Id, box));
+                }
 
                 list.Children.Add(row);
             }
@@ -280,7 +301,7 @@ public sealed partial class SettingsDialog : ContentDialog
         }
 
         Section("Set up on this machine", report.Here, "ArchiveGamesHere", offerRestore: true);
-        Section("Waiting on the game", report.NotHere, "ArchiveGamesNotHere");
+        Section("Waiting on the game", report.NotHere, "ArchiveGamesNotHere", offerHold: true);
 
         // What was deliberately left out, and what it carries about its owner. Both were decided when
         // the archive was written; this is where somebody finally reads them.
@@ -409,10 +430,67 @@ public sealed partial class SettingsDialog : ContentDialog
             panel.Children.Add(new TextBlock
             {
                 Text = "None of these games are set up on this machine yet, so there is nowhere to put "
-                     + "them back. Add a game, then open this backup again.",
+                     + "them back — tick the ones you want kept until they are.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 6, 0, 0),
             });
+        }
+
+        // ---- holding, for the games that are not here yet -----------------------------------------
+        // Separate verb, separate button. Restoring writes into a game folder; holding writes only
+        // into the launcher's own, and needs no confirm because nothing on the machine changes.
+        if (holds.Count > 0)
+        {
+            var holdStatus = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed,
+                Margin = new Thickness(0, 2, 0, 0),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(holdStatus, "ArchiveHoldStatus");
+
+            var hold = new Button { Content = "Hold ticked games for later", Margin = new Thickness(0, 6, 0, 0) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(hold, "ArchiveHoldButton");
+            hold.Click += async (_, _) =>
+            {
+                var chosen = holds.Where(h => h.Box.IsChecked == true).Select(h => h.GameId).ToList();
+                holdStatus.Visibility = Visibility.Visible;
+                if (chosen.Count == 0)
+                {
+                    holdStatus.Text = "Nothing is ticked, so nothing was kept.";
+                    return;
+                }
+
+                hold.IsEnabled = false;
+                holdStatus.Text = "Keeping…";
+                try
+                {
+                    var svc = App.AppHost.Services.GetRequiredService<HeldBackupsService>();
+                    var kept = 0;
+                    long bytes = 0;
+                    await Task.Run(() =>
+                    {
+                        foreach (var id in chosen)
+                        {
+                            // One failure must not cost the other eleven. A game that cannot be held
+                            // is named in the count, not thrown out of the loop.
+                            try { bytes += new System.IO.FileInfo(svc.Hold(archivePath, id)).Length; kept++; }
+                            catch { }
+                        }
+                    });
+
+                    holdStatus.Text = kept == 0
+                        ? "Nothing could be kept from this backup."
+                        : $"Kept {kept} game{(kept == 1 ? "" : "s")} ({ProfileReportText.Human(bytes)}). "
+                          + "When you add one of them, its game screen will offer to put it back. "
+                          + "You can close this backup now.";
+                }
+                catch (Exception ex) { holdStatus.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+                finally { hold.IsEnabled = true; }
+            };
+
+            panel.Children.Add(hold);
+            panel.Children.Add(holdStatus);
         }
 
         new Flyout

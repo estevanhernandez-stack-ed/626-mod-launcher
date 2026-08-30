@@ -1593,7 +1593,80 @@ public sealed partial class MainWindow : Window
             // An ACTION, not a dismissal: it re-records the build baseline the warning compares to.
             case "steam-updated": ViewModel.DismissBuildWarningCommand.Execute(null); break;
             case "framework-missing": _ = OfferMissingFrameworkAsync(); break;
+            case "backup-waiting": _ = PutHeldBackupBackAsync(); break;
         }
+    }
+
+
+    /// <summary>
+    /// The BACKUP chip's action: put back what has been waiting for this game.
+    ///
+    /// <para>Held content is a one-game profile archive, so this is the ORDINARY restore reading the
+    /// ordinary shape — there is no second path to keep in step. What it does not reuse is the
+    /// destination: every folder is resolved from the registry NOW, which is the entire reason the
+    /// content was held instead of a path being written down. The game may well have come back on a
+    /// different drive.</para>
+    /// </summary>
+    private async Task PutHeldBackupBackAsync()
+    {
+        var svc = App.AppHost.Services.GetRequiredService<Services.HeldBackupsService>();
+        var held = ViewModel.HeldForActiveGame;
+        // The resolved CONTEXT, not the picker's option: this needs the registry entry's real folders,
+        // which is the whole point of resolving them at the moment of the restore.
+        var ctx = ViewModel.ActiveContextPublic;
+        if (held is null || ctx is null) return;
+        var game = ctx.Game;
+
+        var d = new ContentDialog
+        {
+            Title = $"Put back {held.GameName}?",
+            Content = ModManager.Core.Transport.PendingRestore.Describe(held)
+                    + " will be put back into this install. Your saves are snapshotted first, and "
+                    + "mods are added over what is there rather than clearing it — nothing is deleted.",
+            PrimaryButtonText = "Put it back",
+            CloseButtonText = "Not now",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Content.XamlRoot,
+        };
+        ModManager.App.Services.DialogTheming.Apply(d);
+        if (await d.ShowAsync() != ContentDialogResult.Primary) return;
+
+        try
+        {
+            var request = new ModManager.Core.Transport.RestoreRequest(
+                game.Id,
+                ModManager.Core.Transport.RestoreParts.Saves
+                    | ModManager.Core.Transport.RestoreParts.Mods
+                    | ModManager.Core.Transport.RestoreParts.Settings,
+                SaveDir: string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
+                ModDir: ctx.Locations.Count > 0 ? ctx.Locations[0].Abs : null,
+                DataDir: ctx.DataDir,
+                SnapshotsDir: ctx.SavesDir)
+            {
+                ModDirsByLocation = ctx.Locations.ToDictionary(
+                    l => l.Name, l => l.Abs, StringComparer.OrdinalIgnoreCase),
+            };
+
+            var probe = new Services.GameProcessProbe();
+            var result = await Task.Run(() => ModManager.Core.Transport.ProfileRestore.Restore(
+                held.Path, new[] { request }, _ => probe.AnyRunning(game)));
+
+            // Only let go of the held copy once something actually landed. A refusal - the game was
+            // running, say - must leave it exactly where it was, or the one press that failed is also
+            // the press that threw the backup away.
+            if (result.TotalFiles > 0)
+            {
+                svc.Discard(game.Id);
+                await ViewModel.RefreshAsync();
+            }
+
+            // AFTER the refresh, not before. A reload writes its own line ("2 of 2 enabled"), so
+            // setting this first meant the one press that puts a whole game back reported the mod
+            // count instead - the confirmation replaced by a fact nobody asked for. Caught by the
+            // smoke run, which read the status line the user would have read.
+            ViewModel.StatusText = result.Summary;
+        }
+        catch (Exception ex) { ViewModel.StatusText = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     // The FRAMEWORK chip in the game-state strip. Wave 7 wired this straight to a download page and

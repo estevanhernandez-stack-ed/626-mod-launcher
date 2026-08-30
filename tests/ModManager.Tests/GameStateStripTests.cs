@@ -39,6 +39,7 @@ public class GameStateStripTests
     [InlineData("mp-desync")]
     [InlineData("vortex-redeployed")]
     [InlineData("vortex-managed")]
+    [InlineData("backup-waiting")]
     public void Every_condition_alone_produces_exactly_its_own_chip(string id)
         => Assert.Equal(new[] { id }, Ids(Only(id)));
 
@@ -60,6 +61,7 @@ public class GameStateStripTests
             "steam-updated",
             "coop-launcher",
             "mp-desync",
+            "backup-waiting",
             "vortex-redeployed",
         }, Ids(Everything()));
     }
@@ -302,6 +304,7 @@ public class GameStateStripTests
         MpWarning = "2 enabled mods may desync co-op.",
         VortexReDeployed = true,
         VortexManaged = true,
+        HeldBackup = "12 mods and 79 save files",
     };
 
     private static GameStateConditions Only(string id) => id switch
@@ -315,6 +318,32 @@ public class GameStateStripTests
         "mp-desync" => new GameStateConditions { MpWarning = "2 enabled mods may desync co-op." },
         "vortex-redeployed" => new GameStateConditions { VortexReDeployed = true },
         "vortex-managed" => new GameStateConditions { VortexManaged = true },
+        "backup-waiting" => new GameStateConditions { HeldBackup = "12 mods and 79 save files" },
         _ => throw new ArgumentOutOfRangeException(nameof(id), id, "unknown condition"),
     };
+
+    [Fact]
+    public void A_backup_waiting_for_a_game_is_INFO_because_nothing_about_it_is_broken()
+    {
+        // It is the good news case: somebody rebuilt a machine, reinstalled a game, and their mods
+        // are already here. Rendering that at Danger would teach people to ignore the colour that
+        // means "your account".
+        var chip = GameStateStrip.For(Only("backup-waiting"))[0];
+
+        Assert.Equal(GameStateSeverity.Info, chip.Severity);
+        Assert.Equal("Put it back", chip.ActionLabel);
+        Assert.True(chip.Dismissible);            // nothing is lost by putting it away; it is still held
+        Assert.Contains("12 mods and 79 save files", chip.Detail);
+        Assert.Contains("nothing is put back until you", chip.Detail);
+    }
+
+    [Fact]
+    public void A_waiting_backup_never_outranks_a_thing_that_is_actually_wrong()
+    {
+        // The whole point of the ordering. Reinstalling a game is exactly when a framework goes
+        // missing, so these two turn up together more often than either does alone.
+        var both = Only("backup-waiting") with { MissingFrameworks = "UE4SS - runtime missing" };
+
+        Assert.Equal(new[] { "framework-missing", "backup-waiting" }, Ids(both));
+    }
 }
