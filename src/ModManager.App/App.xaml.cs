@@ -64,6 +64,7 @@ public partial class App : Application
                 // Registration repair: previews what an edit would do and applies it, move-before-write.
                 services.AddSingleton<Services.RegistrationRepairService>();
                 services.AddSingleton<Services.ProfileArchiveBuilder>();
+                services.AddSingleton<Services.HeldBackupsService>();
                 // The contribution sink loaded plugins register their mod sources into. Empty when no
                 // plugin loads (the Store SKU + the zero-plugins path) — every consumer tolerates empty.
                 services.AddSingleton<ModSourceRegistry>();

@@ -1971,3 +1971,39 @@ What the automation cannot judge, and a human should look at once:
 collapsed by the scanner into a single entry before the archive ever sees them, so only one survives.
 That is a scanner limitation, not the archive format's — the launcher cannot tell them apart for
 toggling either.*
+
+---
+
+## Holding a game until the game comes back (profile restore, step 4)
+
+The case the whole archive exists for: the backup holds twelve games and the machine has none of them
+yet. `scripts/smoke-held-backup.ps1` drives it through the real app in three stages, because the middle
+of it is a game leaving the library and coming back somewhere else — which needs the app restarted and
+the registry edited between runs.
+
+    -Stage BackUp    back everything up, with a throwaway game registered at path A
+    -Stage Hold      the game is GONE from the library; hold its contents out of the backup
+    -Stage PutBack   the game is back AT PATH B; the chip offers it, take the offer
+
+15 assertions across the three. Run them in order, editing the registry between stages as the script's
+header describes.
+
+**Delete the backup file before the third stage.** Holding copies rather than points, because the
+premise is a machine being rebuilt and the archive is on a USB stick about to be unplugged. If the
+third stage passes with the source gone, that property holds; if it only passes with the file present,
+holding is quietly a pointer and will fail the first time it matters.
+
+What a human should still look at once:
+
+1. **The waiting section offers HOLD, not restore.** A game that is not set up here gets a *Hold for
+   later* tick and no restore parts at all — there is nowhere to restore it to.
+2. **The chip is INFO, and sits below anything actually wrong.** On the rig the throwaway game showed
+   `FRAMEWORK` above `BACKUP`, which is the order Core asserts. Reinstalling a game is exactly when a
+   framework goes missing, so the two turn up together often.
+3. **It says what is waiting in counts, not size.** "2 mod files and 1 save file", never "1.9 KB" —
+   what you get back, not what it costs.
+4. **The confirm names what will happen** and the restore snapshots saves first.
+5. **The held copy is only let go once something landed.** A refusal — the game was running — must
+   leave it exactly where it was, or the press that failed is also the press that threw it away.
+6. **The status line survives the reload.** A restore triggers a refresh, and the refresh writes its
+   own line; the summary must be what is left on screen, not "2 of 2 enabled".
