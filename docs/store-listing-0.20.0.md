@@ -112,6 +112,103 @@ produces:
 
 No telemetry, no analytics, no account required for any of this.
 
+## What's new in this version
+
+Paste [`store/whats-new-0.20.0.txt`](store/whats-new-0.20.0.txt) into Partner Center's **What's new in
+this version** field, verbatim. 1,180 of 1,500 characters, and it opens with the version header the
+field expects.
+
+It is a separate file for the same reason it was last time: that field is plain text with no markdown
+rendering, so neither this document nor the GitHub release body fits it — pasting either produces a
+wall of literal `#` and `|` on the storefront. Written for a shopper: what changed for them, no
+internal names.
+
+## Short description and description
+
+Paste [`store/short-description-0.20.0.txt`](store/short-description-0.20.0.txt) (238 of 270) and
+[`store/description-0.20.0.txt`](store/description-0.20.0.txt) (3,769 of 10,000).
+
+**The short description swaps a clause rather than appending one** — the field was already at 231 of
+270, so "snapshot your saves before you experiment" gave way to "back your whole setup up and move it
+to another PC". The snapshot promise is not lost; it is still in the description, in the feature list,
+and now in the paragraph about restoring.
+
+**The description gains a paragraph, not a bullet.** The other two opening paragraphs are the two
+rules the app is built on — *your files are yours*, and *browsing is not hosting*. Moving a setup
+between machines is the third thing worth saying in prose before the list starts.
+
+**Not changed: the search terms.** Still the seven from 0.8.1, for the reason recorded in the 0.19.0
+note — adding "nexus" would help discovery and is somebody else's trademark, so it stays a deliberate
+decision rather than a quiet edit.
+
+## Product features
+
+Paste [`store/product-features-0.20.0.txt`](store/product-features-0.20.0.txt) — one per line, in
+order. **20 of the 20 Partner Center allows**, longest 140 of 200 characters.
+
+The three new lines are the backup, the report, and the restore-plus-hold. That fills the list exactly,
+so the next feature added has to displace one rather than extend it — worth knowing before it is a
+surprise.
+
+## Certification notes
+
+Paste [`store/reviewer-letter-0.20.0.0.md`](store/reviewer-letter-0.20.0.0.md) into the
+certification-notes box.
+
+**This letter inverts 0.19.0's.** That one led with a visual change, because the layout differed from
+the live listing and an unexplained difference invites the question of what else went unmentioned.
+This release is the opposite: almost nothing looks different, and the behaviour toward a user's files
+genuinely changed. A reviewer skimming screenshots could reasonably read this as a maintenance
+release. The letter leads with *this can now write into your save folders, and here is how that is
+constrained* — five numbered constraints, then what a backup contains and what is deliberately left
+out of it.
+
+Identity, version, capability and seal in the letter's header were read out of the built bundle, not
+off the manifest on disk.
+
+## Age rating
+
+Unchanged. No user-generated content is displayed in-app beyond mod names and descriptions the user
+already has on disk or fetches from a source they connected themselves. A backup file contains only
+the user's own saves and mods and is never displayed as content.
+
+## Screenshots
+
+**`docs/store-assets/screenshots-0.20/` — nine shots, all 1920x1080**, captured with
+`scripts/capture-store-screenshots.ps1 -Auto` and every one looked at before being committed.
+
+| Shot | Shows |
+|---|---|
+| `01-library-home` | unchanged — the library with cover art, ban-risk and update badges |
+| `02-game-mods-view` | unchanged — Windrose's 27 mods, the chip strip, both find-mods doors |
+| `03-browse-nexus` | **carried over from the 0.19 set** — see below |
+| `04-updates-view` | unchanged |
+| `05-add-game` | unchanged |
+| `06-settings` | unchanged — the four-group shape |
+| `07-saves-snapshots` | unchanged — Elden Ring, real characters, the reversibility promise |
+| `08-back-up-everything` | **new** — the section, its "nothing on this machine is changed" sentence, both buttons |
+| `09-inside-a-backup` | **new** — the report, a real headline, and the per-game parts a restore would put back |
+
+**Why `03` was not recaptured.** That screen is unchanged in 0.20.0 and the capture needs a live Nexus
+sign-in the build box did not have; a shot of the storefront signed *out* would be a worse advert than
+the one already in the listing. The 0.19 capture is signed in with every thumbnail loaded and its
+chrome matches the new set exactly. Recapture it if the storefront changes.
+
+### One thing to look at before uploading — your call, not a blocker
+
+`09` lists your real library by name with save and mod counts — twelve games, including which have
+194 mods and which have 278 save files. No paths, no account ids, nothing secret, and it is the
+clearest possible demonstration of the feature. But it is your library on a public storefront page, so
+it is worth a conscious yes rather than a default.
+
+### The trap this set added to the capture script
+
+**A reposition dismisses a Flyout.** The script re-asserts the window position between navigating and
+capturing, which is right for every shot that came before and fatal for one whose state is a popup:
+shot 9 navigated correctly, *verified* correctly, and then photographed the screen behind the thing it
+was meant to show. A capture that looks finished is the exact failure the automated path exists to
+prevent. Shots can now mark themselves `Fragile` and skip that assert.
+
 ## Build procedure
 
 1. **Upload `docs/store-assets/screenshots-0.20/`** — nine shots, all 1920x1080, captured against
@@ -148,18 +245,3 @@ No telemetry, no analytics, no account required for any of this.
 - Three smoke cases remain human-only; see `docs/smoke-tests/smoke.json`.
 
 ---
-
-## What's new (store copy)
-
-> **Move your whole modded setup to another PC.**
->
-> Back up every game's mods, saves and settings into one file, then put it back on a new machine —
-> or a freshly reinstalled one. Read what a backup holds before anything is touched, and choose what
-> goes back, per game and per part.
->
-> Haven't reinstalled a game yet? Its mods wait until you do, and land wherever the game turns up —
-> a different drive is fine.
->
-> Nothing is deleted putting a backup back. Saves are snapshotted before they are replaced, mods are
-> added over what is there, and a restore refuses while the game is running. Sign-in tokens are left
-> out of backups, and the app tells you what a backup carries about you.

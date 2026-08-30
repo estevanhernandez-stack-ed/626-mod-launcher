@@ -1,0 +1,37 @@
+626 Mod Launcher is a native Windows mod manager for the games on your own machine. It is built on one rule: your files are yours. Nothing it does is one-way.
+
+You drop a mod onto the window - a .zip, .7z, .rar, or a loose folder - and it works out what the mod actually is and where it belongs for that game's loader, instead of dumping files and hoping. Turning a mod off moves it aside to a holding area; it never deletes it. Replacing a file snapshots the original first. Every change is written safely and can be undone.
+
+Sign in with your Nexus Mods account and you can browse a game's mods inside the launcher - sorted, filterable, and marked with what you already have - see which of your installed mods have a newer version, and endorse the ones you are using. Downloading still happens on the Nexus website, in your browser, under your own account.
+
+When you move to a new PC - or reinstall Windows on this one - you can put your whole setup in one file: every game's mods, saves and settings. Open that file on the new machine and it tells you what is inside and how much of it that machine can already use, before anything is restored. You choose what goes back, game by game. Games you have not reinstalled yet wait their turn, and their mods land wherever you install the game. Nothing is deleted putting a backup back, and sign-in tokens are left out of it.
+
+What it does
+
+- Reads your installed games (Steam libraries detected automatically) and manages each one's mods in one place.
+- Installs mods by reading the archive first, then placing files where the game's loader expects them - engine-aware, not one-size-fits-all.
+- Turns mods on and off reversibly - disabling moves files to a holding folder, never deletes.
+- Manages load order for the loaders that care about it.
+- Browse Nexus Mods inside the launcher, and jump to the mod page when you want to download.
+- Tells you which of your installed mods have a newer version, across every game at once.
+- Shows what needs your attention about a game in one row, worst first - anti-cheat risk, missing prerequisites, setup problems, game updates.
+- Installs a mod's missing prerequisite from an archive you already have, instead of leaving you on a downloads page.
+- Finds mods you installed by hand and adopts them, so an existing setup does not have to be rebuilt.
+- Leaves folders another mod manager is already looking after alone, and tells you that it has.
+- Snapshots your save files before you experiment, and restores them when you want to go back.
+- Edits mod config and INI files with a built-in editor that keeps a previous version you can restore.
+- Saves your current set of mods as a profile, so you can switch between setups.
+- Keeps restore points of your whole setup, so a bad afternoon is one click away from undone.
+- Backs up every game's mods, saves and settings into one file, and puts back the parts you choose.
+- Warns you before enabling mods on games with anti-cheat, so an experiment doesn't cost you an account.
+- Themes the whole app to taste.
+
+Who it's for
+
+People who mod the games they paid for and want a tool that treats those files with respect - no silent deletes, no half-finished installs, no mystery about what changed. If you have been burned by a manager that left a game folder in pieces, this one is built to never do that.
+
+What it is not
+
+It does not host, bundle, or distribute anyone else's work. Browsing Nexus Mods shows you their catalogue and sends you to their site to download, using your own account; no mod files or game content are ever shipped with this app, and no code is downloaded to run inside it. You bring the mods you already have, or fetch them yourself, and it manages them on your machine.
+
+626 Mod Launcher is made by 626Labs.
