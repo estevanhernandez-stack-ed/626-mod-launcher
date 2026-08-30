@@ -66,8 +66,13 @@ So shape comes first, and only world games get a seam:
 Sharing a character is a real thing people do — Elden Ring saves circulate on Nexus. But it is not the
 same feature and must not wear the same word. And it carries a trap the world case does not:
 
-**A character save is often account-stamped.** Every Elden Ring `CharacterSlot` the launcher already
-parses carries a `SteamId`, and the `.sl2` holds ten of them in one file. That is why save re-signing
+**A character save is often account-stamped — confirmed by scanning the bytes.** Elden Ring writes the
+Steam ID64 as little-endian binary into **18 of 19 files** in its save folder: `.sl2`, `.co2`, `.err`
+and their backups. The `.sl2` holds ten character slots in one file, and every variant carries the id.
+
+*(Corrected: mid-session I doubted this, because the launcher's `CharacterSlot.SteamId` reads empty on
+Seamless Co-op and Reforged saves and I took that as evidence the variants do not stamp. It is a
+parser gap, not the format. Acting on "these saves are not account-bound" would have been wrong.)* That is why save re-signing
 tools exist — a shared FromSoft save does not work for the recipient until the id is patched. So there,
 "share" would mean writing an account id into somebody else's save: a long way from a folder copy, and
 not something to do quietly.
@@ -89,6 +94,13 @@ The seam is per-game and it is not guessable:
 
 **Where we do not know the seam, we offer *portable* and say so.** Never guess a split — the failure
 mode is shipping a stranger someone's character.
+
+**And a seam can only remove files, never fields.** Before curating one, the game's saves must be
+scanned for an embedded account id — Elden Ring keeps one in 18 of 19 files, and Gas Station Simulator
+keeps one in a *filename*. Dropping `steam_autocloud.vdf` from such a game would produce a bundle that
+looks clean, is described as clean, and still names its owner. The rule and a runnable scan live in
+`626-game-manifest`'s `overrides/README.md`. We are safe today only because Elden Ring is a character
+game and gets no seam — luck, not a rule, which is why it is now a rule.
 
 **And then the refusals mostly stop existing.** A first draft of this gave `Shareable` three different
 messages — one per reason it might not work. Este killed it, correctly:

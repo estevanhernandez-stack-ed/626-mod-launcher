@@ -21,6 +21,10 @@ namespace ModManager.Core.Transport;
 /// </summary>
 public static class SaveSeam
 {
+    /// <summary>The reason recorded when a file is left out of a shareable bundle for being the
+    /// player rather than the place.</summary>
+    public const string Reason = "character";
+
     /// <summary>
     /// Whether a path inside a save unit belongs to the player.
     ///

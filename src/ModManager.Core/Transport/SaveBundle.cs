@@ -109,9 +109,10 @@ public static class SaveBundle
         BundleGame game,
         DateTime createdUtc,
         BundleScope scope = BundleScope.Portable,
-        IReadOnlyList<BundleMod>? mods = null)
+        IReadOnlyList<BundleMod>? mods = null,
+        IReadOnlyList<string>? playerPaths = null)
     {
-        var plan = Plan(saveDir, game, createdUtc, scope, mods);
+        var plan = Plan(saveDir, game, createdUtc, scope, mods, playerPaths);
 
         // Temp-then-rename, so a half-written bundle never appears under its final name.
         var tmp = bundlePath + ".tmp";
@@ -137,13 +138,14 @@ public static class SaveBundle
         BundleGame game,
         DateTime createdUtc,
         BundleScope scope = BundleScope.Portable,
-        IReadOnlyList<BundleMod>? mods = null)
+        IReadOnlyList<BundleMod>? mods = null,
+        IReadOnlyList<string>? playerPaths = null)
     {
         // A programming guard, not user-facing copy. The UI does not offer share-a-world for a game
         // whose seam is unknown, or for a game that has no world at all - the control is absent rather
-        // than present-and-refusing. Reaching here means a caller asked for something the panel is not
-        // supposed to be able to ask.
-        if (scope == BundleScope.Shareable)
+        // than present-and-refusing. Reaching here means a caller asked something the panel cannot ask.
+        var shareable = scope == BundleScope.Shareable;
+        if (shareable && (playerPaths is null || playerPaths.Count == 0))
             throw new NotSupportedException(
                 "Shareable needs this game's world/character seam, which is not curated.");
 
@@ -157,12 +159,31 @@ public static class SaveBundle
         foreach (var full in Directory.EnumerateFiles(saveDir, "*", SearchOption.AllDirectories))
         {
             var rel = System.IO.Path.GetRelativePath(saveDir, full).Replace('\\', '/');
+
+            // A secret never travels, whatever the scope.
             if (CredentialScan.IsCredentialFile(full))
             {
                 excluded.Add(new BundleExclusion(rel, CredentialScan.Reason));
                 continue;
             }
-            if (PersonalDataScan.ReasonFor(rel) is { } why) notices.Add(new BundleNotice(rel, why));
+
+            // The player, when the bundle is meant to reach somebody else. This is the whole point of
+            // the scope: same save folder, different cut.
+            if (shareable && SaveSeam.IsPlayerPath(rel, playerPaths))
+            {
+                excluded.Add(new BundleExclusion(rel, SaveSeam.Reason));
+                continue;
+            }
+
+            // Identifying-but-legitimate data. A portable bundle carries it and SAYS so; a shareable
+            // one cannot, because it is going to a stranger. Same scan, opposite verdict, decided by
+            // where the artifact is headed.
+            if (PersonalDataScan.ReasonFor(rel) is { } why)
+            {
+                if (shareable) { excluded.Add(new BundleExclusion(rel, PersonalDataScan.Reason)); continue; }
+                notices.Add(new BundleNotice(rel, why));
+            }
+
             included.Add((full, rel));
         }
 

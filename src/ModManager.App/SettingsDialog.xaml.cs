@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using ModManager.Core.Transport;
+using Windows.Storage.Pickers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -71,6 +73,234 @@ public sealed partial class SettingsDialog : ContentDialog
     /// hand off: MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> after this dialog closes.</summary>
     public bool ConnectNexusRequested { get; private set; }
 
+    /// <summary>
+    /// Write one file holding every game's mods, saves and settings.
+    ///
+    /// <para><b>Reads only.</b> Nothing on this machine is touched, which is what lets this ship
+    /// before any restore path exists — and keeps the half that can hurt you out of the first
+    /// release.</para>
+    ///
+    /// <para>Snapshot history is opt-in. On a real 12-game profile it was 446 MB of a 482 MB launcher
+    /// data total: backups of backups, and rarely what anyone needs on a new machine.</para>
+    /// </summary>
+    private async void OnCreateProfileArchive(object sender, RoutedEventArgs e)
+    {
+        var builder = App.AppHost.Services.GetRequiredService<Services.ProfileArchiveBuilder>();
+        try
+        {
+            var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeChoices.Add("626 profile archive", new List<string> { ProfileArchive.Extension });
+            picker.SuggestedFileName = $"626-profile-{DateTime.Now:yyyyMMdd}";
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            var withHistory = ArchiveIncludeHistoryCheck.IsChecked == true;
+            ArchiveCreateButton.IsEnabled = false;
+            ArchiveStatusText.Text = "Looking at what you have…";
+
+            // Gathering walks every game's mods and the write copies gigabytes. Both belong off the
+            // UI thread, and the per-game callback is what stops a four-minute operation looking hung.
+            var progress = new Progress<string>(name => ArchiveStatusText.Text = $"Packing {name}…");
+            var version = System.Reflection.Assembly.GetExecutingAssembly()
+                                .GetName().Version?.ToString() ?? "0.0.0";
+
+            var manifest = await Task.Run(() =>
+            {
+                var sources = builder.Gather(n => ((IProgress<string>)progress).Report(n));
+                return ProfileArchive.Create(sources, file.Path, DateTime.UtcNow, version, withHistory);
+            });
+
+            var left = manifest.Excluded.Count == 0
+                ? ""
+                : $" {manifest.Excluded.Count} sign-in file{(manifest.Excluded.Count == 1 ? " was" : "s were")} left out.";
+            var carries = ModManager.Core.Transport.PersonalDataScan.MessageFor(manifest.Notices);
+
+            ArchiveStatusText.Text =
+                $"Backed up {manifest.Games.Count} game{(manifest.Games.Count == 1 ? "" : "s")} - "
+                + $"{manifest.TotalFiles:N0} files, {Human(manifest.TotalBytes)}."
+                + (withHistory ? "" : " Snapshot history was left out.")
+                + left
+                + (carries.Length > 0 ? " " + carries : "");
+        }
+        catch (Exception ex) { ArchiveStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        finally { ArchiveCreateButton.IsEnabled = true; }
+    }
+
+    /// <summary>
+    /// Open a backup and say what is in it. <b>Nothing is restored.</b>
+    ///
+    /// <para>Step two of the profile archive, and deliberately shippable before step three: the report
+    /// is the part that has to be right, and the acting is the part that can wait. It is also the
+    /// screen a restore will later hang off, so getting the reading correct first is not a detour.</para>
+    ///
+    /// <para>A Flyout rather than a dialog for the reason the saves panel found: Settings IS a
+    /// ContentDialog and WinUI allows only one at a time per XamlRoot.</para>
+    /// </summary>
+    private async void OnInspectProfileArchive(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeFilter.Add(ProfileArchive.Extension);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+
+            ArchiveStatusText.Text = "Reading…";
+            var manifest = await Task.Run(() => ProfileArchive.ReadManifest(file.Path));
+            if (manifest is null)
+            {
+                ArchiveStatusText.Text = "That file is not a 626 backup, or its description could not be read.";
+                return;
+            }
+
+            var svc = App.AppHost.Services.GetRequiredService<LauncherService>();
+            var installed = await Task.Run(() => InstalledModsByGame(svc));
+            var report = ProfileInspector.Inspect(manifest, installed);
+
+            ArchiveStatusText.Text = report.Headline;
+            ShowArchiveReport(sender as FrameworkElement ?? ArchiveInspectButton, report);
+        }
+        catch (Exception ex) { ArchiveStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    /// <summary>What this machine has, per game. A game ABSENT from the map is not registered here;
+    /// present-with-nothing means registered with no mods. The report needs both.</summary>
+    private static Dictionary<string, IReadOnlyCollection<string>> InstalledModsByGame(LauncherService svc)
+    {
+        var map = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var g in svc.LoadRegistry().Games)
+        {
+            var names = new List<string>();
+            try { names.AddRange(ModManager.Core.Scanner.ListClassified(ModManager.Core.Scanner.GameContext(g)).Select(m => m.Name)); }
+            catch { /* an unreadable game is still REGISTERED, which is the fact that matters here */ }
+            map[g.Id] = names;
+        }
+        return map;
+    }
+
+    private void ShowArchiveReport(FrameworkElement anchor, ProfileReport report)
+    {
+        var res = Application.Current.Resources;
+        var panel = new StackPanel { Spacing = 10, MaxWidth = 460 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "What is in this backup",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
+        var head = new TextBlock { Text = report.Headline, TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(head, "ArchiveReportHeadline");
+        panel.Children.Add(head);
+
+        void Section(string title, IReadOnlyList<ModManager.Core.Transport.ProfileGameReport> games, string id)
+        {
+            if (games.Count == 0) return;
+            var heading = new TextBlock
+            {
+                Text = title,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Margin = new Thickness(0, 6, 0, 0),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, id);
+            panel.Children.Add(heading);
+
+            // The ids go on the TEXT, never on the panels holding it. A StackPanel is not a
+            // control-view element and never reaches the tree an agent walks - the same trap as
+            // putting an id on a Border, which .claude/rules/automation-ids.md names explicitly. The
+            // first cut of this put them on the rows and a UIA walk found zero of them.
+            var list = new StackPanel { Spacing = 4 };
+            foreach (var g in games)
+            {
+                var row = new StackPanel { Spacing = 1 };
+
+                var gameName = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(g.Game.Game.Name) ? g.Game.Game.Id : g.Game.Game.Name!,
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(gameName, $"ArchiveGame.{g.Game.Game.Id}");
+                row.Children.Add(gameName);
+
+                var detail = new TextBlock
+                {
+                    Text = ProfileReportText.DetailFor(g),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+                    FontSize = 12,
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(detail, $"ArchiveGameDetail.{g.Game.Game.Id}");
+                row.Children.Add(detail);
+
+                list.Children.Add(row);
+            }
+            panel.Children.Add(list);
+        }
+
+        Section("Set up on this machine", report.Here, "ArchiveGamesHere");
+        Section("Waiting on the game", report.NotHere, "ArchiveGamesNotHere");
+
+        // What was deliberately left out, and what it carries about its owner. Both were decided when
+        // the archive was written; this is where somebody finally reads them.
+        var left = report.ExcludedByReason;
+        if (left.Count > 0)
+        {
+            var bits = new List<string>();
+            if (left.TryGetValue("credential", out var c))
+                bits.Add($"{c} sign-in file{(c == 1 ? "" : "s")} (account tokens, not save data)");
+            if (left.TryGetValue("character", out var ch))
+                bits.Add($"{ch} character file{(ch == 1 ? "" : "s")}");
+            if (left.TryGetValue("personal", out var p))
+                bits.Add($"{p} identifying file{(p == 1 ? "" : "s")}");
+            if (bits.Count > 0)
+            {
+                var tb = new TextBlock
+                {
+                    Text = "Left out on purpose: " + string.Join(", ", bits) + ".",
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+                    Margin = new Thickness(0, 6, 0, 0),
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "ArchiveReportExcluded");
+                panel.Children.Add(tb);
+            }
+        }
+
+        var carries = ModManager.Core.Transport.PersonalDataScan.MessageFor(report.Manifest.Notices);
+        if (carries.Length > 0)
+            panel.Children.Add(new TextBlock
+            {
+                Text = carries,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+            });
+
+        // Says what this screen does NOT do, because a wall of detail about a backup invites the
+        // question, and the honest answer today is "not yet".
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Nothing has been restored — this only reads the file.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 6, 0, 0),
+        });
+
+        new Flyout
+        {
+            Content = new ScrollViewer { Content = panel, MaxHeight = 420, Padding = new Thickness(0, 0, 12, 0) },
+        }.ShowAt(anchor);
+    }
+
+    private static string Human(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double v = bytes;
+        var i = 0;
+        while (v >= 1024 && i < units.Length - 1) { v /= 1024; i++; }
+        return $"{v:0.#} {units[i]}";
+    }
+
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {
         InitializeComponent();
@@ -85,12 +315,21 @@ public sealed partial class SettingsDialog : ContentDialog
         DeriveThemeCheck.Checked   += (_, _) => ThemeNameBox.Visibility = Visibility.Visible;
         DeriveThemeCheck.Unchecked += (_, _) => ThemeNameBox.Visibility = Visibility.Collapsed;
 
-        // Seed the avatar preview if one is set.
+        // Seed the preview. With an avatar set it shows theirs; without one it shows the launcher's
+        // OWN icon, because an empty square next to "Pick image…" does not say what the control does.
+        // MainViewModel.AppIconSource already answers "user's, else bundled" for the title bar - reuse
+        // it rather than writing a second rule that can drift from it.
         if (_avatars.HasAvatar)
         {
             PreviewImage.Source = new BitmapImage(new Uri(_avatars.AvatarPngPath));
             FileLabel.Text = "Current avatar";
             RemoveButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            try { PreviewImage.Source = new BitmapImage(new Uri(vm.AppIconSource)); }
+            catch { /* a missing bundled icon leaves the box empty, exactly as before */ }
+            FileLabel.Text = "The launcher's icon";
         }
 
         // Seed the backdrop dropdown to the currently-saved value. The flag suppresses the initial

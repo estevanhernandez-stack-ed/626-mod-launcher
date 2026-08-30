@@ -25,8 +25,11 @@
     </ContentDialog.Title>
 
 
+    <!-- The scrollbar is an OVERLAY in WinUI: it draws on top of the content rather than taking
+         width from it, so long wrapped copy runs underneath it and the last few characters of a line
+         are unreadable. Reserving a gutter is the fix - the bar has somewhere to be. -->
     <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
+        <StackPanel Spacing="{StaticResource SpaceM}" Width="460" Margin="0,0,14,0">
 
             <!-- Four groups and a footer, in consequence order (wave 9 / D1).
 
@@ -63,9 +66,12 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
+                    <!-- Seeded with the launcher's OWN icon when no avatar is set. An empty square
+                         beside "Pick image…" says nothing about what the control does; showing what
+                         is there now makes the swap obvious before anyone commits to it. -->
                     <Border Grid.Column="0" Width="96" Height="96" CornerRadius="0"
                             Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="1">
-                        <Image x:Name="PreviewImage" Stretch="UniformToFill" />
+                        <Image x:Name="PreviewImage" Stretch="Uniform" Margin="8" />
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
                         <Button AutomationProperties.AutomationId="PickImageButton" Content="Pick image…" Click="OnPickImage" />
@@ -152,6 +158,35 @@
             </StackPanel>
 
             <!-- Divider -->
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
+            <!-- ============ Back up everything ============
+                 Filed beside Restore points and above Danger, for the same reason they are: this is a
+                 backup, not a risk. Restore points are this machine's undo; an archive is the one you
+                 can carry away. Both are the opposite of the section below them. -->
+            <StackPanel AutomationProperties.AutomationId="SettingsGroup.archive"
+                        AutomationProperties.Name="Back up everything" Spacing="{StaticResource SpaceM}">
+                <TextBlock Text="Back up everything" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                           Text="One file holding every game's mods, saves and settings — for moving to a new PC, or just keeping somewhere safe. Nothing on this machine is changed." />
+                <CheckBox AutomationProperties.AutomationId="ArchiveIncludeHistoryCheck" x:Name="ArchiveIncludeHistoryCheck"
+                          Content="Include snapshot history"
+                          ToolTipService.ToolTip="Your per-game backups and restore points. Usually the largest part of the archive by far, and rarely what you need on a new machine." />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="ArchiveCreateButton" x:Name="ArchiveCreateButton"
+                            Content="Back up everything…" Click="OnCreateProfileArchive" />
+                    <!-- Reading is a separate act from writing, and there is deliberately no restore
+                         button next to it yet: this screen exists to answer "what is in this thing?" -->
+                    <Button AutomationProperties.AutomationId="ArchiveInspectButton" x:Name="ArchiveInspectButton"
+                            Content="Look inside a backup…" Click="OnInspectProfileArchive"
+                            ToolTipService.ToolTip="Open a backup file and see what it holds. Nothing is restored." />
+                </StackPanel>
+                <TextBlock x:Name="ArchiveStatusText" AutomationProperties.AutomationId="ArchiveStatusText"
+                           AutomationProperties.LiveSetting="Polite"
+                           Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            </StackPanel>
+
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
             <!-- ============ Restore points ============ -->
