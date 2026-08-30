@@ -295,12 +295,11 @@ public static class SaveBundle
                 if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
 
                 var rel = entry.FullName[payload.Length..];
-                var dest = System.IO.Path.GetFullPath(System.IO.Path.Combine(saveDir, rel));
 
-                // Path traversal: a bundle is a file from somewhere else, so it is untrusted input.
-                if (!dest.StartsWith(System.IO.Path.GetFullPath(saveDir), StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(
-                        $"That bundle tries to write outside the save folder ({rel}). Refused.");
+                // A bundle is a file from somewhere else, so it is untrusted input - and containment
+                // is not a prefix match. A prefix accepts a SIBLING: a save folder of .../saves/pal
+                // would take .../saves/palworld-evil/x.sav without complaint.
+                var dest = SafeExtractPath.ResolveOrThrow(saveDir, rel);
 
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest)!);
                 entry.ExtractToFile(dest, overwrite: true);

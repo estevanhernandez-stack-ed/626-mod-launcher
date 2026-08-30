@@ -7,9 +7,9 @@ namespace ModManager.Core.Transport;
 /// finding mod files and data folders is App-side work and this stays pure.</summary>
 /// <param name="Game">Identity, so a restore can find where this game lives on the new machine.</param>
 /// <param name="SaveDir">Its save folder, or null to archive no saves for this game.</param>
-/// <param name="ModFiles">The files the SCANNER identified as mods, with their paths relative to the
-/// mod location. Never a folder — mods sit intermixed with game content, and copying the folder would
-/// haul the base game.</param>
+/// <param name="ModFiles">The files the SCANNER identified as mods, each relative path led by the
+/// NAME of the location it came from: <c>&lt;location&gt;/&lt;mod&gt;/&lt;rest&gt;</c>. Never a folder —
+/// mods sit intermixed with game content, and copying the folder would haul the base game.</param>
 /// <param name="Mods">What those files are, so the far end can name what is missing.</param>
 /// <param name="DataDir">The launcher's own per-game folder: classification, metadata, profiles.</param>
 public sealed record ProfileGameSource(
@@ -17,7 +17,15 @@ public sealed record ProfileGameSource(
     string? SaveDir,
     IReadOnlyList<BundlePlanFile> ModFiles,
     IReadOnlyList<BundleMod> Mods,
-    string? DataDir);
+    string? DataDir)
+{
+    /// <summary>This game's mod location NAMES on the machine being archived, primary first.
+    ///
+    /// <para>Recorded because a game can keep mods in more than one place — Windrose keeps two — and a
+    /// flat list loses which is which. Two same-named mods in different locations then collide in the
+    /// archive outright, and a restore has nothing to resolve against but a guess.</para></summary>
+    public IReadOnlyList<string> ModLocations { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>What one game turned out to hold, recorded in the archive manifest.</summary>
 public sealed record ProfileGame
@@ -31,6 +39,10 @@ public sealed record ProfileGame
     public int DataFileCount { get; init; }
     public long DataBytes { get; init; }
     public IReadOnlyList<BundleMod> Mods { get; init; } = Array.Empty<BundleMod>();
+
+    /// <summary>The mod location names this game's files are filed under, primary first. Empty in
+    /// format 1, which wrote mods flat.</summary>
+    public IReadOnlyList<string> ModLocations { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>What a profile archive declares about itself, stored as <c>profile.json</c> at the root.</summary>
@@ -69,7 +81,10 @@ public sealed record ProfileArchiveManifest
 /// </summary>
 public static class ProfileArchive
 {
-    public const int CurrentVersion = 1;
+    /// <summary>2 files mods under the location they came from; 1 wrote them flat. A reader must know
+    /// which, because in format 1 the first path segment is a MOD name and in format 2 it is a
+    /// LOCATION name — the same string meaning two different things.</summary>
+    public const int CurrentVersion = 2;
     public const string ManifestEntry = "profile.json";
     public const string GamesPrefix = "games/";
     public const string ModsFolder = "mods/";
@@ -137,7 +152,12 @@ public static class ProfileArchive
 
                 // ---- mods: the scanner's file list, never a folder -------------------------------
                 var (modFiles, modBytes) = WriteFiles(zip, src.ModFiles, prefix + ModsFolder, excluded);
-                entry = entry with { ModFileCount = modFiles, ModBytes = modBytes };
+                entry = entry with
+                {
+                    ModFileCount = modFiles,
+                    ModBytes = modBytes,
+                    ModLocations = src.ModLocations,
+                };
 
                 // ---- the launcher's own per-game data --------------------------------------------
                 if (!string.IsNullOrEmpty(src.DataDir) && Directory.Exists(src.DataDir))
