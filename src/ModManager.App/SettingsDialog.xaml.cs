@@ -626,8 +626,6 @@ public sealed partial class SettingsDialog : ContentDialog
         AutoCheckModUpdatesCheck.IsChecked = _appSettings.AutoCheckModUpdates;
 
         // Seed the keep-plugins-updated toggle.
-        KeepPluginsUpdatedCheck.IsChecked = _appSettings.KeepPluginsUpdated;
-        RefreshPluginStatus();
 
         // Seed the Nexus section. Re-validate the stored key first (offline-safe) so the account
         // name + premium tag are current before we render the banner.
@@ -718,63 +716,6 @@ public sealed partial class SettingsDialog : ContentDialog
     /// needed — it mirrors the backdrop dropdown's apply-on-change behavior).</summary>
     private void OnAutoCheckModUpdatesToggled(object sender, RoutedEventArgs e)
         => _appSettings.SetAutoCheckModUpdates(AutoCheckModUpdatesCheck.IsChecked == true);
-
-    /// <summary>Persist the keep-plugins-updated preference immediately on toggle.</summary>
-    private void OnKeepPluginsUpdatedToggled(object sender, RoutedEventArgs e)
-        => _appSettings.SetKeepPluginsUpdated(KeepPluginsUpdatedCheck.IsChecked == true);
-
-    /// <summary>Manual "Install / refresh Nexus plugin" button. FULL only — awaits
-    /// <see cref="PluginFeedSource.FetchAsync"/> with <c>force: true</c> and maps the outcome to a
-    /// human-readable status line. The button is disabled while the fetch is in flight so rapid
-    /// double-clicks don't race the installer. STORE: <see cref="PluginFeedSource"/> is not
-    /// registered, so we guard with <see cref="Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService{T}"/> and
-    /// show the desktop-only note instead.</summary>
-    private async void OnRefreshPlugin(object sender, RoutedEventArgs e)
-    {
-#if FULL
-        var feed = App.AppHost.Services.GetService<PluginFeedSource>();
-        if (feed is null)
-        {
-            PluginStatusText.Text = "Plugins are a desktop-only feature.";
-            return;
-        }
-        RefreshPluginButton.IsEnabled = false;
-        PluginStatusText.Text = "Checking the plugin feed…";
-        try
-        {
-            var result = await feed.FetchAsync(force: true);
-            PluginStatusText.Text = result.Outcome switch
-            {
-                PluginFetchOutcome.Installed    => $"Nexus plugin v{result.Version} installed.",
-                PluginFetchOutcome.UpToDate     => $"Nexus plugin is up to date (v{result.Version}).",
-                PluginFetchOutcome.RequiresUpdate => $"This plugin needs launcher v{result.Version} — update the launcher.",
-                PluginFetchOutcome.NotApplicable => "Connect Nexus first.",
-                PluginFetchOutcome.Failed        => $"Couldn’t fetch the plugin: {result.Message}",
-                _                               => result.Message ?? "Done.",
-            };
-        }
-        finally { RefreshPluginButton.IsEnabled = true; }
-#else
-        PluginStatusText.Text = "Plugins are a desktop-only feature.";
-        await System.Threading.Tasks.Task.CompletedTask;
-#endif
-    }
-
-    /// <summary>Populate the plugin status line. FULL shows the installed version (or "not
-    /// installed"); STORE shows a static note because plugin delivery is desktop-only.</summary>
-    private void RefreshPluginStatus()
-    {
-#if FULL
-        var recordPath = System.IO.Path.Combine(PluginHost.PluginsDir, "installed-plugins.json");
-        var installed = InstalledPluginsStore.Read(recordPath);
-        if (installed.TryGetValue("nexus", out var version))
-            PluginStatusText.Text = $"Nexus plugin: v{version} installed";
-        else
-            PluginStatusText.Text = "Nexus plugin: not installed";
-#else
-        PluginStatusText.Text = "Plugins are a desktop-only feature.";
-#endif
-    }
 
     private async void OnPickImage(object sender, RoutedEventArgs e)
     {

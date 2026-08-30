@@ -18,8 +18,10 @@
 param(
     [string]$Configuration = "Store",
     [string]$Platform = "x64",
-    # Store means Nexus-in-package now, so the seal asserts it is actually THERE. Pass this only when
-    # deliberately scanning the legacy Nexus-free variant (-p:StoreNexus=false).
+    # Every build compiles Nexus in now, so the seal asserts it is actually THERE. The -p:StoreNexus
+    # switch that once produced a Nexus-free variant is GONE - an unexercised build variant is exactly
+    # how this repo shipped Nexus-free packages nobody intended. Kept as an escape hatch for scanning
+    # an old artifact, not for producing one.
     [switch]$AllowNoNexus,
     # CI builds the versioned bundle first, then runs the seal with -SkipBuild to scan that exact output
     # (no redundant rebuild at a different version). Local runs omit it and build fresh.

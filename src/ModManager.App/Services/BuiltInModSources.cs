@@ -1,4 +1,3 @@
-#if STORE_NEXUS
 using System.Net.Http;
 using System.Reflection;
 using ModManager.Core.Plugins;
@@ -7,14 +6,15 @@ using ModManager.Plugins.Abstractions;
 namespace ModManager.App.Services;
 
 /// <summary>
-/// Registers mod sources that are COMPILED INTO this build, for the packaged (Microsoft Store) SKU.
+/// Registers the mod sources COMPILED INTO this build. Both SKUs, since the Nexus partner
+/// approval landed.
 ///
-/// <para>The off-Store build obtains Nexus by downloading a signed assembly at runtime and loading it.
-/// A Store package must not do that — Store policy expects everything the app runs to ship inside the
-/// reviewed package (no dynamically downloaded or executed code) — so here the Nexus source is a compile
-/// -time dependency and is simply instantiated. Nothing is fetched, verified, or loaded from disk, and no
-/// loader ships in this binary at all: <c>scripts/check-store-seal.ps1</c> still fails the build if the
-/// loader's symbols appear.</para>
+/// <para>Nexus used to arrive two different ways: downloaded as a signed plugin off-Store, compiled in
+/// for the Store. That split was never Microsoft's rule — it was <b>Nexus's</b>: their integration
+/// could not ship until they approved us as a partner, and the plugin kept it off a certified package
+/// meanwhile. The approval landed, so both builds compile it in and nothing is fetched, verified, or
+/// loaded from disk to make Nexus work. The Store package additionally ships no loader at all —
+/// <c>scripts/check-store-seal.ps1</c> fails the build if the loader's symbols appear.</para>
 ///
 /// <para>It deliberately calls the SAME <see cref="IModManagerPlugin.Register"/> entry point the off-Store
 /// loader calls, through the same <see cref="ModSourceHostServices"/>. That is the point: the two SKUs
@@ -24,8 +24,8 @@ namespace ModManager.App.Services;
 internal static class BuiltInModSources
 {
     /// <summary>Register every compiled-in source. Never throws — a source that fails to register leaves
-    /// the app on the zero-sources path, which is exactly how the Store SKU behaved before Nexus was
-    /// compiled in (every Nexus surface is capability-gated on the registry, so it just stays hidden).</summary>
+    /// the app on the zero-sources path, and every Nexus surface is capability-gated on the registry, so
+    /// it stays hidden rather than half-working.</summary>
     public static void RegisterAll(
         ModSourceRegistry registry, HttpClient httpClient, NexusService nexus)
     {
@@ -43,4 +43,3 @@ internal static class BuiltInModSources
         }
     }
 }
-#endif

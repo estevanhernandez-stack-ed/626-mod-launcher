@@ -34,27 +34,35 @@ These live in `Package.appxmanifest` (Name + Publisher + PublisherDisplayName). 
 - **Locally:** bump `Package.appxmanifest`'s `Identity Version`, then
   `dotnet build src/ModManager.App/ModManager.App.csproj -c Store -p:Platform=x64` → `src/ModManager.App/AppPackages/.../ModManager.App_<v>_x64_Store.msixbundle`. Then `pwsh scripts/check-store-seal.ps1`.
 - **In CI:** run the **Build Store MSIX (manual)** workflow with the version → download the `store-msixbundle-<v>` artifact.
-- **With Nexus (the 0.15.0.0 line onward):** add `-p:StoreNexus=true`. Plain `-c Store` still builds the
-  sealed, Nexus-free package; the flag compiles the Nexus source in from the pinned `external/626-mod-plugins`
-  submodule (so `git submodule update --init` first on a fresh clone). Either way the seal must pass — the
-  plugin LOADER is compiled out in both.
+- **Nexus needs no flag.** Every configuration compiles it in from the pinned `external/626-mod-plugins`
+  submodule, so `git submodule update --init` first on a fresh clone. There is no longer a switch for a
+  Nexus-free build: `-p:StoreNexus` is gone, because an unexercised build variant is exactly how this
+  repo once shipped Nexus-free packages nobody intended. The seal must still pass — the plugin LOADER
+  is compiled out of Store either way.
 
-### Decide, every plugin release, whether the Store SKU follows
+### The two SKUs can no longer drift on Nexus
 
-The two SKUs share one registration path — `ModSourceHostServices` and the same
-`IModManagerPlugin.Register` entry point — so their BEHAVIOUR cannot fork. Their VERSION can.
+They used to. Nexus reached the off-Store build as a signed plugin downloaded from our feed, and the
+Store build compiled it in from the pinned submodule — so the two could sit on different Nexus
+versions, and this file used to carry a ritual for deciding, every plugin release, whether the Store
+SKU followed.
 
-The GitHub SKU picks up a new `nexus-vX` the moment it lands on the feed. The Store SKU does not: it
-compiles from the pinned `external/626-mod-plugins` submodule, so it stays on whatever commit that
-pointer names until someone moves it.
+**That split was never Microsoft's rule — it was Nexus's.** Their integration could not ship until
+they approved us as a partner, and the plugin kept that surface off a certified package meanwhile. The
+approval landed, the Store SKU shipped Nexus compiled in from 0.15.0 and certified repeatedly, and the
+split outlived its reason.
 
-**So when you cut a plugin release, make it an explicit call:** should the Store SKU follow? If yes,
-bump the submodule pointer, rebuild with `-p:StoreNexus=true`, and re-run the seal. If no, that is
-fine — just make it a decision rather than a drift. Check the pointer before every Store submission:
+Both builds now compile Nexus in from `external/626-mod-plugins`. One pin, both SKUs, no decision to
+forget. Check it before a submission the same as ever:
 
 ```bash
 git -C external/626-mod-plugins describe --tags
 ```
+
+The plugin **loader** is unchanged and still FULL-only. It is the lane for plugins we want on GitHub
+before, or instead of, the Store — it simply has nothing of ours left to load. `PluginFeedSource` is
+kept and deliberately wired to nothing: it only ever served the Nexus plugin, and fetching that now
+would re-install a file the app ignores.
 
 ### ⚠ Never let a test build share the submission's output folder
 

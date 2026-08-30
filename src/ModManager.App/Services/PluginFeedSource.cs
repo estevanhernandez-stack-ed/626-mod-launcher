@@ -36,6 +36,13 @@ public enum PluginFetchOutcome
 public sealed record PluginFetchResult(PluginFetchOutcome Outcome, string? Version, string? Message);
 
 /// <summary>
+/// <b>Currently wired to nothing, on purpose.</b> This feed has only ever served one artifact: the
+/// Nexus plugin. Nexus is compiled into every build now, so fetching it would re-install the very file
+/// <see cref="StalePluginCleanup"/> removes, and the app would download something it never consults.
+/// The class is kept because it is the delivery half of the off-Store plugin lane — the way a plugin
+/// we want on GitHub before, or instead of, the Store would reach people. Re-wire it (two call sites
+/// in <c>MainWindow</c>) when there is something on the feed that is not Nexus.
+///
 /// Drives the off-Store plugin feed on the FULL flavor. On Nexus connect (or a 24h-debounced re-check)
 /// it fetches the signed plugins.json from the 626-mod-plugins repo, verifies + gates + installs via the
 /// headless <see cref="PluginFeedInstaller"/>, then hot-loads anything new through <see cref="PluginHost.LoadOne"/>
