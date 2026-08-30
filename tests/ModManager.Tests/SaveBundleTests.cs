@@ -259,7 +259,7 @@ public class SaveBundleTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => SaveBundle.Restore(path, TestSupport.TempDir("bundle-evil-dest-"),
                                      TestSupport.TempDir("bundle-evil-snaps-"), "palworld"));
-        Assert.Contains("outside the save folder", ex.Message);
+        Assert.Contains("outside the folder it was given", ex.Message);
     }
 
     [Fact]

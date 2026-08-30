@@ -212,10 +212,10 @@ public static class ProfileRestore
             if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
 
             var rel = entry.FullName[prefix.Length..];
-            var dest = Path.GetFullPath(Path.Combine(root, rel));
-            if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    $"This backup tries to write outside the folder it was given ({rel}). Refused.");
+
+            // Containment, not a prefix match: a prefix accepts a SIBLING directory, so a root of
+            // .../saves/pal would happily take .../saves/palworld-evil/x.sav.
+            var dest = SafeExtractPath.ResolveOrThrow(root, rel);
 
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             entry.ExtractToFile(dest, overwrite: true);
