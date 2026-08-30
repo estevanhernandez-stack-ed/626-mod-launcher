@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Captures the seven Microsoft Store listing screenshots at exactly 1920x1080.
+    Captures the nine Microsoft Store listing screenshots at exactly 1920x1080.
 
 .DESCRIPTION
     You navigate; this captures. It sizes the app window to precisely 1920x1080, walks the seven
@@ -126,6 +126,53 @@ $Shots = @(
                   # (#32770), and this is a WinUI ContentDialog. Wait on a control that only exists
                   # inside it.
                   Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'BackupNowButton') } 20 } }
+    @{ N = 8; Name = '08-back-up-everything'
+       State = 'Settings, scrolled to Back up everything.'
+       Watch  = 'The two buttons and the sentence under the heading. This is the 0.20 headline feature, ' +
+                'and the section says in its own words that nothing on the machine is changed.'
+       Nav    = { Open-Game 'windrose'
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsButton'
+                  if (-not $b) { return $false }
+                  Invoke-Node $b
+                  if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.archive') } 15)) { return $false }
+                  # The group is a StackPanel and reaches the tree as a Group only because it carries an
+                  # AutomationProperties.Name - an id alone would not have surfaced it. It supports
+                  # ScrollItemPattern, so ask for it rather than guessing a scroll offset.
+                  $g = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.archive'
+                  try { $g.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView() } catch { }
+                  Start-Sleep -Milliseconds 800
+                  $g = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.archive'
+                  $g -and -not $g.Current.IsOffscreen } }
+    @{ N = 9; Name = '09-inside-a-backup'
+       # The report is a Flyout, and SetWindowPos dismisses one. See the Fragile check below.
+       Fragile = $true
+       State = 'The report a backup opens into, with per-game parts ticked.'
+       Watch  = 'The point of the shot is that this screen READS. Headline with a real count, games ' +
+                'split into set-up-here and waiting, and the parts a restore would put back. Needs ' +
+                'CAPTURE_ARCHIVE set to a real .626profile.'
+       Nav    = { if (-not $env:CAPTURE_ARCHIVE -or -not (Test-Path $env:CAPTURE_ARCHIVE)) {
+                      Write-Host '    (set CAPTURE_ARCHIVE to a .626profile first)' -f DarkYellow
+                      return $false }
+                  Open-Game 'windrose'
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsButton'
+                  if (-not $b) { return $false }
+                  Invoke-Node $b
+                  if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'ArchiveInspectButton') } 15)) { return $false }
+                  # Scroll to the section FIRST. The flyout anchors to the button, so opening it from
+                  # an unscrolled dialog seats it at the bottom of the window over the mod list; from
+                  # here it lands centred over the section that opened it, which is the coherent shot.
+                  $g = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.archive'
+                  try { $g.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView() } catch { }
+                  Start-Sleep -Milliseconds 800
+                  Invoke-Node (Find-ById (Get-Tree (Get-AppRoot)) 'ArchiveInspectButton')
+                  $dlg = Get-FileDialog
+                  if (-not $dlg) { return $false }
+                  [void](Submit-FileDialog $dlg @($env:CAPTURE_ARCHIVE))
+                  # Reading a 12-game manifest and scanning what is installed takes a beat; the flyout
+                  # renders empty first and a shot taken then looks like the feature found nothing.
+                  if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'ArchiveReportHeadline') } 30)) { return $false }
+                  Start-Sleep -Seconds 2
+                  (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'ArchiveRestorePart.')).Count -gt 0 } }
 )
 
 # --- automated navigation (-Auto) ------------------------------------------------------------
@@ -349,17 +396,24 @@ else {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $plan = if ($Only) { $Shots | Where-Object { $Only -contains $_.N } } else { $Shots }
-if (-not $plan) { throw "No shots matched -Only $($Only -join ','). Valid numbers are 1-7." }
+# Computed, not written down: this message said "1-7" for as long as there were seven shots,
+# and went stale the moment a shot was added - reporting a valid number as invalid.
+if (-not $plan) {
+    $valid = ($Shots | ForEach-Object { $_.N }) -join ', '
+    throw "No shots matched -Only $($Only -join ','). Valid numbers are $valid."
+}
 
 Write-Host ''
-Write-Host "  Capturing $($plan.Count) shot(s) at ${TargetW}x${TargetH} into $OutDir" -ForegroundColor Cyan
+# @() around it: $plan is a bare hashtable when exactly one shot matches, and .Count on a
+# hashtable is its KEY count - "-Only 9" cheerfully reported "Capturing 6 shot(s)".
+Write-Host "  Capturing $(@($plan).Count) shot(s) at ${TargetW}x${TargetH} into $OutDir" -ForegroundColor Cyan
 Write-Host '  The window is resized for you. Navigate, then press Enter. S skips, Q quits.' -ForegroundColor DarkGray
 Write-Host ''
 
 $done = @()
 $failed = @()
 foreach ($shot in $plan) {
-    Write-Host ("  [{0}/7] {1}" -f $shot.N, $shot.Name) -ForegroundColor White
+    Write-Host ("  [{0}/{1}] {2}" -f $shot.N, $Shots.Count, $shot.Name) -ForegroundColor White
     Write-Host ("        {0}" -f $shot.State) -ForegroundColor Gray
     Write-Host ("        ! {0}" -f $shot.Watch) -ForegroundColor DarkYellow
 
@@ -390,7 +444,17 @@ foreach ($shot in $plan) {
     }
 
     # Re-assert position and give the prompt's focus steal time to settle before reading the desktop.
-    $rect = Set-WindowExact -Handle $handle
+    #
+    # EXCEPT for a shot whose state a reposition destroys. SetWindowPos light-dismisses a WinUI
+    # Flyout, so shot 9 navigated correctly, verified correctly, and then photographed the screen
+    # BEHIND the thing it was meant to show - a capture that looks finished, which is the failure
+    # this whole -Auto path exists to avoid. The window was already sized before Nav ran, so for
+    # those shots the second assert only costs the state.
+    if ($shot.Fragile) {
+        Write-Host '        (not re-asserting the window: a reposition dismisses this state)' -ForegroundColor DarkGray
+    } else {
+        $rect = Set-WindowExact -Handle $handle
+    }
     Hide-Pointer
     Start-Sleep -Milliseconds 600
 

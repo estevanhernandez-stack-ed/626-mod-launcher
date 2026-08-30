@@ -114,9 +114,15 @@ No telemetry, no analytics, no account required for any of this.
 
 ## Build procedure
 
-1. **Upload the existing screenshots** — `docs/store-assets/screenshots-0.19/`. The surfaces they show
-   (toolbar, Settings groups, chip strip, mod list) are unchanged in 0.20.0; the new work is inside
-   Settings behind two buttons. Retake if a reviewer asks to see the backup screen.
+1. **Upload `docs/store-assets/screenshots-0.20/`** — nine shots, all 1920x1080, captured against
+   this build. Two are new and carry the release: **08 — back up everything** (the section, its
+   "nothing on this machine is changed" sentence, and both buttons) and **09 — inside a backup** (the
+   report, with a real headline and the per-game parts a restore would put back).
+
+   **`03-browse-nexus.png` is carried over from the 0.19 set**, not recaptured. That screen is
+   unchanged in 0.20.0 and the capture needs a live Nexus sign-in the build box did not have; the
+   0.19 shot is signed in with thumbnails loaded, and its chrome matches the new set exactly. Recapture
+   it if the storefront changes.
 2. Confirm the submodule pointer — `external/626-mod-plugins` pinned at **`nexus-v0.14.0`**
    (`87a1bdc`). The Store SKU compiles Nexus in from that pin; the GitHub SKU downloads a signed
    plugin from the feed. They do not advance together. See `docs/release-msstore.md`.
