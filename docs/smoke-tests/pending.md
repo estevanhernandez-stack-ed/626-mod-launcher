@@ -2007,3 +2007,40 @@ What a human should still look at once:
    leave it exactly where it was, or the press that failed is also the press that threw it away.
 6. **The status line survives the reload.** A restore triggers a refresh, and the refresh writes its
    own line; the summary must be what is left on screen, not "2 of 2 enabled".
+
+---
+
+## Restoring into REAL game folders — RUN 2026-08-30, all three green
+
+The run every other restore test deliberately would not do. Everything else points at throwaway
+registrations in temp folders, because a restore writes into save and mod folders and proving a
+checkbox works is not worth putting junk in somebody's saves. That left the highest-consequence path
+in the feature never having touched a real game.
+
+**The design that makes it safe on real folders:** back up NOW, restore THAT backup, and the machine
+must come back byte-identical — the bytes being written are the bytes already there. A single file is
+perturbed first, so a restore that quietly no-ops cannot pass. `scripts/smoke-real-restore.ps1` drives
+it; `scratchpad/guard.py` keeps an independent copy and a sha256 manifest of every folder the tests
+can reach — independent on purpose, because a bug in the thing under test must not also be the thing
+that undoes it.
+
+97 files protected across five folders. Results:
+
+| Test | Target | Written | Outcome |
+|---|---|---|---|
+| Settings | `_626mods/witchfire` | 7 files | byte-identical |
+| Saves | Witchfire `SaveGames` | 7 files | byte-identical, `auto-before-restore.zip` written first |
+| Mods | Windrose × 3 locations | 81 files | byte-identical in all three |
+
+The third is the one that mattered: one file perturbed in **each** of `mods`, `mods2` and
+`ue4ss-mods`, and all three came back to their exact original hashes. Under the flat archive format
+45 of those 81 files would have landed in the wrong folder, the UE4SS Lua mods among them.
+
+**One hazard the run created, worth knowing for the next one.** The saves test left a legitimate
+`auto-before-restore.zip` — the reversibility law doing its job — but it had snapshotted the file that
+was deliberately corrupted a moment earlier. Left in place it would sit in the restore-point list and
+hand back a broken save. It was removed. **Any run that perturbs a save must delete the snapshot it
+causes**, or the safety net becomes the trap.
+
+*Re-run when the restore path changes. The guard's `verify` exits non-zero on ANY delta, including a
+legitimate addition, so read the named differences rather than the exit code.*
