@@ -151,12 +151,21 @@ public sealed partial class SettingsDialog : ContentDialog
         DeriveThemeCheck.Checked   += (_, _) => ThemeNameBox.Visibility = Visibility.Visible;
         DeriveThemeCheck.Unchecked += (_, _) => ThemeNameBox.Visibility = Visibility.Collapsed;
 
-        // Seed the avatar preview if one is set.
+        // Seed the preview. With an avatar set it shows theirs; without one it shows the launcher's
+        // OWN icon, because an empty square next to "Pick image…" does not say what the control does.
+        // MainViewModel.AppIconSource already answers "user's, else bundled" for the title bar - reuse
+        // it rather than writing a second rule that can drift from it.
         if (_avatars.HasAvatar)
         {
             PreviewImage.Source = new BitmapImage(new Uri(_avatars.AvatarPngPath));
             FileLabel.Text = "Current avatar";
             RemoveButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            try { PreviewImage.Source = new BitmapImage(new Uri(vm.AppIconSource)); }
+            catch { /* a missing bundled icon leaves the box empty, exactly as before */ }
+            FileLabel.Text = "The launcher's icon";
         }
 
         // Seed the backdrop dropdown to the currently-saved value. The flag suppresses the initial

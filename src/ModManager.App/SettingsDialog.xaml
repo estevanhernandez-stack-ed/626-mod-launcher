@@ -25,8 +25,11 @@
     </ContentDialog.Title>
 
 
+    <!-- The scrollbar is an OVERLAY in WinUI: it draws on top of the content rather than taking
+         width from it, so long wrapped copy runs underneath it and the last few characters of a line
+         are unreadable. Reserving a gutter is the fix - the bar has somewhere to be. -->
     <ScrollViewer MaxHeight="640" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="{StaticResource SpaceM}" Width="460">
+        <StackPanel Spacing="{StaticResource SpaceM}" Width="460" Margin="0,0,14,0">
 
             <!-- Four groups and a footer, in consequence order (wave 9 / D1).
 
@@ -63,9 +66,12 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
+                    <!-- Seeded with the launcher's OWN icon when no avatar is set. An empty square
+                         beside "Pick image…" says nothing about what the control does; showing what
+                         is there now makes the swap obvious before anyone commits to it. -->
                     <Border Grid.Column="0" Width="96" Height="96" CornerRadius="0"
                             Background="{StaticResource ThemePanel}" BorderBrush="{StaticResource ThemeBorder}" BorderThickness="1">
-                        <Image x:Name="PreviewImage" Stretch="UniformToFill" />
+                        <Image x:Name="PreviewImage" Stretch="Uniform" Margin="8" />
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
                         <Button AutomationProperties.AutomationId="PickImageButton" Content="Pick image…" Click="OnPickImage" />
