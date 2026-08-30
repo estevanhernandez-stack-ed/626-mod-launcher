@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using ModManager.Core.Transport;
+using Windows.Storage.Pickers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -70,6 +72,70 @@ public sealed partial class SettingsDialog : ContentDialog
     /// first-ever connect) shows the consent dialog — neither can be nested under this ContentDialog, so we
     /// hand off: MainWindow.OnSettings runs <c>ViewModel.ConnectNexusAsync()</c> after this dialog closes.</summary>
     public bool ConnectNexusRequested { get; private set; }
+
+    /// <summary>
+    /// Write one file holding every game's mods, saves and settings.
+    ///
+    /// <para><b>Reads only.</b> Nothing on this machine is touched, which is what lets this ship
+    /// before any restore path exists — and keeps the half that can hurt you out of the first
+    /// release.</para>
+    ///
+    /// <para>Snapshot history is opt-in. On a real 12-game profile it was 446 MB of a 482 MB launcher
+    /// data total: backups of backups, and rarely what anyone needs on a new machine.</para>
+    /// </summary>
+    private async void OnCreateProfileArchive(object sender, RoutedEventArgs e)
+    {
+        var builder = App.AppHost.Services.GetRequiredService<Services.ProfileArchiveBuilder>();
+        try
+        {
+            var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.Desktop };
+            picker.FileTypeChoices.Add("626 profile archive", new List<string> { ProfileArchive.Extension });
+            picker.SuggestedFileName = $"626-profile-{DateTime.Now:yyyyMMdd}";
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            var withHistory = ArchiveIncludeHistoryCheck.IsChecked == true;
+            ArchiveCreateButton.IsEnabled = false;
+            ArchiveStatusText.Text = "Looking at what you have…";
+
+            // Gathering walks every game's mods and the write copies gigabytes. Both belong off the
+            // UI thread, and the per-game callback is what stops a four-minute operation looking hung.
+            var progress = new Progress<string>(name => ArchiveStatusText.Text = $"Packing {name}…");
+            var version = System.Reflection.Assembly.GetExecutingAssembly()
+                                .GetName().Version?.ToString() ?? "0.0.0";
+
+            var manifest = await Task.Run(() =>
+            {
+                var sources = builder.Gather(n => ((IProgress<string>)progress).Report(n));
+                return ProfileArchive.Create(sources, file.Path, DateTime.UtcNow, version, withHistory);
+            });
+
+            var left = manifest.Excluded.Count == 0
+                ? ""
+                : $" {manifest.Excluded.Count} sign-in file{(manifest.Excluded.Count == 1 ? " was" : "s were")} left out.";
+            var carries = ModManager.Core.Transport.PersonalDataScan.MessageFor(manifest.Notices);
+
+            ArchiveStatusText.Text =
+                $"Backed up {manifest.Games.Count} game{(manifest.Games.Count == 1 ? "" : "s")} - "
+                + $"{manifest.TotalFiles:N0} files, {Human(manifest.TotalBytes)}."
+                + (withHistory ? "" : " Snapshot history was left out.")
+                + left
+                + (carries.Length > 0 ? " " + carries : "");
+        }
+        catch (Exception ex) { ArchiveStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+        finally { ArchiveCreateButton.IsEnabled = true; }
+    }
+
+    private static string Human(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double v = bytes;
+        var i = 0;
+        while (v >= 1024 && i < units.Length - 1) { v /= 1024; i++; }
+        return $"{v:0.#} {units[i]}";
+    }
 
     public SettingsDialog(IntPtr hwnd, AvatarService avatars, ThemeService themes, AppSettingsService appSettings, MainViewModel vm)
     {

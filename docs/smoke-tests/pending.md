@@ -1902,3 +1902,31 @@ Seamless Co-op player's `.sl2` is legitimately empty; the characters live in `.c
 
 *The characters section sits below the fold. Realise the list (`FindAll` on `CharacterList`) before
 concluding anything is missing — walking the tree and finding nothing is not evidence.*
+
+## Profile archive — back up everything
+
+Settings → **Back up everything**. Read-only: nothing on the machine is touched, which is the property
+to check hardest, because the restore half does not exist yet.
+
+1. **Leave "Include snapshot history" unchecked** and back up. The status line names the game count,
+   the file count and the size, and says *"Snapshot history was left out."* On a 12-game profile expect
+   a few thousand files and around 4 GB — a minutes-long operation, so watch the status line change per
+   game rather than assuming it hung.
+2. **Open the archive as a zip.** `profile.json` at the root, everything else under `games/<id>/`, and
+   **nothing outside those two**. Each game with saves has `games/<id>/bundle.json` — that is a real
+   save bundle, and `SaveBundle.ReadManifest(archive, "games/<id>/")` reads it with no knowledge of the
+   archive.
+3. **Check what was left out.** `profile.json` → `excluded` should name any sign-in file by path and
+   reason `credential`. On a machine with Cyberpunk that is `user.gls`, a CDPR token valid to 2035.
+   `notices` should list `steam_autocloud.vdf` per game, reason `steam-account-id` — carried, and
+   disclosed in the status line.
+4. **No snapshot history.** Nothing under `games/<id>/data/saves/`. Then repeat **with** the checkbox
+   ticked and confirm it appears — on a real profile that was 446 MB of a 482 MB launcher-data total.
+5. **Mods are files, not folders.** `games/<id>/mods/` holds the files the scanner identified, not the
+   game's own content. A Palworld or Death Stranding archive running to tens of GB means a folder got
+   copied instead of a file list — that is the 159 GB failure.
+6. **Nothing changed.** Hash the save folders and mod folders before and after. This step is the whole
+   point of shipping the writer before the restore.
+
+*A game with no saves still contributes its mods and settings — the common case on a fresh machine
+where a game is installed and modded but never played.*

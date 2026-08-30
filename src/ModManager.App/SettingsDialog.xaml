@@ -154,6 +154,30 @@
             <!-- Divider -->
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
+            <!-- ============ Back up everything ============
+                 Filed beside Restore points and above Danger, for the same reason they are: this is a
+                 backup, not a risk. Restore points are this machine's undo; an archive is the one you
+                 can carry away. Both are the opposite of the section below them. -->
+            <StackPanel AutomationProperties.AutomationId="SettingsGroup.archive"
+                        AutomationProperties.Name="Back up everything" Spacing="{StaticResource SpaceM}">
+                <TextBlock Text="Back up everything" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                           Text="One file holding every game's mods, saves and settings — for moving to a new PC, or just keeping somewhere safe. Nothing on this machine is changed." />
+                <CheckBox AutomationProperties.AutomationId="ArchiveIncludeHistoryCheck" x:Name="ArchiveIncludeHistoryCheck"
+                          Content="Include snapshot history"
+                          ToolTipService.ToolTip="Your per-game backups and restore points. Usually the largest part of the archive by far, and rarely what you need on a new machine." />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="ArchiveCreateButton" x:Name="ArchiveCreateButton"
+                            Content="Back up everything…" Click="OnCreateProfileArchive" />
+                </StackPanel>
+                <TextBlock x:Name="ArchiveStatusText" AutomationProperties.AutomationId="ArchiveStatusText"
+                           AutomationProperties.LiveSetting="Polite"
+                           Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            </StackPanel>
+
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
             <!-- ============ Restore points ============ -->
             <StackPanel AutomationProperties.AutomationId="SettingsGroup.restore"
                         AutomationProperties.Name="Restore points" Spacing="{StaticResource SpaceM}">
