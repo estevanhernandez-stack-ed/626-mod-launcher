@@ -61,6 +61,16 @@ public static class EldenRingSave
     internal const int CharActiveStatusRelative = CharActiveStatusOffset - SaveHeadersSectionStart; // 0x196954
     internal const int PerSlotSummaryRelative = PerSlotSummaryStart - SaveHeadersSectionStart;     // 0x19695E
 
+    /// <summary>The account's Steam ID64, little-endian, four bytes into the save-header section.
+    ///
+    /// <para>Verified across all seven files in a real save folder - .sl2, .co2, .err and their
+    /// backups - including an .sl2 holding no characters at all, because it lives in the PROFILE
+    /// block rather than in any slot.</para>
+    ///
+    /// <para>This is why FromSoft saves need re-signing before they work on another account, and why
+    /// a shareable bundle could never launder one: a seam removes files, not fields.</para></summary>
+    internal const int SteamIdRelative = 0x04;
+
     // BND4 file-table entry names. USER_DATA000..USER_DATA009 carry slot bodies (MD5 + data).
     // The save-header section lives at either USER_DATA010 OR USER_DATA011 depending on the
     // ER save-format generation (the synthetic fixture and pre-DLC saves put it at
@@ -153,12 +163,15 @@ public static class EldenRingSave
         int charActiveStatusAbs = saveHeaderStart + CharActiveStatusRelative;
         int perSlotSummaryStartAbs = saveHeaderStart + PerSlotSummaryRelative;
 
+        // One per file, not per slot: it identifies the ACCOUNT, and every slot in the file shares it.
+        var steamId = ReadSteamId(bytes, saveHeaderStart);
+
         var result = new List<CharacterSlot>(SlotCount);
         for (int i = 0; i < SlotCount; i++)
         {
             var slotEntry = Bnd4Reader.GetByName(entries, $"USER_DATA{i:D3}");
             var slot = TryReadSlot(bytes, slotEntry, charActiveStatusAbs, perSlotSummaryStartAbs, i);
-            if (slot is not null) result.Add(slot);
+            if (slot is not null) result.Add(slot with { SteamId = steamId });
         }
         return result;
     }
@@ -455,7 +468,31 @@ public static class EldenRingSave
             Runes: runes,
             Vig: stats.Vig, Mnd: stats.Mnd, End: stats.End, Str: stats.Str,
             Dex: stats.Dex, Int: stats.Int, Fai: stats.Fai, Arc: stats.Arc,
-            SteamId: string.Empty); // Steam ID read deferred to Task 9 smoke (Steam ID lives at 0x19003B4).
+            SteamId: string.Empty); // Filled by ReadCharacters - it is per FILE, not per slot.
+    }
+
+    /// <summary>
+    /// The Steam ID64 this save belongs to, or empty when the bytes there are not one.
+    ///
+    /// <para><b>Range-checked rather than trusted.</b> If a future patch moves the section, reading
+    /// eight bytes at a fixed place yields a number, not an error - and a plausible-looking wrong
+    /// account id is worse than an absent one, because it would be shown next to somebody's
+    /// character. Steam ID64s occupy a known band; anything outside it is not an id.</para>
+    /// </summary>
+    internal static string ReadSteamId(ReadOnlySpan<byte> bytes, int saveHeaderStart)
+    {
+        var at = saveHeaderStart + SteamIdRelative;
+        if (at < 0 || at + sizeof(ulong) > bytes.Length) return string.Empty;
+
+        var value = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes[at..]);
+
+        // The individual-account band: 0x0110000100000000 upward. Everything below is a clan, a
+        // group, or simply not an account id.
+        const ulong Lowest = 76561197960265728UL;
+        const ulong Highest = 76561202255233023UL;
+        return value >= Lowest && value <= Highest
+            ? value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
     }
 
     private static string ReadCharacterName(ReadOnlySpan<byte> summary)
