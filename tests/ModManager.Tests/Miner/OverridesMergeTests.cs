@@ -144,7 +144,7 @@ public class OverridesMergeTests
     }
 
     [Fact]
-    public void Two_slug_only_overrides_deriving_one_slug_do_not_overwrite_each_other_silently()
+    public void Two_slug_only_overrides_deriving_one_slug_the_second_wins_which_is_why_the_gate_exists()
     {
         // Slug-only overrides have no second key to disambiguate on, so the second one merges into the
         // first. That is why OverridesValidate refuses a duplicate slug before the merge ever runs -
@@ -157,5 +157,37 @@ public class OverridesMergeTests
 
         Assert.Single(merged.Games);
         Assert.Equal("custom", merged.Games[0].Engine);
+    }
+
+    [Fact]
+    public void ApplyReporting_separates_matched_ids_from_added_ids()
+    {
+        var backbone = Backbone(("skyrim", "72850", null));
+        var overrides = new[]
+        {
+            new OverrideEntry { SteamAppId = "72850", Engine = "bethesda" },              // matches
+            new OverrideEntry { Id = "new-game", Name = "New Game", Engine = "custom" },  // adds
+        };
+
+        var result = OverridesMerge.ApplyReporting(backbone, overrides);
+
+        Assert.Equal(new[] { "skyrim" }, result.MatchedIds);
+        Assert.Equal(new[] { "new-game" }, result.AddedIds);
+    }
+
+    [Fact]
+    public void ApplyReporting_surfaces_slug_drift_as_an_add_not_a_match()
+    {
+        // The scenario the spec's Risks section calls out: an override meant to update a mined game
+        // slugifies to a DIFFERENT id than the one mining assigned, so it silently adds a near-duplicate
+        // row instead of updating it. ApplyReporting must report that as an ADD - that's what lets a
+        // curator spot "added: <a game they know is already mined>" and catch the drift.
+        var backbone = Backbone(("skyrim-special-edition", "489830", null));
+        var overrides = new[] { new OverrideEntry { Name = "Skyrim", Engine = "bethesda" } }; // slugifies to "skyrim"
+
+        var result = OverridesMerge.ApplyReporting(backbone, overrides);
+
+        Assert.Empty(result.MatchedIds);
+        Assert.Equal(new[] { "skyrim" }, result.AddedIds);
     }
 }

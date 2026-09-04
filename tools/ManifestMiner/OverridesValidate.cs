@@ -19,10 +19,11 @@ public sealed record OverrideProblem(string Message);
 /// </summary>
 public static class OverridesValidate
 {
-    /// <summary>The slug an entry will be addressed by: its explicit id, else one derived from its
-    /// name, else empty — which is itself a problem.</summary>
+    /// <summary>The slug an entry will be addressed by: its explicit id (slugified, same as every
+    /// manifest id — curated files are already lowercase-kebab, so this is a no-op on all of them
+    /// today), else one derived from its name, else empty — which is itself a problem.</summary>
     public static string KeyOf(OverrideEntry entry)
-        => !string.IsNullOrWhiteSpace(entry.Id) ? entry.Id!
+        => !string.IsNullOrWhiteSpace(entry.Id) ? EnginePresets.Slugify(entry.Id)
          : !string.IsNullOrWhiteSpace(entry.Name) ? EnginePresets.Slugify(entry.Name)
          : "";
 
@@ -31,11 +32,11 @@ public static class OverridesValidate
         var problems = new List<OverrideProblem>();
         var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        static string Where(OverrideEntry e) => e.SourcePath ?? "(unknown file)";
+        static string FileOf(OverrideEntry e) => e.SourcePath ?? "(unknown file)";
 
         foreach (var e in overrides.Where(e => KeyOf(e).Length == 0 && string.IsNullOrWhiteSpace(e.SteamAppId)))
             problems.Add(new OverrideProblem(
-                $"{Where(e)} has neither an id nor a name, so nothing can address it."));
+                $"{FileOf(e)} has neither an id nor a name, so nothing can address it."));
 
         void Duplicates(string label, Func<OverrideEntry, string?> keySelector)
         {
@@ -46,7 +47,7 @@ public static class OverridesValidate
             {
                 // One pair of files is ONE problem even when it collides on both keys - reporting it
                 // twice would read as two separate conflicts.
-                var files = group.Select(Where).OrderBy(f => f, StringComparer.Ordinal).ToList();
+                var files = group.Select(FileOf).OrderBy(f => f, StringComparer.Ordinal).ToList();
                 if (!reported.Add(string.Join("|", files))) continue;
 
                 problems.Add(new OverrideProblem(

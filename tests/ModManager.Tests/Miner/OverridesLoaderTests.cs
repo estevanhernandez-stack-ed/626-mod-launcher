@@ -55,14 +55,36 @@ public class OverridesLoaderTests : IDisposable
     }
 
     [Fact]
-    public void An_override_with_neither_an_id_nor_a_Steam_id_is_still_dropped()
+    public void A_name_only_override_with_no_id_and_no_Steam_id_survives_loading()
     {
-        // There would be nothing to key it on. Task 3's gate reports this; the loader just
-        // refuses to produce an entry that cannot be addressed.
+        // A curated file with a name, engine and mod path but no explicit id used to vanish here
+        // silently. The loader now admits every parseable file; OverridesValidate.KeyOf derives a
+        // slug from the name, so this entry is perfectly addressable.
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "name-only.json"),
+            "{ \"name\": \"Some Curated Game\", \"engine\": \"custom\", \"modPath\": \"Mods\" }");
+
+        var entry = Assert.Single(OverridesLoader.Load(_dir));
+
+        Assert.Null(entry.Id);
+        Assert.Equal("Some Curated Game", entry.Name);
+        Assert.Equal("some-curated-game", OverridesValidate.KeyOf(entry));
+    }
+
+    [Fact]
+    public void An_override_with_neither_an_id_nor_a_name_nor_a_Steam_id_loads_but_is_caught_by_the_gate()
+    {
+        // Nothing to key it on. The loader no longer makes that call silently - it admits the entry,
+        // and OverridesValidate.Check is the one place that reports it, so the pipeline's real
+        // behaviour (load, then gate) is pinned end to end instead of being short-circuited here.
         Directory.CreateDirectory(_dir);
         File.WriteAllText(Path.Combine(_dir, "nameless.json"), "{ \"engine\": \"custom\" }");
 
-        Assert.Empty(OverridesLoader.Load(_dir));
+        var loaded = OverridesLoader.Load(_dir);
+        Assert.Single(loaded);
+
+        var problem = Assert.Single(OverridesValidate.Check(loaded));
+        Assert.Contains("nameless.json", problem.Message);
     }
 
     [Fact]

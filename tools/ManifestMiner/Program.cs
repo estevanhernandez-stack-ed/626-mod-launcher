@@ -142,8 +142,8 @@ if (args.Contains("--with-overrides"))
         return 1;
     }
 
-    var curated = OverridesMerge.Apply(current, overrides);
-    var validatedCurated = ManifestValidator.Validate(curated, EnginePresets.Presets.Keys.ToHashSet());
+    var mergeResult = OverridesMerge.ApplyReporting(current, overrides);
+    var validatedCurated = ManifestValidator.Validate(mergeResult.Manifest, EnginePresets.Presets.Keys.ToHashSet());
     current = validatedCurated.Manifest;
 
     File.WriteAllText(Path.Combine(outDir, "manifest-draft.json"),
@@ -151,7 +151,13 @@ if (args.Contains("--with-overrides"))
 
     var curatedCount = current.Games.Count(g => g.Provenance.Sources.Contains("curated"));
     var withEngine = current.Games.Count(g => g.Engine is not null);
-    Console.WriteLine($"Overrides: {overrides.Count} loaded, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
+    Console.WriteLine(
+        $"Overrides: {overrides.Count} loaded, {mergeResult.MatchedIds.Count} matched, "
+        + $"{mergeResult.AddedIds.Count} added, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
+    // A curator seeing a game they know is already mined show up here has slug drift: the override's
+    // slug didn't match the mined id, so it added a near-duplicate row instead of updating it.
+    if (mergeResult.AddedIds.Count > 0)
+        Console.WriteLine($"  added: {string.Join(", ", mergeResult.AddedIds)}");
 }
 
 // --report-gaps: classify the most-enriched manifest into engine-curated / nexus-only (engine-upgrade
