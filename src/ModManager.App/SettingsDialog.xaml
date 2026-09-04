@@ -235,7 +235,12 @@
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="local:LeftoverRow">
-                            <Grid AutomationProperties.AutomationId="{x:Bind RowAutomationId}" ColumnSpacing="8">
+                            <!-- The row id lives on the NAME TextBlock, not on this Grid. A Grid is a
+                                 layout panel, not a control-view element, so an id on it is written,
+                                 compiled, and never reaches the tree an agent walks - the same trap
+                                 .claude/rules/automation-ids.md records for Border. Caught by a UIA
+                                 walk that found every row's buttons and not one row id. -->
+                            <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -243,7 +248,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind FolderName}" FontWeight="SemiBold" />
+                                    <TextBlock AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
+                                               Foreground="{StaticResource ThemeInk}" Text="{x:Bind FolderName}" FontWeight="SemiBold" />
                                     <TextBlock Text="{x:Bind Detail}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
