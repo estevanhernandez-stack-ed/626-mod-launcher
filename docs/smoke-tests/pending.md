@@ -2218,3 +2218,78 @@ and `Find-ItemByName` in `scripts/uia-lib.ps1` exist for this. Two traps sit beh
 container's `Name` is its bound object's `ToString()`, not the `DisplayMemberPath` text (hence
 `Get-ItemLabel`), and `Select()` on an item of a CLOSED combo throws a bare "Unrecognized error" —
 read the source shut, but open it before selecting.
+
+---
+
+## An update row offers the page to get it from
+
+The updates screen used to make you go find the mod yourself. Each row now hands you the way there,
+when there is one.
+
+1. Open the updates screen with at least one pending update. Each row for a mod the launcher matched
+   to a Nexus mod shows a **Get update** button in the third column; clicking it opens that mod's page
+   on Nexus in your browser.
+2. A row the launcher could not match to a Nexus mod shows **no button at all** — not a greyed one.
+   This is the deliberate shape: `GetVisibility` collapses the button rather than disabling it, because
+   a greyed button invites a hover looking for an explanation ("why can't I click this?") that does not
+   exist here — there is no page to send you to, so there is no button.
+3. The version text keeps its position in the second column whether or not the third column has a
+   button. The button is an addition, not a replacement — check that a row with no Get-update button
+   doesn't leave the version text shifted or the row looking lopsided.
+
+---
+
+## The mod folders a removed game left behind
+
+Disabling a mod moves its files into a holding folder under `_626mods/<game-id>/`. Remove the game
+from the launcher and that folder is still there, owned by nothing — Settings now surfaces it instead
+of leaving it invisible on disk.
+
+1. Settings shows a **Folders left behind** section between Restore points and Reset (its
+   `AutomationProperties.AutomationId` is still `SettingsGroup.leftovers` — ids are stable keys and
+   don't track copy, so a harness written from the old "Leftover mod folders" heading would miss it),
+   listing exactly the folders under `_626mods` roots that no registered game owns. On the maintainer's
+   machine as of 2026-09-04 that is seven: `demonologist`, `phasmophobia`, `ready-or-not`, `repo`,
+   `captain-of-industry`, `schedule-i`, `marvel-s-spider-man-2-2`.
+2. **No registered game ever appears.** Fifteen are registered; none of their folders are listed.
+3. Each row names its file count, its size, and what is actually inside — a row must not read as
+   "mods" when the folder also holds profiles and settings. Someone deciding whether to delete a
+   folder deserves to know a profile lives in there before they click Remove.
+4. **Show files** opens the folder and changes nothing.
+5. **Save a copy…** writes the whole tree elsewhere and changes nothing on this machine. Verify
+   byte-for-byte with an independent hash of both trees.
+6. **Remove asks first, on an anchored Flyout, not a modal ContentDialog.** Settings is itself a
+   ContentDialog, and WinUI 3 allows only one per XamlRoot, so the confirm can't be a second
+   ContentDialog — it's a `Flyout` anchored to the row's Remove button. That changes how dismissal
+   behaves: pressing Esc or clicking away both land on **keeping the folder**, the safe direction, not
+   on cancelling a modal the way you'd expect from a dialog. Worth calling out during the smoke,
+   because a tester expecting a modal will think something's wrong when the app doesn't dim behind it.
+   The confirm names the folder and its file count, defaults to keeping it (**Keep it** is first in the
+   row and holds focus), and only deletes on an explicit second click.
+   **Exercise Remove on a throwaway folder you create for the test, never on one of the real seven** —
+   those are the maintainer's own files and what to do with each is his decision, not this smoke
+   case's.
+7. Three things flagged as headless-untestable during implementation, and the reason this case matters
+   most — none of them can be caught by a unit test, only by pointing at the real button:
+   - The confirm's **Remove** button must stay danger-coloured through hover and press, not just at
+     rest. This is the F-037 failure mode: a style that only wins at rest gets overwritten the moment
+     the pointer arrives, because the stock Button template's PointerOver state re-resolves
+     `ButtonBackgroundPointerOver` over it. It shipped that way once and review caught it, not tests —
+     hover the Remove button in the open flyout and confirm it stays filled danger-red the whole time,
+     not just on approach.
+   - The row's own outlined **Remove** button — the one in the list, before the confirm even opens —
+     must likewise hold its danger colour on hover. Same trap, outlined variant (border and text
+     instead of fill). Check **Show a copy…**'s neighbor `ArchiveRestoreButton` (Settings → Restore
+     points → Put chosen parts back…) in the same pass, since it now shares the same
+     `KeepDangerOutlined` helper — one regression here is likely a regression there too.
+   - **Keep it** must be visibly themed (not fall back to plain WinUI chrome — the Flyout pops its own
+     tree outside SettingsDialog's merged resources, so this doesn't happen for free) and must hold
+     focus when the flyout opens, so pressing Enter keeps the folder rather than removing it.
+8. The section can only see folders under `_626mods` roots that your registered games point at — that
+   is deliberate, not a gap. A library whose games have all been removed stays invisible here, because
+   there's no registered game left to point at the root that would reveal it.
+
+**The real seven are not fixtures.** They're live leftovers on the maintainer's machine from games he
+actually removed — not synthetic test data, and not guaranteed to still number seven or carry those
+names on the next run. Confirm the section lists whatever is really there; don't hardcode the count or
+the names into an automated check, and don't remove any of them as part of running this smoke case.
