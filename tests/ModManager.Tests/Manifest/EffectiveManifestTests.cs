@@ -277,4 +277,92 @@ public class ManifestMergeCompletenessTests
 
     private static object? FlattenForCompare(object? v)
         => v is IEnumerable<string> seq ? string.Join("|", seq) : v;
+
+    [Fact]
+    public void A_remote_entry_supersedes_an_embedded_one_naming_the_same_game_under_another_id()
+    {
+        // The feed renamed Skyrim SE from the snapshot's skyrim-se to its own
+        // the-elder-scrolls-v-skyrim-special-edition. Merging by id alone kept BOTH, so the quick-pick
+        // offered one game twice under two names, and whichever the user picked decided the id their
+        // install carried. Picking the snapshot's stale alias meant every later feed correction for
+        // that game -- ban risk, save layout, nexus domain -- attached to an id they did not have.
+        // A Steam app id names the game; two entries carrying one app id are one game.
+        var embedded = new GameManifest
+        {
+            Games = new[]
+            {
+                new GameManifestEntry
+                {
+                    Id = "skyrim-se",
+                    Name = "Skyrim Special Edition",
+                    Engine = "bethesda",
+                    ModPath = "Data",
+                    Stores = new StoreIds { SteamAppId = "489830" },
+                    SaveDirHint = "only-the-snapshot-has-this",
+                    Provenance = new ManifestProvenance { Sources = new[] { "popular-games" }, Status = "curated" },
+                },
+            },
+        };
+        var remote = new GameManifest
+        {
+            Games = new[]
+            {
+                new GameManifestEntry
+                {
+                    Id = "the-elder-scrolls-v-skyrim-special-edition",
+                    Name = "The Elder Scrolls V: Skyrim Special Edition",
+                    Engine = "bethesda",
+                    ModPath = "Data",
+                    Stores = new StoreIds { SteamAppId = "489830" },
+                    Provenance = new ManifestProvenance { Sources = new[] { ManifestSources.KnownEngines }, Status = "curated" },
+                },
+            },
+        };
+
+        var merged = EffectiveManifest.Merge(embedded, remote);
+
+        var game = Assert.Single(merged.Games);
+        Assert.Equal("the-elder-scrolls-v-skyrim-special-edition", game.Id);   // the feed's id is the one that keeps getting curated
+        Assert.Equal("The Elder Scrolls V: Skyrim Special Edition", game.Name);
+        // Folded, not dropped: what only the snapshot knew has to survive the collapse.
+        Assert.Equal("only-the-snapshot-has-this", game.SaveDirHint);
+        Assert.Contains("popular-games", game.Provenance.Sources);
+    }
+
+    [Fact]
+    public void An_embedded_entry_the_remote_never_names_is_untouched()
+    {
+        // The suppression is aimed at an alias, not at offline coverage. An entry the feed has no
+        // opinion about -- by id OR by app id -- has to survive, or a game drops out of the picker
+        // the moment a feed arrives that simply does not cover it yet.
+        var embedded = new GameManifest
+        {
+            Games = new[]
+            {
+                new GameManifestEntry { Id = "minecraft", Name = "Minecraft", Engine = "minecraft", ModPath = "mods" },
+                new GameManifestEntry
+                {
+                    Id = "kept", Name = "Kept", Engine = "bethesda", ModPath = "Data",
+                    Stores = new StoreIds { SteamAppId = "111" },
+                },
+            },
+        };
+        var remote = new GameManifest
+        {
+            Games = new[]
+            {
+                new GameManifestEntry
+                {
+                    Id = "other", Name = "Other", Engine = "bethesda", ModPath = "Data",
+                    Stores = new StoreIds { SteamAppId = "222" },
+                },
+            },
+        };
+
+        var merged = EffectiveManifest.Merge(embedded, remote);
+
+        Assert.Equal(3, merged.Games.Count);
+        Assert.Contains(merged.Games, g => g.Id == "minecraft");   // no app id at all, so nothing can claim it
+        Assert.Contains(merged.Games, g => g.Id == "kept");
+    }
 }
