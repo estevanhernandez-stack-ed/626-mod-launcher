@@ -38,20 +38,25 @@ only when there is one, and the `saves` work established that an absent optional
 
 Three places, and only the first one blocks curation.
 
-**1. The miner drops the override — twice.** `OverridesLoader.Load` refuses to load an entry with no
-Steam id, and `OverridesMerge.Apply` skips it again if it somehow arrived:
+**1. The miner dropped the override — twice.** `OverridesLoader.Load` refused to load an entry with no
+Steam id, and `OverridesMerge.Apply` skipped it again if one somehow arrived:
 
 ```csharp
-// OverridesLoader.Load
+// OverridesLoader.Load — before phase 1
 if (entry is not null && !string.IsNullOrWhiteSpace(entry.SteamAppId))
     result.Add(entry);
 
-// OverridesMerge.Apply
+// OverridesMerge.Apply — before phase 1
 if (string.IsNullOrWhiteSpace(ov.SteamAppId)) continue;
 ```
 
-Found while planning the build; the spec originally claimed one line. Everything downstream of both
-checks is already keyed by slug.
+The spec originally claimed this was one line; planning the build found it was two. Everything
+downstream of both checks was already keyed by slug, which is why the fix was small.
+
+**Resolved in phase 1** — see `docs/superpowers/plans/2026-09-04-non-steam-games-phase-1.md`. The
+loader now accepts an entry keyed by either a Steam id or a slug, and the merge resolves by Steam id
+first and by slug otherwise. Neither snippet above exists in the code any more; they are kept here
+because the rest of this spec argues from the problem they describe.
 
 **2. Discovery only enumerates Steam.** `AddGameDialog` walks Steam libraries and calls
 `SteamGameImport.Plan`. There is no EA / Epic / GOG equivalent, so a non-Steam game is only ever added
