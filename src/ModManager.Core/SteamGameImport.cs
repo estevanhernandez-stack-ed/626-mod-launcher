@@ -43,7 +43,7 @@ public static class SteamGameImport
             // Edition" produces minecraft-java-edition and matches the `minecraft` entry not at all,
             // which silently discards every curated fact about the game. Null when the manifest does
             // not know this app id, which leaves the name-derived fallback exactly as it was.
-            Id = ManifestIdLookup.BySteamAppId(Manifest.EffectiveManifest.Current, game.AppId),
+            Id = ManifestIdLookup.BySteamAppId(game.AppId),
             Name = game.Name,
             Engine = engine,
             GameRoot = game.GameRoot,

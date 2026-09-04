@@ -24,4 +24,48 @@ public static class ManifestIdLookup
             .FirstOrDefault(g => string.Equals(g.Stores.SteamAppId, steamAppId, StringComparison.Ordinal))
             ?.Id;
     }
+
+    // Generation-cached mirror of the pure lookup above, for callers that resolve against the live
+    // merged manifest rather than a caller-supplied one. Mirrors KnownModPaths' Map: a ~170-entry
+    // dictionary rebuilt only when EffectiveManifest.Generation advances, instead of on every call.
+    // AddGameDialog's constructor calls this once per installed Steam game (via SteamGameImport.Plan)
+    // on the UI thread, alongside the already-cached KnownEngines.ByAppId / KnownModPaths.ByAppId.
+    private static IReadOnlyDictionary<string, string>? _map;
+    private static int _mapGen = -1;
+    private static readonly object _gate = new();
+
+    private static IReadOnlyDictionary<string, string> Map
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var gen = EffectiveManifest.Generation;
+                if (_map is null || _mapGen != gen)
+                {
+                    _map = Build();
+                    _mapGen = gen;
+                }
+                return _map;
+            }
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string> Build()
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var g in EffectiveManifest.Current.Games)
+        {
+            if (g.Stores.SteamAppId is { } appId)
+                map.TryAdd(appId, g.Id); // first-entry-wins on a duplicate app id — pinned by a test above
+        }
+        return map;
+    }
+
+    /// <summary>The cached variant: which manifest entry (from <see cref="EffectiveManifest.Current"/>)
+    /// claims this Steam app id, or null. Same answer as the two-argument overload called with the
+    /// current effective manifest, generation-cached so a loop of callers doesn't rebuild the map per
+    /// iteration.</summary>
+    public static string? BySteamAppId(string? steamAppId)
+        => !string.IsNullOrWhiteSpace(steamAppId) && Map.TryGetValue(steamAppId, out var id) ? id : null;
 }
