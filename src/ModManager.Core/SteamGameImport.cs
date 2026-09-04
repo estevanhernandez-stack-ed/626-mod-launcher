@@ -38,6 +38,12 @@ public static class SteamGameImport
                       ?? (EnginePresets.Presets.TryGetValue(engine, out var preset) ? preset.ModPath : null);
         var input = new GameInput
         {
+            // WHICH curated game this is, rather than letting BuildGameEntry infer it from the display
+            // name. Slugify(name) and the manifest id agree by luck, not by rule: "Minecraft: Java
+            // Edition" produces minecraft-java-edition and matches the `minecraft` entry not at all,
+            // which silently discards every curated fact about the game. Null when the manifest does
+            // not know this app id, which leaves the name-derived fallback exactly as it was.
+            Id = ManifestIdLookup.BySteamAppId(game.AppId),
             Name = game.Name,
             Engine = engine,
             GameRoot = game.GameRoot,
