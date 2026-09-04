@@ -2084,10 +2084,15 @@ to be `Slugify(whatever display name was in the box)`, and it matched the manife
 curator happened to name the entry the same way. Measured against the real feed, **two of five sampled
 entries missed** — including Minecraft, curated specifically to prove non-Steam games work.
 
-1. **The case that used to fail.** Add Minecraft. Its manifest entry is `minecraft` while its display
-   name is `Minecraft: Java Edition`, which slugifies to `minecraft-java-edition`. Check `games.json`:
-   the registered id must be **`minecraft`**, and the game must arrive with engine `minecraft`, mod
-   path `mods`, and its save layout — not as an uncurated `custom` game.
+1. **The case that used to fail.** Quick-add **The Witcher 2: Assassins of Kings Enhanced Edition** from
+   the Steam list (app id `20920`). Its manifest id is `the-witcher-2-assassins-of-kings`, while its
+   display name slugifies to `…-enhanced-edition` — so before this change it registered under an id
+   matching nothing and arrived with no engine and no mod path. Check `games.json`: the registered id
+   must be **`the-witcher-2-assassins-of-kings`**, with engine `custom` and mod path `CookedPC`.
+
+   *Minecraft is the other known mismatch, but it cannot be used for this case yet: it is not in the
+   published feed, and having no Steam app id it is reachable by neither the quick-add lane nor the
+   popular list. Revisit when the feed carries it and the picker shows installed non-Steam games.*
 2. **Typing still works the old way.** Add a game by typing a name with no pick. Its id is still
    derived from the name; nothing looks it up and nothing fails. This path is unchanged on purpose —
    there is nothing better than the name to derive an id from.
@@ -2103,6 +2108,10 @@ entries missed** — including Minecraft, curated specifically to prove non-Stea
    picked id survived the Set-up handler, so the second game joined the first one's manifest entry and
    `Scanner` fed it the wrong mod path on every scan afterwards. Setting up the *same* game's row after
    applying a profile is legitimate and must still keep that profile's fields.
+
+   An explicit id can still be suffixed by `UniqueId` if a fossil row already holds it and
+   `FindRegistered` misses it (different game root, no shared app id) — so the promise in step 1 assumes
+   a clean library.
 
 **The fossil to expect on an existing machine.** A game added before this change keeps its old id, so
 `marvel-s-spider-man-2-2` on the rig still matches no manifest entry and stays uncurated. Nothing
