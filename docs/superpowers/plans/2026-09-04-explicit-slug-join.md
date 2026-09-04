@@ -205,7 +205,8 @@ Append to `tests/ModManager.Tests/SteamGameImportTests.cs`:
         // manifest id differs - "Minecraft: Java Edition" vs "minecraft" - matches nothing and throws
         // away the engine, mod path, save layout and ban risk that were curated for it.
         var plan = SteamGameImport.Plan(
-            new SteamImportCandidate("1245620", "ELDEN RING", @"C:\games\EldenRing"), "fromsoft");
+            new SteamImportCandidate(EldenRingAppId, "ELDEN RING", @"C:\games\ELDEN RING"),
+            folderDetectedEngine: "ue4ss");
 
         Assert.True(plan.Addable);
         Assert.Equal("elden-ring", plan.Input!.Id);
@@ -217,13 +218,16 @@ Append to `tests/ModManager.Tests/SteamGameImportTests.cs`:
         // Not an error. BuildGameEntry does Slugify(Id ?? Name), so a null id is exactly today's
         // behaviour - the change only ever ADDS certainty, never removes the fallback.
         var plan = SteamGameImport.Plan(
-            new SteamImportCandidate("999999", "Some Unmined Game", @"C:\games\Unmined"), "bepinex");
+            new SteamImportCandidate("999999", "Some Unmined Game", @"C:\games\Unmined"),
+            folderDetectedEngine: "bepinex");
 
         Assert.Null(plan.Input!.Id);
     }
 ```
 
-`SteamGameImportTests` may already have a helper for building a candidate; if so use it rather than adding a second. If the existing tests call `Plan` with a different argument shape than shown, match theirs — the two arguments are the candidate and the detected engine.
+These match the file's existing conventions, checked before writing: it has an `EldenRingAppId`
+constant and calls `Plan` with a named `folderDetectedEngine:` argument. Use both rather than
+introducing a second style beside them.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
