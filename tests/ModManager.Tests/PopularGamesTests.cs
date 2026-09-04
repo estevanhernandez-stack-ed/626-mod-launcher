@@ -117,18 +117,35 @@ public class PopularGamesTests : IDisposable
     [Fact]
     public void BuildGameEntry_from_a_no_Steam_pick_seeds_path_with_no_launch_url()
     {
-        // Minecraft is the catalog's one curated-but-not-on-Steam entry: a null SteamAppId must reach
-        // BuildGameEntry cleanly and produce an entry with no LaunchUrl / no SteamAppId, rather than the
-        // old non-nullable field forcing a fake value through.
-        var g = PopularGames.Find("minecraft")!;
+        // The pick -> register seam, for the shape only this branch made possible. A null SteamAppId
+        // has to travel all the way through BuildGameEntry and come out as an absent id and an absent
+        // launch url, rather than the old non-nullable field forcing a fake value through. Injected
+        // rather than read off the shipped snapshot: the rule holds whether or not the manifest of the
+        // day happens to carry a game sold outside Steam.
+        EffectiveManifest.SetRemote(new GameManifest
+        {
+            Games = new[]
+            {
+                new GameManifestEntry
+                {
+                    Id = "sold-somewhere-else",
+                    Name = "Sold Somewhere Else",
+                    Engine = "bethesda",
+                    ModPath = "Data",
+                    Provenance = new ManifestProvenance { Sources = new[] { ManifestSources.KnownEngines } },
+                },
+            },
+        });
+
+        var g = PopularGames.Find("sold-somewhere-else")!;
         Assert.Null(g.SteamAppId);
 
         var e = EnginePresets.BuildGameEntry(
-            new GameInput { Name = g.Name, Engine = g.Engine, GameRoot = "C:/g/Minecraft", ModPath = g.ModPath, SteamAppId = g.SteamAppId },
+            new GameInput { Id = g.Id, Name = g.Name, Engine = g.Engine, GameRoot = "C:/g/Elsewhere", ModPath = g.ModPath, SteamAppId = g.SteamAppId },
             Array.Empty<string>());
 
-        Assert.Equal("minecraft", e.Id);
-        Assert.Equal("mods", e.ModLocations[0].Path);
+        Assert.Equal("sold-somewhere-else", e.Id);
+        Assert.Equal("Data", e.ModLocations[0].Path);
         Assert.Null(e.SteamAppId);
         Assert.Null(e.LaunchUrl);
     }
