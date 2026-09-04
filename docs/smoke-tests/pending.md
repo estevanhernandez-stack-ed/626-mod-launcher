@@ -2197,10 +2197,18 @@ A newly curated game was invisible in the one surface built for finding curated 
 install signal to read. It sits with the uninstalled ones and is found by typing.*
 
 **Automated: `scripts/smoke-picker.ps1`.** Run it against a running build; it cancels the dialog and
-registers nothing. Run 2026-09-04 on the maintainer's machine, 7 of 7: 117 curated games offered
+registers nothing. Run 2026-09-04 on the maintainer's machine, 7 of 7: 116 curated games offered
 against the old 18, the list led by Elden Ring, Cyberpunk 2077 and Palworld (his installed three),
 Elden Ring's pick filling the real install folder, Minecraft offered with a `mods` path and an empty
 Steam id, and the folder cleared on the switch to it.
+
+**Reconciling that count against the cached feed is what found the Skyrim duplicate.** The run said
+117 and the merged manifest held 116 games: Skyrim Special Edition was in the picker twice, as the
+snapshot's `skyrim-se` and the feed's `the-elder-scrolls-v-skyrim-special-edition`, both on Steam app
+489830. Whichever a user clicked decided the id their install carried, and the stale alias never
+receives another feed correction. Fixed in `EffectiveManifest.Merge`; re-verified at 116 with one
+Skyrim SE row. **A count that nearly matches is worth chasing** — it was one off, and one off was a
+whole class of silently-wrong registration.
 
 The first cut of that harness read the picker by walking the rendered tree and **passed while proving
 nothing**: virtualization realised 105 of 117 entries and handed back a window starting at list index
