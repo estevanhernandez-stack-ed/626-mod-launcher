@@ -321,6 +321,14 @@ public sealed partial class AddGameDialog : ContentDialog
     private void OnSteamSetup(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not SteamSetupRow row) return;
+
+        // This row is a DIFFERENT game from anything picked earlier, so neither the picked id nor an
+        // imported profile's fields may follow the user onto it. Scanner re-joins by id on every scan,
+        // so a stale id is not a one-off mistake - it is an ongoing wrong join, and worse than the
+        // name-derived miss it would otherwise be.
+        _pickedManifestId = null;
+        _appliedDraft = null;
+
         NameBox.Text = row.Name;
         FolderBox.Text = row.InstallDir;
         SteamBox.Text = row.AppId;
