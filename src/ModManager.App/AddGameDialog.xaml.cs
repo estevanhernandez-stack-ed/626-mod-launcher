@@ -322,12 +322,21 @@ public sealed partial class AddGameDialog : ContentDialog
     {
         if ((sender as FrameworkElement)?.DataContext is not SteamSetupRow row) return;
 
-        // This row is a DIFFERENT game from anything picked earlier, so neither the picked id nor an
-        // imported profile's fields may follow the user onto it. Scanner re-joins by id on every scan,
-        // so a stale id is not a one-off mistake - it is an ongoing wrong join, and worse than the
-        // name-derived miss it would otherwise be.
-        _pickedManifestId = null;
-        _appliedDraft = null;
+        // Clear only what belongs to a DIFFERENT game. Setting up the same game's row - to pull its
+        // Steam-resolved folder after applying a profile - is a legitimate order, and blanket-clearing
+        // silently dropped that profile's fields. What must never survive is a pick or a draft that
+        // refers to some other game: Scanner re-joins by id on every scan, so a stale id is an ongoing
+        // wrong join rather than a one-off.
+        if (!string.Equals(_appliedDraft?.SteamAppId, row.AppId, StringComparison.Ordinal))
+            _appliedDraft = null;
+
+        // A game in the SET-UP list is one the launcher could not identify, so a curated id picked
+        // earlier cannot legitimately belong to it. Compared rather than assumed, so the reason is
+        // visible: if this row ever did resolve to the picked game, the id would rightly survive.
+        if (_pickedManifestId is not null
+            && _pickedManifestId != ManifestIdLookup.BySteamAppId(
+                   ModManager.Core.Manifest.EffectiveManifest.Current, row.AppId))
+            _pickedManifestId = null;
 
         NameBox.Text = row.Name;
         FolderBox.Text = row.InstallDir;
