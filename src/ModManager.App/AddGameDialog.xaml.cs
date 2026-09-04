@@ -138,6 +138,14 @@ public sealed partial class AddGameDialog : ContentDialog
         var d = result.Draft;
         _appliedDraft = d; // stash so BuildInput can carry fields with no visible control
 
+        // The draft names a game of its own; a pick made before it cannot follow it onto that game.
+        // Compared rather than assumed, same as OnSteamSetup: a profile for the game already picked
+        // keeps its id. A draft with no steamAppId resolves to null and clears, which is the safe way
+        // to be wrong.
+        if (_pickedManifestId is not null
+            && _pickedManifestId != ManifestIdLookup.BySteamAppId(d.SteamAppId))
+            _pickedManifestId = null;
+
         // Resolve + verify on disk (read-only). No browse attempted here — pass null so Steam detection runs.
         var resolver = App.AppHost.Services.GetRequiredService<GameDefinitionResolver>();
         var resolved = await resolver.ResolveAsync(d, browsedGameRoot: null);
@@ -210,6 +218,7 @@ public sealed partial class AddGameDialog : ContentDialog
             // is in play, so the batch path carries the same fields the single-game path does.
             var input = new GameInput
             {
+                Id = ManifestIdLookup.BySteamAppId(r.Draft.SteamAppId),
                 Name = r.Draft.Name!,
                 Engine = r.Draft.Engine!,
                 GameRoot = resolved.GameRoot ?? "",
@@ -324,18 +333,21 @@ public sealed partial class AddGameDialog : ContentDialog
 
         // Clear only what belongs to a DIFFERENT game. Setting up the same game's row - to pull its
         // Steam-resolved folder after applying a profile - is a legitimate order, and blanket-clearing
-        // silently dropped that profile's fields. What must never survive is a pick or a draft that
-        // refers to some other game: Scanner re-joins by id on every scan, so a stale id is an ongoing
-        // wrong join rather than a one-off.
+        // silently dropped that profile's fields. What must never survive is a pick, a draft, or a
+        // resolved save dir that refers to some other game: Scanner re-joins by id on every scan (a
+        // stale id is an ongoing wrong join, not a one-off), and a stale save dir points THIS game's
+        // save editor / restore points / save-mod install at ANOTHER game's save tree.
         if (!string.Equals(_appliedDraft?.SteamAppId, row.AppId, StringComparison.Ordinal))
+        {
             _appliedDraft = null;
+            _resolvedSaveDir = null;   // resolved for the OTHER game; SetSaveDir would point this one at its saves
+        }
 
         // A game in the SET-UP list is one the launcher could not identify, so a curated id picked
         // earlier cannot legitimately belong to it. Compared rather than assumed, so the reason is
         // visible: if this row ever did resolve to the picked game, the id would rightly survive.
         if (_pickedManifestId is not null
-            && _pickedManifestId != ManifestIdLookup.BySteamAppId(
-                   ModManager.Core.Manifest.EffectiveManifest.Current, row.AppId))
+            && _pickedManifestId != ManifestIdLookup.BySteamAppId(row.AppId))
             _pickedManifestId = null;
 
         NameBox.Text = row.Name;
