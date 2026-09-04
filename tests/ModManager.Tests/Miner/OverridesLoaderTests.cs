@@ -37,4 +37,31 @@ public class OverridesLoaderTests : IDisposable
         Assert.Single(loaded);
         Assert.Equal("1", loaded[0].SteamAppId);
     }
+
+    [Fact]
+    public void Loads_an_override_that_has_no_Steam_app_id()
+    {
+        // A game bought from the EA app, Epic or GOG has no Steam id. Before this, the loader
+        // dropped it here and the merge dropped it again - two silent gates, no report.
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "some-ea-game.json"),
+            "{ \"id\": \"some-ea-game\", \"name\": \"Some EA Game\", \"engine\": \"custom\" }");
+
+        var loaded = OverridesLoader.Load(_dir);
+
+        var entry = Assert.Single(loaded);
+        Assert.Equal("some-ea-game", entry.Id);
+        Assert.Null(entry.SteamAppId);
+    }
+
+    [Fact]
+    public void An_override_with_neither_an_id_nor_a_Steam_id_is_still_dropped()
+    {
+        // There would be nothing to key it on. Task 3's gate reports this; the loader just
+        // refuses to produce an entry that cannot be addressed.
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "nameless.json"), "{ \"engine\": \"custom\" }");
+
+        Assert.Empty(OverridesLoader.Load(_dir));
+    }
 }
