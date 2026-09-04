@@ -291,7 +291,7 @@
       "modPath": "mods",
       "provenance": {
         "sources": [
-          "hand-curated"
+          "known-engines"
         ],
         "status": "curated"
       }

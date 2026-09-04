@@ -2177,8 +2177,11 @@ migrates it — re-adding is the fix, and that is a deliberate non-goal here rat
 The Add Game quick-pick used to list only entries carrying a legacy `popular-games` tag — 18 of 156.
 A newly curated game was invisible in the one surface built for finding curated games.
 
-1. **Open + Game and look at the picker.** It should list far more than the old 18, with the games
-   installed on this machine at the top and the featured ones leading those.
+1. **Open + Game and look at the picker.** It should list every curated game the current manifest
+   can represent — not just the ones the old `popular-games` tag carried — with the games installed
+   on this machine at the top and the featured ones leading those. On a fresh install, before the
+   first feed fetch, that's the embedded snapshot's 11 entries; once the feed lands it's however many
+   the feed carries. The point is the cap is gone, not the count.
 2. **Minecraft must be in it.** It is curated, has no Steam app id, and was previously impossible for
    this list to represent — the old projection forced a non-null Steam id. Pick it and confirm the
    engine fills in as `minecraft` and the mod path as `mods`. The folder still has to be browsed to

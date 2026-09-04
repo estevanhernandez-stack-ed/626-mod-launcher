@@ -115,6 +115,25 @@ public class PopularGamesTests : IDisposable
     }
 
     [Fact]
+    public void BuildGameEntry_from_a_no_Steam_pick_seeds_path_with_no_launch_url()
+    {
+        // Minecraft is the catalog's one curated-but-not-on-Steam entry: a null SteamAppId must reach
+        // BuildGameEntry cleanly and produce an entry with no LaunchUrl / no SteamAppId, rather than the
+        // old non-nullable field forcing a fake value through.
+        var g = PopularGames.Find("minecraft")!;
+        Assert.Null(g.SteamAppId);
+
+        var e = EnginePresets.BuildGameEntry(
+            new GameInput { Name = g.Name, Engine = g.Engine, GameRoot = "C:/g/Minecraft", ModPath = g.ModPath, SteamAppId = g.SteamAppId },
+            Array.Empty<string>());
+
+        Assert.Equal("minecraft", e.Id);
+        Assert.Equal("mods", e.ModLocations[0].Path);
+        Assert.Null(e.SteamAppId);
+        Assert.Null(e.LaunchUrl);
+    }
+
+    [Fact]
     public void Find_still_resolves_by_id_and_returns_null_for_an_unknown_one()
     {
         var any = PopularGames.All[0];

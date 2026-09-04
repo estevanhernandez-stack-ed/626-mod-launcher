@@ -87,8 +87,8 @@
             </ListView>
             <TextBlock x:Name="SteamSelectionStatus" Visibility="Collapsed" FontSize="{StaticResource BodyFontSize}" />
         </StackPanel>
-        <ComboBox AutomationProperties.AutomationId="PopularGamesBox" x:Name="PopularGamesBox" Header="Popular game (optional)" HorizontalAlignment="Stretch"
-                  DisplayMemberPath="Name" PlaceholderText="Pick a known moddable game"
+        <ComboBox AutomationProperties.AutomationId="PopularGamesBox" x:Name="PopularGamesBox" Header="Curated game (optional)" HorizontalAlignment="Stretch"
+                  DisplayMemberPath="Name" PlaceholderText="Pick one to fill in what we know"
                   SelectionChanged="OnPopularSelected" />
         <Expander x:Name="AiExpander" HorizontalAlignment="Stretch" Header="Add with AI">
             <StackPanel Spacing="{StaticResource SpaceM}" Width="400">
