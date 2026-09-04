@@ -104,26 +104,31 @@ public partial class App : Application
                 .LoadCachedEffective();
         }
 
+        // Nexus, compiled into every build. Same Register() entry point and same host services the
+        // plugin loader uses, so only the delivery differs and nothing downloaded is ever executed.
+        BuiltInModSources.RegisterAll(
+            AppHost.Services.GetRequiredService<ModSourceRegistry>(),
+            AppHost.Services.GetRequiredService<HttpClient>(),
+            AppHost.Services.GetRequiredService<NexusService>());
+
 #if FULL
-        // Discover + verify + load signed plugins (FULL flavor only — the Store SKU compiles this out).
-        // Each plugin's mod sources land in the shared registry; the credential lookup + shared HttpClient
-        // are App-owned and passed in. Fail-closed + per-plugin try/catch live in PluginHost — a bad or
-        // missing plugins dir is a clean no-op, leaving the app on the zero-plugins path.
+        // BEFORE this line, Nexus is already registered. That ORDER is what makes an old downloaded
+        // Nexus plugin left on disk a clean no-op rather than a fight: ModSourceRegistry.Add ignores a
+        // source whose id is already present, so the compiled-in one wins and the stale file is simply
+        // never consulted. (StalePluginCleanup removes it too, but the ordering is what makes the
+        // outcome correct even on the run before that happens - or if it fails.)
+        //
+        // The loader stays, and is still FULL-only. It has nothing of OURS left to load, which is the
+        // point: it is the lane for plugins we want on GitHub before, or instead of, the Store.
         PluginHost.LoadAll(
             AppHost.Services.GetRequiredService<ModSourceRegistry>(),
             AppHost.Services.GetRequiredService<HttpClient>(),
             AppHost.Services.GetRequiredService<NexusService>(),
             Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
-#endif
 
-#if STORE_NEXUS
-        // Packaged (Store) SKU with Nexus compiled in: register the compiled-in sources directly. Same
-        // Register() entry point and same host services the off-Store loader uses — only the delivery
-        // differs, so nothing is downloaded or executed that did not ship in the reviewed package.
-        BuiltInModSources.RegisterAll(
-            AppHost.Services.GetRequiredService<ModSourceRegistry>(),
-            AppHost.Services.GetRequiredService<HttpClient>(),
-            AppHost.Services.GetRequiredService<NexusService>());
+        // Tidy up after ourselves: the downloaded Nexus plugin had a job that no longer exists, and a
+        // file that looks active while being ignored is its own kind of wrong.
+        Services.StalePluginCleanup.Run();
 #endif
     }
 

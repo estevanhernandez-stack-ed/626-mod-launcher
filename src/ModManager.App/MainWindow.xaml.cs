@@ -71,17 +71,6 @@ public sealed partial class MainWindow : Window
         _libraryVm.UpdatesRequested += ShowUpdates;
         _libraryView = new LibraryView(_libraryVm);
         LibraryHost.Children.Add(_libraryView);
-#if FULL
-        // Off-Store: let the live VM light up the Nexus surfaces the instant the feed hot-loads the
-        // plugin on a first-ever connect (no rescan needed). FULL-only — the Store SKU has no feed.
-        if (App.AppHost.Services.GetService<Services.PluginFeedSource>() is { } feed)
-        {
-            ViewModel.WirePluginFeed(feed);
-            // First-install consent: the feed asks before the first-ever plugin download. Shown from the
-            // shell (not nested under SettingsDialog — the connect action hands back via ConnectNexusRequested).
-            feed.ConfirmFirstInstallAsync = ShowFirstInstallConsentAsync;
-        }
-#endif
         // The collision prompt is a view concern (dialog + XamlRoot) — the VM builds the plan and
         // sequences intake, the window owns showing the dialog. null result = user cancelled.
         ViewModel.ConfirmReplacements = async plan =>
@@ -203,19 +192,6 @@ public sealed partial class MainWindow : Window
             await legacy.ShowAsync();
         }
 
-#if FULL
-        // Startup fetch for already-connected users: if Nexus credentials are persisted from a
-        // previous session, the user never triggers a ConnectAsync (so MaybeFetchOnConnectAsync
-        // never fires). Kick off a debounced UPDATE check here — but only when a plugin is already
-        // installed. If none is installed yet (NeedsFirstInstallConsent), do NOT auto-fetch on
-        // startup: the first-ever install only happens through the consented connect path, never
-        // silently at launch. Fire-and-forget; LoadAsync already completed so the app is fully
-        // usable. The PluginLoaded event (wired via WirePluginFeed) carries the UI refresh.
-        if (App.AppHost.Services.GetService<Services.PluginFeedSource>() is { } feedOnStart
-            && App.AppHost.Services.GetRequiredService<Services.NexusService>().IsConnected
-            && !feedOnStart.NeedsFirstInstallConsent())
-            _ = feedOnStart.FetchAsync(force: false);
-#endif
 
         // After load: wire registry-changed so Safe Clear / Restore cause the mod list to repaint.
         var launcherService = App.AppHost.Services.GetRequiredService<Services.LauncherService>();

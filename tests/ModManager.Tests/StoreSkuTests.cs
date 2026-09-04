@@ -36,26 +36,35 @@ public class StoreSkuTests
     private static string Csproj() => Read("src", "ModManager.App", "ModManager.App.csproj");
 
     [Fact]
-    public void Configuration_Store_turns_Nexus_on_without_being_asked()
+    public void Nexus_is_compiled_into_EVERY_configuration_now()
     {
-        // The one line that stops CI shipping an empty box.
+        // The delivery split was never Microsoft's rule - it was Nexus's. Their integration could not
+        // ship until they approved us as a partner, and the downloaded plugin kept it off a certified
+        // package meanwhile. The approval landed, so both SKUs compile it in and the two can no longer
+        // sit on different Nexus versions.
         var csproj = Csproj();
 
-        Assert.Matches(
-            new Regex(@"Condition=""'\$\(Configuration\)'\s*==\s*'Store'\s*AND\s*'\$\(StoreNexus\)'\s*==\s*''"""),
-            csproj);
-        Assert.Contains("<StoreNexus>true</StoreNexus>", csproj);
+        // The Compile item that pulls the plugin sources in carries NO Configuration condition.
+        var item = new Regex(@"<ItemGroup(?<cond>[^>]*)>\s*<Compile Include=""[^""]*ModManager\.Plugin\.Nexus");
+        var m = item.Match(csproj);
+        Assert.True(m.Success, "the Nexus sources are no longer compiled in at all");
+        Assert.DoesNotContain("Condition", m.Groups["cond"].Value);
     }
 
     [Fact]
-    public void The_Nexus_free_variant_is_still_reachable_on_purpose()
+    public void There_is_no_switch_for_building_without_Nexus()
     {
-        // -p:StoreNexus=false must keep working. The default changed; the capability did not go away,
-        // and a flag that can only be turned on is not a flag.
+        // Deliberately gone. This file's own history is the argument: StoreNexus was opt-in, the only
+        // automated caller never opted in, and every package CI produced had no Nexus in it while
+        // everyone believed otherwise. A Nexus-free variant that nobody builds is that trap re-laid.
+        // Restoring it is a small job on the day, and would need a resubmission anyway.
         var csproj = Csproj();
 
-        Assert.Contains("'$(StoreNexus)' == 'true'", csproj);
-        Assert.Contains("STORE_NEXUS", csproj);
+        // Asserted against the MSBuild FORMS, not the word: the comment explaining why the switch is
+        // gone is worth keeping, and a test that forbids naming a thing forbids explaining it too.
+        Assert.DoesNotContain("$(StoreNexus)", csproj);
+        Assert.DoesNotContain("<StoreNexus>", csproj);
+        Assert.DoesNotContain("STORE_NEXUS", csproj);
     }
 
     [Fact]
