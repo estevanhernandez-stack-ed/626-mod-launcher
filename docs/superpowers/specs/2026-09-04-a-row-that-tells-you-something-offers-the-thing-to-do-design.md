@@ -150,16 +150,28 @@ exists to stop making.
 
 ### Detection, and the one way it can be wrong
 
-Pure, in Core, behind a test:
+In Core, split the way `DirectInject` and `DirectInjectListing` already split: a pure decision over
+names, and a thin layer that does the walking.
 
 ```csharp
 // src/ModManager.Core/LeftoverHoldings.cs
 public sealed record LeftoverHolding(string Path, string FolderName, int FileCount, long Bytes,
                                      IReadOnlyList<string> TopLevelNames);
 
-public static IReadOnlyList<LeftoverHolding> Find(
-    IReadOnlyList<GameEntry> registered, IHoldingScan scan);
+/// <summary>Pure: which of these folder names belong to no registered game. The whole judgment,
+/// with no filesystem in it.</summary>
+public static IReadOnlyList<string> Orphans(
+    IEnumerable<string> registeredIds, IEnumerable<string> folderNames);
+
+/// <summary>Walks the roots the registered games point at and describes what Orphans picked out.</summary>
+public static IReadOnlyList<LeftoverHolding> Find(IReadOnlyList<GameEntry> registered);
 ```
+
+**No filesystem interface.** An earlier draft of this spec called for one. That was wrong for this
+codebase: Core already calls `Directory.GetDirectories` directly in `DataDirMove`, `DirectInject`,
+`DirectInjectListing` and `ModListing`, `CorePurityTests` forbids only WinUI and WinRT, and the test
+suite exercises this kind of code against real temp directories through `TestSupport.TempDir`. A seam
+nothing else uses is a seam the next person has to justify.
 
 The roots come from the registered games themselves, each one the parent of that game's
 `DataDirForGame`. Never from scanning drives. A folder under a known root whose name matches no
@@ -219,8 +231,8 @@ harness that cannot tell "no leftovers" from "the section did not render."
 - `LeftoverHoldings.Find`: a folder matching a registered id is never returned; a folder matching no
   id is; a root no registered game points at is not scanned; an empty root yields nothing; a folder
   whose name differs from a registered id only in case is treated as that same game.
-- `CorePurityTests` keeps passing. `LeftoverHoldings` takes its directory access through an interface,
-  with the adapter in `src/ModManager.App/Services/`.
+- `CorePurityTests` keeps passing. `LeftoverHoldings` adds no WinUI or WinRT reference
+  and touches only `System.IO`, which Core already uses throughout.
 
 **Smoke, in `docs/smoke-tests/pending.md`, run rather than written:**
 
