@@ -338,4 +338,33 @@ public class ModUpdateSummaryTests
 
         Assert.Equal(expected, ModUpdateSummary.ForGame(c.Game).Count == 1);
     }
+
+    [Fact]
+    public void A_game_with_no_stored_domain_still_carries_one_resolved_from_its_Steam_app_id()
+    {
+        // NexusGameDomain is only written when a game is added WITH one, so it is null on most
+        // registrations: null for 6 of 15 games on a real install, including both that had updates
+        // pending. A row needs BOTH a mod id and a domain to name a page, so reading the stored field
+        // directly collapsed the Get update button on every row of the feature that button is for.
+        var root = TestSupport.TempDir("updatesummary-nodomain-");
+        var gameRoot = Path.Combine(root, "game");
+        Directory.CreateDirectory(gameRoot);
+        var ctx = Scanner.GameContext(new GameEntry
+        {
+            Id = "elden-ring", GameName = "ELDEN RING", GameRoot = gameRoot,
+            ModLocations = new[] { new ModLocation("mods", "mods", "mods") },
+            FileExtensions = new[] { "pak" },
+            SteamAppId = "1245620",
+            NexusGameDomain = null,        // exactly what the real registry holds
+        });
+        Scanner.SaveMetadata(ctx, new Dictionary<string, ModMeta>
+        {
+            ["seamless"] = new ModMeta { Title = "Seamless Co-op", Version = "1.9.9", NexusLatestVersion = "2.0.0", NexusModId = 510 },
+        });
+
+        var pending = Assert.Single(ModUpdateSummary.ForGame(ctx.Game).Pending);
+
+        Assert.Equal(510, pending.NexusModId);
+        Assert.Equal("eldenring", pending.NexusDomain);   // resolved from the app id, not stored
+    }
 }

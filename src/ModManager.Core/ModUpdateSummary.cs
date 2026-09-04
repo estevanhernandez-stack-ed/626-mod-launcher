@@ -201,8 +201,14 @@ public static class ModUpdateSummary
             var reason = m.NexusUpdateAvailable == true
                 ? PendingReason.NexusFlag
                 : PendingReason.VersionDiffers;
+            // Effective, not the stored field. NexusGameDomain is only written when a game is added
+            // WITH one, so it is null on most registrations -- measured on a real install, null for
+            // 6 of 15 games including both that had updates pending. The row carried a mod id and no
+            // domain, NexusModPage.Url needs both, and so the Get update button collapsed on every
+            // row of a feature whose whole point is that button. Effective() falls back to the Steam
+            // app id, which the manifest already maps.
             pending.Add(new PendingUpdate(gameId, gameName, key, modName, m.Version, latest,
-                m.NexusModId, game.NexusGameDomain, reason));
+                m.NexusModId, NexusDomains.Effective(game), reason));
         }
 
         return new GameUpdateSummary(gameId, gameName, checkedAny, pending);
