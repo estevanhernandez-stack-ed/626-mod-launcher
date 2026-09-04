@@ -26,13 +26,21 @@ public static class OverridesMerge
 
         foreach (var ov in overrides)
         {
-            // Steam id first, so all 149 existing files keep matching exactly as they did. Slug second,
-            // which is the only key a game bought outside Steam has.
+            // Steam id first, so all 149 existing files keep matching exactly as they did.
             string? existingId = null;
-            if (!string.IsNullOrWhiteSpace(ov.SteamAppId) && idBySteam.TryGetValue(ov.SteamAppId!, out var bySteam))
-                existingId = bySteam;
+            if (!string.IsNullOrWhiteSpace(ov.SteamAppId))
+            {
+                // A Steam-keyed override that does NOT resolve falls through to the add path below,
+                // which is what it did before slug-keying existed. It must never try the slug: its slug
+                // can coincide with an unrelated game's id, and merging into that game would be a
+                // silent, wrong overwrite - the exact regression this shape exists to avoid.
+                idBySteam.TryGetValue(ov.SteamAppId!, out existingId);
+            }
             else if (OverridesValidate.KeyOf(ov) is { Length: > 0 } slug && byId.ContainsKey(slug))
+            {
+                // The only key a game bought outside Steam has.
                 existingId = slug;
+            }
 
             if (existingId is not null)
             {

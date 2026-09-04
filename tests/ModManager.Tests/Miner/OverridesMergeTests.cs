@@ -125,4 +125,37 @@ public class OverridesMergeTests
         Assert.Equal("bethesda", merged.Games.Single(g => g.Id == "skyrim").Engine);
         Assert.Null(merged.Games.Single(g => g.Id == "some-other-game").Engine);
     }
+
+    [Fact]
+    public void A_Steam_keyed_override_that_does_not_resolve_ADDS_rather_than_taking_a_matching_slug()
+    {
+        // The regression this shape exists to prevent. The override's slug is an existing game's id,
+        // but its Steam id is not in the backbone - so it must add a new entry, never merge into that
+        // unrelated game. Before the fix this silently overwrote skyrim's fields.
+        var backbone = Backbone(("skyrim", "72850", "bethesda"));
+
+        var merged = OverridesMerge.Apply(backbone, new[]
+        {
+            new OverrideEntry { Id = "skyrim", SteamAppId = "999", Engine = "custom" },
+        });
+
+        Assert.Equal("bethesda", merged.Games.Single(g => g.Id == "skyrim").Engine);   // untouched
+        Assert.Contains(merged.Games, g => g.Engine == "custom" && g.Id != "skyrim");  // added, suffixed
+    }
+
+    [Fact]
+    public void Two_slug_only_overrides_deriving_one_slug_do_not_overwrite_each_other_silently()
+    {
+        // Slug-only overrides have no second key to disambiguate on, so the second one merges into the
+        // first. That is why OverridesValidate refuses a duplicate slug before the merge ever runs -
+        // this test pins the merge's behaviour so the gate's necessity stays visible.
+        var merged = OverridesMerge.Apply(new GameManifest { Games = Array.Empty<GameManifestEntry>() }, new[]
+        {
+            new OverrideEntry { Id = "same-slug", Name = "First", Engine = "bepinex" },
+            new OverrideEntry { Id = "same-slug", Name = "Second", Engine = "custom" },
+        });
+
+        Assert.Single(merged.Games);
+        Assert.Equal("custom", merged.Games[0].Engine);
+    }
 }
