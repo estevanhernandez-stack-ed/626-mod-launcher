@@ -38,15 +38,20 @@ only when there is one, and the `saves` work established that an absent optional
 
 Three places, and only the first one blocks curation.
 
-**1. The miner drops the override.** `OverridesMerge.Apply`, line 29:
+**1. The miner drops the override — twice.** `OverridesLoader.Load` refuses to load an entry with no
+Steam id, and `OverridesMerge.Apply` skips it again if it somehow arrived:
 
 ```csharp
+// OverridesLoader.Load
+if (entry is not null && !string.IsNullOrWhiteSpace(entry.SteamAppId))
+    result.Add(entry);
+
+// OverridesMerge.Apply
 if (string.IsNullOrWhiteSpace(ov.SteamAppId)) continue;
 ```
 
-`OverrideEntry.SteamAppId` is documented as "the key (required)". An override without one is skipped
-silently — no warning, no build-summary line. Everything downstream of that check is already keyed by
-slug: `byId`, `order`, `NewFrom(id, ov)`.
+Found while planning the build; the spec originally claimed one line. Everything downstream of both
+checks is already keyed by slug.
 
 **2. Discovery only enumerates Steam.** `AddGameDialog` walks Steam libraries and calls
 `SteamGameImport.Plan`. There is no EA / Epic / GOG equivalent, so a non-Steam game is only ever added
