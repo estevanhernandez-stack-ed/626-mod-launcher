@@ -26,6 +26,14 @@ public sealed partial class AddGameDialog : ContentDialog
     // control (windowTitle / fileExtensions / groupingRule / curseforgeGameId). Null on manual add.
     private GameDefinitionDraft? _appliedDraft;
 
+    /// <summary>The manifest id of a game the user PICKED from the catalogue, as opposed to typed.
+    ///
+    /// <para>It is carried separately from the visible fields for the same reason <see
+    /// cref="_appliedDraft"/> is: there is no control for it, and inferring it from the name box is
+    /// precisely the bug this exists to fix. Null on a manual add, which leaves
+    /// <c>BuildGameEntry</c> deriving the id from the name exactly as before.</para></summary>
+    private string? _pickedManifestId;
+
     // Approved batch rows, populated by OnApplyBatch and consumed by MainWindow's register loop on
     // Primary. Empty in the single-game flow.
     private readonly List<(GameInput Input, string? ResolvedSaveDir)> _batchApproved = new();
@@ -267,6 +275,10 @@ public sealed partial class AddGameDialog : ContentDialog
     {
         if (PopularGamesBox.SelectedItem is not PopularGame g) return;
 
+        // Record WHICH game was picked before touching any text box. The name box is about to be
+        // overwritten with the display name, and Slugify of that name is not reliably this game's id.
+        _pickedManifestId = g.Id;
+
         // Fill the plain fields FIRST and unconditionally — these can't throw, so the pre-fill always
         // lands. (Regression guard: a throw while selecting the engine combo below used to abort this
         // handler right after the name was set, leaving the mod folder + app id blank and the dialog
@@ -462,6 +474,9 @@ public sealed partial class AddGameDialog : ContentDialog
     /// <summary>The assembled input — call only after a Primary result (validation has passed).</summary>
     public GameInput BuildInput() => new()
     {
+        // Set only when the user PICKED a catalogued game; null when they typed one, which leaves
+        // BuildGameEntry deriving the id from the name as it always has.
+        Id = _pickedManifestId,
         Name = NameBox.Text.Trim(),
         Engine = (EngineBox.SelectedItem as EngineOption)?.Key ?? "custom",
         GameRoot = FolderBox.Text.Trim(),
