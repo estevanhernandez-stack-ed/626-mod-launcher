@@ -5,8 +5,8 @@ namespace ModManager.Tests.Manifest;
 public class EmbeddedGameManifestTests
 {
     [Fact]
-    public void Loads_the_sixteen_game_union()
-        => Assert.Equal(16, EmbeddedGameManifest.Current.Games.Count);
+    public void Loads_the_seventeen_game_union()
+        => Assert.Equal(17, EmbeddedGameManifest.Current.Games.Count);
 
     [Fact]
     public void Elden_ring_resolves_engine_and_nexus_domain()
