@@ -281,6 +281,92 @@ function Collapse-Node {
     $Element.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
 }
 
+function Select-Item {
+    <#.SYNOPSIS Choose one option in a list or a combo popup. A ComboBox item exposes
+      SelectionItemPattern, NOT InvokePattern - Invoke-Node throws "Unsupported Pattern." on it,
+      which reads like the element is wrong when only the verb is.#>
+    param($Element)
+    if ($null -eq $Element) { throw "Select-Item: element is null" }
+    $p = $null
+    if (-not $Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$p)) {
+        throw "Select-Item: element exposes no SelectionItemPattern"
+    }
+    $p.Select()
+}
+
+function Get-ItemsInOrder {
+    <#.SYNOPSIS The first $Count items of a list or combo, in TRUE list order, via
+      ItemContainerPattern. Walking Get-Tree instead reads whichever window virtualization happened
+      to realise: on a 116-entry picker that window started at index 38, so a harness comparing
+      "the first item" against an expectation was comparing against the middle of the list and
+      reporting a confident wrong answer. FindItemByProperty walks the ITEMS SOURCE, so it is
+      immune to what is rendered.#>
+    param($Container, [int]$Count = 25)
+    $p = $null
+    if (-not $Container.TryGetCurrentPattern([System.Windows.Automation.ItemContainerPattern]::Pattern, [ref]$p)) {
+        throw "Get-ItemsInOrder: container exposes no ItemContainerPattern"
+    }
+    $out = New-Object System.Collections.Generic.List[object]
+    $cur = $null
+    for ($i = 0; $i -lt $Count; $i++) {
+        $cur = $p.FindItemByProperty($cur, $null, $null)
+        if ($null -eq $cur) { break }
+        $out.Add($cur)
+    }
+    return $out
+}
+
+function Find-ItemByName {
+    <#.SYNOPSIS One item of a list or combo by name, realised or not — see Get-ItemsInOrder.#>
+    param($Container, [string]$Name)
+    $p = $null
+    if (-not $Container.TryGetCurrentPattern([System.Windows.Automation.ItemContainerPattern]::Pattern, [ref]$p)) {
+        throw "Find-ItemByName: container exposes no ItemContainerPattern"
+    }
+    return $p.FindItemByProperty($null, [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
+}
+
+function Get-ItemCount {
+    <#.SYNOPSIS How many items the container actually holds, not how many are rendered.#>
+    param($Container, [int]$Cap = 2000)
+    $p = $null
+    if (-not $Container.TryGetCurrentPattern([System.Windows.Automation.ItemContainerPattern]::Pattern, [ref]$p)) {
+        throw "Get-ItemCount: container exposes no ItemContainerPattern"
+    }
+    $n = 0; $cur = $null
+    while ($n -lt $Cap) {
+        $cur = $p.FindItemByProperty($cur, $null, $null)
+        if ($null -eq $cur) { break }
+        $n++
+    }
+    return $n
+}
+
+function Get-ItemLabel {
+    <#.SYNOPSIS The text a user reads on a list item, realised or not. An UNREALISED container
+      reports its bound object's ToString() rather than the DisplayMemberPath — on the game picker
+      that is the whole "PopularGame { Id = minecraft, Name = Minecraft, ... }" record. Matching a
+      raw Name against the display string therefore fails for exactly the offscreen items a
+      virtualization-proof harness exists to reach.#>
+    param($Element)
+    $n = ""; try { $n = $Element.Current.Name } catch { return "" }
+    if ($n -match '(?:^|[{,])\s*Name\s*=\s*(.+?)\s*,\s*\w+\s*=') { return $Matches[1] }
+    return $n
+}
+
+function Select-Realized {
+    <#.SYNOPSIS Realize an item if it is offscreen, then select it. Select() on an unrealised
+      container throws a bare "Unrecognized error", which reads like the item is wrong when it is
+      only absent from the visual tree.#>
+    param($Element)
+    if ($null -eq $Element) { throw "Select-Realized: element is null" }
+    $v = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.VirtualizedItemPattern]::Pattern, [ref]$v)) {
+        try { $v.Realize() } catch {}
+    }
+    Select-Item $Element
+}
+
 function Get-Selection {
     <#.SYNOPSIS Reads a ComboBox's current selection WITHOUT opening it. Preferred over driving —
       most verification asks "is the right thing selected", not "what are all the options".#>

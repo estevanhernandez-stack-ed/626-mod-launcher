@@ -2195,3 +2195,18 @@ A newly curated game was invisible in the one surface built for finding curated 
 
 *Known and deliberate: a game sold outside Steam is never ranked as installed, because there is no
 install signal to read. It sits with the uninstalled ones and is found by typing.*
+
+**Automated: `scripts/smoke-picker.ps1`.** Run it against a running build; it cancels the dialog and
+registers nothing. Run 2026-09-04 on the maintainer's machine, 7 of 7: 117 curated games offered
+against the old 18, the list led by Elden Ring, Cyberpunk 2077 and Palworld (his installed three),
+Elden Ring's pick filling the real install folder, Minecraft offered with a `mods` path and an empty
+Steam id, and the folder cleared on the switch to it.
+
+The first cut of that harness read the picker by walking the rendered tree and **passed while proving
+nothing**: virtualization realised 105 of 117 entries and handed back a window starting at list index
+38, so "the first option" was the middle of the list. It reported the ranking broken when the ranking
+was right. Ask a virtualized list through `ItemContainerPattern` — `Get-ItemsInOrder`, `Get-ItemCount`
+and `Find-ItemByName` in `scripts/uia-lib.ps1` exist for this. Two traps sit behind it: an unrealised
+container's `Name` is its bound object's `ToString()`, not the `DisplayMemberPath` text (hence
+`Get-ItemLabel`), and `Select()` on an item of a CLOSED combo throws a bare "Unrecognized error" —
+read the source shut, but open it before selecting.
