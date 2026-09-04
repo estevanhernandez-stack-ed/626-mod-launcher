@@ -195,27 +195,40 @@ external site in the user's browser rather than rendering anything in-app.
 
 ## Screenshots
 
-**The 0.20 set is the starting point** — `docs/store-assets/screenshots-0.20/`, nine shots, all
-1920x1080.
+**Captured 2026-09-04 against a 0.22.0.0 build, in `docs/store-assets/screenshots-0.22/`. Ten shots,
+all verified 1920x1080.** Four were taken fresh; six were carried forward from the 0.20 set because
+the screens are unchanged.
 
-| Shot | State for this submission |
+| Shot | State |
 |---|---|
-| `01-library-home` | unchanged, reuse |
-| `02-game-mods-view` | unchanged, reuse |
-| `03-browse-nexus` | unchanged, reuse — carried from the 0.19 set, still the only signed-in capture |
-| `04-updates-view` | **recapture** — rows now carry a Get update button, so the 0.20 shot no longer matches the build |
-| `05-add-game` | **recapture** — the picker offers 116 games, not 18; the 0.20 shot shows the old list |
-| `06-settings` | **recapture or replace** — Settings has a new section |
-| `07-saves-snapshots` | unchanged, reuse |
-| `08-back-up-everything` | unchanged, reuse |
-| `09-inside-a-backup` | unchanged, reuse |
+| `01-library-home` | carried from 0.20 |
+| `02-game-mods-view` | carried from 0.20 |
+| `03-browse-nexus` | carried from 0.20, which carried it from 0.19 — still the only signed-in capture |
+| `04-updates-view` | **recaptured** — all three rows now carry a Get update button |
+| `05-add-game` | **recaptured** — shows the new picker, headed "Curated game (optional)" |
+| `06-settings` | **recaptured** |
+| `07-saves-snapshots` | carried from 0.20 |
+| `08-back-up-everything` | carried from 0.20 — the new section sits below it, so its framing is unaffected |
+| `09-inside-a-backup` | carried from 0.20 |
+| `10-folders-left-behind` | **new, and the headline of this release** |
 
-**A shot of the Folders left behind section is needed and has not been captured.** No 0.22 screenshot
-directory exists yet. It is the headline feature of the release and there is currently no image of
-it — that is a gap in this submission, not something already handled. Capturing it means the section
-listing real leftover folders, and it is worth deciding beforehand whether that listing names games
-the maintainer would rather not put on a public storefront page (the same conscious-yes call `09` in
-the 0.20 set needed).
+Shot 10 is added to `scripts/capture-store-screenshots.ps1` as a permanent entry, not captured by
+hand. Its Nav scrolls to the section through `ScrollItemPattern` and then **verifies at least one row
+realised** before shooting — the rows are virtualized and a photograph of an empty section would look
+finished while saying the feature found nothing.
+
+### One decision to make before uploading — not a blocker, but it is yours
+
+**Shot 10 names seven games off the maintainer's own machine**: `captain-of-industry`,
+`demonologist`, `marvel-s-spider-man-2-2`, `phasmophobia`, `ready-or-not`, `repo`, `schedule-i`. They
+are folder names for games he removed, and they will sit on a public storefront page.
+
+Nothing there is sensitive and the shot is honest — real data is why it reads as a real feature. But
+it is a small disclosure about one person's library, and the call belongs to him rather than to
+whoever assembles the upload. The same conscious yes that `09` needed in the 0.20 set.
+
+If the answer is no, the section has to be photographed against a throwaway registration rather than
+staged, because a mocked-up listing on a store page is the thing this project does not do.
 
 **The Flyout trap still applies.** The confirm on Remove is a `Flyout`, and the capture script's
 reposition-before-capture step dismisses one — that is exactly how the 0.20 set photographed the

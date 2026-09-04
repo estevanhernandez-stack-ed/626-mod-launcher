@@ -173,6 +173,29 @@ $Shots = @(
                   if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'ArchiveReportHeadline') } 30)) { return $false }
                   Start-Sleep -Seconds 2
                   (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'ArchiveRestorePart.')).Count -gt 0 } }
+    @{ N = 10; Name = '10-folders-left-behind'
+       State = 'Settings, scrolled to Folders left behind.'
+       Watch  = 'THE 0.22 HEADLINE. The heading, the sentence that says nothing has been deleted, and ' +
+                'rows naming a real folder with a real file count and what is actually in it. Three ' +
+                'buttons per row with Remove last and outlined, never filled - filled danger belongs ' +
+                'only inside the confirm. If the section reads "Nothing left over." there is nothing ' +
+                'to photograph on this machine and the shot should be skipped, not staged.'
+       Nav    = { Open-Game 'windrose'
+                  $b = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsButton'
+                  if (-not $b) { return $false }
+                  Invoke-Node $b
+                  if (-not (Wait-For { $null -ne (Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.leftovers') } 15)) { return $false }
+                  # Same shape as shot 8: the group is a StackPanel that reaches the tree because it
+                  # carries a Name as well as an id, and it supports ScrollItemPattern, so ask rather
+                  # than guess an offset.
+                  $g = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.leftovers'
+                  try { $g.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView() } catch { }
+                  Start-Sleep -Milliseconds 1000
+                  $g = Find-ById (Get-Tree (Get-AppRoot)) 'SettingsGroup.leftovers'
+                  # Rows realise a few at a time, so verify at least one arrived. A shot of an empty
+                  # section is worse than no shot: it looks finished and says the feature found nothing.
+                  $g -and -not $g.Current.IsOffscreen -and
+                      (@(Find-AllByIdPrefix (Get-Tree (Get-AppRoot)) 'Leftover.')).Count -gt 0 } }
 )
 
 # --- automated navigation (-Auto) ------------------------------------------------------------
