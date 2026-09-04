@@ -62,4 +62,30 @@ public class SteamGameImportTests
         var expectedModPath = EnginePresets.Presets.TryGetValue("fromsoft", out var p) ? p.ModPath : null;
         Assert.Equal(expectedModPath, input.ModPath);
     }
+
+    [Fact]
+    public void The_plan_carries_the_manifest_id_so_curation_reaches_the_game()
+    {
+        // Without this the registered id is Slugify(the Steam display name), which for a game whose
+        // manifest id differs - "Minecraft: Java Edition" vs "minecraft" - matches nothing and throws
+        // away the engine, mod path, save layout and ban risk that were curated for it.
+        var plan = SteamGameImport.Plan(
+            new SteamImportCandidate(EldenRingAppId, "ELDEN RING", @"C:\games\ELDEN RING"),
+            folderDetectedEngine: "ue4ss");
+
+        Assert.True(plan.Addable);
+        Assert.Equal("elden-ring", plan.Input!.Id);
+    }
+
+    [Fact]
+    public void A_game_the_manifest_does_not_know_carries_no_id_and_falls_back_to_its_name()
+    {
+        // Not an error. BuildGameEntry does Slugify(Id ?? Name), so a null id is exactly today's
+        // behaviour - the change only ever ADDS certainty, never removes the fallback.
+        var plan = SteamGameImport.Plan(
+            new SteamImportCandidate("999999", "Some Unmined Game", @"C:\games\Unmined"),
+            folderDetectedEngine: "bepinex");
+
+        Assert.Null(plan.Input!.Id);
+    }
 }
