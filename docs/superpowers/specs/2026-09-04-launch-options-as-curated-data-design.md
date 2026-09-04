@@ -148,10 +148,13 @@ vanilla anti-cheat toggle, because Seamless brings its own bypass. But it is Eld
 sitting in the view-model, reached via a Seamless-specific service.
 
 Moving the catalog to data does not move that, and **should not**: "is this specific framework fully
-installed" is exactly the kind of judgement the manifest is forbidden from making. The spec's position
-is that `Recommended` stays a data field meaning *"this game needs a launch option in principle"*, and
-suppression stays code. What the move should do is make that boundary explicit in the comment, because
-right now it reads as an accident rather than a rule.
+installed" is exactly the kind of judgement the manifest is forbidden from making.
+
+**Decided 2026-09-04:** `Recommended` stays a data field meaning *"this game needs a launch option in
+principle"*, suppression stays code, and **the two get different names so they cannot be confused**.
+Core answers *the manifest lists a recommended option for this game* — a fact about the game. The App
+answers *and nothing on this machine already satisfies it* — a fact about this install. Same behaviour
+as today; the boundary becomes visible instead of accidental.
 
 ### L5. `safeRoute` and launch options should cross-reference, not merge
 
@@ -214,16 +217,32 @@ App (smoke, untestable headless):
 
 - the anti-cheat toggle on Elden Ring still reads its state, flips, and reverses after the move
 
-## Open questions
+## Questions, answered 2026-09-04
 
-1. **Should `LaunchOption.Detail` be in the manifest at all, or should data carry a key and the binary
-   carry the copy?** Data-carried copy cannot be corrected without a feed push, but binary-carried copy
-   cannot describe a game the binary has never heard of — which is the whole point. Leaning data, with
-   a length/quality check in the build.
-2. **Does `NeedsAttention` belong in Core at all** once suppression is a code-side concern? It may be
-   better expressed as "the manifest says this game has a recommended option" plus a separate App-side
-   "and nothing already satisfies it."
-3. **Should the public surfaces publish anything about launch options?** A "needs a launch option" or
-   "offline route automated" column is tempting and would need the same care the saves column got — a
-   page claiming an automated route the binary cannot take is the failure that column's design memo
-   warned about.
+1. ~~Should `Detail` live in the manifest, or should the binary carry the copy?~~ **In the feed.** The
+   whole point is describing games the binary has never heard of; if the app ships the wording, it can
+   only ever explain games somebody already thought about.
+
+   **The quality bar is comprehension, not length.** Este's framing: *"we just need to make sure the
+   user understands the launch options."* So the build check is a shape check rather than a character
+   count. The Elden Ring copy is the model, and it works because it names three things:
+
+   - **what you gain** — Play launches with mods loaded
+   - **what you lose** — official online multiplayer stops working
+   - **that it is reversible** — said in those words
+
+   An `AntiCheatToggle` whose `Detail` is missing, or does not carry that shape, is flagged in the
+   build summary. A toggle is the most consequential thing this app offers to describe; it does not get
+   to ship a one-line explanation.
+
+2. ~~Does `NeedsAttention` belong in Core?~~ **Yes, renamed.** Split so Core states the manifest fact
+   and the App applies the machine-specific suppression. Written into L4.
+
+3. **Still open, deliberately: should the public surfaces publish anything about launch options?**
+   Decision deferred until we can see how many games actually end up with a toggle.
+
+   *"Needs a launch option"* is a fact about the game and would be honest today. *"Has an automated
+   offline route"* is a claim about what the **launcher** can do — and with one game able to deliver
+   it, publishing that would advertise a one-game feature as a category. That is precisely the failure
+   the saves column was designed against: a page claiming a capability the binary cannot deliver is
+   worse than a page that says nothing. Revisit when the curation exists and the width is visible.

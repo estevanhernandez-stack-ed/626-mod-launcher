@@ -163,8 +163,30 @@ fills the Steam box only when there is an id, and skips the installed-folder mat
 `ByAppId(null)`.
 
 `PopularGames.Build()` also filters on the `popular-games` provenance tag today, so a newly curated
-non-Steam game will not appear in the picker at all until it carries that tag. **Whether that filter
-should stay is an open question**, below.
+non-Steam game would not appear in the picker at all until it carries that tag.
+
+**Decided 2026-09-04: the picker shows every curated game that is INSTALLED on this machine.** Not all
+154, and not just the tagged ones. The tag made sense when the list was hand-written; now it is the
+difference between "we curated your game and you can find it" and "we curated your game and you
+cannot" — and for a non-Steam game the picker is the only route, because no detection finds it.
+
+**This pulls a light form of discovery into scope**, and the boundary is worth stating precisely. It
+does NOT require integrating with each launcher's manifest database (EA Desktop's `InstallData`,
+Epic's `.item` files, GOG's registry keys). It requires answering one question — *is there a folder
+for this game on the disk* — which a probe of each launcher's conventional install root answers:
+
+| Launcher | Conventional root |
+|---|---|
+| EA app | `C:\Program Files\EA Games\<name>` |
+| Epic | `C:\Program Files\Epic Games\<name>` |
+| GOG | `C:\GOG Games\<name>` |
+
+A folder probe is a fraction of real discovery and enough for the picker. Real enumeration — reading
+each launcher's own database so a non-default install location is found — stays out of scope.
+
+**The +Game screen needs a rethink rather than another control.** It already carries a Steam list, a
+manual-setup list, a popular-games box, an AI expander and a batch expander; adding a fourth list to
+it is how a screen becomes unusable. Flagged as its own design pass, not folded in here.
 
 ### C5. The slug join becomes explicit
 
@@ -175,11 +197,14 @@ Steam quick-pick, the popular list, or a future non-Steam picker. `BuildGameEntr
 This is the difference between "curation reaches the game because the user typed the name we expected"
 and "curation reaches the game because we said which game it is."
 
-**The collision case needs a decision, not a default.** `UniqueId` suffixes to `-2` on collision, and a
-suffixed id matches no manifest entry, so the game silently loses its curation. Options: refuse the
-add as a duplicate (there is already an open issue about duplicate registrations), keep the suffix and
-carry the manifest id separately on the entry, or let the suffixed game keep a pointer to its
-canonical id. Flagged rather than chosen.
+**Decided 2026-09-04: a colliding add is REFUSED**, and the launcher says the game is already in the
+library rather than silently making a second one. In practice a collision is a duplicate add, not two
+genuinely different games — and the current behaviour is the worst of both, because the suffixed id
+matches no manifest entry and the game quietly loses every curated setting with nobody told.
+
+This is the same fix as the already-open duplicate-registration issue, so the two land together:
+`LauncherService.AddGame` has no already-registered guard, which is how `marvel-s-spider-man-2-2`
+exists on the rig.
 
 ## Explicitly out of scope
 
@@ -238,13 +263,14 @@ App (smoke, since it is untestable headless):
 - add a non-Steam game by hand with an id matching a curated entry; its engine, mod path, ban risk and
   safe route come from the manifest
 
-## Open questions
+## Questions, answered 2026-09-04
 
-1. **Should `PopularGames` keep filtering on the `popular-games` provenance tag?** It reproduces a
-   legacy array's membership. A curated non-Steam game will not appear in the picker without that tag,
-   which makes C1's value hard to reach. Widening it is a separate behaviour change with its own
-   ordering and size questions.
-2. **What happens on a slug collision at add time** — refuse, suffix-and-lose-curation, or suffix-and-
-   keep-a-pointer. Interacts with the existing duplicate-registration issue.
-3. **Is `EaContentId` the right EA key**, or is the store's own numeric offer id more stable across
-   yearly sports releases? Only one EA game to look at so far, which is not enough to generalise from.
+1. ~~Should `PopularGames` keep filtering on the provenance tag?~~ **No — show every curated game that
+   is installed on this machine.** Written into C4, along with the folder-probe scope boundary it
+   implies and the note that +Game needs its own design pass.
+2. ~~What happens on a slug collision at add time?~~ **Refuse the add**, saying the game is already in
+   the library. Written into C5; lands with the existing duplicate-registration issue.
+3. **Still open: is `EaContentId` the right EA key?** One EA game observed
+   (`Origin.SFT.50.0001619`), and sports titles ship yearly, so there is no way yet to tell whether
+   that id is stable across releases or whether the store's offer id is better. **Dropped from phase
+   one** rather than answered — nothing keys on it, so waiting costs nothing.
