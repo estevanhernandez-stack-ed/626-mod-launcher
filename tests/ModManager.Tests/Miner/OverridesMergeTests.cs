@@ -5,7 +5,7 @@ namespace ModManager.Tests.Miner;
 
 public class OverridesMergeTests
 {
-    private static GameManifest Backbone(params (string id, string steamId, string? engine)[] games) => new()
+    private static GameManifest Backbone(params (string id, string? steamId, string? engine)[] games) => new()
     {
         Games = games.Select(g => new GameManifestEntry
         {
@@ -76,5 +76,53 @@ public class OverridesMergeTests
         Assert.Equal(3, e.Featured);
         Assert.Equal("bethesda", e.Engine);   // untouched
         Assert.Equal("Data", e.ModPath);       // untouched
+    }
+
+    [Fact]
+    public void An_override_with_no_Steam_id_adds_an_entry_keyed_by_its_slug()
+    {
+        // The point of the whole change. The launcher resolves a registered game to its manifest entry
+        // by slug (Scanner.cs), so an entry added this way is picked up with no launcher change at all.
+        var backbone = Backbone(("skyrim", "72850", null));
+
+        var merged = OverridesMerge.Apply(backbone, new[]
+        {
+            new OverrideEntry { Id = "some-ea-game", Name = "Some EA Game", Engine = "custom", ModPath = "Mods" },
+        });
+
+        var added = Assert.Single(merged.Games, g => g.Id == "some-ea-game");
+        Assert.Equal("custom", added.Engine);
+        Assert.Equal("Mods", added.ModPath);
+        Assert.Null(added.Stores.SteamAppId);
+        Assert.Contains("curated", added.Provenance.Sources);
+    }
+
+    [Fact]
+    public void An_override_with_no_Steam_id_updates_an_existing_entry_with_the_same_slug()
+    {
+        var backbone = Backbone(("some-ea-game", null, null));
+
+        var merged = OverridesMerge.Apply(backbone, new[]
+        {
+            new OverrideEntry { Id = "some-ea-game", Engine = "bepinex" },
+        });
+
+        Assert.Equal("bepinex", Assert.Single(merged.Games).Engine);   // updated, not duplicated
+    }
+
+    [Fact]
+    public void The_Steam_id_still_wins_over_the_slug_when_both_could_match()
+    {
+        // Every one of the 149 existing override files has a Steam id and must keep matching by it.
+        // Here the slug points at a DIFFERENT game than the Steam id does; the Steam id is correct.
+        var backbone = Backbone(("skyrim", "72850", null), ("some-other-game", "999", null));
+
+        var merged = OverridesMerge.Apply(backbone, new[]
+        {
+            new OverrideEntry { Id = "some-other-game", SteamAppId = "72850", Engine = "bethesda" },
+        });
+
+        Assert.Equal("bethesda", merged.Games.Single(g => g.Id == "skyrim").Engine);
+        Assert.Null(merged.Games.Single(g => g.Id == "some-other-game").Engine);
     }
 }

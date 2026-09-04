@@ -3,10 +3,10 @@ using ModManager.Core.Manifest;
 
 namespace ManifestMiner;
 
-/// <summary>Pure: apply curated overrides onto the (backbone + enriched) manifest, keyed by Steam id.
-/// Overrides WIN — any field the override specifies replaces the mined value; unspecified fields are
-/// left intact. An override whose Steam id isn't present adds a new entry. Matched/added entries gain
-/// the "curated" provenance source + status.</summary>
+/// <summary>Pure: apply curated overrides onto the (backbone + enriched) manifest, keyed by Steam id
+/// where there is one and by slug otherwise. Overrides WIN — any field the override specifies replaces
+/// the mined value; unspecified fields are left intact. An override that matches nothing adds a new
+/// entry. Matched/added entries gain the "curated" provenance source + status.</summary>
 public static class OverridesMerge
 {
     public static GameManifest Apply(GameManifest manifest, IReadOnlyList<OverrideEntry> overrides)
@@ -26,20 +26,27 @@ public static class OverridesMerge
 
         foreach (var ov in overrides)
         {
-            if (string.IsNullOrWhiteSpace(ov.SteamAppId)) continue;
+            // Steam id first, so all 149 existing files keep matching exactly as they did. Slug second,
+            // which is the only key a game bought outside Steam has.
+            string? existingId = null;
+            if (!string.IsNullOrWhiteSpace(ov.SteamAppId) && idBySteam.TryGetValue(ov.SteamAppId!, out var bySteam))
+                existingId = bySteam;
+            else if (OverridesValidate.KeyOf(ov) is { Length: > 0 } slug && byId.ContainsKey(slug))
+                existingId = slug;
 
-            if (idBySteam.TryGetValue(ov.SteamAppId, out var existingId))
+            if (existingId is not null)
             {
                 byId[existingId] = ApplyTo(byId[existingId], ov);
+                continue;
             }
-            else
-            {
-                var id = !string.IsNullOrWhiteSpace(ov.Id) ? ov.Id! : EnginePresets.Slugify(ov.Name);
-                if (byId.ContainsKey(id)) id = $"{id}-{ov.SteamAppId}"; // avoid slug collision
-                byId[id] = NewFrom(id, ov);
-                order.Add(id);
-                idBySteam[ov.SteamAppId] = id;
-            }
+
+            var id = OverridesValidate.KeyOf(ov);
+            if (id.Length == 0) continue;              // unaddressable; OverridesValidate reports it
+            if (byId.ContainsKey(id) && !string.IsNullOrWhiteSpace(ov.SteamAppId))
+                id = $"{id}-{ov.SteamAppId}";          // slug taken by a different game
+            byId[id] = NewFrom(id, ov);
+            order.Add(id);
+            if (!string.IsNullOrWhiteSpace(ov.SteamAppId)) idBySteam[ov.SteamAppId!] = id;
         }
 
         return manifest with { Games = order.Select(id => byId[id]).ToList() };
