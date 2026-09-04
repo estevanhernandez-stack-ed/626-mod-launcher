@@ -76,7 +76,15 @@ public sealed partial class AddGameDialog : ContentDialog
         // No default selection — a wrong default reads as "auto-detected" when it isn't.
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
 
-        PopularGamesBox.ItemsSource = PopularGames.All;
+        // Everything curated is offered, but the games on THIS machine come first — the list is 116
+        // entries and a user is looking for one of the handful they own. Ranking rather than filtering
+        // is deliberate: a game we cannot detect (anything not sold on Steam, which has no install
+        // signal we can read) is merely lower down instead of absent, so a detection miss costs a
+        // scroll rather than the capability.
+        var installedAppIds = _installedGames.Select(g => g.AppId).ToHashSet(StringComparer.Ordinal);
+        PopularGamesBox.ItemsSource = PopularGames.All
+            .OrderByDescending(g => g.SteamAppId is not null && installedAppIds.Contains(g.SteamAppId))
+            .ToList();
 
         // Save-root enum values for the picker. Set in code, not XAML (literal-bool/SelectedItem-in-markup
         // parse gotcha on this WinUI build).
