@@ -90,6 +90,11 @@ public static class ManifestSources
     public const string KnownEngines = "known-engines";
     public const string NexusDomains = "nexus-domains";
     public const string PopularGames = "popular-games";
+
+    /// <summary>An entry earns this when it's curated purely for anti-cheat/ban-risk safety — no
+    /// engine, no Nexus domain, nothing else the facades read — so that curation still survives the
+    /// miner's publish filter instead of being dropped as skeletal.</summary>
+    public const string BanRiskCuration = "ban-risk";
 }
 
 /// <summary>Serializer options for the manifest: camelCase on disk (project rule), indented,

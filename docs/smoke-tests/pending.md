@@ -2044,3 +2044,33 @@ causes**, or the safety net becomes the trap.
 
 *Re-run when the restore path changes. The guard's `verify` exits non-zero on ANY delta, including a
 legitimate addition, so read the named differences rather than the exit code.*
+
+---
+
+## An override can curate a game without knowing its Steam id
+
+Before phase 1, a curated override was refused unless it carried a Steam app id — `OverridesLoader`
+would not load it and `OverridesMerge` would not merge it. Overrides can now key on their slug instead.
+
+**What was run.** `overrides/ea-sports-college-football-27.json` was written with no `steamAppId` —
+only an `id`, plus `banRisk: high` and `safeRoute: offline`. The miner resolved it **by slug** onto the
+entry Ludusavi had already mined, and applied both fields to a game that had neither.
+
+**The shipped file since gained its real Steam id** (`4032350`). Recording a fact known to be true beats
+preserving a demonstration, and the entry now resolves by the stronger key rather than by a slug an
+upstream rename could drift. So re-running this case against the shipped file exercises the SteamAppId
+path, not the slug path — to exercise slug keying, remove the id from a local copy first.
+
+**What this did NOT prove, and the checklist should not pretend otherwise.** EA SPORTS College Football
+27 turns out to be sold on Steam (app id `4032350`), so the mined backbone already had a row for it.
+It was chosen as a non-Steam example and it is not one — the owner installs it through the EA app,
+which is a different thing from the game being absent from Steam.
+
+**So a genuinely non-Steam game is still unproven.** The next run of this case should use a game with no
+Steam listing at all — an Epic or GOG exclusive, or an EA title that never shipped on Steam — and check
+that the entry lands with `stores.steamAppId` null rather than merging onto a mined row.
+
+**Verifying the gate at the same time.** Running the miner against the real overrides directory should
+FAIL while two files there both claim Steam app id `20920` (the two Witcher 2 overrides). That refusal
+is the duplicate-key gate working, not a broken run. To verify an override merges, run against a copy of
+the directory with one of those two removed.

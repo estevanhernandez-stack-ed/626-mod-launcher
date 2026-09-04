@@ -49,6 +49,10 @@ CLAUDE.md
 # vibe-glow campaign evidence (screenshots) — findings registers are committed, evidence is not
 docs/ui-evidence/
 
+# Repo owner's own working notes — swept in by an earlier git add -A while empty; never meant to be
+# tracked. Untracked without touching its on-disk content.
+docs/reviews/random_gemini_notes
+
 # Smoke-harness output — screenshots + results.json are per-run evidence, not source.
 # Broad on purpose: today alone produced artifacts/smoke, artifacts/banrisk and artifacts/mhw.
 artifacts/

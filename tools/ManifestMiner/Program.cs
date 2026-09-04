@@ -15,20 +15,20 @@ if (GetArg(args, "--sign-file") is { } signFilePath)
     {
         Console.Error.WriteLine($"--sign-file: file not found: {signFilePath}");
         Environment.Exit(1);
-        return;
+        return 1;
     }
     var signKeyPem = Environment.GetEnvironmentVariable("MANIFEST_SIGNING_KEY");
     if (string.IsNullOrWhiteSpace(signKeyPem))
     {
         Console.Error.WriteLine("--sign-file requires MANIFEST_SIGNING_KEY (PKCS#8 PEM) in the environment.");
         Environment.Exit(1);
-        return;
+        return 1;
     }
     var fileBytes = File.ReadAllBytes(signFilePath);
     var fileSig = ManifestSigner.Sign(fileBytes, signKeyPem);
     File.WriteAllBytes(signFilePath + ".sig", fileSig);
     Console.WriteLine($"Signed {signFilePath} -> {signFilePath}.sig ({fileSig.Length} bytes)");
-    return;
+    return 0;
 }
 
 const string LudusaviUrl = "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml";
@@ -130,8 +130,20 @@ if (args.Contains("--with-overrides"))
     var overridesDir = GetArg(args, "--overrides-dir")
         ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "overrides");
     var overrides = OverridesLoader.Load(overridesDir);
-    var curated = OverridesMerge.Apply(current, overrides);
-    var validatedCurated = ManifestValidator.Validate(curated, EnginePresets.Presets.Keys.ToHashSet());
+
+    // Gate BEFORE merging. A duplicate key means one curated file silently loses, and the merge is
+    // where that becomes invisible - so this runs first and stops the run rather than reporting after
+    // the damage is baked into the draft.
+    var problems = OverridesValidate.Check(overrides);
+    if (problems.Count > 0)
+    {
+        Console.Error.WriteLine($"Overrides: {problems.Count} problem(s) - refusing to merge.");
+        foreach (var p in problems) Console.Error.WriteLine($"  {p.Message}");
+        return 1;
+    }
+
+    var mergeResult = OverridesMerge.ApplyReporting(current, overrides);
+    var validatedCurated = ManifestValidator.Validate(mergeResult.Manifest, EnginePresets.Presets.Keys.ToHashSet());
     current = validatedCurated.Manifest;
 
     File.WriteAllText(Path.Combine(outDir, "manifest-draft.json"),
@@ -139,7 +151,13 @@ if (args.Contains("--with-overrides"))
 
     var curatedCount = current.Games.Count(g => g.Provenance.Sources.Contains("curated"));
     var withEngine = current.Games.Count(g => g.Engine is not null);
-    Console.WriteLine($"Overrides: {overrides.Count} loaded, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
+    Console.WriteLine(
+        $"Overrides: {overrides.Count} loaded, {mergeResult.MatchedIds.Count} matched, "
+        + $"{mergeResult.AddedIds.Count} added, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
+    // A curator seeing a game they know is already mined show up here has slug drift: the override's
+    // slug didn't match the mined id, so it added a near-duplicate row instead of updating it.
+    if (mergeResult.AddedIds.Count > 0)
+        Console.WriteLine($"  added: {string.Join(", ", mergeResult.AddedIds)}");
 }
 
 // --report-gaps: classify the most-enriched manifest into engine-curated / nexus-only (engine-upgrade
@@ -186,13 +204,15 @@ if (args.Contains("--sign"))
     {
         Console.Error.WriteLine("--sign requires MANIFEST_SIGNING_KEY (PKCS#8 PEM) in the environment.");
         Environment.Exit(1);
-        return;
+        return 1;
     }
 
     var sig = ManifestSigner.Sign(bytes, keyPem);          // signs the EXACT published bytes
     File.WriteAllBytes(manifestOut + ".sig", sig);
     Console.WriteLine($"Signed {finalManifest.Games.Count} useful games -> games-manifest.json (+ .sig, {sig.Length} bytes)");
 }
+
+return 0;
 
 static string? GetArg(string[] args, string name)
 {
