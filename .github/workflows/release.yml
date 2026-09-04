@@ -55,7 +55,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # vpk reads tag history when computing deltas
+          fetch-depth: 0     # vpk reads tag history when computing deltas
+          submodules: true   # external/626-mod-plugins carries the Nexus sources the App compiles in
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
