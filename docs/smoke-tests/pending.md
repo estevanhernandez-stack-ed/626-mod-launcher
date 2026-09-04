@@ -2044,3 +2044,23 @@ causes**, or the safety net becomes the trap.
 
 *Re-run when the restore path changes. The guard's `verify` exits non-zero on ANY delta, including a
 legitimate addition, so read the named differences rather than the exit code.*
+
+---
+
+## A game that is not on Steam can be curated
+
+The first game in the feed with no Steam app id. Before this, `OverridesLoader` refused to load it and
+`OverridesMerge` refused to merge it — so an EA-app, Epic or GOG game could not be described at all,
+not even wrongly.
+
+1. Add the game by hand in the launcher, naming it so its slug matches the manifest entry —
+   for `ea-sports-college-football-27`, type **EA SPORTS College Football 27**.
+2. Confirm the game picks up its curated facts: the ban-risk chip appears, and the safe-route sentence
+   is the one from the manifest rather than a generic warning.
+3. Confirm it offers **no** mod folder and **no** anti-cheat toggle. Both are correct: the entry
+   deliberately declares no engine, and the launcher's toggle is for Easy Anti-Cheat's bootstrapper
+   swap, which is not what EA's kernel-level anti-cheat is.
+
+**The slug join is the fragile part of this case.** A registered game's id is `Slugify(whatever you
+typed)`, so a typo means the curation silently does not apply and the game looks uncurated. Until the
+add path sets the id explicitly (spec C5), check the id in `games.json` if the facts do not appear.
