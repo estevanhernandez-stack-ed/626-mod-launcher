@@ -30,7 +30,7 @@ public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
 }
 
 
-/// <summary>One row in Settings → Leftover mod folders. Detail pre-formats the count, size and what
+/// <summary>One row in Settings → Folders left behind. Detail pre-formats the count, size and what
 /// is actually inside, so the template binds plain strings. Names come off the FOLDER NAME, which is
 /// a stable key, never off display copy.</summary>
 public sealed record LeftoverRow(string Path, string FolderName, string Detail)
@@ -66,11 +66,17 @@ public sealed partial class SettingsDialog : ContentDialog
     /// still reading: <c>Directory.Delete</c> races <c>File.Copy</c> and the user ends up with a
     /// partial copy AND a deleted source — the one way this section can lose data outright, sitting
     /// right on the "save a copy, then remove" flow it invites.</summary>
-    private bool _leftoverBusy;
+    /// <para>STATIC, and that is the point. As an instance field the guard died with the dialog: close
+    /// Settings mid-copy, reopen it, and a fresh instance starts at false, so Remove on the folder
+    /// still being copied passed every check — Directory.Exists true, StillLeftoverAsync true — and
+    /// raced it anyway. That path was MORE reachable than the one the flag was added for, because the
+    /// "Copying…" line went with the closed dialog, so the reopened Settings gave no signal at all.
+    /// One Settings dialog exists at a time in a single-window app, so static is the right scope.</para>
+    private static bool _leftoverBusy;
 
     /// <summary>What <see cref="_leftoverBusy"/> is busy with, so the refusal names it instead of
-    /// guessing.</summary>
-    private string _leftoverBusyWhat = "";
+    /// guessing. Static for the same reason the flag is.</summary>
+    private static string _leftoverBusyWhat = "";
 
     /// <summary>True when the user applied a change that needs to flow back to the main shell
     /// (avatar swap → icon refresh, theme add → dropdown refresh). Nexus + backdrop changes flow
