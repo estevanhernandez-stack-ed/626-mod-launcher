@@ -2074,3 +2074,36 @@ that the entry lands with `stores.steamAppId` null rather than merging onto a mi
 FAIL while two files there both claim Steam app id `20920` (the two Witcher 2 overrides). That refusal
 is the duplicate-key gate working, not a broken run. To verify an override merges, run against a copy of
 the directory with one of those two removed.
+
+---
+
+## Picking a curated game actually gets you its curation
+
+A registered game finds its curated engine, mod path, save layout and ban risk by **id**. That id used
+to be `Slugify(whatever display name was in the box)`, and it matched the manifest only when the
+curator happened to name the entry the same way. Measured against the real feed, **two of five sampled
+entries missed** — including Minecraft, curated specifically to prove non-Steam games work.
+
+1. **The case that used to fail.** Add Minecraft. Its manifest entry is `minecraft` while its display
+   name is `Minecraft: Java Edition`, which slugifies to `minecraft-java-edition`. Check `games.json`:
+   the registered id must be **`minecraft`**, and the game must arrive with engine `minecraft`, mod
+   path `mods`, and its save layout — not as an uncurated `custom` game.
+2. **Typing still works the old way.** Add a game by typing a name with no pick. Its id is still
+   derived from the name; nothing looks it up and nothing fails. This path is unchanged on purpose —
+   there is nothing better than the name to derive an id from.
+3. **A game the manifest has never heard of.** Quick-add any installed Steam game with no manifest
+   entry. It registers with a name-derived id and no curation, exactly as before. A null lookup is a
+   normal answer, not an error.
+4. **A repeat add still switches rather than duplicating.** Add a game already in the library. It must
+   switch to the existing one — `Registry.FindRegistered` handles this by game root and Steam app id,
+   and it is what stopped `windrose-2` happening. Confirm no second row appears.
+5. **A pick must not follow you onto a different game.** Pick a curated game from the popular list,
+   then click **Set up** on an unrelated Steam row and add that. The second game must NOT register
+   under the first one's id — check `games.json`. This was a real defect during implementation: the
+   picked id survived the Set-up handler, so the second game joined the first one's manifest entry and
+   `Scanner` fed it the wrong mod path on every scan afterwards. Setting up the *same* game's row after
+   applying a profile is legitimate and must still keep that profile's fields.
+
+**The fossil to expect on an existing machine.** A game added before this change keeps its old id, so
+`marvel-s-spider-man-2-2` on the rig still matches no manifest entry and stays uncurated. Nothing
+migrates it — re-adding is the fix, and that is a deliberate non-goal here rather than an oversight.
