@@ -2052,9 +2052,14 @@ legitimate addition, so read the named differences rather than the exit code.*
 Before phase 1, a curated override was refused unless it carried a Steam app id — `OverridesLoader`
 would not load it and `OverridesMerge` would not merge it. Overrides can now key on their slug instead.
 
-**What was run.** `overrides/ea-sports-college-football-27.json` carries no `steamAppId`, only an `id`,
-plus `banRisk: high` and `safeRoute: offline`. The miner resolved it **by slug** onto the entry Ludusavi
-had already mined, and applied both fields to a game that had neither.
+**What was run.** `overrides/ea-sports-college-football-27.json` was written with no `steamAppId` —
+only an `id`, plus `banRisk: high` and `safeRoute: offline`. The miner resolved it **by slug** onto the
+entry Ludusavi had already mined, and applied both fields to a game that had neither.
+
+**The shipped file since gained its real Steam id** (`4032350`). Recording a fact known to be true beats
+preserving a demonstration, and the entry now resolves by the stronger key rather than by a slug an
+upstream rename could drift. So re-running this case against the shipped file exercises the SteamAppId
+path, not the slug path — to exercise slug keying, remove the id from a local copy first.
 
 **What this did NOT prove, and the checklist should not pretend otherwise.** EA SPORTS College Football
 27 turns out to be sold on Steam (app id `4032350`), so the mined backbone already had a row for it.
