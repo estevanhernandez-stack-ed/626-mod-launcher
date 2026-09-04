@@ -55,6 +55,24 @@ public class PublishManifestTests
     }
 
     [Fact]
+    public void Ban_risk_only_entry_earns_a_tag_and_is_kept()
+    {
+        // Curated purely for anti-cheat/ban-risk safety - no engine, no Nexus domain, nothing else the
+        // facades read. Before this tag existed, this exact shape was dropped as skeletal even though
+        // it's the safety curation this branch enables reaching the signed feed.
+        var e = new GameManifestEntry
+        {
+            Id = "ban-risk-only", Name = "Ban Risk Only",
+            BanRisk = "high", SafeRoute = "offline-only",
+            Stores = new StoreIds { SteamAppId = "1" },
+            Provenance = new ManifestProvenance { Sources = new[] { "curated" }, Status = "curated" },
+        };
+
+        var result = PublishManifest.ForPublish(Wrap(e)).Games.Single();
+        Assert.Contains(ManifestSources.BanRiskCuration, result.Provenance.Sources);
+    }
+
+    [Fact]
     public void Mix_keeps_only_useful_entries()
     {
         var result = PublishManifest.ForPublish(Wrap(
