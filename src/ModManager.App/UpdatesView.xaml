@@ -92,6 +92,7 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                     <TextBlock Text="{x:Bind ModName}"
@@ -105,6 +106,12 @@
                                                 <TextBlock Grid.Column="1" Text="{x:Bind VersionText}"
                                                            FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                                            VerticalAlignment="Center" />
+                                                <Button Grid.Column="2" Content="Get update"
+                                                        AutomationProperties.Name="{x:Bind GetAutomationName}"
+                                                        Visibility="{x:Bind GetVisibility}"
+                                                        Tag="{x:Bind ModPageUrl}"
+                                                        Click="OnGetUpdate"
+                                                        VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>

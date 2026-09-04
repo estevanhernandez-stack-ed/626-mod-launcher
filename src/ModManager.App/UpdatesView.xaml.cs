@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ModManager.Core;
+using ModManager.Core.Nexus;
 
 namespace ModManager.App;
 
@@ -70,6 +71,17 @@ public sealed class UpdateRow
             return $"{Pending.InstalledVersion} installed · Nexus lists {Pending.LatestVersion}";
         }
     }
+
+    /// <summary>The mod's page, or null when this row cannot name a mod on Nexus. A row can be built
+    /// from the name index or from a source that is not Nexus, and those have nothing to link to.</summary>
+    public string? ModPageUrl => NexusModPage.Url(Pending.NexusDomain, Pending.NexusModId);
+
+    /// <summary>Hidden, not greyed. A greyed button invites a hover looking for a tooltip explaining
+    /// the refusal, and there is nothing useful to say beyond "we do not know which mod this is" —
+    /// which the row already implies by having no version arrow.</summary>
+    public Visibility GetVisibility => ModPageUrl is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public string GetAutomationName => $"Get {ModName}";
 }
 
 /// <summary>One game's block in the Updates directory: the game's name, how many of its mods are
@@ -189,5 +201,13 @@ public sealed partial class UpdatesView : UserControl
     {
         if (sender is FrameworkElement { Tag: UpdateGameGroup group } && group.GameId.Length > 0)
             OpenGameRequested?.Invoke(this, group.GameId);
+    }
+
+    // Tag carries the resolved url rather than the row, so a row that could not build one cannot
+    // reach here at all — the button it would have been on is collapsed.
+    private void OnGetUpdate(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is string url && !string.IsNullOrEmpty(url))
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
     }
 }
