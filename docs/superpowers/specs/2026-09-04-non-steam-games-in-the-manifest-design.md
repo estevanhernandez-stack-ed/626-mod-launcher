@@ -1,6 +1,8 @@
 # Games that are not on Steam
 
 **Date:** 2026-09-04 · **Status:** design, not yet planned · **Repos:** `626-game-manifest`, `626-mod-launcher`
+**Sibling:** `2026-09-04-launch-options-as-curated-data-design.md` — the same Steam-only coupling in the
+launch path. That spec's L3 depends on this one's C5 (the explicit slug join).
 
 ## The problem, stated exactly
 
@@ -188,6 +190,10 @@ This spec makes such games *curateable*; it does not make them *discoverable*.
 That split is deliberate and it is most of the value. Because the launcher joins by slug, a manually
 added non-Steam game picks up its curated engine, mod path, ban risk and safe route the moment the
 data exists. Quick-pick is a convenience on top.
+
+**Launch options and the anti-cheat toggle.** `LaunchOptions.Catalog` is a hardcoded switch on Steam
+app id with a single entry, so it has this same disease in a second place — a curated non-Steam game
+still could not be offered an offline route. That is the sibling spec, not this one.
 
 **Frostbite, and College Football specifically.** Nothing here makes the launcher able to manage
 Frostbite mods — those are `.fbmod` files applied through FrostyModManager, and the engine list has no
