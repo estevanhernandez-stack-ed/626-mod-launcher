@@ -198,6 +198,20 @@ each launcher's own database so a non-default install location is found — stay
 manual-setup list, a popular-games box, an AI expander and a batch expander; adding a fourth list to
 it is how a screen becomes unusable. Flagged as its own design pass, not folded in here.
 
+**Amended 2026-09-04, after trying to build it.** C4 originally said the picker shows every curated game
+*installed* on this machine. Applied literally that hides Minecraft — the entry curated specifically to
+prove non-Steam games work.
+
+Filtering by installed requires detecting installed. Steam is easy (`appmanifest_*.acf`). Everything
+else has **no signal**: the manifest has no field naming where a game installs, and `saveDirHint` names
+where it *saves*. Minecraft's game root is `%APPDATA%\.minecraft`, under no launcher's install root, so
+a folder probe of the conventional roots would not find it either.
+
+So: **every curated game is offered, and the ones we can see installed are ranked to the top.** Ranking
+rather than filtering means a game we fail to detect is lower in the list rather than absent — a
+detection miss costs a scroll instead of a capability. An install-hint field in the manifest stays a
+later option rather than a prerequisite for this.
+
 ### C5. The slug join becomes explicit
 
 `GameInput` gains an `Id`, and `AddGameDialog` sets it when the user picks a catalogued game — from the

@@ -20,9 +20,9 @@ That's it. No .NET, no runtime, no Visual C++ — everything it needs ships in t
 
 ## First time in
 
-1. Click **+ Game**. Either pick a popular game from the quick-pick (it pre-fills the engine,
-   mod folder, and Steam App ID) or enter them yourself, then point it at the game's install
-   folder.
+1. Click **+ Game**. Either pick a game from the quick-pick (it pre-fills the engine and mod
+   folder, plus the Steam App ID when the game has one) or enter them yourself, then point it
+   at the game's install folder.
 2. Your mods show up as a list — real names, descriptions, and author credit where we can find it.
 3. **Toggle a mod off** and its files move to a holding folder. **Toggle it back on** and they
    return. Nothing is ever deleted.

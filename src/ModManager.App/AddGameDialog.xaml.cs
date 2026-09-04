@@ -34,6 +34,12 @@ public sealed partial class AddGameDialog : ContentDialog
     /// <c>BuildGameEntry</c> deriving the id from the name exactly as before.</para></summary>
     private string? _pickedManifestId;
 
+    // What a popular-games pick put in the folder box, so a LATER pick can take back its own fill
+    // without touching a path the user browsed to or typed. Only OnPopularSelected fills the folder
+    // speculatively; every other writer of FolderBox.Text clears this so a coincidental string match
+    // can never make one of their paths look like ours.
+    private string? _folderFromPick;
+
     // Approved batch rows, populated by OnApplyBatch and consumed by MainWindow's register loop on
     // Primary. Empty in the single-game flow.
     private readonly List<(GameInput Input, string? ResolvedSaveDir)> _batchApproved = new();
@@ -76,7 +82,15 @@ public sealed partial class AddGameDialog : ContentDialog
         // No default selection — a wrong default reads as "auto-detected" when it isn't.
         EngineBox.ItemsSource = EnginePresets.Presets.Select(kv => new EngineOption(kv.Key, kv.Value.Label)).ToList();
 
-        PopularGamesBox.ItemsSource = PopularGames.All;
+        // Everything curated is offered, but the games on THIS machine come first — however many
+        // entries the manifest carries, a user is looking for one of the handful they own. Ranking
+        // rather than filtering is deliberate: a game we cannot detect (anything not sold on Steam,
+        // which has no install signal we can read) is merely lower down instead of absent, so a
+        // detection miss costs a scroll rather than the capability.
+        var installedAppIds = _installedGames.Select(g => g.AppId).ToHashSet(StringComparer.Ordinal);
+        PopularGamesBox.ItemsSource = PopularGames.All
+            .OrderByDescending(g => g.SteamAppId is not null && installedAppIds.Contains(g.SteamAppId))
+            .ToList();
 
         // Save-root enum values for the picker. Set in code, not XAML (literal-bool/SelectedItem-in-markup
         // parse gotcha on this WinUI build).
@@ -159,6 +173,7 @@ public sealed partial class AddGameDialog : ContentDialog
         SaveSubPathBox.Text = d.SaveSubPath ?? "";
         RequiredLauncherBox.Text = d.RequiredLauncher ?? "";
         if (!string.IsNullOrEmpty(resolved.GameRoot)) FolderBox.Text = resolved.GameRoot; // resolved install path
+        _folderFromPick = null;
 
         // Show the pass/warn/missing checks inline.
         var summary = string.Join("   ", resolved.Checks.Select(c =>
@@ -294,12 +309,20 @@ public sealed partial class AddGameDialog : ContentDialog
         // looking dead. There is no app-level unhandled-exception sink, so the throw was swallowed.)
         NameBox.Text = g.Name;
         ModPathBox.Text = g.ModPath;
-        SteamBox.Text = g.SteamAppId;
+        SteamBox.Text = g.SteamAppId ?? "";   // null for a non-Steam pick
 
         // We already parsed this game's install folder from Steam — fill it so the pick is one step from
         // Add instead of making the user Browse to a path we know. Editable; user can still change it.
         if (InstalledGameMatch.ByAppId(_installedGames, g.SteamAppId) is { } installed)
+        {
             FolderBox.Text = installed.InstallDir;
+            _folderFromPick = installed.InstallDir;
+        }
+        else if (_folderFromPick is { } prior && FolderBox.Text == prior)
+        {
+            FolderBox.Text = "";     // a pick filled it; a pick takes it back
+            _folderFromPick = null;
+        }
 
         // Select the matching engine LAST, and deferred off this SelectionChanged tick. Mutating one
         // combo's selection from inside another combo's SelectionChanged is exactly the re-entrancy
@@ -352,6 +375,7 @@ public sealed partial class AddGameDialog : ContentDialog
 
         NameBox.Text = row.Name;
         FolderBox.Text = row.InstallDir;
+        _folderFromPick = null;
         SteamBox.Text = row.AppId;
         ApplyDetectedEngine();   // runs the standard auto-detect; these rows are here precisely because detection missed, so it reliably leaves the placeholder for the user to pick
         // The manual form is below this list in the scroll, so the pre-fill lands off-screen and reads
@@ -474,6 +498,7 @@ public sealed partial class AddGameDialog : ContentDialog
         var folder = await picker.PickSingleFolderAsync();
         if (folder is null) return;
         FolderBox.Text = folder.Path;
+        _folderFromPick = null;
         if (string.IsNullOrWhiteSpace(NameBox.Text)) NameBox.Text = folder.Name;
         ApplyDetectedEngine();
     }

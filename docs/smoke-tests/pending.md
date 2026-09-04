@@ -2169,3 +2169,29 @@ entries missed** — including Minecraft, curated specifically to prove non-Stea
 **The fossil to expect on an existing machine.** A game added before this change keeps its old id, so
 `marvel-s-spider-man-2-2` on the rig still matches no manifest entry and stays uncurated. Nothing
 migrates it — re-adding is the fix, and that is a deliberate non-goal here rather than an oversight.
+
+---
+
+## The picker offers curated games, with yours first
+
+The Add Game quick-pick used to list only entries carrying a legacy `popular-games` tag — 18 of 156.
+A newly curated game was invisible in the one surface built for finding curated games.
+
+1. **Open + Game and look at the picker.** It should list every curated game the current manifest
+   can represent — not just the ones the old `popular-games` tag carried — with the games installed
+   on this machine at the top and the featured ones leading those. On a fresh install, before the
+   first feed fetch, that's the embedded snapshot's 11 entries; once the feed lands it's however many
+   the feed carries. The point is the cap is gone, not the count.
+2. **Minecraft must be in it.** It is curated, has no Steam app id, and was previously impossible for
+   this list to represent — the old projection forced a non-null Steam id. Pick it and confirm the
+   engine fills in as `minecraft` and the mod path as `mods`. The folder still has to be browsed to
+   `%APPDATA%\.minecraft`, because nothing tells the launcher where Minecraft installs.
+   It is in the embedded manifest as well as the feed, so this works on a fresh install before the
+   first feed fetch — which is the case that would otherwise be impossible to test.
+3. **A picked game keeps its curation.** After picking, add it and check `games.json`: the registered
+   id must be the manifest id (`minecraft`), not a slug of the display name.
+4. **A game we cannot detect is lower, never missing.** Ranking is a hint, not a filter — scroll or
+   type and every curated game is still there.
+
+*Known and deliberate: a game sold outside Steam is never ranked as installed, because there is no
+install signal to read. It sits with the uninstalled ones and is found by typing.*

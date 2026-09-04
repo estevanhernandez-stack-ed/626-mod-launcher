@@ -15,14 +15,22 @@ public class ManifestInvariantsTests
     }
 
     [Fact]
-    public void Every_entry_has_id_name_and_a_steam_app_id()
+    public void Every_entry_has_id_and_name()
     {
         foreach (var g in Games)
         {
             Assert.False(string.IsNullOrWhiteSpace(g.Id), $"empty id: {g.Name}");
             Assert.False(string.IsNullOrWhiteSpace(g.Name), $"empty name: {g.Id}");
-            Assert.False(string.IsNullOrWhiteSpace(g.Stores.SteamAppId), $"no steam app id: {g.Id}");
         }
+    }
+
+    [Fact]
+    public void A_present_steam_app_id_is_never_blank()
+    {
+        // Steam app id is optional (Minecraft has none — a game sold nowhere the launcher probes
+        // still gets curated). When one IS present it must be a real value, never "".
+        foreach (var g in Games.Where(g => g.Stores.SteamAppId is not null))
+            Assert.False(string.IsNullOrWhiteSpace(g.Stores.SteamAppId), $"blank steam app id: {g.Id}");
     }
 
     [Fact]

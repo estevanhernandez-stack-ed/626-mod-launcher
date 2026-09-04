@@ -282,6 +282,19 @@
         ],
         "status": "curated"
       }
+    },
+    {
+      "id": "minecraft",
+      "name": "Minecraft",
+      "engine": "minecraft",
+      "stores": {},
+      "modPath": "mods",
+      "provenance": {
+        "sources": [
+          "known-engines"
+        ],
+        "status": "curated"
+      }
     }
   ]
 }
