@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using ModManager.Core.Nexus;
 
 namespace ModManager.Core.Transport;
 
@@ -331,7 +332,7 @@ public static class SaveBundle
         foreach (var c in nexusDomain)
             if (!char.IsAsciiLetterOrDigit(c) && c != '-') return null;
 
-        return $"https://www.nexusmods.com/{nexusDomain}/mods/{id}";
+        return NexusModPage.Url(nexusDomain, id);
     }
 
     /// <summary>Which of a bundle's mods are not installed here, by name. The sentence the import
