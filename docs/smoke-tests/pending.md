@@ -2047,20 +2047,25 @@ legitimate addition, so read the named differences rather than the exit code.*
 
 ---
 
-## A game that is not on Steam can be curated
+## An override can curate a game without knowing its Steam id
 
-The first game in the feed with no Steam app id. Before this, `OverridesLoader` refused to load it and
-`OverridesMerge` refused to merge it — so an EA-app, Epic or GOG game could not be described at all,
-not even wrongly.
+Before phase 1, a curated override was refused unless it carried a Steam app id — `OverridesLoader`
+would not load it and `OverridesMerge` would not merge it. Overrides can now key on their slug instead.
 
-1. Add the game by hand in the launcher, naming it so its slug matches the manifest entry —
-   for `ea-sports-college-football-27`, type **EA SPORTS College Football 27**.
-2. Confirm the game picks up its curated facts: the ban-risk chip appears, and the safe-route sentence
-   is the one from the manifest rather than a generic warning.
-3. Confirm it offers **no** mod folder and **no** anti-cheat toggle. Both are correct: the entry
-   deliberately declares no engine, and the launcher's toggle is for Easy Anti-Cheat's bootstrapper
-   swap, which is not what EA's kernel-level anti-cheat is.
+**What was run.** `overrides/ea-sports-college-football-27.json` carries no `steamAppId`, only an `id`,
+plus `banRisk: high` and `safeRoute: offline`. The miner resolved it **by slug** onto the entry Ludusavi
+had already mined, and applied both fields to a game that had neither.
 
-**The slug join is the fragile part of this case.** A registered game's id is `Slugify(whatever you
-typed)`, so a typo means the curation silently does not apply and the game looks uncurated. Until the
-add path sets the id explicitly (spec C5), check the id in `games.json` if the facts do not appear.
+**What this did NOT prove, and the checklist should not pretend otherwise.** EA SPORTS College Football
+27 turns out to be sold on Steam (app id `4032350`), so the mined backbone already had a row for it.
+It was chosen as a non-Steam example and it is not one — the owner installs it through the EA app,
+which is a different thing from the game being absent from Steam.
+
+**So a genuinely non-Steam game is still unproven.** The next run of this case should use a game with no
+Steam listing at all — an Epic or GOG exclusive, or an EA title that never shipped on Steam — and check
+that the entry lands with `stores.steamAppId` null rather than merging onto a mined row.
+
+**Verifying the gate at the same time.** Running the miner against the real overrides directory should
+FAIL while two files there both claim Steam app id `20920` (the two Witcher 2 overrides). That refusal
+is the duplicate-key gate working, not a broken run. To verify an override merges, run against a copy of
+the directory with one of those two removed.
