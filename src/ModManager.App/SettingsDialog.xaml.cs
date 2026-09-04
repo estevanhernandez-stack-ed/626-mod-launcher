@@ -30,6 +30,18 @@ public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
 }
 
 
+/// <summary>One row in Settings → Leftover mod folders. Detail pre-formats the count, size and what
+/// is actually inside, so the template binds plain strings. Names come off the FOLDER NAME, which is
+/// a stable key, never off display copy.</summary>
+public sealed record LeftoverRow(string Path, string FolderName, string Detail)
+{
+    public string RowAutomationId => $"Leftover.{FolderName}";
+    public string ShowAutomationName => $"Show files for {FolderName}";
+    public string CopyAutomationName => $"Save a copy of {FolderName}";
+    public string RemoveAutomationName => $"Remove {FolderName}";
+}
+
+
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
 /// account in one place. The Apply button commits the avatar + derived theme changes (gated by
@@ -633,6 +645,7 @@ public sealed partial class SettingsDialog : ContentDialog
 
         // Seed the About → Installed tools list. Pure file-read, fast — fine on the UI thread.
         RefreshRestorePoints();
+        LoadLeftovers();
     }
 
 
@@ -857,6 +870,214 @@ public sealed partial class SettingsDialog : ContentDialog
         return bytes >= GiB
             ? $"{bytes / (double)GiB:F1} GB"
             : $"{bytes / (double)MiB:F0} MB";
+    }
+
+    /// <summary>Populate Settings → Leftover mod folders. The registry is read the same way every
+    /// other loader in this file reads it — through LauncherService, never a cached field, so the
+    /// list reflects what is registered right now.</summary>
+    private void LoadLeftovers()
+    {
+        List<LeftoverRow> rows;
+        try
+        {
+            var svc = App.AppHost.Services.GetRequiredService<LauncherService>();
+            rows = LeftoverHoldings.Find(svc.LoadRegistry().Games)
+                .Select(h => new LeftoverRow(h.Path, h.FolderName, DescribeLeftover(h)))
+                .ToList();
+        }
+        catch
+        {
+            // An unreadable registry or holding root is not worth breaking Settings over. An empty
+            // list says "nothing left over", which is also what the user sees today.
+            rows = new List<LeftoverRow>();
+        }
+
+        LeftoversList.ItemsSource = rows;
+        NoLeftoversText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Names what is actually in there. A bare file count invites "it's only two files" on a
+    /// folder whose two files are a profile and a mod somebody spent an evening on.</summary>
+    private static string DescribeLeftover(LeftoverHolding h)
+    {
+        var what = h.TopLevelNames.Count == 0
+            ? "empty"
+            : string.Join(", ", h.TopLevelNames.Take(4))
+              + (h.TopLevelNames.Count > 4 ? $", and {h.TopLevelNames.Count - 4} more" : "");
+        return $"{h.FileCount} file{(h.FileCount == 1 ? "" : "s")}, {Human(h.Bytes)} — {what}";
+    }
+
+    /// <summary>Open the folder in Explorer. Looking costs nothing and answers the question the other
+    /// two buttons ask you to answer — so it is first, and it is the only one that needs no confirm.</summary>
+    private void OnShowLeftover(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string path) return;
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            LeftoverStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex);
+        }
+    }
+
+    /// <summary>
+    /// Copy the folder somewhere the user picks.
+    ///
+    /// <para><b>The WHOLE folder, never a filtered subset.</b> Deciding for someone which parts of
+    /// their own data are worth keeping is exactly the judgment this section exists to stop making —
+    /// these folders hold profiles and settings as well as disabled mods.</para>
+    /// </summary>
+    private async void OnCopyLeftover(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string path) return;
+        var name = System.IO.Path.GetFileName(path);
+        if (!Directory.Exists(path))
+        {
+            LeftoverStatusText.Text = $"{name} is no longer there.";
+            LoadLeftovers();
+            return;
+        }
+
+        var picker = new FolderPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+        picker.FileTypeFilter.Add("*");
+        var dest = await picker.PickSingleFolderAsync();
+        if (dest is null) return;
+
+        var target = System.IO.Path.Combine(dest.Path, name);
+        try
+        {
+            LeftoverStatusText.Text = $"Copying {name}…";
+            // Copying gigabytes belongs off the UI thread — the status line above is what stops a
+            // long copy looking hung.
+            await Task.Run(() => CopyTree(path, target));
+            LeftoverStatusText.Text = $"Copied to {target}. Nothing on this machine changed.";
+        }
+        catch (Exception ex)
+        {
+            LeftoverStatusText.Text = $"Could not copy {name}: {ModManager.Core.ErrorRemedy.Describe(ex)}";
+        }
+    }
+
+    /// <summary>Whole-tree copy. Destinations are built from the path RELATIVE to the source root —
+    /// a string Replace over the full path rewrites any later occurrence of the root's name too, and
+    /// silently scatters files.</summary>
+    private static void CopyTree(string from, string to)
+    {
+        var root = System.IO.Path.GetFullPath(from);
+        var dest = System.IO.Path.GetFullPath(to);
+
+        // Copying a folder into itself walks forever. Refuse rather than fill the disk.
+        if (dest.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dest, root, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("That destination is inside the folder being copied.");
+
+        Directory.CreateDirectory(dest);
+        foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(System.IO.Path.Combine(dest, System.IO.Path.GetRelativePath(root, dir)));
+        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+            File.Copy(file, System.IO.Path.Combine(dest, System.IO.Path.GetRelativePath(root, file)), overwrite: true);
+    }
+
+    /// <summary>
+    /// Remove one leftover folder, after a confirm that names it.
+    ///
+    /// <para><b>A Flyout, not a ContentDialog.</b> Settings IS a ContentDialog and WinUI 3 allows only
+    /// one per XamlRoot — the same constraint OnRestorePoint and OnInspectProfileArchive already work
+    /// around. The flyout is still a real confirm: it names the folder and the count it is about to
+    /// delete, "Keep it" holds focus, and dismissing it (Esc, or clicking away) keeps the folder.</para>
+    ///
+    /// <para>One folder, one decision. There is deliberately no "remove all" and nothing preselected —
+    /// this is the app's own delete path, so a wrong click has to be the user's, not ours.</para>
+    /// </summary>
+    private void OnRemoveLeftover(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button anchor || anchor.Tag is not string path) return;
+
+        var name = System.IO.Path.GetFileName(path);
+        if (!Directory.Exists(path))
+        {
+            LeftoverStatusText.Text = $"{name} is already gone.";
+            LoadLeftovers();
+            return;
+        }
+
+        int files;
+        try { files = Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length; }
+        catch (Exception ex)
+        {
+            // Cannot count it, so cannot honestly name what it deletes — refuse to offer the confirm.
+            LeftoverStatusText.Text = $"Could not read {name}: {ModManager.Core.ErrorRemedy.Describe(ex)}";
+            return;
+        }
+
+        var res = Application.Current.Resources;
+        var panel = new StackPanel { Spacing = 10, MaxWidth = 340 };
+
+        var head = new TextBlock
+        {
+            Text = $"Remove {name}?",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(head, "LeftoverRemoveConfirmText");
+        panel.Children.Add(head);
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Deletes {files} file{(files == 1 ? "" : "s")} permanently, including any profiles "
+                 + "and settings in that folder. This cannot be undone.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)res["ThemeInkSoft"],
+            FontSize = 12,
+        });
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+
+        // Keeping is the default: first in the row, and it takes focus when the flyout opens.
+        var keep = new Button { Content = "Keep it" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(keep, "LeftoverRemoveCancel");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(keep, $"Keep {name}");
+
+        // Filled danger, sanctioned here because this IS the confirm. KeepDangerFilled element-scopes
+        // the hover/pressed keys with the live theme brushes so the fill survives the visual states —
+        // see .claude/rules/vsm-danger-buttons.md.
+        var remove = new Button
+        {
+            Content = "Remove",
+            Background = (Brush)res["ThemeDanger"],
+            Foreground = (Brush)res["ThemeBg"],
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(remove, "LeftoverRemoveConfirm");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(remove, $"Remove {name} permanently");
+        Services.DialogTheming.KeepDangerFilled(remove);
+
+        buttons.Children.Add(keep);
+        buttons.Children.Add(remove);
+        panel.Children.Add(buttons);
+
+        var flyout = new Flyout { Content = panel };
+        keep.Click += (_, _) => flyout.Hide();
+        remove.Click += (_, _) =>
+        {
+            flyout.Hide();
+            try
+            {
+                Directory.Delete(path, recursive: true);
+                LeftoverStatusText.Text = $"Removed {name}.";
+            }
+            catch (Exception ex)
+            {
+                LeftoverStatusText.Text = $"Could not remove {name}: {ModManager.Core.ErrorRemedy.Describe(ex)}";
+            }
+            LoadLeftovers();
+        };
+
+        keep.Loaded += (_, _) => keep.Focus(FocusState.Programmatic);
+        flyout.ShowAt(anchor);
     }
 
     /// <summary>Restore button. WinUI 3 forbids opening a second ContentDialog while one is already

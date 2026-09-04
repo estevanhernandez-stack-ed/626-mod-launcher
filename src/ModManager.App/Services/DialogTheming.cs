@@ -122,4 +122,66 @@ internal static class DialogTheming
             };
         }
     }
+
+    /// <summary>
+    /// Keep a filled-danger button danger THROUGH hover and press (F-037 / F-072, and the reason
+    /// <c>.claude/rules/vsm-danger-buttons.md</c> exists).
+    ///
+    /// <para>A style that only sets Background wins at rest and loses the moment the pointer
+    /// arrives: the stock Button template's PointerOver/Pressed states re-resolve
+    /// <c>ButtonBackground*</c> through ThemeResource. Element-scoped entries on the button itself
+    /// outrank the framework dictionaries, and these are the SAME live brush instances
+    /// <see cref="ThemeService"/> mutates — never new brushes, which would freeze the colour at the
+    /// moment of injection and stop re-theming with the rest of the app.</para>
+    /// </summary>
+    public static void KeepDangerFilled(Button button)
+    {
+        var res = Application.Current.Resources;
+        button.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
+        button.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
+        button.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
+        button.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
+    }
+
+    /// <summary>
+    /// The same treatment for a ContentDialog's primary button, which is a template part that does
+    /// not exist until the popup tree is built.
+    ///
+    /// <para>Hooked on the Title content's <c>Loaded</c> — never <c>Opened</c>, which races the popup
+    /// wiring in both directions, the same trap <see cref="Apply"/> documents. Call this AFTER
+    /// <see cref="Apply"/>: a code-built dialog's string Title only becomes a FrameworkElement once
+    /// Apply has wrapped it.</para>
+    /// </summary>
+    public static void ApplyDangerPrimary(ContentDialog dialog)
+    {
+        if (dialog.Title is not FrameworkElement titleContent) return;
+
+        titleContent.Loaded += (s, _) =>
+        {
+            // Search down from THIS dialog first (tight — can't hit another popup's PrimaryButton);
+            // the walk-to-root pass is the fallback for template shapes where the part tree doesn't
+            // hang off the dialog element.
+            var primary = FindDescendant(dialog, "PrimaryButton") as Button;
+            if (primary is null)
+            {
+                DependencyObject? node = (DependencyObject)s, root = null;
+                while (node is not null) { root = node; node = VisualTreeHelper.GetParent(node); }
+                primary = root is null ? null : FindDescendant(root, "PrimaryButton") as Button;
+            }
+            if (primary is null) return;
+            KeepDangerFilled(primary);
+        };
+    }
+
+    private static FrameworkElement? FindDescendant(DependencyObject root, string name)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe && fe.Name == name) return fe;
+            if (FindDescendant(child, name) is { } hit) return hit;
+        }
+        return null;
+    }
 }

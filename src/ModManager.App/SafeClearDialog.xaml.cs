@@ -29,32 +29,10 @@ public sealed partial class SafeClearDialog : ContentDialog
         _svc = svc;
 
         // F-037 residue / F-072 pattern: the XAML style danger-fills the primary AT REST, but the
-        // hover/pressed visual states re-resolve ButtonBackground* via ThemeResource and win.
-        // Element-scoped overrides on the PrimaryButton itself outrank everything, and they're the
-        // SAME live brush instances ThemeService mutates — the fill holds through hover, re-themed.
-        // Hooked on the Title content's Loaded (Opened races the popup tree; see DialogTheming).
-        if (Title is FrameworkElement titleContent)
-        {
-            titleContent.Loaded += (s, _) =>
-            {
-                // Search down from THIS dialog first (tight — can't hit another popup's
-                // PrimaryButton); the walk-to-root pass is the fallback for template shapes
-                // where the part tree doesn't hang off the dialog element.
-                var primary = FindDescendant(this, "PrimaryButton") as Button;
-                if (primary is null)
-                {
-                    DependencyObject? node = (DependencyObject)s, root = null;
-                    while (node is not null) { root = node; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node); }
-                    primary = root is null ? null : FindDescendant(root, "PrimaryButton") as Button;
-                }
-                if (primary is null) return;
-                var res = Application.Current.Resources;
-                primary.Resources["ButtonBackgroundPointerOver"] = res["ThemeDanger"];
-                primary.Resources["ButtonBackgroundPressed"] = res["ThemeDanger"];
-                primary.Resources["ButtonForegroundPointerOver"] = res["ThemeBg"];
-                primary.Resources["ButtonForegroundPressed"] = res["ThemeBg"];
-            };
-        }
+        // hover/pressed visual states re-resolve ButtonBackground* via ThemeResource and win. The
+        // mechanism moved to DialogTheming so the leftover-folders confirm shares it verbatim rather
+        // than growing a second copy that can drift; behaviour here is unchanged.
+        ModManager.App.Services.DialogTheming.ApplyDangerPrimary(this);
 
         // Seed the ComboBox — set in code, not XAML, to avoid literal-bool/SelectedItem-in-markup
         // parse issues (same pattern as SettingsDialog's BackdropBox seeding).
@@ -124,17 +102,5 @@ public sealed partial class SafeClearDialog : ContentDialog
         {
             deferral.Complete();
         }
-    }
-
-    private static FrameworkElement? FindDescendant(DependencyObject root, string name)
-    {
-        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is FrameworkElement fe && fe.Name == name) return fe;
-            if (FindDescendant(child, name) is { } hit) return hit;
-        }
-        return null;
     }
 }
