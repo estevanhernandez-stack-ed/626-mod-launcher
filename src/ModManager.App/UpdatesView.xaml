@@ -107,6 +107,7 @@
                                                            FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}"
                                                            VerticalAlignment="Center" />
                                                 <Button Grid.Column="2" Content="Get update"
+                                                        AutomationProperties.AutomationId="{x:Bind GetAutomationId}"
                                                         AutomationProperties.Name="{x:Bind GetAutomationName}"
                                                         Visibility="{x:Bind GetVisibility}"
                                                         Tag="{x:Bind ModPageUrl}"

@@ -22,4 +22,15 @@ public class NexusModPageTests
     [InlineData("windrose", -1)]
     public void Anything_missing_or_meaningless_yields_null(string? domain, int? modId)
         => Assert.Null(NexusModPage.Url(domain, modId));
+
+    // Moved in from SaveBundle.NexusUrlFor, which used to run this same check on its own before
+    // calling here. Every caller interpolates the domain straight into a URL a user clicks, and a
+    // domain can arrive from data that came from somewhere else (a save bundle from another person),
+    // so the one definition has to carry the whole contract rather than half of it.
+    [Theory]
+    [InlineData("pal/../../evil")]
+    [InlineData("evil.com/x")]
+    [InlineData("pal world")]
+    public void A_domain_with_an_illegal_character_yields_null(string domain)
+        => Assert.Null(NexusModPage.Url(domain, 153));
 }

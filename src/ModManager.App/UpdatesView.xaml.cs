@@ -82,6 +82,10 @@ public sealed class UpdateRow
     public Visibility GetVisibility => ModPageUrl is null ? Visibility.Collapsed : Visibility.Visible;
 
     public string GetAutomationName => $"Get {ModName}";
+
+    // Keyed off ModKey (stable) rather than ModName (display copy that renames on purpose), mirroring
+    // LeftoverRow's convention. Templated control, so a static id would repeat on every row.
+    public string GetAutomationId => $"UpdateGet.{Pending.ModKey}";
 }
 
 /// <summary>One game's block in the Updates directory: the game's name, how many of its mods are
@@ -204,10 +208,13 @@ public sealed partial class UpdatesView : UserControl
     }
 
     // Tag carries the resolved url rather than the row, so a row that could not build one cannot
-    // reach here at all — the button it would have been on is collapsed.
+    // reach here at all — the button it would have been on is collapsed. Gated through
+    // SafeUrl.IsHttpUrl like every other URL-open site in the app — without it, `new Uri(url)` on a
+    // malformed string throws UriFormatException straight out of a void event handler and takes the
+    // app down.
     private void OnGetUpdate(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is string url && !string.IsNullOrEmpty(url))
+        if ((sender as FrameworkElement)?.Tag is string url && ModManager.Core.SafeUrl.IsHttpUrl(url))
             _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
     }
 }

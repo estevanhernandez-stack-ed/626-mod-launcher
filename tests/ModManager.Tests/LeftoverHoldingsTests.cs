@@ -84,6 +84,34 @@ public class LeftoverHoldingsTests
         Assert.Empty(found);
     }
 
+    // Finding 1: the "_626mods" gate at :39-41 closes half the hand-edited-games.json threat — a
+    // DataDir pointing at an ordinary folder. This closes the other half: a DataDir that IS inside a
+    // _626mods root, but whose leaf name differs from the game's id (a hand-edited games.json can say
+    // anything). Before the fix, the known set was built from ids alone, so this leaf was not in it,
+    // and the game's own live data folder — disabled mods, profiles, tools — was listed as an orphan
+    // with a Remove button that deletes it permanently.
+    [Fact]
+    public void A_dataDir_whose_leaf_differs_from_the_game_id_is_never_offered_as_an_orphan()
+    {
+        var lib = TestSupport.TempDir("leftovers-leafmismatch-");
+        var gameRoot = Path.Combine(lib, "steamapps", "common", "Windrose");
+        Directory.CreateDirectory(gameRoot);
+
+        var holdings = Path.Combine(lib, "_626mods");
+        // The registry's id is "windrose", but the DataDir's actual leaf is "windrose-legacy" — a
+        // hand-edited games.json can say anything, and DataDirForGame returns DataDir verbatim.
+        var liveLeaf = Path.Combine(holdings, "windrose-legacy");
+        Directory.CreateDirectory(Path.Combine(liveLeaf, "SomeMod"));
+
+        var found = LeftoverHoldings.Find(new[]
+        {
+            new GameEntry { Id = "windrose", GameName = "Windrose", GameRoot = gameRoot,
+                            DataDir = liveLeaf },
+        });
+
+        Assert.Empty(found);
+    }
+
     // Finding 2: Scanner.DataDirForGame substitutes the literal folder name "game" when Id is empty.
     // Filtering empty ids out of the known-id set (instead of mirroring that substitution) drops the
     // game entirely, so the folder it is actively using reads as an orphan and gets offered for deletion.
