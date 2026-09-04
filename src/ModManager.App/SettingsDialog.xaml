@@ -215,6 +215,80 @@
             <!-- Divider -->
             <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
 
+            <!-- ============ Folders left behind ============
+                 Between Restore points and Reset, so the dialog reads: back it up, undo it, tidy it,
+                 reset it. These folders hold DISABLED MODS, PROFILES AND METADATA, not only mods —
+                 the heading and the copy both say so, because "leftover mods" is the wording that
+                 gets someone to remove a profile they wanted. The AutomationId stays
+                 SettingsGroup.leftovers: ids are stable keys and do not track copy. -->
+            <StackPanel AutomationProperties.AutomationId="SettingsGroup.leftovers"
+                        AutomationProperties.Name="Folders left behind" Spacing="{StaticResource SpaceM}">
+                <TextBlock Text="Folders left behind" FontWeight="SemiBold" FontSize="{StaticResource RowTitleFontSize}" />
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                           Text="Folders holding the disabled mods, profiles and settings of games you no longer have here. Nothing has been deleted — look inside, keep a copy, or clear one out. The launcher only looks next to the games you still have, so a folder somewhere else won't show up here." />
+                <TextBlock x:Name="NoLeftoversText" AutomationProperties.AutomationId="LeftoversEmptyText"
+                           Text="Nothing left over."
+                           Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" Visibility="Collapsed" />
+                <ItemsRepeater x:Name="LeftoversList" AutomationProperties.AutomationId="LeftoversList">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="8" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="local:LeftoverRow">
+                            <!-- The row id lives on the NAME TextBlock, not on this Grid. A Grid is a
+                                 layout panel, not a control-view element, so an id on it is written,
+                                 compiled, and never reaches the tree an agent walks - the same trap
+                                 .claude/rules/automation-ids.md records for Border. Caught by a UIA
+                                 walk that found every row's buttons and not one row id. -->
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
+                                               Foreground="{StaticResource ThemeInk}" Text="{x:Bind FolderName}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{x:Bind Detail}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button AutomationProperties.Name="{x:Bind ShowAutomationName}" Grid.Column="1"
+                                        Content="Show files" Tag="{x:Bind Path}" Click="OnShowLeftover" VerticalAlignment="Center" />
+                                <!-- Save a copy sits BEFORE Remove deliberately: the one irreversible
+                                     action is last, and is the only one styled as danger. -->
+                                <Button AutomationProperties.Name="{x:Bind CopyAutomationName}" Grid.Column="2"
+                                        Content="Save a copy…" Tag="{x:Bind Path}" Click="OnCopyLeftover" VerticalAlignment="Center" />
+                                <!-- Outlined danger, expressed inline. There is NO named danger button
+                                     style in this app — grep confirms it; LibraryView.xaml:164 and the
+                                     archive restore button in the code-behind do the same thing the
+                                     same way. Do not invent a style resource. Filled danger waits for
+                                     the confirm this opens.
+                                     The Loaded handler is what keeps it danger THROUGH hover and
+                                     press: the stock template's PointerOver state re-resolves
+                                     ButtonForeground/BorderBrush over these locals. A XAML resource
+                                     cannot do it — the brush has to be the live instance ThemeService
+                                     mutates. See .claude/rules/vsm-danger-buttons.md. -->
+                                <Button AutomationProperties.Name="{x:Bind RemoveAutomationName}" Grid.Column="3"
+                                        Content="Remove" Tag="{x:Bind Path}" Click="OnRemoveLeftover"
+                                        Loaded="OnLeftoverRemoveLoaded" VerticalAlignment="Center"
+                                        Background="Transparent" BorderThickness="1"
+                                        BorderBrush="{StaticResource ThemeDanger}"
+                                        Foreground="{StaticResource ThemeDanger}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+                <TextBlock x:Name="LeftoverStatusText" AutomationProperties.AutomationId="LeftoverStatusText"
+                           AutomationProperties.LiveSetting="Polite"
+                           Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            </StackPanel>
+
+            <!-- Divider -->
+            <Border BorderBrush="{StaticResource ThemeBorder}" BorderThickness="0,1,0,0" Margin="0,8,0,0" />
+
             <!-- ============ Reset ============ -->
             <StackPanel AutomationProperties.AutomationId="SettingsGroup.reset"
                         AutomationProperties.Name="Reset" Spacing="{StaticResource SpaceM}">

@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using ModManager.Core.Nexus;
 
 namespace ModManager.Core.Transport;
 
@@ -324,14 +325,11 @@ public static class SaveBundle
     public static string? NexusUrlFor(BundleMod? mod, string? nexusDomain)
     {
         if (mod?.NexusModId is not { } id || id <= 0) return null;
-        if (string.IsNullOrWhiteSpace(nexusDomain)) return null;
 
-        // The domain comes from our own manifest, but it is still interpolated into a URL - keep it to
-        // the shape Nexus slugs actually take rather than trusting it blind.
-        foreach (var c in nexusDomain)
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-') return null;
-
-        return $"https://www.nexusmods.com/{nexusDomain}/mods/{id}";
+        // The domain comes from our own manifest, but it is still interpolated into a URL - keeping
+        // it to the shape Nexus slugs actually take is NexusModPage.Url's job now, so every caller
+        // inherits the same check instead of each one carrying its own copy.
+        return NexusModPage.Url(nexusDomain, id);
     }
 
     /// <summary>Which of a bundle's mods are not installed here, by name. The sentence the import

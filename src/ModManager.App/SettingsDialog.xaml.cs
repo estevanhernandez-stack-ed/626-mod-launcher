@@ -30,6 +30,18 @@ public sealed record RestorePointRow(string Timestamp, string Detail, string Id)
 }
 
 
+/// <summary>One row in Settings → Folders left behind. Detail pre-formats the count, size and what
+/// is actually inside, so the template binds plain strings. Names come off the FOLDER NAME, which is
+/// a stable key, never off display copy.</summary>
+public sealed record LeftoverRow(string Path, string FolderName, string Detail)
+{
+    public string RowAutomationId => $"Leftover.{FolderName}";
+    public string ShowAutomationName => $"Show files for {FolderName}";
+    public string CopyAutomationName => $"Save a copy of {FolderName}";
+    public string RemoveAutomationName => $"Remove {FolderName}";
+}
+
+
 /// <summary>
 /// The settings hub. Identity (avatar / derived theme / window transparency) and Nexus Mods
 /// account in one place. The Apply button commits the avatar + derived theme changes (gated by
@@ -48,6 +60,23 @@ public sealed partial class SettingsDialog : ContentDialog
 
     private string? _pickedSourcePath;
     private IReadOnlyList<PaletteColor> _palette = Array.Empty<PaletteColor>();
+
+    /// <summary>Set while a leftover-folder copy or removal is in flight, and checked by every
+    /// leftover action before it starts. Without it, Remove can be confirmed on the folder a copy is
+    /// still reading: <c>Directory.Delete</c> races <c>File.Copy</c> and the user ends up with a
+    /// partial copy AND a deleted source — the one way this section can lose data outright, sitting
+    /// right on the "save a copy, then remove" flow it invites.</summary>
+    /// <para>STATIC, and that is the point. As an instance field the guard died with the dialog: close
+    /// Settings mid-copy, reopen it, and a fresh instance starts at false, so Remove on the folder
+    /// still being copied passed every check — Directory.Exists true, StillLeftoverAsync true — and
+    /// raced it anyway. That path was MORE reachable than the one the flag was added for, because the
+    /// "Copying…" line went with the closed dialog, so the reopened Settings gave no signal at all.
+    /// One Settings dialog exists at a time in a single-window app, so static is the right scope.</para>
+    private static bool _leftoverBusy;
+
+    /// <summary>What <see cref="_leftoverBusy"/> is busy with, so the refusal names it instead of
+    /// guessing. Static for the same reason the flag is.</summary>
+    private static string _leftoverBusyWhat = "";
 
     /// <summary>True when the user applied a change that needs to flow back to the main shell
     /// (avatar swap → icon refresh, theme add → dropdown refresh). Nexus + backdrop changes flow
@@ -381,6 +410,9 @@ public sealed partial class SettingsDialog : ContentDialog
                 Margin = new Thickness(0, 6, 0, 0),
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(restore, "ArchiveRestoreButton");
+            // Outlined danger loses its foreground and border to the PointerOver state unless the
+            // state keys are element-scoped with the live brushes. Same helper the leftovers row uses.
+            Services.DialogTheming.KeepDangerOutlined(restore);
 
             var armed = false;
             restore.Click += async (_, _) =>
@@ -493,10 +525,11 @@ public sealed partial class SettingsDialog : ContentDialog
             panel.Children.Add(holdStatus);
         }
 
-        new Flyout
-        {
-            Content = new ScrollViewer { Content = panel, MaxHeight = 420, Padding = new Thickness(0, 0, 12, 0) },
-        }.ShowAt(anchor);
+        var scroller = new ScrollViewer { Content = panel, MaxHeight = 420, Padding = new Thickness(0, 0, 12, 0) };
+        // Same popup gap as the leftovers confirm: a Flyout roots its own tree, so the brushes merged
+        // into this dialog never reach the controls inside it.
+        Services.DialogTheming.Apply(scroller);
+        new Flyout { Content = scroller }.ShowAt(anchor);
     }
 
     /// <summary>
@@ -633,6 +666,10 @@ public sealed partial class SettingsDialog : ContentDialog
 
         // Seed the About → Installed tools list. Pure file-read, fast — fine on the UI thread.
         RefreshRestorePoints();
+
+        // The leftovers list is NOT that: it walks every holding folder's whole tree. Fire and let it
+        // land, so Settings opens at the speed of the dialog rather than the speed of the disk.
+        _ = LoadLeftoversAsync();
     }
 
 
@@ -857,6 +894,340 @@ public sealed partial class SettingsDialog : ContentDialog
         return bytes >= GiB
             ? $"{bytes / (double)GiB:F1} GB"
             : $"{bytes / (double)MiB:F0} MB";
+    }
+
+    /// <summary>Populate Settings → Folders left behind. The registry is read the same way every
+    /// other loader in this file reads it — through LauncherService, never a cached field, so the
+    /// list reflects what is registered right now.</summary>
+    private async Task LoadLeftoversAsync()
+    {
+        List<LeftoverRow> rows;
+        try
+        {
+            var svc = App.AppHost.Services.GetRequiredService<LauncherService>();
+            var found = await Task.Run(() => LeftoverHoldings.Find(svc.LoadRegistry().Games));
+            rows = found.Select(h => new LeftoverRow(h.Path, h.FolderName, DescribeLeftover(h))).ToList();
+        }
+        catch (Exception ex)
+        {
+            // "Nothing left over." and "couldn't look" are different answers, and only one of them is
+            // something this code knows. Say which, and leave the empty state hidden rather than
+            // asserting the folders are gone when the truth is that we could not check.
+            LeftoverStatusText.Text = ModManager.Core.ErrorRemedy.Describe(
+                ex, "Couldn't check for leftover folders");
+            LeftoversList.ItemsSource = new List<LeftoverRow>();
+            NoLeftoversText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        LeftoversList.ItemsSource = rows;
+        NoLeftoversText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Is this path STILL a folder no registered game owns — asked now, off the same
+    /// function that built the list?
+    ///
+    /// <para>Two things at once. The list can be minutes old, so between listing and confirming the
+    /// user may have added the very game that owns this folder. And this is the first code in the app
+    /// that permanently deletes something off <c>Find</c>'s output, so "this path came from a list we
+    /// built earlier" is not a good enough reason to delete: re-establish the fact at the moment it
+    /// matters.</para></summary>
+    private static async Task<bool> StillLeftoverAsync(string path)
+    {
+        var svc = App.AppHost.Services.GetRequiredService<LauncherService>();
+        return await Task.Run(() =>
+        {
+            var want = System.IO.Path.GetFullPath(path).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+            return LeftoverHoldings.Find(svc.LoadRegistry().Games).Any(h => string.Equals(
+                System.IO.Path.GetFullPath(h.Path).TrimEnd(System.IO.Path.DirectorySeparatorChar),
+                want, StringComparison.OrdinalIgnoreCase));
+        });
+    }
+
+    /// <summary>Keep the row's outlined Remove button reading as danger through hover and press. The
+    /// button is inside a DataTemplate, so there is no field to reach — Loaded is the hook. See
+    /// <see cref="Services.DialogTheming.KeepDangerOutlined"/>.</summary>
+    private void OnLeftoverRemoveLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b) Services.DialogTheming.KeepDangerOutlined(b);
+    }
+
+    /// <summary>Names what is actually in there. A bare file count invites "it's only two files" on a
+    /// folder whose two files are a profile and a mod somebody spent an evening on.</summary>
+    private static string DescribeLeftover(LeftoverHolding h)
+    {
+        var what = h.TopLevelNames.Count == 0
+            ? "empty"
+            : string.Join(", ", h.TopLevelNames.Take(4))
+              + (h.TopLevelNames.Count > 4 ? $", and {h.TopLevelNames.Count - 4} more" : "");
+        return $"{h.FileCount} file{(h.FileCount == 1 ? "" : "s")}, {Human(h.Bytes)} — {what}";
+    }
+
+    /// <summary>Open the folder in Explorer. Looking costs nothing and answers the question the other
+    /// two buttons ask you to answer — so it is first, and it is the only one that needs no confirm.</summary>
+    private async void OnShowLeftover(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string path) return;
+        var name = System.IO.Path.GetFileName(path);
+        LeftoverStatusText.Text = "";
+
+        if (!Directory.Exists(path))
+        {
+            LeftoverStatusText.Text = $"{name} is no longer there.";
+            await LoadLeftoversAsync();
+            return;
+        }
+
+        try
+        {
+            // The Exists guard above is what makes this a folder-open. UseShellExecute on a path opens
+            // Explorer only while the path IS a folder — if that name now belongs to a file, this runs
+            // it instead.
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            LeftoverStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex, $"Could not open {name}");
+        }
+    }
+
+    /// <summary>
+    /// Copy the folder somewhere the user picks.
+    ///
+    /// <para><b>The WHOLE folder, never a filtered subset.</b> Deciding for someone which parts of
+    /// their own data are worth keeping is exactly the judgment this section exists to stop making —
+    /// these folders hold profiles and settings as well as disabled mods.</para>
+    /// </summary>
+    private async void OnCopyLeftover(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string path) return;
+        var name = System.IO.Path.GetFileName(path);
+        LeftoverStatusText.Text = "";
+        if (_leftoverBusy)
+        {
+            LeftoverStatusText.Text = $"Still {_leftoverBusyWhat} — wait for that to finish.";
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            LeftoverStatusText.Text = $"{name} is no longer there.";
+            await LoadLeftoversAsync();
+            return;
+        }
+
+        var picker = new FolderPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+        picker.FileTypeFilter.Add("*");
+        var dest = await picker.PickSingleFolderAsync();
+        if (dest is null) return;
+
+        var target = System.IO.Path.Combine(dest.Path, name);
+
+        // Merging into an existing folder is not what "save a copy" was asked for: it overwrites file
+        // by file, says nothing, and the success line would then claim nothing changed while a
+        // previous backup was being replaced. Refuse and let the user pick.
+        if (Directory.Exists(target))
+        {
+            LeftoverStatusText.Text = $"There is already a folder called {name} there. Pick somewhere else.";
+            return;
+        }
+
+        _leftoverBusy = true;
+        _leftoverBusyWhat = "copying";
+        try
+        {
+            LeftoverStatusText.Text = $"Copying {name}…";
+            // Copying gigabytes belongs off the UI thread — the status line above is what stops a
+            // long copy looking hung.
+            await Task.Run(() => CopyTree(path, target));
+            LeftoverStatusText.Text = $"Copied to {target}. Nothing on this machine changed.";
+        }
+        catch (Exception ex)
+        {
+            LeftoverStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex, $"Could not copy {name}");
+        }
+        finally
+        {
+            // In a finally so a failed copy cannot wedge the section for the rest of the session.
+            _leftoverBusy = false;
+        }
+    }
+
+    /// <summary>Whole-tree copy. Each destination is built from that entry's path RELATIVE to the
+    /// source root — the operation this is actually doing — rather than by cutting the root's text off
+    /// the front of an absolute path, which is the same job done by string surgery and only holds for
+    /// as long as the enumerator keeps handing back the exact prefix it was given.</summary>
+    private static void CopyTree(string from, string to)
+    {
+        var root = System.IO.Path.GetFullPath(from);
+        var dest = System.IO.Path.GetFullPath(to);
+
+        // The picker can genuinely land inside the folder being copied. GetDirectories/GetFiles (not
+        // the Enumerate* forms) materialise the whole tree before the first write, so this would not
+        // run away — it would quietly write one nested duplicate of the folder into itself, which is
+        // not the copy anybody asked for. Refuse instead.
+        if (dest.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dest, root, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("That destination is inside the folder being copied.");
+
+        Directory.CreateDirectory(dest);
+        foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(System.IO.Path.Combine(dest, System.IO.Path.GetRelativePath(root, dir)));
+        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+            File.Copy(file, System.IO.Path.Combine(dest, System.IO.Path.GetRelativePath(root, file)), overwrite: true);
+    }
+
+    /// <summary>
+    /// Remove one leftover folder, after a confirm that names it.
+    ///
+    /// <para><b>A Flyout, not a ContentDialog.</b> Settings IS a ContentDialog and WinUI 3 allows only
+    /// one per XamlRoot — the same constraint OnRestorePoint and OnInspectProfileArchive already work
+    /// around. The flyout is still a real confirm: it names the folder and the count it is about to
+    /// delete, "Keep it" holds focus, and dismissing it (Esc, or clicking away) keeps the folder.</para>
+    ///
+    /// <para>One folder, one decision. There is deliberately no "remove all" and nothing preselected —
+    /// this is the app's own delete path, so a wrong click has to be the user's, not ours.</para>
+    /// </summary>
+    private async void OnRemoveLeftover(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button anchor || anchor.Tag is not string path) return;
+
+        var name = System.IO.Path.GetFileName(path);
+        LeftoverStatusText.Text = "";
+        if (_leftoverBusy)
+        {
+            LeftoverStatusText.Text = $"Still {_leftoverBusyWhat} — wait for that to finish.";
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            LeftoverStatusText.Text = $"{name} is no longer there.";
+            await LoadLeftoversAsync();
+            return;
+        }
+
+        int files;
+        try
+        {
+            // Counting is a full-tree walk over something this section's own copy path calls
+            // potentially gigabytes. Off the thread, and say so, or Settings freezes before the
+            // confirm has even appeared.
+            LeftoverStatusText.Text = $"Checking {name}…";
+            files = await Task.Run(() => Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length);
+        }
+        catch (Exception ex)
+        {
+            // Cannot count it, so cannot honestly name what it deletes — refuse to offer the confirm.
+            LeftoverStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex, $"Could not read {name}");
+            return;
+        }
+        LeftoverStatusText.Text = "";
+
+        var res = Application.Current.Resources;
+        var panel = new StackPanel { Spacing = 10, MaxWidth = 340 };
+
+        var head = new TextBlock
+        {
+            Text = $"Remove {name}?",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(head, "LeftoverRemoveConfirmText");
+        panel.Children.Add(head);
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Deletes {files} file{(files == 1 ? "" : "s")} permanently, including any profiles "
+                 + "and settings in that folder. This cannot be undone.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)res["ThemeInkSoft"],
+            FontSize = 12,
+        });
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+
+        // Keeping is the default: first in the row, and it takes focus when the flyout opens.
+        var keep = new Button { Content = "Keep it" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(keep, "LeftoverRemoveCancel");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(keep, $"Keep {name}");
+
+        // Filled danger, sanctioned here because this IS the confirm. KeepDangerFilled element-scopes
+        // the hover/pressed keys with the live theme brushes so the fill survives the visual states —
+        // see .claude/rules/vsm-danger-buttons.md.
+        var remove = new Button
+        {
+            Content = "Remove",
+            Background = (Brush)res["ThemeDanger"],
+            Foreground = (Brush)res["ThemeBg"],
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(remove, "LeftoverRemoveConfirm");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(remove, $"Remove {name} permanently");
+        Services.DialogTheming.KeepDangerFilled(remove);
+
+        buttons.Children.Add(keep);
+        buttons.Children.Add(remove);
+        panel.Children.Add(buttons);
+
+        var flyout = new Flyout { Content = panel };
+
+        // A Flyout hangs in its own popup, NOT under this dialog — the brushes merged into
+        // SettingsDialog.Resources never reach it, so "Keep it" would fall back to framework chrome
+        // while the danger button beside it is themed.
+        Services.DialogTheming.Apply(panel);
+
+        keep.Click += (_, _) => flyout.Hide();
+        remove.Click += async (_, _) =>
+        {
+            if (_leftoverBusy)
+            {
+                LeftoverStatusText.Text = $"Still {_leftoverBusyWhat} — wait for that to finish.";
+                flyout.Hide();
+                return;
+            }
+
+            // Say what is happening BEFORE hiding the confirm. Hiding first and then working leaves
+            // the app frozen showing nothing, which is the moment somebody force-kills it — mid
+            // recursive delete, on a half-deleted tree.
+            LeftoverStatusText.Text = $"Removing {name}…";
+            flyout.Hide();
+
+            _leftoverBusy = true;
+            _leftoverBusyWhat = "removing";
+            try
+            {
+                if (!Directory.Exists(path))
+                {
+                    LeftoverStatusText.Text = $"{name} is no longer there.";
+                }
+                else if (!await StillLeftoverAsync(path))
+                {
+                    LeftoverStatusText.Text = $"{name} isn't left over any more — nothing was removed.";
+                }
+                else
+                {
+                    await Task.Run(() => Directory.Delete(path, recursive: true));
+                    LeftoverStatusText.Text = $"Removed {name}.";
+                }
+            }
+            catch (Exception ex)
+            {
+                LeftoverStatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex, $"Could not remove {name}");
+            }
+            finally
+            {
+                _leftoverBusy = false;
+            }
+            await LoadLeftoversAsync();
+        };
+
+        // Enter means keep. Loaded alone races the presenter's own initial focus; Opened fires once
+        // the popup is up, so between them the safe button holds focus whichever wins.
+        keep.Loaded += (_, _) => keep.Focus(FocusState.Programmatic);
+        flyout.Opened += (_, _) => keep.Focus(FocusState.Programmatic);
+        flyout.ShowAt(anchor);
     }
 
     /// <summary>Restore button. WinUI 3 forbids opening a second ContentDialog while one is already

@@ -1177,7 +1177,21 @@ public sealed partial class MainWindow : Window
         catch { /* path gone / shell unavailable — silent */ }
     }
 
+    // WinUI 3 allows ONE ContentDialog per XamlRoot, and a second ShowAsync throws from an async void
+    // handler -- which lands in Task.ThrowAsync and takes the whole app down, not a caught error. The
+    // modal overlay stops a user reaching this button twice, but nothing stops automation, and three
+    // separate smoke runs killed the app this way before the guard existed.
+    private bool _settingsOpen;
+
     private async void OnSettings(object sender, RoutedEventArgs e)
+    {
+        if (_settingsOpen) return;
+        _settingsOpen = true;
+        try { await ShowSettingsAsync(); }
+        finally { _settingsOpen = false; }
+    }
+
+    private async Task ShowSettingsAsync()
     {
         var avatars     = App.AppHost.Services.GetRequiredService<Services.AvatarService>();
         var themes      = App.AppHost.Services.GetRequiredService<Services.ThemeService>();
