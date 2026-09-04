@@ -2047,6 +2047,59 @@ legitimate addition, so read the named differences rather than the exit code.*
 
 ---
 
+## A data PR reaching a real install — RUN 2026-09-03, three games
+
+The property the whole manifest feed exists for: **a game on an engine the launcher already knows
+needs no app release.** Verified end to end by adding three games.
+
+Merged `overrides/{big-ambitions,crime-simulator,how-to-fish}.json`, let CI regenerate and re-sign,
+cleared the 24h fetch debounce, and started the installed build. The cached feed went from **151 to
+154 games** on its own, carrying each entry's engine and mod path. Nothing about the app changed.
+
+| Game | Quick-picked | Mod folder resolves to |
+|---|---|---|
+| Crime Simulator | yes | `Crime Simulator/BepInEx/plugins` |
+| Big Ambitions | yes | `Big Ambitions/BepInEx/plugins` |
+| How to Fish | **no — manual Set up** | `How to Fish/How to Fish/BepInEx/plugins` |
+
+All three were checked to land in a folder that actually holds the game executable *and* its `_Data`
+directory, not merely to be non-empty strings.
+
+### The one that did not quick-pick, and why it matters
+
+**How to Fish nests its game root.** Steam installs it to `common/How to Fish/`, and `UnityPlayer.dll`
+plus `How to Fish_Data` sit one level further down. `EngineScan.Probe` requires both at the *top*
+level:
+
+```csharp
+var unity = RootFile("UnityPlayer.dll")
+    && subs.Any(s => Path.GetFileName(s).EndsWith("_Data", …));
+```
+
+So detection finds nothing, the game falls to manual **Set up**, and the curated manifest entry is
+never consulted — the mod path was right and unreachable. Unreal already tolerates exactly this shape:
+`UeProjectScan` walks *root plus up to two wrapper levels* and reports a `WrapperDepth`. Unity has the
+same problem and none of that tolerance.
+
+The manifest entry follows the Palworld precedent — game root stays the Steam folder and the mod path
+carries the wrapper (`Pal/Content/Paks/~mods`, `How to Fish/BepInEx/plugins`) — so it is already
+correct for the day detection catches up.
+
+**When re-running this case, use a nested-layout game as well as a flat one.** A flat game passes
+whether or not the wrapper case works.
+
+### Also worth knowing for the next entry
+
+**Read a ComboBox selection with `SelectionPattern`, never its `Name`.** `EngineBox` reports its Name
+as the literal string `Engine` — the field's label — while genuinely holding `BepInEx (Unity)`. A
+harness that asserts on Name concludes the engine was never set and goes red for nothing.
+
+**Big Ambitions is Mono, not IL2CPP**, despite the Nexus install article saying otherwise. No
+`GameAssembly.dll`, no `il2cpp_data`, a `MonoBleedingEdge` folder, and a `Managed/` full of real .NET
+assemblies. The engine key is `bepinex` either way, but the BepInEx build a user downloads differs.
+
+---
+
 ## An override can curate a game without knowing its Steam id
 
 Before phase 1, a curated override was refused unless it carried a Steam app id — `OverridesLoader`
