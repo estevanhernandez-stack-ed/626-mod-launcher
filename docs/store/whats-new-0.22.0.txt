@@ -1,0 +1,15 @@
+Version 0.22.0
+
+• The mod folders a removed game left behind. Turning a mod off moves its files aside instead of deleting them — but remove the game and that folder stayed on your disk, holding your files, shown nowhere. Settings now lists them.
+
+• Three things you can do with each one: show the files, save a copy somewhere else, or remove it. Remove deletes permanently. It asks first, names the folder and how many files are in it, offers to save a copy instead, and only ever acts on the one you picked.
+
+• The updates list now takes you to the mod. A row with a newer version offers a button that opens that mod's page. A mod the launcher could not match shows no button at all, rather than one that does nothing.
+
+• Adding a game offers every game the launcher curates, not a fixed list of 18 — with the ones already installed on your machine at the top.
+
+• Picking a game there now keeps what is known about it. The engine and mod folder could previously be lost without a word, leaving a curated game set up as though it were not.
+
+• A game no longer has to be on Steam to be supported.
+
+• Fixed: opening Settings a second time could close the app.
