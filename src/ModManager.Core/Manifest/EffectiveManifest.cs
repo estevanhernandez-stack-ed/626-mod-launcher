@@ -46,6 +46,31 @@ public static class EffectiveManifest
             else byId[g.Id] = MergeEntry(byId[g.Id], g);
         }
 
+        // A Steam app id names the GAME; an id names an ENTRY. Merging on the id alone let the feed
+        // and the snapshot describe one game twice under two ids -- Skyrim Special Edition was
+        // skyrim-se in the snapshot and the-elder-scrolls-v-skyrim-special-edition in the feed. The
+        // quick-pick then offered it twice under two names, and whichever the user happened to pick
+        // decided the id their install carried. Landing on the snapshot's stale alias meant every
+        // later feed correction for that game -- ban risk, save layout, nexus domain -- attached to
+        // an id they did not have, silently and permanently. So: where the feed names a game the
+        // snapshot also names, the feed's id wins, and what only the snapshot knew folds into it.
+        var remoteIdByApp = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var g in remote.Games)
+            if (g.Stores.SteamAppId is { Length: > 0 } appId) remoteIdByApp.TryAdd(appId, g.Id);
+
+        foreach (var g in embedded.Games)
+        {
+            if (g.Stores.SteamAppId is not { Length: > 0 } app) continue;      // nothing to collide on
+            if (!remoteIdByApp.TryGetValue(app, out var winner)) continue;     // the feed never names it
+            if (winner == g.Id || !byId.ContainsKey(g.Id)) continue;           // same entry, or already folded
+
+            // Folded, not dropped. MergeEntry keeps the FIRST argument's id, so the remote id is
+            // reasserted explicitly -- the whole point is that the feed's id is the surviving one.
+            byId[winner] = MergeEntry(byId[g.Id], byId[winner]) with { Id = winner };
+            byId.Remove(g.Id);
+            order.Remove(g.Id);
+        }
+
         return embedded with { Games = order.Select(id => byId[id]).ToList() };
     }
 

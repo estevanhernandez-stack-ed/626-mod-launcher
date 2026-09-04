@@ -86,4 +86,23 @@ public class ManifestInvariantsTests
             Assert.DoesNotContain("..", g.ModPath!.Split('/', '\\'));
         }
     }
+
+    [Fact]
+    public void No_two_entries_claim_one_Steam_app_id()
+    {
+        // An app id names the game; an entry id names a row. Two rows on one app id is one game
+        // described twice, and every facade that keys by app id -- KnownEngines, NexusDomains,
+        // KnownModPaths -- silently resolves it by iteration order. EffectiveManifest.Merge collapses
+        // this across the snapshot/feed boundary, where it actually happened (Skyrim SE was skyrim-se
+        // here and the-elder-scrolls-v-skyrim-special-edition in the feed). Nothing collapses it
+        // WITHIN one file, so the snapshot has to be clean on its own.
+        var dupes = EmbeddedGameManifest.Current.Games
+            .Where(g => !string.IsNullOrEmpty(g.Stores.SteamAppId))
+            .GroupBy(g => g.Stores.SteamAppId!, StringComparer.Ordinal)
+            .Where(grp => grp.Count() > 1)
+            .Select(grp => $"{grp.Key}: {string.Join(", ", grp.Select(g => g.Id))}")
+            .ToList();
+
+        Assert.Empty(dupes);
+    }
 }
