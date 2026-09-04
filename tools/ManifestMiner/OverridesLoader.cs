@@ -24,7 +24,7 @@ public static class OverridesLoader
                 // it is still refused here - OverridesValidate reports it as a build problem.
                 if (entry is not null
                     && (!string.IsNullOrWhiteSpace(entry.SteamAppId) || !string.IsNullOrWhiteSpace(entry.Id)))
-                    result.Add(entry);
+                    result.Add(entry with { SourcePath = file });
             }
             catch (JsonException) { /* skip a malformed curated file; caller reports the count */ }
         }

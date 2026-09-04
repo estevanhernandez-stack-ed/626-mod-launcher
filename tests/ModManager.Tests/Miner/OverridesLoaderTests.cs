@@ -64,4 +64,19 @@ public class OverridesLoaderTests : IDisposable
 
         Assert.Empty(OverridesLoader.Load(_dir));
     }
+
+    [Fact]
+    public void A_loaded_override_remembers_its_file_so_a_problem_can_name_it()
+    {
+        // "Two overrides collide" is not actionable without both file names. The path is set by the
+        // loader rather than parsed from JSON - it is not a curated field and must not be settable
+        // from a file.
+        Directory.CreateDirectory(_dir);
+        var path = Path.Combine(_dir, "skyrim.json");
+        File.WriteAllText(path, "{ \"steamAppId\": \"72850\", \"engine\": \"bethesda\" }");
+
+        var entry = Assert.Single(OverridesLoader.Load(_dir));
+
+        Assert.Equal(path, entry.SourcePath);
+    }
 }
