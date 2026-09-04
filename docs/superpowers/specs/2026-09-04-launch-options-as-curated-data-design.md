@@ -169,6 +169,71 @@ The useful addition is a **validation warning, not an error**: a game with `safe
 `AntiCheatToggle` option is a curation gap worth reporting in the build summary. It is not wrong — it is
 a to-do that is currently invisible.
 
+## Two safeguards raised separately, assessed here
+
+Both came out of a set of notes on protecting users from tripping EA's anti-cheat. Most of that set is
+declined below; these two survive, and they belong in this spec because they are launch-time concerns.
+
+### L6. A pre-flight check before a modded launch — worth doing, and narrower than proposed
+
+The proposal: refuse a modded launch while a store client is running, because a running client is
+assumed to be online, and mods plus online is what gets accounts actioned.
+
+The shape is right and the app already works this way elsewhere — `LaunchGuard` gates a vanilla launch
+when a required launcher is in force, and the profile restore refuses while the game is running and
+fails closed. A launch-time pre-flight is the same idea one step earlier.
+
+**But it must not be "any launcher is running".** `LaunchGuard.NeedsSteamRunning` requires Steam to be
+*up* for a `steam://` launch, so a blanket rule would refuse every Steam game the launcher currently
+launches correctly. The check is only meaningful for a client whose *running* state implies an online
+session the game will join — the EA App case — and it has to be scoped per game, from the same curated
+data this spec moves.
+
+The honest limit, which the proposal states plainly and which should reach the user: the app cannot
+tell an online client from one already in offline mode. It can only see that the client is running. So
+the copy says *"the EA App is running and we cannot tell whether it is offline"*, not *"you are
+online"* — the second is a claim the app cannot support.
+
+### L7. A firewall kill-switch — viable off-Store, and only with a marker
+
+Blocking one executable's outbound traffic for the duration of a session is the only network idea in
+that set with a small enough blast radius to consider: one exe, one rule, added and removed.
+
+It needs administrator rights, which the app does not have — `runFullTrust` is its only declared
+capability and there is no elevation manifest. The proposal's answer is a short-lived elevated helper
+(`runas` + `netsh advfirewall`) rather than elevating the shell, which keeps the Store submission's
+posture unchanged. That is the right shape, and it makes this **FULL-only**, alongside the anti-cheat
+toggle.
+
+**A rule outliving a crash is the real risk**, and the answer is the pattern this app already uses.
+The anti-cheat toggle parks the original bootstrapper as `.626off`, and *the presence of that file is
+the signal* that something needs undoing. A firewall rule needs the same: write a marker when the rule
+goes up, remove it when the rule comes down, and sweep on startup **only when the marker survived**.
+
+That ordering matters for more than tidiness. A sweep that runs unconditionally on every launch
+prompts for UAC every time, which trains people to click through the prompt that is supposed to mean
+something.
+
+One correction to the proposed sweep, which would not have worked as written:
+
+```
+netsh advfirewall firewall delete rule name=all program="626_ModManager_Block_*"
+```
+
+`program=` filters by executable path, not by rule name, and `netsh` does not wildcard rule names. The
+sweep has to delete by the exact rule name it recorded — which the marker file is the natural place to
+keep.
+
+### What is declined, and why
+
+| Proposed | Why not |
+|---|---|
+| Rewriting the Windows `hosts` file | A global system file. A crash mid-session leaves it modified and the user's EA access broken with nothing saying why. Antivirus flags `hosts` edits routinely. |
+| Forcing Steam offline via `registry.vdf` | Steam rewrites that file on exit, so an edit made while it runs is clobbered — the same "changed under a running app is silently undone" trap Palworld's saves taught. It is also global, affecting every other game. |
+| Forcing the EA App offline via its config | Same class, same reasons. |
+| Disabling the network adapter | System-wide, and catastrophic if the restore does not run. |
+| DLL injection to bypass EA's anti-cheat | Genuine circumvention. The Elden Ring toggle declines to *launch* the anti-cheat bootstrapper; it does not defeat a running kernel driver. The Store build has that mechanism sealed out and binary-verified absent, and building an actual bypass is a different category of thing. |
+
 ## What this does not do
 
 **It does not make College Football's anti-cheat bypassable.** The proven Elden Ring technique is a
