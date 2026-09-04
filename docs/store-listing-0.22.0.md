@@ -217,18 +217,16 @@ hand. Its Nav scrolls to the section through `ScrollItemPattern` and then **veri
 realised** before shooting — the rows are virtualized and a photograph of an empty section would look
 finished while saying the feature found nothing.
 
-### One decision to make before uploading — not a blocker, but it is yours
+### The named-games question, asked and answered
 
 **Shot 10 names seven games off the maintainer's own machine**: `captain-of-industry`,
-`demonologist`, `marvel-s-spider-man-2-2`, `phasmophobia`, `ready-or-not`, `repo`, `schedule-i`. They
-are folder names for games he removed, and they will sit on a public storefront page.
+`demonologist`, `marvel-s-spider-man-2-2`, `phasmophobia`, `ready-or-not`, `repo`, `schedule-i`.
+They are folder names for games he removed, and they sit on a public storefront page.
 
-Nothing there is sensitive and the shot is honest — real data is why it reads as a real feature. But
-it is a small disclosure about one person's library, and the call belongs to him rather than to
-whoever assembles the upload. The same conscious yes that `09` needed in the 0.20 set.
-
-If the answer is no, the section has to be photographed against a throwaway registration rather than
-staged, because a mocked-up listing on a store page is the thing this project does not do.
+**Asked and cleared, 2026-09-04.** Real data is why the shot reads as a real feature rather than a
+mock-up, and none of the seven is anything he minds publishing. Recorded here so it is a decision
+somebody made rather than an oversight somebody missed, and so the next release does not re-litigate
+it — though a future capture naming a different set is a fresh question, not a settled one.
 
 **The Flyout trap still applies.** The confirm on Remove is a `Flyout`, and the capture script's
 reposition-before-capture step dismisses one — that is exactly how the 0.20 set photographed the
