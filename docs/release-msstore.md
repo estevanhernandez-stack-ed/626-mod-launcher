@@ -142,6 +142,30 @@ Not a config flag. Two blockers sit in front of it, both deliberate choices made
 Then the volume: 443 hardcoded string literals in XAML and zero `x:Uid`, which is the mechanism WinUI
 localization runs on.
 
+**Do not hand-sweep those 443.** `vibe-lingual` exists for exactly this job — scan user-facing strings
+by kind, emit a readiness brief, then run a confidence-routed extract, wire, translate and guard loop
+that mutates only with per-file backups and is safe to re-run. Sweeping by hand first means doing its
+work manually and then having nothing left for it to do but translate.
+
+The catch is substrate. It is deep on next-intl and the Next.js App Router: JSX text, `aria-label`,
+`alt`, toasts, `Intl` date handling, RTL surfaces. This app is WinUI 3 and XAML, where localization
+runs on `x:Uid`, `.resw` and `ResourceLoader`. None of that overlaps.
+
+What does transfer is the shape rather than the code: the scan-by-kind, the readiness brief, the
+confidence routing that extracts clean sites and leaves genuinely ambiguous ones inline, the catalog
+parity guard, and the no-literals ratchet. It also ships an adapter seam with an honest
+not-yet-implemented path, so pointing it at a WinUI app stands down cleanly instead of mangling it.
+**A WinUI adapter is the path, not a fork.**
+
+So the order is:
+
+1. **Move the Core string boundary.** Design work, a human call, and no tool should make it.
+2. **Clear the two build blockers** above, since a translated app that cannot load its own language
+   resources is not translated.
+3. **Write the WinUI adapter**, then let `vibe-lingual` do the extract, the wire and the translate.
+
+Steps 1 and 2 are the ones that have to be done by hand. Step 3 is the one that should not be.
+
 **Do the Core boundary first, before any `x:Uid` sweep.** Roughly a hundred user-facing strings are
 produced inside `ModManager.Core`, which is pure and has no access to WinUI resources —
 `GameStateChip` hands the app a `Label`, a `Detail` and an `ActionLabel`, all in English. The right
