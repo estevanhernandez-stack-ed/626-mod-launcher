@@ -98,6 +98,57 @@ So:
    screenshots for M-rated titles can depict combat and blood; the adult filter does not make the remainder
    violence-free). Expect a higher rating than the sealed SKU — that is correct, not a failure.
 5. First cert round-trip: expect a question about writing into other publishers' game dirs — answer: "load-order utility for the user's own files, never bundles third-party binaries (see NOTICE)."
+6. **Listing languages — expand these.** Decided after the submission that got approved: every listing
+   from here adds markets rather than shipping English-only. See below for what that does and does
+   not mean.
+
+## Listing languages are not app languages
+
+Three separate things get called "languages" and only one of them is expensive. Confusing them is how
+a shopper ends up being sold an English app in French.
+
+| | What it is | Cost |
+|---|---|---|
+| **Store listing languages** | Translated description, what's-new, screenshots, in Partner Center | Translation only, no code |
+| **Package declared languages** | The `<Resources>` block in `Package.appxmanifest` | Free, and a lie unless the UI is translated |
+| **The app's UI language** | Actual localization | A real feature, see below |
+
+**Add the first. Never add the second without the third.**
+
+The manifest currently reads `<Resource Language="x-generate" />`, which derives the declared list
+from resources actually present in the package. There are none, so it declares one. Leave it that
+way. Hardcoding a language list there tells the Store to offer the app to people it cannot serve.
+
+**Machine translation is worse than English here.** The listing is written in a specific voice —
+builder-to-builder, second person, no corporate speak — and that voice is the first thing a machine
+translator destroys. A listing that reads like a template in German is a worse signal than an honest
+English one. Budget for a person, or add fewer markets.
+
+**Where to start, and why.** The modding audience skews heavily toward German, Russian and Simplified
+Chinese, and the last two are large for exactly the titles this launcher curates. English, German,
+Russian and Simplified Chinese is a defensible first four. Add Polish, French, Spanish and Brazilian
+Portuguese when there is someone to check them.
+
+### What UI localization would actually take
+
+Not a config flag. Two blockers sit in front of it, both deliberate choices made for other reasons:
+
+- `Directory.Build.props` sets `InvariantGlobalization` to true, which strips ICU. Removing it changes
+  real behaviour — the game picker's `StringComparer.CurrentCultureIgnoreCase` currently sorts
+  invariantly and would start sorting per locale.
+- `ModManager.App.csproj` deletes the Windows App SDK `.mui` folders for ~85 languages to save package
+  size, keeping only `en-us`. Any language you ship has to survive that trim.
+
+Then the volume: 443 hardcoded string literals in XAML and zero `x:Uid`, which is the mechanism WinUI
+localization runs on.
+
+**Do the Core boundary first, before any `x:Uid` sweep.** Roughly a hundred user-facing strings are
+produced inside `ModManager.Core`, which is pure and has no access to WinUI resources —
+`GameStateChip` hands the app a `Label`, a `Detail` and an `ActionLabel`, all in English. The right
+shape already exists in that same record for a different reason: it also carries a stable `Id`,
+because automation identity had to survive copy changes. Localization wants exactly that. Core hands
+over a key and the data to fill it; the App owns every word. Moving that boundary after the XAML
+sweep means doing the sweep twice.
 
 ## Open / before-launch
 
