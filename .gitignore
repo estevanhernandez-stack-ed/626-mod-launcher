@@ -12,6 +12,10 @@ obj/
 *.msixbundle
 *.appxsym
 
+# carve-out: assets/release/ is the release-page asset directory, not a build output
+!assets/release/
+!assets/release/**
+
 # Visual Studio / Rider
 .vs/
 .idea/
@@ -26,6 +30,7 @@ coverage*.xml
 # secrets — never commit (the CurseForge key lives only in the Worker)
 *.secret
 .env
+.mcp.json
 appsettings.*.local.json
 dist/
 
