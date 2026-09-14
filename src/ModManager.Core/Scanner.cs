@@ -676,11 +676,35 @@ public static class Scanner
         }
         catch (Exception e)
         {
-            foreach (var f in moved) { try { MoveAny(Path.Combine(dest, f), Path.Combine(loc.Abs, f)); } catch { /* best effort */ } }
+            var stranded = new List<string>();
+            foreach (var f in moved)
+            {
+                try { MoveAny(Path.Combine(dest, f), Path.Combine(loc.Abs, f)); }
+                catch { stranded.Add(f); }
+            }
+            if (stranded.Count > 0)
+            {
+                // What could not go back stays held WITH a record, so it lists as turned off and can be
+                // turned on from the app. Without one, EnableMod skips it ("no readable disabled
+                // metadata") and the listing never shows it. Mirrors are untouched at this point, so
+                // nothing needs recreating on enable.
+                try
+                {
+                    AtomicJson.WriteJsonAtomic(Path.Combine(dest, "meta.json"), new DisabledMeta
+                    {
+                        Location = m.Location, IsFolder = m.IsFolder, DisabledAt = DateTime.UtcNow.ToString("o"),
+                        HadOnServer = stranded.ToDictionary(f => f, _ => false),
+                    });
+                }
+                catch { /* the message below still names them */ }
+            }
             // Only a folder this call created, and only once no file is left in it. Never a recursive
             // delete over something that could be the user's.
-            if (!destExisted) HoldingFolder.RemoveIfNoFiles(dest);
-            throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e);
+            else if (!destExisted) HoldingFolder.RemoveIfNoFiles(dest);
+            throw new InvalidOperationException(
+                $"Couldn't disable \"{m.Name}\" ({e.Message})"
+                + (stranded.Count == 0 ? ""
+                    : $" {string.Join(", ", stranded.Select(f => $"\"{f}\""))} could not be moved back and {(stranded.Count == 1 ? "is" : "are")} held in {dest}."), e);
         }
 
         // Phase 2: primary files are safely held. Snapshot-first — write meta.json BEFORE clearing any
