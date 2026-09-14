@@ -208,7 +208,37 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 >   `PBOT`, `PEYE`, `PFHO`, apparently appearance and equipment — which is why it decodes about 2.6 MB
 >   larger than the downloaded official roster. INFERRED from the tag names.
 >
-> Still waiting on you: the boundary decision between options 1 and 3, and decisions A3 and A4.
+> **Decisions made, 2026-09-13.** The owner approved all three recommendations.
+>
+> 1. **Section 2: option 1, scoped.** Accept the sync knowingly, with the launcher's writes starting
+>    with **roster files only** — the TDB2 `ROSTER-*` file type that Madden's own Creation Center writes
+>    and seals with CRC-32/BZIP2, holding values inside the ranges the game's own editor allows.
+>    - **Why the scope makes the risk acceptable:** a Creation Center roster with an edited rating was
+>      uploaded to EA's cloud as ordinary play (see the B2 update above). A launcher-written roster of
+>      the same type, with in-range values, lands where EA's game already puts user-edited rosters every
+>      day — a much smaller exposure than a Franchise or Road to Glory save, which no in-game editor
+>      produces.
+>    - **Edited rosters are for offline modes.** The launcher never shares or uploads a roster itself,
+>      names the files it writes so they're recognisable, and tells the user plainly that the EA app's
+>      sync will upload the file and that EA's user agreement still prohibits modification. It never
+>      calls a write "safe".
+>    - **Franchise (`CAREER-*`) and Road to Glory (`RTG-*`) save writes are not authorised.** They wait for
+>      a separate decision once roster writes have proven out in the game.
+>    - **Part B's write-and-load tests are authorised for roster files.** The probing steps stay removed
+>      under every option, and the source rule stands.
+> 2. **A3: Steam id or manifest id, whichever is higher, plus a compiled-in floor.** Ban risk resolves as
+>    the maximum of the lookup by Steam app id and the lookup by the game's manifest id. College Football
+>    27 and Madden NFL 27 carry a compiled-in `high` floor that the feed can raise but never lower, which
+>    covers a duplicate registration and an offline first run before the feed has downloaded. **Save
+>    writes on a high-risk game go behind a ban-risk acknowledgment**; today the save editor has none.
+>    Whether that acknowledgment is separate from the mod-enable one, which save paths it covers, and the
+>    new prompt it adds for existing high-risk save-editor users are spec-level questions for the fix.
+> 3. **A4: the EA store key is the `installerdata.xml` contentID**, read from each game's
+>    `__Installer` folder. It travels with the game folder, survived a title update, and is the identifier
+>    EA's own launch key uses.
+>
+> **Next:** the ban-risk fix (C1 to C3 plus the save-write gate) is prerequisite zero, because it is what
+> makes registering either game safe. Then EA app detection, registration and launch (sub-project 1).
 
 ## 1. What this is
 
@@ -225,6 +255,10 @@ Sub-projects 1 and 2 are ordinary launcher work. Sub-projects 3 and 4 depend on 
 ---
 
 ## 2. The decision you need to make first
+
+> **Decided 2026-09-13: option 1, scoped to roster files first.** See the decisions block at the top of
+> this document. Option 2 was ruled out when the live EA app showed no cloud-save toggle. The analysis
+> below is kept as the record of why.
 
 ### Why this comes back to you
 
