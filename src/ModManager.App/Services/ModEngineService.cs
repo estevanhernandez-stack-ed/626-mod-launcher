@@ -6,37 +6,27 @@ namespace ModManager.App.Services;
 /// <summary>
 /// Treats a FromSoft game's Mod Engine 2 config as the source of truth for its mods. ME2's
 /// <c>mods[]</c> array decides what loads and in what priority (earlier wins conflicts). Reading the
-/// list moved to <see cref="ModManager.Core.ModEngine2Listing"/> (shared with the agent-access MCP);
-/// this class handles the writes — enable/disable + load order straight back, no file moves. A one-time
-/// <c>.626bak</c> backup is taken before the first edit, and every write goes through the atomic writer
-/// so a crash can't corrupt the user's config.
+/// list lives in <see cref="ModManager.Core.ModEngine2Listing"/> and the config writes in
+/// <see cref="ModManager.Core.ModEngine2Writer"/>, both shared with the agent-access MCP. This class
+/// keeps the App's DI shape and owns the one write that also deletes a folder: uninstall.
 /// </summary>
 public sealed class ModEngineService
 {
     public bool IsConfigBacked(GameEntry game) => ModEngine2Listing.IsConfigBacked(game);
 
-    public void SetEnabled(GameEntry game, string name, bool enabled)
-        => Edit(game, mods => mods.Select(m => m.Name == name ? m with { Enabled = enabled } : m).ToList());
+    public void SetEnabled(GameEntry game, string name, bool enabled) => ModEngine2Writer.SetEnabled(game, name, enabled);
 
-    public void SetAll(GameEntry game, bool enabled)
-        => Edit(game, mods => mods.Select(m => m with { Enabled = enabled }).ToList());
+    public void SetAll(GameEntry game, bool enabled) => ModEngine2Writer.SetAll(game, enabled);
 
     /// <summary>Reorder the mods array to match the given names; any unlisted mod is kept (never dropped).</summary>
-    public void Reorder(GameEntry game, IReadOnlyList<string> orderedNames)
-        => Edit(game, mods =>
-        {
-            var byName = mods.ToDictionary(m => m.Name);
-            var ordered = orderedNames.Where(byName.ContainsKey).Select(n => byName[n]).ToList();
-            ordered.AddRange(mods.Where(m => !orderedNames.Contains(m.Name)));
-            return ordered;
-        });
+    public void Reorder(GameEntry game, IReadOnlyList<string> orderedNames) => ModEngine2Writer.Reorder(game, orderedNames);
 
     /// <summary>Uninstall: delete the mod's folder, then drop its config entry. Folder-first so a
     /// locked file (game running) leaves the config — and thus the mod — intact, error surfaced.</summary>
     public void Remove(GameEntry game, string name)
     {
         var path = game.ModEngineConfig;
-        var toml = ReadConfig(game);
+        var toml = ModEngine2Listing.ReadConfig(game);
         if (path is null || toml is null) return;
         var mods = ModEngine2Config.ParseMods(toml);
         var target = mods.FirstOrDefault(m => m.Name == name);
@@ -46,26 +36,7 @@ public sealed class ModEngineService
             var folder = System.IO.Path.IsPathRooted(target.Path) ? target.Path : System.IO.Path.Combine(me2Dir, target.Path);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); // may throw -> surfaced
         }
-        Backup(path);
+        ModEngine2Writer.BackupOnce(path);
         AtomicJson.WriteTextAtomic(path, ModEngine2Config.WriteMods(toml, mods.Where(m => m.Name != name).ToList()));
-    }
-
-    private void Edit(GameEntry game, Func<IReadOnlyList<Me2Mod>, IReadOnlyList<Me2Mod>> transform)
-    {
-        var path = game.ModEngineConfig;
-        var toml = ReadConfig(game);
-        if (path is null || toml is null) return;
-        Backup(path);
-        var updated = ModEngine2Config.WriteMods(toml, transform(ModEngine2Config.ParseMods(toml)));
-        AtomicJson.WriteTextAtomic(path, updated);
-    }
-
-    private static string? ReadConfig(GameEntry game) => ModEngine2Listing.ReadConfig(game);
-
-    // One-time backup so the user can always recover Mod Engine 2's original config.
-    private static void Backup(string path)
-    {
-        var bak = path + ".626bak";
-        if (!File.Exists(bak)) { try { File.Copy(path, bak); } catch { /* best effort */ } }
     }
 }

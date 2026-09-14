@@ -27,13 +27,5 @@ public static class LooseRootService
     /// Enabling an unrestorable holding entry (corrupt/missing sidecar) is a safe no-op inside
     /// <see cref="DirectInject.Enable"/>; disabling an unknown name is a safe no-op here.</summary>
     public static void SetEnabled(GameEntry game, string modName, bool enabled)
-    {
-        var folder = LooseRootListing.PlayFolder(game.GameRoot);
-        if (folder is null) return;
-        var holding = LooseRootListing.Holding(game);
-        if (enabled) { DirectInject.Enable(folder, holding, modName); return; }
-
-        var mod = LooseRootListing.Enabled(folder).FirstOrDefault(m => m.Name == modName);
-        if (mod is not null) DirectInject.Disable(folder, holding, mod);
-    }
+        => ModToggle.SetLooseRootEnabled(game, modName, enabled);
 }

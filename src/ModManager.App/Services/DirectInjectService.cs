@@ -73,23 +73,12 @@ public sealed class DirectInjectService
         return DirectInject.ProcessLoadProxiesIn(top);
     }
 
-    private static string VanillaProxyHolding(string playFolder) => DirectInject.VanillaProxyHolding(playFolder);
-
-    /// <summary>Step one active proxy DLL aside (reversible) for a vanilla launch.</summary>
-    public void DisableProxy(GameEntry game, string proxyDll)
-    {
-        var folder = PlayFolder(game.GameRoot);
-        if (folder is null) return;
-        DirectInject.DisableSingleFile(folder, VanillaProxyHolding(folder), proxyDll);
-    }
+    /// <summary>Step one active proxy DLL aside (reversible) for a vanilla launch. The move itself lives
+    /// in <see cref="ModToggle"/>, shared with the agent-access MCP.</summary>
+    public void DisableProxy(GameEntry game, string proxyDll) => ModToggle.SetProxyLoaderEnabled(game, proxyDll, enabled: false);
 
     /// <summary>Restore one proxy DLL stepped aside by <see cref="DisableProxy"/>.</summary>
-    public void EnableProxy(GameEntry game, string proxyDll)
-    {
-        var folder = PlayFolder(game.GameRoot);
-        if (folder is null) return;
-        DirectInject.EnableSingleFile(folder, VanillaProxyHolding(folder), proxyDll);
-    }
+    public void EnableProxy(GameEntry game, string proxyDll) => ModToggle.SetProxyLoaderEnabled(game, proxyDll, enabled: true);
 
     /// <summary>Install dropped sources (zip/files/folders) into the game's exe folder.</summary>
     public IntakeResult Install(GameEntry game, IEnumerable<string> paths)
@@ -117,21 +106,11 @@ public sealed class DirectInjectService
         return DirectInject.Execute(folder, replacedRoot, plan, replace);
     }
 
-    public void SetEnabled(GameEntry game, string modName, bool enabled)
-    {
-        var folder = PlayFolder(game.GameRoot);
-        if (folder is null) return;
-        var holding = Holding(game);
-        if (enabled) { DirectInject.Enable(folder, holding, modName); return; }
-
-        var mod = Enabled(folder).FirstOrDefault(m => m.Name == modName);
-        if (mod is not null) DirectInject.Disable(folder, holding, mod);
-    }
+    /// <summary>Toggle one direct-inject mod by name. Bulk callers (enable all, profiles) use this; the
+    /// single-row toggle goes through <see cref="ModToggle.SetEnabledAsync"/>, which calls the same
+    /// Core move.</summary>
+    public void SetEnabled(GameEntry game, string modName, bool enabled) => ModToggle.SetDirectInjectEnabled(game, modName, enabled);
 
     /// <summary>FromSoft games keep the exe + mods under a "Game" subfolder; fall back to the root.</summary>
     public static string? PlayFolder(string? gameRoot) => DirectInjectListing.PlayFolder(gameRoot);
-
-    private static string Holding(GameEntry game) => DirectInjectListing.Holding(game);
-
-    private static IReadOnlyList<DirectInjectMod> Enabled(string? folder) => DirectInjectListing.Enabled(folder);
 }
