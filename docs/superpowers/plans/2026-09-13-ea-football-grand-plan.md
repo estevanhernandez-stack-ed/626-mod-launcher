@@ -12,6 +12,27 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 
 ---
 
+> **Status after scout part A, 2026-09-13.** Every read-only item that didn't need you has run.
+> Full results: [the scout report](../research/2026-09-13-ea-football-scout-part-a.md). What moved:
+>
+> - **Option 2 has no mechanism yet.** EA documents no cloud-save toggle, EA staff said in 2023 there
+>   are no such settings, and offline mode isn't a documented substitute. B10 stays UNKNOWN, leaning
+>   no toggle. It comes back only if you find a toggle in the live EA app.
+> - **Writing a container works, in memory.** All three save kinds re-inflate byte-identical after a
+>   .NET rebuild, and the roster CRC recomputes. Road to Glory has only 431–637 bytes of slack, so only
+>   `CompressionLevel.SmallestSize` fits. Stock zlib reproduces EA's streams byte for byte, which is a
+>   second route that needs a dependency decision. Game acceptance is still untested (Q5).
+> - **Launch key found.** `origin2://game/launch/?offerIds=<contentID>` launched College Football 27
+>   through the EA app, per its own logs. Madden is INFERRED.
+> - **Both Steam ids are correct**, and the install-state rule holds on both finished installs.
+> - **Licensing is stricter than B8 said.** Several sources are non-commercial or unlicensed, and the
+>   schema and zstd dictionary files can't ship. A clean-room rule is drafted for your sign-off.
+> - **No online/offline marker exists in the saves.** A writer can accept only the verified Road to
+>   Glory fingerprint and must refuse everything else.
+>
+> Still waiting on you: the boundary decision, decisions A3 and A4, and the Madden and College
+> Football captures in Band B.
+
 ## 1. What this is
 
 You want the launcher to handle EA's two football games, and to move players between them offline. There are four sub-projects and one standing workstream:
