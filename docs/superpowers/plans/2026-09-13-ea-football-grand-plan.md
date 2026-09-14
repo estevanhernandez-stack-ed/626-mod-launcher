@@ -91,8 +91,26 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 > **The most valuable Madden captures now are offline Franchise saves** (Band B items 1–4), since
 > Franchise and the roster file are the likely offline landing spots.
 >
-> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, the offline
-> Superstar test, and the remaining Band B captures.
+> **Update: the offline Superstar test ran. Superstar is online-only.** With the EA app in offline mode,
+> Madden launched but refused to start Superstar mode, reporting that it was unable to connect to EA
+> servers. VERIFIED by owner observation. Together with the disk evidence above — no career file after an
+> import and a started career, and a profile summary keyed to an identity rather than a save file — this
+> closes section 8's central question:
+>
+> - **Superstar is a research target only, and there is nothing local to research.** It has no local save
+>   to write into, and making it playable offline would mean defeating EA's server requirement, which the
+>   boundary rules out under every option. The captures listed for a dedicated Superstar workflow would
+>   produce no local save files either, so that workflow is not worth running.
+> - **The goal survives, in a different mode.** Playing a college player in the NFL offline is what
+>   Madden's **offline Franchise player career** does. It is Band B capture 1, `626-FR-PLAYER-QB`, and it is
+>   now the primary landing spot for College-to-Madden character transport, alongside the full roster file
+>   for whole leagues.
+> - **Superstar still explains the reported pain exactly.** EA's import lands only in Superstar, and
+>   Superstar cannot run offline, so the imported character cannot be used offline. Nothing on the player's
+>   machine could change that, which is why the transport has to go around EA's import entirely.
+>
+> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and the
+> remaining Band B captures, with the offline Franchise player career first.
 
 ## 1. What this is
 
