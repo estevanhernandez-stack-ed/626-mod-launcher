@@ -191,54 +191,125 @@ public static class DirectInject
     }
 
     /// <summary>Disable: move the mod's owned entries into a per-mod holding folder, then record what moved.
-    /// Rolls back any partial move on failure so the mod is never left half-disabled.</summary>
+    /// Rolls back any partial move on failure so the mod is never left half-disabled.
+    ///
+    /// <para><b>Refuses, moving nothing, when an earlier copy of this mod is already held.</b> Turn a mod
+    /// off, install a fresh copy, then turn the fresh copy off: the holding folder already holds the old
+    /// one under the same names. This used to hit the name collision mid-move, and the rollback cleared
+    /// the holding folder with a recursive delete — the old copy gone for good. Nothing a toggle does may
+    /// delete the user's files, so the collision is found first and nothing is touched.</para>
+    ///
+    /// <para><b>The record is written before anything moves.</b> Written after, a failed write or a
+    /// crash left the files in holding with no record, and the listing skips a folder without one: the
+    /// mod vanished from the app with its files still on disk.</para></summary>
     public static void Disable(string playFolder, string holdingRoot, DirectInjectMod mod)
     {
         var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(mod.Name));
-        Directory.CreateDirectory(dir);
+        var present = mod.Entries.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
 
+        // Validate before acting. Files already in holding are an earlier copy; moving over them would
+        // collide, and writing a new record over theirs would orphan them even where no name collides.
+        if (HoldingFolder.HoldsFiles(dir, MetaFile) || present.Any(e => Exists(Path.Combine(dir, e))))
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{mod.Name}\" off: an earlier copy of it is already turned off and held. "
+                + "Nothing was moved. Turn that copy on, or remove one of the two, first.");
+
+        var dirExisted = Directory.Exists(dir);
+        var metaPath = Path.Combine(dir, MetaFile);
         var moved = new List<string>();
         try
         {
-            foreach (var entry in mod.Entries)
+            Directory.CreateDirectory(dir);
+            AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = present });
+            foreach (var entry in present)
             {
-                var src = Path.Combine(playFolder, entry);
-                if (!Exists(src)) continue; // already gone — skip, don't fail
-                MoveAny(src, Path.Combine(dir, entry));
+                MoveAny(Path.Combine(playFolder, entry), Path.Combine(dir, entry));
                 moved.Add(entry);
             }
         }
         catch (Exception e)
         {
-            foreach (var entry in moved)
+            var stranded = MoveBack(moved, from: dir, to: playFolder);
+            if (stranded.Count > 0)
             {
-                try { MoveAny(Path.Combine(dir, entry), Path.Combine(playFolder, entry)); } catch { /* best effort */ }
+                // What could not go back stays held and LISTED, so it can be turned on from the app.
+                try { AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = stranded }); }
+                catch { /* the message below still names them */ }
             }
-            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
-            throw new InvalidOperationException($"Couldn't disable \"{mod.Name}\" ({e.Message}) — is the game running?", e);
+            else
+            {
+                try { File.Delete(metaPath); } catch { /* a stale record with nothing behind it blocks nothing */ }
+                // Only a folder this call created, and only once it holds no files.
+                if (!dirExisted) HoldingFolder.RemoveIfNoFiles(dir);
+            }
+            throw new InvalidOperationException(
+                $"Couldn't disable \"{mod.Name}\" ({e.Message}) — is the game running?"
+                + (stranded.Count == 0
+                    ? " Nothing was left moved."
+                    : $" {Names(stranded)} could not be moved back, {(stranded.Count == 1 ? "is" : "are")} held in {dir}, and show{(stranded.Count == 1 ? "s" : "")} as turned off."), e);
         }
-
-        var meta = new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = moved };
-        AtomicJson.WriteJsonAtomic(Path.Combine(dir, MetaFile), meta);
     }
 
-    /// <summary>Enable: move a disabled mod's entries back into the play folder (skipping any whose
-    /// name is already taken — a reinstalled live copy is never clobbered), then clear the holding folder.</summary>
+    /// <summary>Enable: move a disabled mod's entries back into the play folder, all or nothing, then
+    /// drop the holding record.
+    ///
+    /// <para><b>Refuses, moving nothing, when any of the held names is already taken in the play
+    /// folder.</b> This used to skip each taken name and then clear the holding folder with a recursive
+    /// delete, so a held copy turned back on over a fresh install was destroyed. Now both copies stay
+    /// exactly where they are and the user decides which to keep.</para>
+    ///
+    /// <para>A move that fails partway puts back what it had already moved, so the mod is never left
+    /// half-enabled with a record that no longer matches the disk.</para></summary>
     public static void Enable(string playFolder, string holdingRoot, string modName)
     {
         var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(modName));
         var meta = ReadMeta(dir);
         if (meta is null) return;
-        foreach (var entry in meta.Entries)
+
+        var held = meta.Entries.Where(e => Exists(Path.Combine(dir, e))).ToList();
+        var taken = held.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
+        if (taken.Count > 0)
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{meta.Name}\" back on: {Names(taken)} {(taken.Count == 1 ? "is" : "are")} already in "
+                + "the game folder, probably from a fresh install. Nothing was moved. Turn that copy off or remove it, "
+                + "then try again.");
+
+        var restored = new List<string>();
+        try
         {
-            var src = Path.Combine(dir, entry);
-            var dest = Path.Combine(playFolder, entry);
-            if (!Exists(src) || Exists(dest)) continue;
-            MoveAny(src, dest);
+            foreach (var entry in held)
+            {
+                MoveAny(Path.Combine(dir, entry), Path.Combine(playFolder, entry));
+                restored.Add(entry);
+            }
         }
+        catch (Exception e)
+        {
+            var stranded = MoveBack(restored, from: playFolder, to: dir);
+            throw new InvalidOperationException(
+                $"Couldn't turn \"{meta.Name}\" back on ({e.Message}) — is the game running?"
+                + (stranded.Count == 0 ? " It is still turned off." : $" {Names(stranded)} could not be moved back to holding and {(stranded.Count == 1 ? "is" : "are")} in the game folder."), e);
+        }
+
+        // Every held entry is back. The record goes; the folder goes only if nothing else is in it.
         try { File.Delete(Path.Combine(dir, MetaFile)); } catch { /* best effort */ }
-        try { Directory.Delete(dir, recursive: true); } catch { /* may hold un-restored entries */ }
+        HoldingFolder.RemoveIfNoFiles(dir);
     }
+
+    // Put entries back where they came from, returning the ones that could not be moved.
+    private static List<string> MoveBack(IEnumerable<string> entries, string from, string to)
+    {
+        var stranded = new List<string>();
+        foreach (var entry in entries)
+        {
+            try { MoveAny(Path.Combine(from, entry), Path.Combine(to, entry)); }
+            catch { stranded.Add(entry); }
+        }
+        return stranded;
+    }
+
+    private static string Names(IReadOnlyList<string> entries)
+        => entries.Count == 1 ? $"\"{entries[0]}\"" : string.Join(", ", entries.Select(e => $"\"{e}\""));
 
     // ---------- install (drop a zip / files into the exe folder) ----------
 

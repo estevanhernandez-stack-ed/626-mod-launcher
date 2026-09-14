@@ -647,8 +647,21 @@ public static class Scanner
         var loc = LocByName(m.Location, c);
         GuardNoBasePakMove(m, loc);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
-        Directory.CreateDirectory(dest);
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
+
+        // Refuse, moving nothing, when an earlier turned-off copy of this mod is already held. The
+        // listing shows only the live copy when both exist, so the user cannot see the held one. This
+        // used to collide mid-move and the rollback ran a recursive delete over the holding folder,
+        // destroying that copy; a folder mod that did not collide was silently merged into it instead.
+        if (HoldingFolder.HoldsFiles(dest, "meta.json")
+            || files.Any(f => File.Exists(Path.Combine(dest, f)) || Directory.Exists(Path.Combine(dest, f))))
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {dest}, "
+                + "and the mod list only shows the copy that is live. Nothing was moved. Move or remove one of "
+                + "the two copies first.");
+
+        var destExisted = Directory.Exists(dest);
+        Directory.CreateDirectory(dest);
 
         // Phase 1: move every primary file into the holding folder. Any failure rolls back
         // the ones already moved so the mod is never left half-disabled, then surfaces it.
@@ -663,9 +676,35 @@ public static class Scanner
         }
         catch (Exception e)
         {
-            foreach (var f in moved) { try { MoveAny(Path.Combine(dest, f), Path.Combine(loc.Abs, f)); } catch { /* best effort */ } }
-            try { DeleteDir(dest); } catch { /* best effort */ }
-            throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e);
+            var stranded = new List<string>();
+            foreach (var f in moved)
+            {
+                try { MoveAny(Path.Combine(dest, f), Path.Combine(loc.Abs, f)); }
+                catch { stranded.Add(f); }
+            }
+            if (stranded.Count > 0)
+            {
+                // What could not go back stays held WITH a record, so it lists as turned off and can be
+                // turned on from the app. Without one, EnableMod skips it ("no readable disabled
+                // metadata") and the listing never shows it. Mirrors are untouched at this point, so
+                // nothing needs recreating on enable.
+                try
+                {
+                    AtomicJson.WriteJsonAtomic(Path.Combine(dest, "meta.json"), new DisabledMeta
+                    {
+                        Location = m.Location, IsFolder = m.IsFolder, DisabledAt = DateTime.UtcNow.ToString("o"),
+                        HadOnServer = stranded.ToDictionary(f => f, _ => false),
+                    });
+                }
+                catch { /* the message below still names them */ }
+            }
+            // Only a folder this call created, and only once no file is left in it. Never a recursive
+            // delete over something that could be the user's.
+            else if (!destExisted) HoldingFolder.RemoveIfNoFiles(dest);
+            throw new InvalidOperationException(
+                $"Couldn't disable \"{m.Name}\" ({e.Message})"
+                + (stranded.Count == 0 ? ""
+                    : $" {string.Join(", ", stranded.Select(f => $"\"{f}\""))} could not be moved back and {(stranded.Count == 1 ? "is" : "are")} held in {dest}."), e);
         }
 
         // Phase 2: primary files are safely held. Snapshot-first — write meta.json BEFORE clearing any
