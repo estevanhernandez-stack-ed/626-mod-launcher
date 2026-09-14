@@ -64,15 +64,18 @@ public sealed partial class GameStateChipViewModel : ObservableObject
 
     /// <summary>The LIVE brush instance the theme service mutates, never a new one — a fresh brush
     /// would freeze this chip's colour at the moment the strip was built and stop following theme
-    /// changes. Same reasoning as <c>.claude/rules/vsm-danger-buttons.md</c>.</summary>
+    /// changes. Same reasoning as <c>.claude/rules/vsm-danger-buttons.md</c>. Keyed off
+    /// <see cref="GameStateChip.Tone"/>, not severity, so red stays reserved for ban risk.</summary>
     public Brush Accent
     {
         get
         {
-            var key = _chip.Severity switch
+            var key = _chip.Tone switch
             {
-                GameStateSeverity.Danger => "ThemeDanger",
-                GameStateSeverity.Warning => "ThemeAccent",
+                GameStateTone.Danger => "ThemeDanger",
+                GameStateTone.Caution => "ThemeWarning",
+                GameStateTone.Notice => "ThemeInfo",
+                GameStateTone.Accent => "ThemeAccent",
                 _ => "ThemeInkSoft",
             };
             return (Brush)Application.Current.Resources[key];

@@ -3,6 +3,10 @@ namespace ModManager.Core;
 /// <summary>A game's anti-cheat/ban exposure for online modding. Ordered so a numeric max works.</summary>
 public enum GameBanRisk { None = 0, Low = 1, Medium = 2, High = 3 }
 
+/// <summary>What a ban-risk acknowledgment covers. Separate records, because agreeing to enable mods
+/// on a game is not agreeing to have its saves edited.</summary>
+public enum BanRiskAck { EnableMods, WriteSaves }
+
 /// <summary>
 /// Pure rules for the game-level ban-risk flag: parse the descriptive manifest string, the
 /// never-downgrade merge, and the single enable-gate decision every enable path consults. No IO,
@@ -40,4 +44,11 @@ public static class BanRiskRules
     /// Medium/Low/None never gate (banner-only). Single source of truth for every enable path.</summary>
     public static bool ShouldGateEnable(GameBanRisk level, bool alreadyAcked)
         => level == GameBanRisk.High && !alreadyAcked;
+
+    /// <summary>A write that puts something new into a save on a high-risk game asks every time, until
+    /// the user ticks "don't ask again" for this game's saves. Fixing a save or going back to what you had
+    /// is never gated, so callers only consult this for new changes. Separate from ShouldGateEnable so the
+    /// two can diverge without a rename.</summary>
+    public static bool ShouldGateSaveWrite(GameBanRisk level, bool saveWritesAcked)
+        => level == GameBanRisk.High && !saveWritesAcked;
 }

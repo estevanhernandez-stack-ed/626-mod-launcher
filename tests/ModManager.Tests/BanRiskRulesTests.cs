@@ -41,4 +41,21 @@ public class BanRiskRulesTests
         Assert.False(BanRiskRules.ShouldGateEnable(GameBanRisk.Medium, alreadyAcked: false));
         Assert.False(BanRiskRules.ShouldGateEnable(GameBanRisk.None, alreadyAcked: false));
     }
+
+    [Theory]
+    [InlineData(GameBanRisk.High, false, true)]
+    [InlineData(GameBanRisk.High, true, false)]
+    [InlineData(GameBanRisk.Medium, false, false)]
+    [InlineData(GameBanRisk.Low, false, false)]
+    [InlineData(GameBanRisk.None, false, false)]
+    public void ShouldGateSaveWrite_gates_only_high_and_unacked(GameBanRisk level, bool acked, bool expected)
+        => Assert.Equal(expected, BanRiskRules.ShouldGateSaveWrite(level, acked));
+
+    [Fact]
+    public void ShouldGateSaveWrite_asks_every_time_until_acked()
+    {
+        // No hidden "already shown" state: the prompt comes back on every write until the box is ticked.
+        Assert.True(BanRiskRules.ShouldGateSaveWrite(GameBanRisk.High, saveWritesAcked: false));
+        Assert.True(BanRiskRules.ShouldGateSaveWrite(GameBanRisk.High, saveWritesAcked: false));
+    }
 }
