@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using ModManager.Core;
 
 namespace ModManager.Tests;
@@ -84,6 +85,12 @@ public class SaveModFlowTests : IDisposable
         var profiles = NewDir("saves");
         var oneProfile = Path.Combine(profiles, "user1");
         Directory.CreateDirectory(Path.Combine(oneProfile, "RocksDB", "1.0"));
+        // A save file that already exists in the profile - the entry-list comparison below would not
+        // notice bytes rewritten INTO an existing file, only files added or removed. The hash closes
+        // that gap: any in-place write during a gated drop would flip it.
+        var existingSave = Path.Combine(oneProfile, "RocksDB", "1.0", "existing.bin");
+        File.WriteAllBytes(existingSave, new byte[] { 1, 2, 3, 4, 5 });
+        var hashBefore = Sha256(existingSave);
         var snaps = NewDir("snaps");
         var data = NewDir("data");
         var before = Directory.GetFileSystemEntries(_root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToList();
@@ -98,6 +105,7 @@ public class SaveModFlowTests : IDisposable
         Assert.Equal(guid, verdicts[0].WorldGuid);
         var after = Directory.GetFileSystemEntries(_root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToList();
         Assert.Equal(before, after);                 // no world, no snapshot, no store entry
+        Assert.Equal(hashBefore, Sha256(existingSave)); // the existing save's own bytes are untouched
         Assert.Empty(SaveModStore.Load(data));
     }
 
@@ -113,6 +121,13 @@ public class SaveModFlowTests : IDisposable
     }
 
     // -------- helpers --------
+    private static string Sha256(string path)
+    {
+        using var sha = SHA256.Create();
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(sha.ComputeHash(stream));
+    }
+
     private string NewDir(string name) { var d = Path.Combine(_root, name); Directory.CreateDirectory(d); return d; }
     private string MakeZip(string name, IEnumerable<(string Entry, string Content)> entries)
     {

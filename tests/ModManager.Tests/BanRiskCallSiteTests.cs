@@ -26,7 +26,9 @@ public class BanRiskCallSiteTests
         var sep = Path.DirectorySeparatorChar;
         var offenders = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{sep}obj{sep}") && !f.Contains($"{sep}bin{sep}"))
-            .Where(f => File.ReadAllText(f).Contains("BanRiskCatalog.ByAppId("))
+            // No trailing "(" - a bare method-group reference (no invocation) is just as much a
+            // Steam-id-only read as a call, and the guard should catch both.
+            .Where(f => File.ReadAllText(f).Contains("BanRiskCatalog.ByAppId"))
             .Select(f => Path.GetRelativePath(RepoRoot(), f))
             .ToList();
 
