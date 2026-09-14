@@ -172,12 +172,43 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 >   (the EA forum thread returned 403).
 > - **NFL team uniforms appeared locked** in the owner's check of two teams. Presumably licensing; custom
 >   uniforms are likely a Team Builder feature for custom teams (INFERRED, not checked).
-> - **Unsynced offline files.** The Franchise career and custom roster have not reached EA's cloud. The
->   next online launch of Madden runs a pre-launch sync against a remote copy that lacks them — the
->   first real chance to observe B2. If a conflict prompt appears, "Continue with local" keeps them.
+> - **Unsynced offline files.** The Franchise career and custom roster had not reached EA's cloud when
+>   they were written. See the next update for what happened when the owner went back online.
 >
-> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and a
-> clean one-change roster pair.
+> **Update: B2 partly observed, and the roster reader proven against a real edit.**
+>
+> - **Offline-created saves are kept and uploaded on reconnect, with no conflict prompt.** The owner
+>   switched the EA app back online and launched Madden. The pre-launch sync raised no conflict. After the
+>   session, the post-game sync computed a remote state of five files and a local state of five —
+>   `CAREER-TEST`, its autosave, `PROFILE-MADDEN`, `ROSTER-Official` and `ROSTER-TEST`, 23,995,546 bytes —
+>   and pushed local state successfully. The two career files and the custom roster were byte-identical
+>   before and after. VERIFIED from EA's log and hashes. **What this settles:** a *new* file written
+>   offline is not overwritten on reconnect; it is added and uploaded. **What it does not:** a file changed
+>   on both sides — the true conflict case — is still unobserved. **What it confirms for section 2:**
+>   anything written while offline reaches EA's servers at the next online launch. Option 1's disclosure
+>   is now observed behaviour, not inference.
+> - **Re-downloading the official roster replaces `ROSTER-Official` in place.** The file changed content
+>   at the same size; the custom roster built from the earlier official roster was untouched. Both
+>   official versions are kept as copies.
+> - **The TDB2 roster reader works on named players.** Field tags are three bytes packing four letters at
+>   six bits each, with a bias of 32 (`PFNA` is `c2 6b a1`); both rosters hold 3,111 player records. Each
+>   record's key fields run in the order `PFNA`, `PJEN`, `PLNA`, `POVR`, `PPOS`, `PSPD`, `PACC`, and that
+>   order is identical in the official and saved rosters. Integers use a variable-length encoding whose
+>   first byte carries six value bits, a sign bit (0x40) and a continuation bit (0x80). Decoded values
+>   match real-world facts: CeeDee Lamb's record reads jersey 88 and position code 3 alongside a WR
+>   neighbour. VERIFIED.
+> - **The owner's edit landed on a different player than intended — which is itself a result.** The owner
+>   intended to change only CeeDee Lamb's acceleration. Comparing every shared field in the adjacent
+>   records, exactly two values changed: **Salvon Ahmed's `PACC` 91 to 99**, and **CeeDee Lamb's `POVR`
+>   93 to 94**. Lamb's own acceleration is unchanged at 84. The records are adjacent, so the acceleration
+>   change most plausibly went to the neighbouring row in the editor; Lamb's +1 overall is unexplained by
+>   that alone. VERIFIED (the bytes); INFERRED (how it happened). Checking both values in-game would close
+>   the loop on the reader.
+> - **A saved custom roster carries about 128 extra fields per player** — tags such as `BSAA`, `BSAT`,
+>   `PBOT`, `PEYE`, `PFHO`, apparently appearance and equipment — which is why it decodes about 2.6 MB
+>   larger than the downloaded official roster. INFERRED from the tag names.
+>
+> Still waiting on you: the boundary decision between options 1 and 3, and decisions A3 and A4.
 
 ## 1. What this is
 
