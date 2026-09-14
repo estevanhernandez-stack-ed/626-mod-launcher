@@ -96,6 +96,13 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<string, IReadOnlyList<BanSafeLoaderOption>, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
 
     /// <summary>
+    /// Shows the save-write prompt for a high-risk game and returns (proceed, dontAskAgain). The view wires
+    /// it (dialog + XamlRoot live in code-behind). Unlike the enable gate, an UNWIRED delegate refuses:
+    /// writing a changed save without the prompt is the one thing this gate exists to prevent.
+    /// </summary>
+    public Func<string, Task<(bool proceed, bool dontAskAgain)>>? ConfirmSaveWrite { get; set; }
+
+    /// <summary>
     /// Shows the loader-disable warning for a loose-root loader row (a proxy like dinput8.dll — the
     /// DLL every ASI plugin loads through) and returns true to proceed with the disable. The view
     /// wires this (the dialog + XamlRoot live in the code-behind, not the VM). Warn-and-proceed,
@@ -397,13 +404,13 @@ public sealed partial class MainViewModel : ObservableObject
     }
     private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); RebuildStateChips(); }
 
-    // Game-level ban-risk banner: resolved live by Steam app id from EffectiveManifest (via
-    // BanRiskCatalog), distinct from the per-mod co-op-desync MpWarning above. Shows for high and
+    // Game-level ban-risk banner: resolved live from the whole game (Steam id, manifest id, compiled floor) via
+    // BanRiskCatalog.Effective, distinct from the per-mod co-op-desync MpWarning above. Shows for high and
     // medium; stays visible even after the enable gate is acked (the risk is never hidden) and
     // covers the dropped-live-pak case the gate can't see. Recomputed on the same notify as
     // MpWarning when the active game changes.
     public Visibility BanRiskWarningVisibility =>
-        BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
+        _ctx is not null && BanRiskCatalog.Effective(_ctx.Game) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
     public string BanRiskWarningText => "This game uses anti-cheat — enabling mods for online play can get your account banned.";
     private void NotifyBanRiskWarning() { OnPropertyChanged(nameof(BanRiskWarningVisibility)); OnPropertyChanged(nameof(BanRiskWarningText)); }
 
@@ -483,7 +490,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// render, not how they are decided.</summary>
     private GameStateConditions CurrentConditions() => new()
     {
-        BanRisk = BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium,
+        BanRisk = _ctx is not null && BanRiskCatalog.Effective(_ctx.Game) >= GameBanRisk.Medium,
         LaunchOptionsNeeded = LaunchNeedsAttention,
         // A13's sentence finally has somewhere to go. Until this wave MissingFrameworksSummary was
         // computed on every reload and bound in no XAML file at all.
@@ -1298,7 +1305,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>The single ban-risk enable gate every enable path consults. Resolves the active
-    /// game's risk LIVE by Steam app id (so a feed raising risk protects an already-added game) and
+    /// game's risk LIVE from the whole game (Steam id, manifest id, compiled floor) (so a feed raising risk protects an already-added game) and
     /// whether it's been acknowledged, then defers the policy to <see cref="BanRiskRules.ShouldGateEnable"/>.
     /// Returns true to proceed with the enable, false to abort (caller reverts the visual). On a
     /// high-risk, un-acked game it warns and waits for an explicit ack — it never auto-enables and
@@ -1306,7 +1313,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task<bool> GateBanRiskEnableAsync()
     {
         if (_ctx is null) return false;
-        var level = BanRiskCatalog.ByAppId(_ctx.Game.SteamAppId);
+        var level = BanRiskCatalog.Effective(_ctx.Game);
         var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id);
         if (!BanRiskRules.ShouldGateEnable(level, acked)) return true;
         if (ConfirmBanRiskEnable is null) return true; // unwired -> no extra friction (Core decision still owns policy)
@@ -1327,6 +1334,23 @@ public sealed partial class MainViewModel : ObservableObject
         var (proceed, dontWarn) = await ConfirmBanRiskEnable(_ctx.Game.GameName, options);
         if (!proceed) return false;
         if (dontWarn) BanRiskAckStore.Ack(_ctx.DataDir, _ctx.Game.Id);
+        return true;
+    }
+
+    /// <summary>The save-write gate for new changes to a save (the save-mod drop). Asks every time on a
+    /// high-risk game until the user ticks "don't ask again" for this game's saves. Fixes and undo never
+    /// come through here. Returns true to write.</summary>
+    private async Task<bool> GateSaveWriteAsync()
+    {
+        if (_ctx is null) return false;
+        var level = BanRiskCatalog.Effective(_ctx.Game);
+        var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
+        if (!BanRiskRules.ShouldGateSaveWrite(level, acked)) return true;
+        if (ConfirmSaveWrite is null) return false; // unwired -> nothing is written
+
+        var (proceed, dontAsk) = await ConfirmSaveWrite(_ctx.Game.GameName);
+        if (!proceed) return false;
+        if (dontAsk) BanRiskAckStore.Ack(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
         return true;
     }
 
@@ -3768,13 +3792,45 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game.Engine, _ctx.Game.SteamAppId)
                     .SaveTypes.Select(t => t.Extension).ToList();
-                var verdicts = SaveModFlow.TryHandleDrops(
+                var saveRisk = BanRiskCatalog.Effective(_ctx.Game);
+                var saveWritesAcked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
+                IReadOnlyList<SaveModDropVerdict> verdicts = SaveModFlow.TryHandleDrops(
                     remaining, saveTypeExts,
                     saveProfilesDir: _ctx.SaveDir!,
                     snapshotsDir: _ctx.SavesDir,
                     dataDir: _ctx.DataDir,
                     saveModPath: _ctx.Game.SaveModPath,
-                    forbidden: _ctx.Game.SaveModForbidden);
+                    forbidden: _ctx.Game.SaveModForbidden,
+                    writeAllowed: !BanRiskRules.ShouldGateSaveWrite(saveRisk, saveWritesAcked));
+
+                var needAck = verdicts.Where(v => v.Outcome == SaveModDropOutcome.NeedsAcknowledgment).ToList();
+                if (needAck.Count > 0)
+                {
+                    if (await GateSaveWriteAsync())
+                    {
+                        var rerun = SaveModFlow.TryHandleDrops(
+                            needAck.Select(v => v.SourcePath), saveTypeExts,
+                            saveProfilesDir: _ctx.SaveDir!,
+                            snapshotsDir: _ctx.SavesDir,
+                            dataDir: _ctx.DataDir,
+                            saveModPath: _ctx.Game.SaveModPath,
+                            forbidden: _ctx.Game.SaveModForbidden,
+                            writeAllowed: true);
+                        verdicts = verdicts.Where(v => v.Outcome != SaveModDropOutcome.NeedsAcknowledgment).Concat(rerun).ToList();
+                    }
+                    else
+                    {
+                        // Still carved out of `remaining`: they ARE save mods, and regular intake must not try
+                        // to classify their contents.
+                        foreach (var v in needAck)
+                        {
+                            saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: not installed, nothing was written");
+                            remaining.Remove(v.SourcePath);
+                        }
+                        verdicts = verdicts.Where(v => v.Outcome != SaveModDropOutcome.NeedsAcknowledgment).ToList();
+                    }
+                }
+
                 foreach (var v in verdicts)
                 {
                     if (v.Outcome == SaveModDropOutcome.Installed) { savedCount++; remaining.Remove(v.SourcePath); }

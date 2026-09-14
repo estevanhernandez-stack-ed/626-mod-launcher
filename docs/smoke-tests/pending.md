@@ -2293,3 +2293,44 @@ of leaving it invisible on disk.
 actually removed — not synthetic test data, and not guaranteed to still number seven or carry those
 names on the next run. Confirm the section lists whatever is really there; don't hardcode the count or
 the names into an automated check, and don't remove any of them as part of running this smoke case.
+
+## Ban risk follows the game, and a new change to a save asks first
+
+Shipped: `BanRiskCatalog.Effective(game)` resolves risk from the Steam id, the manifest id and a compiled
+floor for College Football 27 and Madden NFL 27. Save writes that put something new into a save on a
+high-risk game ask first (spec `docs/superpowers/specs/2026-09-13-ban-risk-for-games-without-a-steam-id-design.md`).
+
+1. **Steam games unchanged.** Open Monster Hunter Wilds and Elden Ring. `StateChip.ban-risk` is present
+   on both, and enabling a mod still shows *Enable mods on {game}?* unless already acknowledged.
+2. **A game with no Steam id.** The add dialog has no id field, so pick *Madden NFL 27* from the curated
+   game list against an empty throwaway folder, and clear the Steam id box (or confirm it is already
+   empty). Confirm the registered id is `madden-nfl-27` — for example through the MCP `list_games`.
+   `StateChip.ban-risk` shows, and gates enable. Madden NFL 27 is only in the curated list once the remote game feed has been fetched, so run this online.
+3. **The editor asks before the form opens.** Point the Saves dialog at a **copy** of an Elden Ring save
+   in a throwaway folder, never the real save directory. Steps 3 to 5 all use this copy. Before you
+   start, make sure `ban-risk-save-acks.json` in the data folder does not list `elden-ring`. Take the
+   copy's file hash. Press Edit on a character: *Write to a save on ELDEN RING?* appears before the
+   editor. Cancel: the status line says *Nothing was written.* and the hash is unchanged.
+4. **Bringing a save in asks too.** Still on the copy, with nothing ticked yet, use *Bring a save in…* to
+   import a bundle: *Write to a save on ELDEN RING?* appears before anything is replaced. Cancel: the
+   status line says *Nothing was written.*, the hash is still the one from step 3, and the Saves dialog
+   re-shows.
+5. **Every time until ticked.** Press Edit again without ticking: it asks again. Tick *Don't ask again
+   for this game's saves* and write: the next edit does not ask, and no other game is affected.
+   `ban-risk-save-acks.json` holds `elden-ring` and `ban-risk-acks.json` is unchanged. Then point the
+   Saves dialog back at the real save folder, because the choice is persisted, and remove `elden-ring`
+   from `ban-risk-save-acks.json` if you want the prompt back.
+6. **The drop asks once.** On the throwaway `madden-nfl-27` game from step 2, set its save folder to a
+   second throwaway folder holding `user1/RocksDB/1.0/`. Drop two world zips (`<32-hex-guid>/data.json`
+   each) at once. The enable prompt appears first (choose *Enable anyway* and leave its box unticked),
+   then exactly one save prompt for both zips, not one per zip. Cancel the save prompt: the status line
+   names both zips as *not installed, nothing was written*, no Worlds folder appears, and neither zip is
+   imported as a regular mod. Drop them again, pass the enable prompt, and choose *Write the save*: both
+   install. Drop a third and tick the save prompt's box, then drop a fourth: the fourth shows no save
+   prompt (the enable prompt still shows, because its acknowledgment is separate). Remove the game and
+   both throwaway folders afterwards.
+7. **Fixes never ask.** Reset and Remove on a save mod, restoring a snapshot, restoring a profile
+   archive, and Clone to another save type or Replace never show the save prompt on any game.
+
+Why it matters: before this, a game registered under its manifest id with no Steam id read no ban risk
+at all, and the character editor wrote changed saves on an anti-cheat game without saying so.
