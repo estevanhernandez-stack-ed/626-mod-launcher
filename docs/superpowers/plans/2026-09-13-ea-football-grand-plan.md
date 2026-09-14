@@ -50,8 +50,49 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 >   protects Steam-registered installs today; EA installs need the code fix in C1 and C2, which waits on
 >   your decision A3.
 >
-> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and the
-> Madden and College Football captures in Band B.
+> **Update: the first real captures, same evening.** You played a College Football season through to
+> the NFL, then imported that player into Madden and started Superstar. Every file was copied only
+> after the game closed and the EA app's post-game upload had finished, with SHA-256 matches before and
+> after, and the originals confirmed untouched.
+>
+> - **R5 is answered on real bytes from both games: Madden and College Football rosters share one
+>   layout.** Both are `FBCHUNKS` with a 0x38 header, the decompressed length at `0x12` matches the
+>   inflated size exactly, and **CRC-32/BZIP2 at `0x1A` recomputes and matches on both**. Only capacity
+>   differs: 12 MiB for College Football, 6 MiB for Madden. The full roster file is now a verified
+>   container on both sides of a transfer. VERIFIED.
+> - **Madden appears to keep the Superstar career on EA's servers.** After the import and a started
+>   Superstar career, Madden's saves folder holds only `ROSTER-Official` and `PROFILE-MADDEN`. The EA
+>   app's post-game upload for Madden carried exactly those two files. `PROFILE-MADDEN` has one 13-field
+>   career summary, the same field count as College Football's, but its first field is an account-style
+>   identity where College Football's is a local save file name. INFERRED, strongly: no career file
+>   exists on disk, but Madden might write one only after a game is played or a manual save. The offline
+>   test in section 8 settles it. If it holds, Superstar has no local save to write into, and section 8's
+>   rule applies: Superstar is a research target only. It would also explain the reported pain exactly —
+>   the imported character can't be used offline because the career never lives offline.
+> - **EA's College-to-Madden export is not a local file.** A sweep of the whole user profile found no
+>   export or import artifact. The EA app's log shows no import or export event; all 55 Road to Glory
+>   mentions are cloud-sync file listings. The retired career save was in College Football's post-game
+>   upload, and Madden reaches EA through its own online session. Offline transport cannot lean on EA's
+>   export, which confirms the route already chosen: read the native save. VERIFIED (no local file),
+>   INFERRED (served from EA).
+> - **The retired save is the career's final autosave, renamed.** `RTG-SEP13-...-RETIRED` has
+>   byte-identical decoded contents to that career's `-AUTOSAVE`. The career's manual save from just
+>   before the exit differs, and the decoded payload shrinks by about 210 KB at retirement, so the
+>   before-and-after of the exit transition is captured. Same career INFERRED from slot names. VERIFIED
+>   for the byte identity and the size change.
+> - **B3 and B4 are done.** Madden's save folder is `Documents\Madden NFL 27\saves`, its cloud id is
+>   `16425895_`, and its synced set is those two files. Its runtime is `Madden27.exe`, alongside the
+>   `EAAntiCheat.GameService` service. Madden's `saveDirHint` can now be curated, which is a manifest PR
+>   and needs your sign-off.
+> - **An open question for R4.** The new College Football careers aren't listed in `PROFILE-COLLEGE`'s
+>   summary lines in the form the earlier analysis found, so how the profile tracks careers needs another
+>   look.
+>
+> **The most valuable Madden captures now are offline Franchise saves** (Band B items 1–4), since
+> Franchise and the roster file are the likely offline landing spots.
+>
+> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, the offline
+> Superstar test, and the remaining Band B captures.
 
 ## 1. What this is
 
