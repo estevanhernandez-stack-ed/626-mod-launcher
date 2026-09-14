@@ -88,7 +88,7 @@ public static class Scanner
             {
                 // The manifest writes forward slashes; registrations on disk carry the platform's.
                 // LocationAbs is a Path.Combine, which leaves inner separators alone, so an unadjusted
-                // manifest path yields a mixed spelling like <root>\gamerchive/pc/mod. Windows opens
+                // manifest path yields a mixed spelling like <root>\game\archive/pc/mod. Windows opens
                 // that happily, which is exactly why it would go unnoticed - but GameShape decides
                 // insideDeclared by comparing path strings, so a mixed declared path makes the launcher
                 // report drift against its own folder. Normalise once, here, at the point of adoption.
