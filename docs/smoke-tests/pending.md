@@ -145,7 +145,7 @@ a staging-folder count without checking the game existed. Este has since reinsta
 And **`taken-over.json` DOES exist** — `<steamRoot>/_626mods/windrose/taken-over.json`, written
 2026-06-03, claiming the UE4SS Mods folder. **Vortex takeover HAS run.** The original claim searched
 `%LOCALAPPDATA%` rather than the per-game data dir. The case needs re-scoping: what is untested is
-takeover on a game where 626 has no prior state, not takeover at all. Windrose's `R5ortex.deployment.json` is a stale
+takeover on a game where 626 has no prior state, not takeover at all. Windrose's `R5\vortex.deployment.json` is a stale
 leftover, not a live conflict: it names one mod (`BonfireRadius_2x`) that is no longer on disk.
 
 **A harness caveat that shapes what a dev build can smoke.** The Debug build cannot load the Nexus
