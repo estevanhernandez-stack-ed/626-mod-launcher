@@ -117,7 +117,13 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 >   each written when its game closed. Both are binary with the same 4-byte header, `MUH2`. At a couple
 >   of hundred bytes neither can hold a player record, so the conclusion stands: EA's export is served from
 >   EA, not stored locally. VERIFIED (sizes, header, write times); INFERRED (usage history, given the name
->   and size). The folder is presumably named `Madden` because both games share EA's football codebase.
+>   and size). **College Football created the folder, not Madden:** `%APPDATA%\Madden\` was created on
+>   2026-08-30 at 22:21, two minutes after College Football first created its saves folder and two weeks
+>   before Madden 27 was installed (2026-09-13 17:51). College Football's record in it dates from that
+>   first session; Madden's was added on 2026-09-13 at 20:11. VERIFIED from filesystem creation times. The
+>   name is presumably inherited from the Madden engine and codebase College Football is built on
+>   (INFERRED). The only on-disk link between the two games is this small usage record, which College
+>   Football was writing long before any import, so the Road to Glory handoff did not happen on disk.
 > - **The Frostbite live content update cache, for both games — very likely the stale-data location.**
 >   `C:\ProgramData\Frostbite\<title>\` holds `LCU` and `content_packs` for College Football 27 (about
 >   2.0 MB) and Madden NFL 27 (about 562 KB). Madden's `LCU` includes `layout.toc`, `lcumanifest.dat`,
