@@ -8,5 +8,5 @@ The canonical, most current version of this policy is published at **[626labs.de
 
 ## Contact
 
-- Privacy questions: **estevan.hernandez@gmail.com**
+- Privacy questions: **privacy@626labs.dev**
 - Source code: <https://github.com/estevanhernandez-stack-ed/626-mod-launcher>
