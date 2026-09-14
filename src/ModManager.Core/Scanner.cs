@@ -647,8 +647,21 @@ public static class Scanner
         var loc = LocByName(m.Location, c);
         GuardNoBasePakMove(m, loc);
         var dest = Path.Combine(c.DisabledRoot, m.Name);
-        Directory.CreateDirectory(dest);
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
+
+        // Refuse, moving nothing, when an earlier turned-off copy of this mod is already held. The
+        // listing shows only the live copy when both exist, so the user cannot see the held one. This
+        // used to collide mid-move and the rollback ran a recursive delete over the holding folder,
+        // destroying that copy; a folder mod that did not collide was silently merged into it instead.
+        if (HoldingFolder.HoldsFiles(dest, "meta.json")
+            || files.Any(f => File.Exists(Path.Combine(dest, f)) || Directory.Exists(Path.Combine(dest, f))))
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {dest}, "
+                + "and the mod list only shows the copy that is live. Nothing was moved. Move or remove one of "
+                + "the two copies first.");
+
+        var destExisted = Directory.Exists(dest);
+        Directory.CreateDirectory(dest);
 
         // Phase 1: move every primary file into the holding folder. Any failure rolls back
         // the ones already moved so the mod is never left half-disabled, then surfaces it.
@@ -664,7 +677,9 @@ public static class Scanner
         catch (Exception e)
         {
             foreach (var f in moved) { try { MoveAny(Path.Combine(dest, f), Path.Combine(loc.Abs, f)); } catch { /* best effort */ } }
-            try { DeleteDir(dest); } catch { /* best effort */ }
+            // Only a folder this call created, and only once no file is left in it. Never a recursive
+            // delete over something that could be the user's.
+            if (!destExisted) HoldingFolder.RemoveIfNoFiles(dest);
             throw new InvalidOperationException($"Couldn't disable \"{m.Name}\" ({e.Message})", e);
         }
 

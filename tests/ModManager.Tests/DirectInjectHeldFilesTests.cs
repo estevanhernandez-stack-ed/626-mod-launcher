@@ -158,6 +158,42 @@ public class DirectInjectHeldFilesTests : IDisposable
     }
 
     [Fact]
+    public void A_disable_that_fails_partway_leaves_the_mod_live_with_no_stray_record()
+    {
+        var mod = LiveReShade();
+        // Lock the LAST entry, so the ones before it have already moved when the move fails.
+        var last = Path.Combine(Play, mod.Entries.Last());
+        var lockFile = File.Exists(last) ? last : Directory.GetFiles(last, "*", SearchOption.AllDirectories).First();
+
+        using (new FileStream(lockFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.ThrowsAny<InvalidOperationException>(() => DirectInject.Disable(Play, Holding, mod));
+        }
+
+        // Everything is back in the game folder, no record claims otherwise, and the holding folder this
+        // call created is gone.
+        Assert.Equal("OLD-PRESET", File.ReadAllText(Path.Combine(Play, "ReShadePreset.ini")));
+        Assert.Equal("OLD-FX", File.ReadAllText(Path.Combine(Play, "reshade-shaders", "shader.fx")));
+        Assert.Empty(DirectInject.ListDisabled(Holding));
+        Assert.False(Directory.Exists(HeldDir));
+    }
+
+    [Fact]
+    public void A_stale_record_with_nothing_behind_it_does_not_block_turning_the_mod_off()
+    {
+        // Enable deletes its record best-effort. If that delete failed, the record outlives the files it
+        // described, and must not make the next Disable report a held copy that does not exist.
+        Directory.CreateDirectory(HeldDir);
+        File.WriteAllText(Path.Combine(HeldDir, "__626mod.json"), """{"name":"ReShade","kind":"graphics","entries":["ReShadePreset.ini"]}""");
+
+        DirectInject.Disable(Play, Holding, LiveReShade());
+
+        Assert.False(File.Exists(Path.Combine(Play, "ReShadePreset.ini")));
+        Assert.Equal("OLD-PRESET", File.ReadAllText(Path.Combine(HeldDir, "ReShadePreset.ini")));
+        Assert.Contains(DirectInject.ListDisabled(Holding), m => m.Name == "ReShade" && m.Entries.Count >= 2);
+    }
+
+    [Fact]
     public void The_refusal_reaches_the_user_as_written()
     {
         // The generic remedy appends "try again after a Refresh", which would send someone in a circle:

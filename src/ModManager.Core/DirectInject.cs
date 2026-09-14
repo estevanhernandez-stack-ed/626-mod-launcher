@@ -197,25 +197,30 @@ public static class DirectInject
     /// off, install a fresh copy, then turn the fresh copy off: the holding folder already holds the old
     /// one under the same names. This used to hit the name collision mid-move, and the rollback cleared
     /// the holding folder with a recursive delete — the old copy gone for good. Nothing a toggle does may
-    /// delete the user's files, so the collision is found first and nothing is touched.</para></summary>
+    /// delete the user's files, so the collision is found first and nothing is touched.</para>
+    ///
+    /// <para><b>The record is written before anything moves.</b> Written after, a failed write or a
+    /// crash left the files in holding with no record, and the listing skips a folder without one: the
+    /// mod vanished from the app with its files still on disk.</para></summary>
     public static void Disable(string playFolder, string holdingRoot, DirectInjectMod mod)
     {
         var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(mod.Name));
         var present = mod.Entries.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
 
-        // Validate before acting. An existing holding record means an earlier copy is held; writing a
-        // new record over it would orphan that copy even where no name collides.
-        if (ReadMeta(dir) is not null || present.Any(e => Exists(Path.Combine(dir, e))))
+        // Validate before acting. Files already in holding are an earlier copy; moving over them would
+        // collide, and writing a new record over theirs would orphan them even where no name collides.
+        if (HoldingFolder.HoldsFiles(dir, MetaFile) || present.Any(e => Exists(Path.Combine(dir, e))))
             throw new HeldCopyCollisionException(
                 $"Couldn't turn \"{mod.Name}\" off: an earlier copy of it is already turned off and held. "
                 + "Nothing was moved. Turn that copy on, or remove one of the two, first.");
 
         var dirExisted = Directory.Exists(dir);
-        Directory.CreateDirectory(dir);
-
+        var metaPath = Path.Combine(dir, MetaFile);
         var moved = new List<string>();
         try
         {
+            Directory.CreateDirectory(dir);
+            AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = present });
             foreach (var entry in present)
             {
                 MoveAny(Path.Combine(playFolder, entry), Path.Combine(dir, entry));
@@ -225,16 +230,24 @@ public static class DirectInject
         catch (Exception e)
         {
             var stranded = MoveBack(moved, from: dir, to: playFolder);
-            // Only a folder this call created, and only once it holds no files. Never a recursive
-            // delete of something that could be the user's.
-            if (!dirExisted) RemoveIfNoFiles(dir);
+            if (stranded.Count > 0)
+            {
+                // What could not go back stays held and LISTED, so it can be turned on from the app.
+                try { AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = stranded }); }
+                catch { /* the message below still names them */ }
+            }
+            else
+            {
+                try { File.Delete(metaPath); } catch { /* a stale record with nothing behind it blocks nothing */ }
+                // Only a folder this call created, and only once it holds no files.
+                if (!dirExisted) HoldingFolder.RemoveIfNoFiles(dir);
+            }
             throw new InvalidOperationException(
                 $"Couldn't disable \"{mod.Name}\" ({e.Message}) — is the game running?"
-                + (stranded.Count == 0 ? "" : $" {Names(stranded)} could not be moved back and {(stranded.Count == 1 ? "is" : "are")} still in {dir}."), e);
+                + (stranded.Count == 0
+                    ? " Nothing was left moved."
+                    : $" {Names(stranded)} could not be moved back, {(stranded.Count == 1 ? "is" : "are")} held in {dir}, and show{(stranded.Count == 1 ? "s" : "")} as turned off."), e);
         }
-
-        var meta = new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = moved };
-        AtomicJson.WriteJsonAtomic(Path.Combine(dir, MetaFile), meta);
     }
 
     /// <summary>Enable: move a disabled mod's entries back into the play folder, all or nothing, then
@@ -280,7 +293,7 @@ public static class DirectInject
 
         // Every held entry is back. The record goes; the folder goes only if nothing else is in it.
         try { File.Delete(Path.Combine(dir, MetaFile)); } catch { /* best effort */ }
-        RemoveIfNoFiles(dir);
+        HoldingFolder.RemoveIfNoFiles(dir);
     }
 
     // Put entries back where they came from, returning the ones that could not be moved.
@@ -293,18 +306,6 @@ public static class DirectInject
             catch { stranded.Add(entry); }
         }
         return stranded;
-    }
-
-    // Remove a folder only when no file remains anywhere under it. Empty subfolders left by a move go
-    // with it; a file never does.
-    private static void RemoveIfNoFiles(string dir)
-    {
-        try
-        {
-            if (Directory.Exists(dir) && !Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Any())
-                Directory.Delete(dir, recursive: true);
-        }
-        catch { /* best effort — leaving an empty folder behind is harmless */ }
     }
 
     private static string Names(IReadOnlyList<string> entries)
