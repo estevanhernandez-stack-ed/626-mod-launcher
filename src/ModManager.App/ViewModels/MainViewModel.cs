@@ -3774,7 +3774,8 @@ public sealed partial class MainViewModel : ObservableObject
                     snapshotsDir: _ctx.SavesDir,
                     dataDir: _ctx.DataDir,
                     saveModPath: _ctx.Game.SaveModPath,
-                    forbidden: _ctx.Game.SaveModForbidden);
+                    forbidden: _ctx.Game.SaveModForbidden,
+                    writeAllowed: true);
                 foreach (var v in verdicts)
                 {
                     if (v.Outcome == SaveModDropOutcome.Installed) { savedCount++; remaining.Remove(v.SourcePath); }

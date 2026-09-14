@@ -17,7 +17,7 @@ public class SaveModFlowTests : IDisposable
         var verdicts = SaveModFlow.TryHandleDrops(
             new[] { loose }, saveTypeExtensions: Array.Empty<string>(),
             saveProfilesDir: NewDir("saves"), snapshotsDir: NewDir("snaps"),
-            dataDir: NewDir("data"), saveModPath: null, forbidden: null);
+            dataDir: NewDir("data"), saveModPath: null, forbidden: null, writeAllowed: true);
         Assert.Single(verdicts);
         Assert.Equal(SaveModDropOutcome.NotASaveMod, verdicts[0].Outcome);
     }
@@ -29,7 +29,7 @@ public class SaveModFlowTests : IDisposable
         var verdicts = SaveModFlow.TryHandleDrops(
             new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
             saveProfilesDir: NewDir("saves"), snapshotsDir: NewDir("snaps"),
-            dataDir: NewDir("data"), saveModPath: null, forbidden: null);
+            dataDir: NewDir("data"), saveModPath: null, forbidden: null, writeAllowed: true);
         Assert.Equal(SaveModDropOutcome.NotASaveMod, verdicts[0].Outcome);
     }
 
@@ -49,7 +49,7 @@ public class SaveModFlowTests : IDisposable
         var verdicts = SaveModFlow.TryHandleDrops(
             new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
             saveProfilesDir: profiles, snapshotsDir: NewDir("snaps"),
-            dataDir: data, saveModPath: null, forbidden: null);
+            dataDir: data, saveModPath: null, forbidden: null, writeAllowed: true);
 
         Assert.Single(verdicts);
         Assert.Equal(SaveModDropOutcome.Installed, verdicts[0].Outcome);
@@ -71,9 +71,45 @@ public class SaveModFlowTests : IDisposable
         var verdicts = SaveModFlow.TryHandleDrops(
             new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
             saveProfilesDir: profiles, snapshotsDir: NewDir("snaps"),
-            dataDir: NewDir("data"), saveModPath: null, forbidden: null);
+            dataDir: NewDir("data"), saveModPath: null, forbidden: null, writeAllowed: true);
         Assert.Equal(SaveModDropOutcome.Failed, verdicts[0].Outcome);
         Assert.False(string.IsNullOrEmpty(verdicts[0].Reason));
+    }
+
+    [Fact]
+    public void A_world_zip_with_writes_not_allowed_needs_acknowledgment_and_writes_nothing()
+    {
+        var guid = "0123456789abcdef0123456789abcdef";
+        var zip = MakeZip("world.zip", new[] { ($"{guid}/data.json", "{}") });
+        var profiles = NewDir("saves");
+        var oneProfile = Path.Combine(profiles, "user1");
+        Directory.CreateDirectory(Path.Combine(oneProfile, "RocksDB", "1.0"));
+        var snaps = NewDir("snaps");
+        var data = NewDir("data");
+        var before = Directory.GetFileSystemEntries(_root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToList();
+
+        var verdicts = SaveModFlow.TryHandleDrops(
+            new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
+            saveProfilesDir: profiles, snapshotsDir: snaps,
+            dataDir: data, saveModPath: null, forbidden: null, writeAllowed: false);
+
+        Assert.Single(verdicts);
+        Assert.Equal(SaveModDropOutcome.NeedsAcknowledgment, verdicts[0].Outcome);
+        Assert.Equal(guid, verdicts[0].WorldGuid);
+        var after = Directory.GetFileSystemEntries(_root, "*", SearchOption.AllDirectories).OrderBy(x => x).ToList();
+        Assert.Equal(before, after);                 // no world, no snapshot, no store entry
+        Assert.Empty(SaveModStore.Load(data));
+    }
+
+    [Fact]
+    public void A_content_zip_is_unaffected_by_writeAllowed()
+    {
+        var zip = MakeZip("content.zip", new[] { ("AwesomeMod_P.pak", "x") });
+        var verdicts = SaveModFlow.TryHandleDrops(
+            new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
+            saveProfilesDir: NewDir("saves"), snapshotsDir: NewDir("snaps"),
+            dataDir: NewDir("data"), saveModPath: null, forbidden: null, writeAllowed: false);
+        Assert.Equal(SaveModDropOutcome.NotASaveMod, verdicts[0].Outcome);
     }
 
     // -------- helpers --------
