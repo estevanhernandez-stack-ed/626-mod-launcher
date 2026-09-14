@@ -133,8 +133,51 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 >   contents); INFERRED (its role in the stale-data pain — confirm with the friend, question A2). The
 >   Battlefield 6 folder there also carries a `Mods` directory, which neither football title has.
 >
-> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and the
-> remaining Band B captures, with the offline Franchise player career first.
+> **Update: the first Madden Franchise and custom roster, made offline.** Madden's Creation Center turned
+> out to be the official route for both. EA's help page documents creating a custom roster (Creation
+> Center, Edit Rosters, Manage Players, Save), loading it (Load/Delete Files, Roster tab, Load File), and
+> importing it when a Franchise starts (**Roster File**), with the warning that loading a custom roster
+> into a Franchise already in progress loses that Franchise's progress. So **the roster-file landing spot
+> is an in-game feature EA supports**, not something the launcher has to invent. Captures copied with
+> hash proof, originals untouched.
+>
+> - **The route runs offline.** The EA app logged the last two Madden sessions with `"offline": true`,
+>   and its SDK repeatedly logged skipping auth because the user was offline. `CAREER-TEST`, its autosave
+>   and `ROSTER-TEST` were all written inside the offline session, and no cloud sync ran after it. Offline
+>   Franchise creates and saves locally; the roster editor saves locally offline. VERIFIED.
+> - **Q1 is answered: Madden Franchise saves use the same container as Road to Glory.** Both `CAREER-*`
+>   files are `FBCHUNKS` with a 0x40 header, zlib data at `0x52`, and a decoded payload that begins with
+>   `FrTk` — exactly the College Football Road to Glory layout. Capacity is 0x566666 and the decoded
+>   payload is about 20.1 MB. VERIFIED. **Schema major is 965**, where the public Madden 27 schema is 620,
+>   so the same drift question College Football had (833 against 468) now applies to Madden. Q2 still
+>   needs the field-layout check.
+> - **The game itself writes CRC-32/BZIP2 on an edited roster.** `ROSTER-TEST`, saved by Madden after
+>   in-game editing, has the decompressed length at `0x12` matching and CRC-32/BZIP2 at `0x1A`
+>   recomputing and matching, same as the official roster. That confirms the checksum on a roster the game
+>   edited, which strengthens the explanation that the FMT authors recomputed the wrong CRC variant.
+>   VERIFIED.
+> - **But a saved custom roster is not a one-change pair against the official one.** `ROSTER-TEST`
+>   decodes to 6,661,775 bytes against the official roster's 4,066,756, about 2.6 MB more, so the diff
+>   can't isolate a field. A saved custom roster evidently carries much more data than the downloaded
+>   official one. **A clean pair needs two custom rosters that differ by exactly one change** — save one,
+>   change one jersey number, save as a second file.
+> - **The profile lists Franchise careers by file and Superstar by identity.** `PROFILE-MADDEN` now has
+>   three summary lines: `CAREER-TEST` and its autosave, with 12 fields each and a save file name first,
+>   and the earlier Superstar entry, with 13 fields and an account-style identity first. Local careers are
+>   keyed to local files; the Superstar career is not. This reinforces the finding that Superstar is
+>   server-side. VERIFIED (structure).
+> - **Created players live inside a roster, not in their own file.** Guides and an EA forum thread
+>   describe creating a player, placing them on the free agent list, and saving the roster; after loading
+>   that roster into Franchise, the player is signable from free agency. INFERRED from secondary sources
+>   (the EA forum thread returned 403).
+> - **NFL team uniforms appeared locked** in the owner's check of two teams. Presumably licensing; custom
+>   uniforms are likely a Team Builder feature for custom teams (INFERRED, not checked).
+> - **Unsynced offline files.** The Franchise career and custom roster have not reached EA's cloud. The
+>   next online launch of Madden runs a pre-launch sync against a remote copy that lacks them — the
+>   first real chance to observe B2. If a conflict prompt appears, "Continue with local" keeps them.
+>
+> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and a
+> clean one-change roster pair.
 
 ## 1. What this is
 
