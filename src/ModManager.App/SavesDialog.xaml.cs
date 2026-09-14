@@ -399,6 +399,24 @@ public sealed partial class SavesDialog : ContentDialog
         if (row.Slot is not { } slot || row.SavePath is not { } savePath) return;
         this.Hide();
 
+        // A character edit puts a new change into a save. On a high-risk game, ask BEFORE the form
+        // opens: a prompt that refuses finished input teaches people to click through prompts.
+        // Asks every time until "don't ask again" is ticked for this game's saves. The prompt opens
+        // while this dialog is hidden (one ContentDialog per XamlRoot).
+        var saveLevel = BanRiskCatalog.Effective(_game);
+        if (BanRiskRules.ShouldGateSaveWrite(saveLevel, BanRiskAckStore.IsAcked(_dataDir, _game.Id, BanRiskAck.WriteSaves)))
+        {
+            var (proceed, dontAsk) = await ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(xamlRoot, _game.GameName);
+            if (!proceed)
+            {
+                StatusText.Text = "Nothing was written.";
+                try { await this.ShowAsync(); }
+                catch { /* re-show race — the user can re-open Saves from the More menu */ }
+                return;
+            }
+            if (dontAsk) BanRiskAckStore.Ack(_dataDir, _game.Id, BanRiskAck.WriteSaves);
+        }
+
         var dialog = new CharacterEditDialog(slot) { XamlRoot = xamlRoot };
         Microsoft.UI.Xaml.Controls.ContentDialogResult result;
         string? statusAfter = null;

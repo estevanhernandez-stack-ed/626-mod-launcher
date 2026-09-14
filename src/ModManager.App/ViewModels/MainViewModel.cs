@@ -96,6 +96,13 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<string, IReadOnlyList<BanSafeLoaderOption>, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
 
     /// <summary>
+    /// Shows the save-write prompt for a high-risk game and returns (proceed, dontAskAgain). The view wires
+    /// it (dialog + XamlRoot live in code-behind). Unlike the enable gate, an UNWIRED delegate refuses:
+    /// writing a changed save without the prompt is the one thing this gate exists to prevent.
+    /// </summary>
+    public Func<string, Task<(bool proceed, bool dontAskAgain)>>? ConfirmSaveWrite { get; set; }
+
+    /// <summary>
     /// Shows the loader-disable warning for a loose-root loader row (a proxy like dinput8.dll — the
     /// DLL every ASI plugin loads through) and returns true to proceed with the disable. The view
     /// wires this (the dialog + XamlRoot live in the code-behind, not the VM). Warn-and-proceed,
@@ -1327,6 +1334,23 @@ public sealed partial class MainViewModel : ObservableObject
         var (proceed, dontWarn) = await ConfirmBanRiskEnable(_ctx.Game.GameName, options);
         if (!proceed) return false;
         if (dontWarn) BanRiskAckStore.Ack(_ctx.DataDir, _ctx.Game.Id);
+        return true;
+    }
+
+    /// <summary>The save-write gate for new changes to a save (the save-mod drop). Asks every time on a
+    /// high-risk game until the user ticks "don't ask again" for this game's saves. Fixes and undo never
+    /// come through here. Returns true to write.</summary>
+    private async Task<bool> GateSaveWriteAsync()
+    {
+        if (_ctx is null) return false;
+        var level = BanRiskCatalog.Effective(_ctx.Game);
+        var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
+        if (!BanRiskRules.ShouldGateSaveWrite(level, acked)) return true;
+        if (ConfirmSaveWrite is null) return false; // unwired -> nothing is written
+
+        var (proceed, dontAsk) = await ConfirmSaveWrite(_ctx.Game.GameName);
+        if (!proceed) return false;
+        if (dontAsk) BanRiskAckStore.Ack(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
         return true;
     }
 
@@ -3768,14 +3792,45 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game.Engine, _ctx.Game.SteamAppId)
                     .SaveTypes.Select(t => t.Extension).ToList();
-                var verdicts = SaveModFlow.TryHandleDrops(
+                var saveRisk = BanRiskCatalog.Effective(_ctx.Game);
+                var saveWritesAcked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
+                IReadOnlyList<SaveModDropVerdict> verdicts = SaveModFlow.TryHandleDrops(
                     remaining, saveTypeExts,
                     saveProfilesDir: _ctx.SaveDir!,
                     snapshotsDir: _ctx.SavesDir,
                     dataDir: _ctx.DataDir,
                     saveModPath: _ctx.Game.SaveModPath,
                     forbidden: _ctx.Game.SaveModForbidden,
-                    writeAllowed: true);
+                    writeAllowed: !BanRiskRules.ShouldGateSaveWrite(saveRisk, saveWritesAcked));
+
+                var needAck = verdicts.Where(v => v.Outcome == SaveModDropOutcome.NeedsAcknowledgment).ToList();
+                if (needAck.Count > 0)
+                {
+                    if (await GateSaveWriteAsync())
+                    {
+                        var rerun = SaveModFlow.TryHandleDrops(
+                            needAck.Select(v => v.SourcePath), saveTypeExts,
+                            saveProfilesDir: _ctx.SaveDir!,
+                            snapshotsDir: _ctx.SavesDir,
+                            dataDir: _ctx.DataDir,
+                            saveModPath: _ctx.Game.SaveModPath,
+                            forbidden: _ctx.Game.SaveModForbidden,
+                            writeAllowed: true);
+                        verdicts = verdicts.Where(v => v.Outcome != SaveModDropOutcome.NeedsAcknowledgment).Concat(rerun).ToList();
+                    }
+                    else
+                    {
+                        // Still carved out of `remaining`: they ARE save mods, and regular intake must not try
+                        // to classify their contents.
+                        foreach (var v in needAck)
+                        {
+                            saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: not installed, nothing was written");
+                            remaining.Remove(v.SourcePath);
+                        }
+                        verdicts = verdicts.Where(v => v.Outcome != SaveModDropOutcome.NeedsAcknowledgment).ToList();
+                    }
+                }
+
                 foreach (var v in verdicts)
                 {
                     if (v.Outcome == SaveModDropOutcome.Installed) { savedCount++; remaining.Remove(v.SourcePath); }

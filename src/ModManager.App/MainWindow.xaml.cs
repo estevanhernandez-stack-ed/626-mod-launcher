@@ -83,6 +83,9 @@ public sealed partial class MainWindow : Window
         // The safe-loader list lets the dialog surface "Launch / Get" buttons — installed loaders can
         // be started in one click; uninstalled loaders open the Get-it-here URL.
         ViewModel.ConfirmBanRiskEnable = ConfirmBanRiskEnableAsync;
+        // Save-write prompt for high-risk games. The VM decides whether to ask
+        // (BanRiskRules.ShouldGateSaveWrite); the shared helper owns the copy.
+        ViewModel.ConfirmSaveWrite = name => ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(Content.XamlRoot, name);
         // Loose-root loader-disable warning is a view concern too. The VM owns the policy trigger
         // (disabling a loader-kind loose-root row); the window owns the dialog. Warn-and-proceed,
         // never a hard block — Cancel leaves the mod exactly as it was.
