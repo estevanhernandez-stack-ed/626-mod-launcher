@@ -74,13 +74,19 @@ public static class BanRiskCatalog
 
     /// <summary>The ban risk the launcher acts on for this game: the highest of what the feed says by
     /// Steam app id, what it says by manifest id, and the compiled floor. Highest wins, so no single
-    /// source can lower another. A game with no Steam id (EA app, Xbox, a folder) still resolves.</summary>
+    /// source can lower another. A game with no Steam id resolves when it was registered under its
+    /// manifest id - picked from the curated list, or set by a detector that assigns it.</summary>
     public static GameBanRisk Effective(GameEntry game)
     {
-        var level = ByAppId(game.SteamAppId);
+        // One snapshot of Current for the whole call, so a concurrent feed update (generation bump)
+        // between the Steam-id read and the id read can never mix answers from two generations.
+        var maps = Current;
+        var level = !string.IsNullOrEmpty(game.SteamAppId) && maps.ByAppId.TryGetValue(game.SteamAppId, out var byApp)
+            ? byApp
+            : GameBanRisk.None;
         if (!string.IsNullOrEmpty(game.Id))
         {
-            if (Current.ById.TryGetValue(game.Id, out var byId)) level = BanRiskRules.Max(level, byId);
+            if (maps.ById.TryGetValue(game.Id, out var byId)) level = BanRiskRules.Max(level, byId);
             if (FloorById.TryGetValue(game.Id, out var floorId)) level = BanRiskRules.Max(level, floorId);
         }
         if (!string.IsNullOrEmpty(game.SteamAppId) && FloorByAppId.TryGetValue(game.SteamAppId, out var floorApp))
