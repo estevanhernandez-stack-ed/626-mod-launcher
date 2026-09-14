@@ -49,4 +49,21 @@ public class ThemesDangerContrastTests
                 $"{id}: danger {t["danger"]} on {surface} {t[surface]} = {ratio:F2}:1 (needs 4.5:1)");
         }
     }
+
+    [Theory]
+    [MemberData(nameof(BuiltinIds))]
+    public void The_state_chip_tones_clear_wcag_aa_where_the_strip_renders(string id)
+    {
+        // LAUNCH OPTION renders in warning and FRAMEWORK in info, so red can stay reserved for ban risk
+        // (GameStateTone). A calmer colour that cannot be read is a worse trade than red, so the chip
+        // text has to clear the same bar danger does, on the surfaces the strip sits on.
+        var t = Themes.BuiltinThemes[id].Tokens;
+        foreach (var token in new[] { "warning", "info" })
+            foreach (var surface in new[] { "bg", "bar_bg" })
+            {
+                var ratio = Contrast(t[token], t[surface]);
+                Assert.True(ratio >= 4.5,
+                    $"{id}: {token} {t[token]} on {surface} {t[surface]} = {ratio:F2}:1 (needs 4.5:1)");
+            }
+    }
 }

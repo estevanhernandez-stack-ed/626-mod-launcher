@@ -11,6 +11,28 @@ public enum GameStateSeverity
     Info,
 }
 
+/// <summary>
+/// The colour a chip renders in. Separate from <see cref="GameStateSeverity"/> on purpose.
+///
+/// <para>Colour used to follow severity, so every Danger chip was red. That put BAN RISK, LAUNCH
+/// OPTION and FRAMEWORK in the same alarm red side by side, and the one condition that can cost an
+/// account stopped standing out from two that a click fixes. Severity still decides order and which
+/// sentence stays open; tone only decides colour, and red is reserved for the account.</para>
+/// </summary>
+public enum GameStateTone
+{
+    /// <summary>Red. Only for a cost that lands outside this machine.</summary>
+    Danger,
+    /// <summary>Amber. Something to set before mods will load.</summary>
+    Caution,
+    /// <summary>Blue. Something to install before some mods will load.</summary>
+    Notice,
+    /// <summary>The theme accent. The default for anything that may be wrong.</summary>
+    Accent,
+    /// <summary>Soft ink. True, worth knowing, costs nothing.</summary>
+    Quiet,
+}
+
 /// <summary>One thing that is true about this game right now.</summary>
 /// <param name="Id">Stable and kebab-case — a harness keys on it, so it outlives any label change.</param>
 /// <param name="Label">The chip's face. Short enough to sit in a row of them.</param>
@@ -24,7 +46,18 @@ public sealed record GameStateChip(
     string Label,
     string Detail,
     string? ActionLabel,
-    bool Dismissible);
+    bool Dismissible)
+{
+    /// <summary>The colour this chip renders in. See <see cref="GameStateTone"/> for why it is not
+    /// simply the severity.</summary>
+    public GameStateTone Tone => Id switch
+    {
+        "ban-risk" => GameStateTone.Danger,
+        "launch-options" => GameStateTone.Caution,
+        "framework-missing" => GameStateTone.Notice,
+        _ => Severity == GameStateSeverity.Info ? GameStateTone.Quiet : GameStateTone.Accent,
+    };
+}
 
 /// <summary>What holds true for a game, as the view-model already knows it.</summary>
 public sealed record GameStateConditions
@@ -154,7 +187,8 @@ public static class GameStateStrip
     /// the sentence and the button both a tap away. Fewer surfaces has to mean less clutter, never
     /// less information — a state that was legible before must stay legible after.</para>
     ///
-    /// <para>So severity decides COLOUR and ORDER. It does not decide whether the user is told.</para></summary>
+    /// <para>So severity decides ORDER (and <see cref="GameStateChip.Tone"/> decides colour). Neither
+    /// decides whether the user is told.</para></summary>
     public static GameStateChip? LeadFor(IReadOnlyList<GameStateChip>? chips)
         => chips is null || chips.Count == 0 ? null : chips[0];
 

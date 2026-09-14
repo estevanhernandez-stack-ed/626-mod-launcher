@@ -231,6 +231,35 @@ public class GameStateStripTests
     }
 
     [Fact]
+    public void Only_ban_risk_renders_in_the_danger_colour()
+    {
+        // Three chips at Danger severity all rendered red, so a game with a missing framework and a
+        // launch option to set read as three alarms in a row, and the one that can cost an account
+        // stopped standing out. Severity still orders them; colour is its own decision.
+        var chips = GameStateStrip.For(Everything()).ToDictionary(c => c.Id);
+
+        Assert.Equal(GameStateTone.Danger, chips["ban-risk"].Tone);
+        Assert.Equal(GameStateTone.Caution, chips["launch-options"].Tone);
+        Assert.Equal(GameStateTone.Notice, chips["framework-missing"].Tone);
+        Assert.Single(chips.Values, c => c.Tone == GameStateTone.Danger);
+
+        // Recolouring is not a demotion: both still stop mods loading, so they keep their rank.
+        Assert.Equal(GameStateSeverity.Danger, chips["launch-options"].Severity);
+        Assert.Equal(GameStateSeverity.Danger, chips["framework-missing"].Severity);
+    }
+
+    [Fact]
+    public void The_other_chips_keep_the_colours_they_had()
+    {
+        var chips = GameStateStrip.For(Everything()).ToDictionary(c => c.Id);
+
+        foreach (var id in new[] { "setup-drift", "steam-updated", "coop-launcher", "mp-desync", "vortex-redeployed" })
+            Assert.Equal(GameStateTone.Accent, chips[id].Tone);
+        Assert.Equal(GameStateTone.Quiet, chips["backup-waiting"].Tone);
+        Assert.Equal(GameStateTone.Quiet, GameStateStrip.For(Only("vortex-managed"))[0].Tone);
+    }
+
+    [Fact]
     public void An_open_sentence_survives_a_rebuild()
     {
         // A toggle or a rescan must not yank the sentence someone is reading.
