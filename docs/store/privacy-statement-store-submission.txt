@@ -77,5 +77,5 @@ If this statement changes, the updated version will accompany the next release o
 
 CONTACT
 
-Questions about privacy: estevan.hernandez@gmail.com
+Questions about privacy: privacy@626labs.dev
 Source code: https://github.com/estevanhernandez-stack-ed/626-mod-launcher
