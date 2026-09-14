@@ -121,7 +121,7 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 > - **The Frostbite live content update cache, for both games — very likely the stale-data location.**
 >   `C:\ProgramData\Frostbite\<title>\` holds `LCU` and `content_packs` for College Football 27 (about
 >   2.0 MB) and Madden NFL 27 (about 562 KB). Madden's `LCU` includes `layout.toc`, `lcumanifest.dat`,
->   `initfs_Win32`, cas superbundles and a `livecontentupdatettribsyssb.toc`. This is the cache the
+>   `initfs_Win32`, cas superbundles and a `livecontentupdate\attribsyssb.toc`. This is the cache the
 >   research (P6) flagged as the likely thing players clear by hand when a modded game won't start after a
 >   title update. It gives sub-project 2 a concrete location on both games. VERIFIED (location and
 >   contents); INFERRED (its role in the stale-data pain — confirm with the friend, question A2). The
