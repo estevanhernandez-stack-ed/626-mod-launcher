@@ -406,7 +406,22 @@ public sealed partial class SavesDialog : ContentDialog
         var saveLevel = BanRiskCatalog.Effective(_game);
         if (BanRiskRules.ShouldGateSaveWrite(saveLevel, BanRiskAckStore.IsAcked(_dataDir, _game.Id, BanRiskAck.WriteSaves)))
         {
-            var (proceed, dontAsk) = await ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(xamlRoot, _game.GameName);
+            bool proceed;
+            bool dontAsk;
+            try
+            {
+                (proceed, dontAsk) = await ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(xamlRoot, _game.GameName);
+            }
+            catch (Exception ex)
+            {
+                // Same style as the editor-open catch below: the prompt failing to show must not leave
+                // SavesDialog hidden, and must not write anything either.
+                System.Diagnostics.Debug.WriteLine($"[SavesDialog] anti-cheat prompt failed: {ex.GetType().Name}: {ex.Message}");
+                StatusText.Text = $"Couldn't open the anti-cheat prompt — {ex.Message}. Nothing was written.";
+                try { await this.ShowAsync(); }
+                catch { /* re-show race — the user can re-open Saves from the More menu */ }
+                return;
+            }
             if (!proceed)
             {
                 StatusText.Text = "Nothing was written.";
