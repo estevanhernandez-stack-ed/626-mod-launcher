@@ -462,7 +462,7 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     private static string? BanRiskFor(GameEntry g)
     {
-        var risk = BanRiskCatalog.ByAppId(g.SteamAppId);
+        var risk = BanRiskCatalog.Effective(g);
         return risk == GameBanRisk.None ? null : risk.ToString();
     }
 

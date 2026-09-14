@@ -61,7 +61,7 @@ public static class WriteTools
         // the ban-risk gate a safety feature rather than an obstacle.
         var decision = enabled
             ? AgentWriteRules.CanEnable(
-                BanRiskCatalog.ByAppId(game.SteamAppId),
+                BanRiskCatalog.Effective(game),
                 BanRiskAckStore.IsAcked(ctx.DataDir, game.Id ?? ""),
                 mod.ReadOnly,
                 acknowledgeManaged)

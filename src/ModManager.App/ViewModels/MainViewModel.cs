@@ -403,7 +403,7 @@ public sealed partial class MainViewModel : ObservableObject
     // covers the dropped-live-pak case the gate can't see. Recomputed on the same notify as
     // MpWarning when the active game changes.
     public Visibility BanRiskWarningVisibility =>
-        BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
+        _ctx is not null && BanRiskCatalog.Effective(_ctx.Game) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
     public string BanRiskWarningText => "This game uses anti-cheat — enabling mods for online play can get your account banned.";
     private void NotifyBanRiskWarning() { OnPropertyChanged(nameof(BanRiskWarningVisibility)); OnPropertyChanged(nameof(BanRiskWarningText)); }
 
@@ -483,7 +483,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// render, not how they are decided.</summary>
     private GameStateConditions CurrentConditions() => new()
     {
-        BanRisk = BanRiskCatalog.ByAppId(_ctx?.Game.SteamAppId) >= GameBanRisk.Medium,
+        BanRisk = _ctx is not null && BanRiskCatalog.Effective(_ctx.Game) >= GameBanRisk.Medium,
         LaunchOptionsNeeded = LaunchNeedsAttention,
         // A13's sentence finally has somewhere to go. Until this wave MissingFrameworksSummary was
         // computed on every reload and bound in no XAML file at all.
@@ -1298,7 +1298,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>The single ban-risk enable gate every enable path consults. Resolves the active
-    /// game's risk LIVE by Steam app id (so a feed raising risk protects an already-added game) and
+    /// game's risk LIVE from the whole game (Steam id, manifest id, compiled floor) (so a feed raising risk protects an already-added game) and
     /// whether it's been acknowledged, then defers the policy to <see cref="BanRiskRules.ShouldGateEnable"/>.
     /// Returns true to proceed with the enable, false to abort (caller reverts the visual). On a
     /// high-risk, un-acked game it warns and waits for an explicit ack — it never auto-enables and
@@ -1306,7 +1306,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task<bool> GateBanRiskEnableAsync()
     {
         if (_ctx is null) return false;
-        var level = BanRiskCatalog.ByAppId(_ctx.Game.SteamAppId);
+        var level = BanRiskCatalog.Effective(_ctx.Game);
         var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id);
         if (!BanRiskRules.ShouldGateEnable(level, acked)) return true;
         if (ConfirmBanRiskEnable is null) return true; // unwired -> no extra friction (Core decision still owns policy)
