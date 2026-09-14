@@ -384,6 +384,41 @@ public sealed partial class SavesDialog : ContentDialog
         EditorCredit.Text = "Save format support based on community reverse-engineering — see Settings → About for credits.";
     }
 
+    /// <summary>Whether a save write needs to ask first: this game is high-risk and the write-saves
+    /// acknowledgment hasn't been ticked. One check, shared by every gated save-write path so they
+    /// cannot drift on which risk level or which ack file they consult.</summary>
+    private bool SaveWriteNeedsPrompt()
+        => BanRiskRules.ShouldGateSaveWrite(BanRiskCatalog.Effective(_game),
+            BanRiskAckStore.IsAcked(_dataDir, _game.Id, BanRiskAck.WriteSaves));
+
+    /// <summary>Show the shared save-write risk prompt and act on the answer: record the ack when
+    /// ticked, status-line the outcome on cancel or failure. Never hides or re-shows SavesDialog -
+    /// callers own that, because where the dialog needs to be hidden differs by caller (already hidden
+    /// before the form opens for the character editor; hidden here, at confirm time, for bundle
+    /// import).</summary>
+    private async Task<bool> PromptSaveWriteAsync(XamlRoot root)
+    {
+        bool proceed;
+        bool dontAsk;
+        try
+        {
+            (proceed, dontAsk) = await ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(root, _game.GameName);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SavesDialog] anti-cheat prompt failed: {ex.GetType().Name}: {ex.Message}");
+            StatusText.Text = $"Couldn't open the anti-cheat prompt — {ex.Message}. Nothing was written.";
+            return false;
+        }
+        if (!proceed)
+        {
+            StatusText.Text = "Nothing was written.";
+            return false;
+        }
+        if (dontAsk) BanRiskAckStore.Ack(_dataDir, _game.Id, BanRiskAck.WriteSaves);
+        return true;
+    }
+
     private async void OnEditCharacter(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         if (sender is not Microsoft.UI.Xaml.FrameworkElement fe || fe.DataContext is not CharacterRow row) return;
@@ -403,33 +438,11 @@ public sealed partial class SavesDialog : ContentDialog
         // opens: a prompt that refuses finished input teaches people to click through prompts.
         // Asks every time until "don't ask again" is ticked for this game's saves. The prompt opens
         // while this dialog is hidden (one ContentDialog per XamlRoot).
-        var saveLevel = BanRiskCatalog.Effective(_game);
-        if (BanRiskRules.ShouldGateSaveWrite(saveLevel, BanRiskAckStore.IsAcked(_dataDir, _game.Id, BanRiskAck.WriteSaves)))
+        if (SaveWriteNeedsPrompt() && !await PromptSaveWriteAsync(xamlRoot))
         {
-            bool proceed;
-            bool dontAsk;
-            try
-            {
-                (proceed, dontAsk) = await ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(xamlRoot, _game.GameName);
-            }
-            catch (Exception ex)
-            {
-                // Same style as the editor-open catch below: the prompt failing to show must not leave
-                // SavesDialog hidden, and must not write anything either.
-                System.Diagnostics.Debug.WriteLine($"[SavesDialog] anti-cheat prompt failed: {ex.GetType().Name}: {ex.Message}");
-                StatusText.Text = $"Couldn't open the anti-cheat prompt — {ex.Message}. Nothing was written.";
-                try { await this.ShowAsync(); }
-                catch { /* re-show race — the user can re-open Saves from the More menu */ }
-                return;
-            }
-            if (!proceed)
-            {
-                StatusText.Text = "Nothing was written.";
-                try { await this.ShowAsync(); }
-                catch { /* re-show race — the user can re-open Saves from the More menu */ }
-                return;
-            }
-            if (dontAsk) BanRiskAckStore.Ack(_dataDir, _game.Id, BanRiskAck.WriteSaves);
+            try { await this.ShowAsync(); }
+            catch { /* re-show race — the user can re-open Saves from the More menu */ }
+            return;
         }
 
         var dialog = new CharacterEditDialog(slot) { XamlRoot = xamlRoot };
@@ -793,7 +806,7 @@ public sealed partial class SavesDialog : ContentDialog
         panel.Children.Add(go);
 
         var flyout = new Flyout { Content = panel };
-        go.Click += (_, _) =>
+        go.Click += async (_, _) =>
         {
             flyout.Hide();
             if (GameIsRunning())
@@ -801,6 +814,23 @@ public sealed partial class SavesDialog : ContentDialog
                 StatusText.Text = $"Close {_game.GameName} first - it would overwrite this on exit.";
                 return;
             }
+
+            // Bringing a save in puts save content from somewhere else into the save - gated the same
+            // way as a character edit: same prompt, same acknowledgment, same every-time-until-ticked
+            // behaviour. SavesDialog is itself a ContentDialog, so the prompt needs it hidden first.
+            var needsPrompt = SaveWriteNeedsPrompt();
+            if (needsPrompt)
+            {
+                var root = this.XamlRoot;
+                this.Hide();
+                if (!await PromptSaveWriteAsync(root))
+                {
+                    try { await this.ShowAsync(); }
+                    catch { /* re-show race — the user can re-open Saves from the More menu */ }
+                    return;
+                }
+            }
+
             try
             {
                 SaveBundle.Restore(bundlePath, _saveDir!, _savesDir, _game.Id);
@@ -810,6 +840,14 @@ public sealed partial class SavesDialog : ContentDialog
                 RefreshWorlds();
             }
             catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+
+            // ShowAsync awaits until the dialog closes, so it has to be the final statement here - and
+            // it's only needed when the prompt above is what hid this dialog in the first place.
+            if (needsPrompt)
+            {
+                try { await this.ShowAsync(); }
+                catch { /* re-show race — the user can re-open Saves from the More menu */ }
+            }
         };
         flyout.ShowAt(anchor);
     }
