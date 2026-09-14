@@ -1,7 +1,7 @@
 # Ban risk for games without a Steam id, and a gate on save writes
 
 **Date:** 2026-09-13
-**Status:** pending spec review
+**Status:** approved 2026-09-14 (three questions answered by the owner)
 **Program:** EA football, prerequisite zero (see `docs/superpowers/plans/2026-09-13-ea-football-grand-plan.md`, A3)
 **Blocks:** EA app detection, and anything that writes a College Football or Madden file
 
@@ -107,7 +107,7 @@ EA football program's first write feature is a roster file, which is the same ki
 decision recorded in the grand plan is that save writes on high-risk games sit behind an
 acknowledgment. Three questions came out of that, answered here.
 
-#### Separate acknowledgment, not the enable one — recommended
+#### Separate acknowledgment, not the enable one — decided 2026-09-14
 
 A user who ticked *Don't warn me again* when enabling mods on Elden Ring agreed to one thing. Silently
 carrying that into save edits would be treating two different risks as one tick-box. Save writes get
@@ -128,26 +128,29 @@ public static void Ack(string dataDir, string gameId, BanRiskAck kind = BanRiskA
 The policy stays in Core beside the one it mirrors:
 
 ```csharp
-/// <summary>A save write on a high-risk game asks once, unless the user said not to ask again for
-/// this game's saves. Separate from ShouldGateEnable so the two can diverge without a rename.</summary>
+/// <summary>A save write on a high-risk game asks every time, until the user ticks "don't ask again"
+/// for this game's saves. Separate from ShouldGateEnable so the two can diverge without a rename.</summary>
 public static bool ShouldGateSaveWrite(GameBanRisk level, bool saveWritesAcked)
     => level == GameBanRisk.High && !saveWritesAcked;
 ```
 
-#### Which paths are gated — recommended
+#### Which paths are gated — decided 2026-09-14
 
-The same asymmetry the enable gate already uses: **writing a modified save asks; getting back to what
-you had never does.**
+The owner's rule, in the owner's words: *don't make it difficult for users to fix things and go back to normal
+play; only verify when they may be taking an action that could be harmful.* It is the same asymmetry
+the enable gate already uses: **putting something new into a save asks; fixing it, or getting back to
+what you had, never does.**
 
 | Path | Gated | Why |
 |---|---|---|
-| Edit character (`SavesDialog.OnEditCharacter`) | **yes** | writes a modified save |
-| Save-mod drop install (`SaveModFlow.TryHandleDrops` → `InstallWorld`) | **yes** | writes a modified save |
-| Reset a save mod (`SaveModInstaller.ResetWorld`) | **yes** | reinstalls the mod's files |
+| Edit character (`SavesDialog.OnEditCharacter`) | **yes** | puts a new change into a save |
+| Save-mod drop install (`SaveModFlow.TryHandleDrops` → `InstallWorld`) | **yes** | puts a new mod into a save |
+| Reset a save mod (`SaveModInstaller.ResetWorld`) | no | a fix: puts back the starting state of a mod that is already installed, nothing new |
 | Remove a save mod (`SaveModInstaller.RemoveWorld`) | no | moves toward vanilla, like disabling a mod |
 | Restore a snapshot, a world, or a save type (`SaveManager.Restore*`) | no | undo is never gated |
 | Restore a profile archive (`ProfileRestore.Restore`) | no | the user's own backup, and undo |
-| The EA roster writer, when it exists | **yes** | the contract it is built against |
+| The EA roster writer, when it exists | **yes** for writing an edited roster | the contract it is built against |
+| Removing or restoring a roster, when that exists | no | back to normal play |
 
 **The edge this accepts:** a snapshot can hold a save that was edited. Restoring it puts back an edit
 that was either acknowledged when it was made, or made outside the launcher. Gating undo to close
@@ -167,11 +170,16 @@ with no dialog in it.
 high-risk save write is refused with a named refusal, and an agent never answers the prompt on the
 user's behalf. Stated now so the rule exists before the tool does.
 
-#### A new prompt for people already using the editor — a behaviour change, flagged
+#### How often it asks — decided 2026-09-14
 
-Elden Ring is the only high-risk game with a save writer today (Cyberpunk 2077's character list is
-read-only and not high-risk; Monster Hunter Wilds has no writer). The next time an Elden Ring player
-edits a character, they see this prompt once per game, then never again if they tick the box.
+**Every time**, on every gated write, until the user ticks *Don't ask again for this game's saves*.
+The tick stops it for that one game and no other. It is never a one-time notice that quietly goes
+away, and an acknowledgment on one game never covers another.
+
+This includes people already using the editor, which makes it a behaviour change. Elden Ring is the
+only high-risk game with a save writer today (Cyberpunk 2077's character list is read-only and not
+high-risk; Monster Hunter Wilds has no writer), so the next time an Elden Ring player edits a
+character, the prompt appears.
 
 That is new friction on a shipped feature, and it is right: the editor has been writing modified saves
 on an anti-cheat game without saying so. It goes in the release notes as a change, not a fix.
@@ -179,7 +187,7 @@ on an anti-cheat game without saying so. It goes in the release notes as a chang
 ### The prompt
 
 Built the way `ConfirmBanRiskEnableAsync` is built, in `MainWindow` for the drop path and in
-`SavesDialog` for the two paths that live there, through a shared helper so the copy exists once.
+`SavesDialog` for the character editor, through a shared helper so the copy exists once.
 
 - **Title:** *Write to a save on {game}?*
 - **Body:** *This game uses anti-cheat, and its publisher's rules can treat a modified save as a
@@ -217,7 +225,7 @@ after `this.Hide()`, and `SavesDialog` re-shows after, the way `OnEditCharacter`
    (`madden-nfl-27-2` is not `madden-nfl-27`).
 7. **Generation.** Change the feed after a first resolve and `Effective` sees the change.
 8. **`ShouldGateSaveWrite`:** High and not acked gates; High and acked does not; Medium, Low and None
-   never gate.
+   never gate. Calling it twice with nothing acked gates twice: there is no hidden "already shown" state.
 9. **Ack kinds are independent.** Acking `EnableMods` leaves `WriteSaves` un-acked and the reverse.
    `EnableMods` still reads and writes `ban-risk-acks.json`, and an existing file from before the
    change is still honoured.
@@ -231,7 +239,8 @@ after `this.Hide()`, and `SavesDialog` re-shows after, the way `OnEditCharacter`
 
 - Monster Hunter Wilds and Elden Ring still show the ban-risk chip and still gate enable.
 - Elden Ring: Edit character prompts before the editor opens; Cancel opens nothing and writes nothing;
-  ticking the box stops the prompt for Elden Ring and not for any other game.
+  without the box ticked it asks again on the next edit; ticking the box stops the prompt for Elden
+  Ring and not for any other game; Reset and Remove on a save mod never prompt.
 - A throwaway manually registered game with the College Football id and no Steam id shows the chip
   and gates enable. Registered against an empty folder, never the real install, and removed after.
 
