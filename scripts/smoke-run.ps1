@@ -373,23 +373,58 @@ Case 'group-combo-selection-without-opening' 'Group the mod list' {
 
 Write-Host '  -- reversible state change --' -ForegroundColor White
 
+# Find one mod's toggle by the MOD, never by position. Its name flips between "Disable X" and
+# "Enable X" with its state, so match both.
+function Find-ModToggle {
+    param($Root, [string]$ModName)
+    @(Get-Tree $Root | Where-Object {
+        try { $null -ne (Get-ToggleState $_) -and ($_.Current.Name -eq "Disable $ModName" -or $_.Current.Name -eq "Enable $ModName") }
+        catch { $false }
+    }) | Select-Object -First 1
+}
+
 Case 'mod-toggle-round-trip' 'Toggle = move-to-holding, reversible' {
+    # This case used to re-find the toggle as "the first toggle in the tree" after each flip. The list
+    # sorts enabled mods first, so turning the top mod off moves it down and the first toggle becomes
+    # a DIFFERENT mod, still on. The case read that as "did not change", threw before the flip back,
+    # and left the real mod off. Four runs on 2026-09-14 turned off four of Elden Ring's mods that way
+    # before anyone looked. It keys on the mod's name now, and puts the mod back in a finally.
     $t = Get-Tree $root
-    $tog = @($t | Where-Object { try { $null -ne (Get-ToggleState $_) -and ($_.Current.Name -like 'Disable *' -or $_.Current.Name -like 'Enable *') } catch { $false } }) | Select-Object -First 1
-    Assert-True ($null -ne $tog) "no mod toggle found"
-    $name = $tog.Current.Name
+    Assert-OnGameView $t
+    $tog = @($t | Where-Object { try { $null -ne (Get-ToggleState $_) -and $_.Current.Name -like 'Disable *' } catch { $false } }) | Select-Object -First 1
+    Assert-True ($null -ne $tog) "no enabled mod toggle found"
+    $mod = $tog.Current.Name -replace '^Disable ', ''
     $before = Get-ToggleState $tog
-    Set-Toggle $tog; Wait-Idle 4000
-    $t2 = Get-Tree $root
-    $tog2 = @($t2 | Where-Object { try { $null -ne (Get-ToggleState $_) } catch { $false } }) | Select-Object -First 1
-    $mid = Get-ToggleState $tog2
-    Assert-True ($mid -ne $before) "toggle did not change state ($before -> $mid)"
-    Set-Toggle $tog2; Wait-Idle 4000
-    $t3 = Get-Tree $root
-    $tog3 = @($t3 | Where-Object { try { $null -ne (Get-ToggleState $_) } catch { $false } }) | Select-Object -First 1
-    $after = Get-ToggleState $tog3
-    Assert-True ($after -eq $before) "NOT RESTORED: $before -> $mid -> $after"
-    "'$name' $before -> $mid -> $after (restored)"
+    $mid = $null; $after = $null
+    try {
+        Set-Toggle $tog; Wait-Idle 4000
+        $modal = Test-ModalOpen $root
+        if ($modal) {
+            # A confirm (the loader-disable warning, say) is the app asking a person. Cancel is its
+            # no-op answer: nothing has touched disk. Do not answer yes on the user's behalf.
+            Add-Type -AssemblyName System.Windows.Forms
+            [System.Windows.Forms.SendKeys]::SendWait('{ESC}'); Wait-Idle 2000
+            throw "turning off '$mod' opened a confirm ('$modal') - cancelled it; this case needs a mod that toggles without one"
+        }
+        $mid = Get-ToggleState (Find-ModToggle $root $mod)
+        Assert-True ($mid -ne $before) "'$mod' did not change state ($before -> $mid)"
+        Set-Toggle (Find-ModToggle $root $mod); Wait-Idle 4000
+        $after = Get-ToggleState (Find-ModToggle $root $mod)
+        Assert-True ($after -eq $before) "NOT RESTORED: '$mod' $before -> $mid -> $after"
+        "'$mod' $before -> $mid -> $after (restored)"
+    }
+    finally {
+        # Put the mod back on every path, including a failed assertion. A harness that tidies up only
+        # on success hides the mess exactly when there is one.
+        $now = Find-ModToggle $root $mod
+        if ($now -and (Get-ToggleState $now) -ne $before -and -not (Test-ModalOpen $root)) {
+            Set-Toggle $now; Wait-Idle 4000
+            $check = Find-ModToggle $root $mod
+            if ($check -and (Get-ToggleState $check) -ne $before) {
+                Write-Host "  !! '$mod' is left $((Get-ToggleState $check)) - turn it back on by hand" -ForegroundColor Red
+            }
+        }
+    }
 }
 
 Write-Host '  -- dialogs --' -ForegroundColor White
@@ -469,23 +504,10 @@ Case 'settings-nothing-under-reset-but-reset' 'Wave 9 / D1' {
     finally { Close-Dialog; Wait-Idle 800 }
 }
 
-Case 'settings-plugin-button-never-hides' 'Wave 9 / D1' {
-    # Its failure mode is SILENT, and it is the control you need precisely when the app's own
-    # judgment is the broken thing. Already true - pinned so a later tidy-up cannot quietly gate it
-    # on "things look fine".
-    $t = Get-Tree $root
-    Invoke-Node (Find-ById $t 'SettingsButton'); Wait-Idle 2500
-    try {
-        $t2 = Get-Tree $root
-        $b = Find-ById $t2 'RefreshPluginButton'
-        Assert-True ($null -ne $b) "RefreshPluginButton absent"
-        Assert-True ($b.Current.IsEnabled) "RefreshPluginButton is disabled at rest"
-        $g = Find-ById $t2 'SettingsGroup.accounts'
-        Assert-True ($null -ne $g) "no SettingsGroup.accounts to hold it"
-        "present and enabled, under Accounts"
-    }
-    finally { Close-Dialog; Wait-Idle 800 }
-}
+# 'settings-plugin-button-never-hides' was retired 2026-09-14. 05002a3 compiled Nexus into every
+# build and removed the plugin feed, so RefreshPluginButton was deleted on purpose and the case failed
+# on every run afterwards. Its catalogue entry went with it: no coverage value describes a harness
+# case that no longer exists, and the plugin-delivery surface it pinned is gone from the app.
 
 Case 'settings-inventories-moved-not-deleted' 'Wave 9 / D1' {
     # The inventories leave Settings, but two of their actions lived ONLY there: framework Uninstall
@@ -575,15 +597,42 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $unknown = @($rowText | Where-Object { $_ -like '*unknown*' }).Count
     # A backwards arrow is the A27 defect, on screen: '1.0.1 -> 1.0.0' invited an update to an older
     # version. The row text is readable, so assert on it rather than eyeballing a screenshot.
-    $backwards = @($rowText | Where-Object { $_ -match '\d\s*→\s*\d' })
+    #
+    # The A27 fix KEPT the arrow where the direction is provable - both sides plain dotted numbers and
+    # the right one higher - so '1.9.9 → 2.0.0' is correct and must pass. This case first flagged every
+    # arrow, which held only while the live install happened to have no provable update; the day one
+    # arrived it went red on the behaviour A27 asked for. Mirror ModUpdateSummary.LatestIsProvablyNewer:
+    # every segment digits (a leading v allowed), missing segments count as 0.
+    function ConvertTo-DottedNumbers([string]$v) {
+        if ([string]::IsNullOrWhiteSpace($v)) { return $null }
+        $parts = $v.Trim().TrimStart('v', 'V').Split('.')
+        $nums = @()
+        foreach ($p in $parts) { if ($p -notmatch '^\d+$') { return $null }; $nums += [int]$p }
+        if ($nums.Count -eq 0) { return $null }
+        return ,$nums
+    }
+    function Test-ProvablyNewer([string]$installed, [string]$latest) {
+        $a = ConvertTo-DottedNumbers $installed; $b = ConvertTo-DottedNumbers $latest
+        if ($null -eq $a -or $null -eq $b) { return $false }
+        for ($i = 0; $i -lt [Math]::Max($a.Count, $b.Count); $i++) {
+            $x = if ($i -lt $a.Count) { $a[$i] } else { 0 }
+            $y = if ($i -lt $b.Count) { $b[$i] } else { 0 }
+            if ($x -ne $y) { return $x -lt $y }
+        }
+        return $false
+    }
+    $backwards = @($rowText | Where-Object {
+        $_ -match '(\S+)\s*→\s*(\S+)' -and -not (Test-ProvablyNewer $Matches[1] $Matches[2])
+    })
     if ($back) { Invoke-Node $back; Wait-Idle 2000 }
     # This case printed '0 update rows' and passed for as long as it existed, because the rows carried
     # no AutomationId and nothing asserted they did (A28). A number nobody checks is a case that
     # cannot fail.
     Assert-True ($rows.Count -gt 0) "no UpdateRow.* realised - are the row ids bound?"
     Assert-True ($unknown -eq 0) "$unknown elements still render 'unknown' (A10)"
-    foreach ($b in $backwards) { Assert-True $false "arrow pair on screen (A27): $b" }
-    "$($rows.Count) update rows, no 'unknown', no bare arrow pairs"
+    foreach ($b in $backwards) { Assert-True $false "arrow that does not provably point to a newer version (A27): $b" }
+    $arrows = @($rowText | Where-Object { $_ -match '→' }).Count
+    "$($rows.Count) update rows, no 'unknown', $arrows arrow(s) all provably forward"
 }
 
 Write-Host ''
