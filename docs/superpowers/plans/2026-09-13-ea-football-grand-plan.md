@@ -109,6 +109,24 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 >   Superstar cannot run offline, so the imported character cannot be used offline. Nothing on the player's
 >   machine could change that, which is why the transport has to go around EA's import entirely.
 >
+> **Update: the full disk sweep finished.** It reached roaming AppData and ProgramData, which the
+> earlier profile check didn't. Two finds:
+>
+> - **A shared cross-game record, not an export.** `%APPDATA%\Madden\` holds
+>   `EA_SPORTS™_College_Football_27UserHistory…` (216 bytes) and `Madden_NFL_27UserHistory…` (192 bytes),
+>   each written when its game closed. Both are binary with the same 4-byte header, `MUH2`. At a couple
+>   of hundred bytes neither can hold a player record, so the conclusion stands: EA's export is served from
+>   EA, not stored locally. VERIFIED (sizes, header, write times); INFERRED (usage history, given the name
+>   and size). The folder is presumably named `Madden` because both games share EA's football codebase.
+> - **The Frostbite live content update cache, for both games — very likely the stale-data location.**
+>   `C:\ProgramData\Frostbite\<title>\` holds `LCU` and `content_packs` for College Football 27 (about
+>   2.0 MB) and Madden NFL 27 (about 562 KB). Madden's `LCU` includes `layout.toc`, `lcumanifest.dat`,
+>   `initfs_Win32`, cas superbundles and a `livecontentupdatettribsyssb.toc`. This is the cache the
+>   research (P6) flagged as the likely thing players clear by hand when a modded game won't start after a
+>   title update. It gives sub-project 2 a concrete location on both games. VERIFIED (location and
+>   contents); INFERRED (its role in the stale-data pain — confirm with the friend, question A2). The
+>   Battlefield 6 folder there also carries a `Mods` directory, which neither football title has.
+>
 > Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and the
 > remaining Band B captures, with the offline Franchise player career first.
 
