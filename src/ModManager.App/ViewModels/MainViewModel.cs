@@ -397,8 +397,8 @@ public sealed partial class MainViewModel : ObservableObject
     }
     private void NotifyMpWarning() { OnPropertyChanged(nameof(MpWarningVisibility)); OnPropertyChanged(nameof(MpWarningText)); RebuildStateChips(); }
 
-    // Game-level ban-risk banner: resolved live by Steam app id from EffectiveManifest (via
-    // BanRiskCatalog), distinct from the per-mod co-op-desync MpWarning above. Shows for high and
+    // Game-level ban-risk banner: resolved live from the whole game (Steam id, manifest id, compiled floor) via
+    // BanRiskCatalog.Effective, distinct from the per-mod co-op-desync MpWarning above. Shows for high and
     // medium; stays visible even after the enable gate is acked (the risk is never hidden) and
     // covers the dropped-live-pak case the gate can't see. Recomputed on the same notify as
     // MpWarning when the active game changes.
