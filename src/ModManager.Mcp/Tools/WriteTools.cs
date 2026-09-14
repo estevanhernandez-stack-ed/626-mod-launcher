@@ -72,15 +72,28 @@ public static class WriteTools
 
         try
         {
-            // The same call the row toggle makes: DisableEntry moves to holding and refuses a
-            // ReadOnly row, EnableMod restores by name, and a partial move rolls back.
-            await Scanner.SetAppendedRowEnabledAsync(mod, enabled, ctx);
+            // The same router the app's row toggle uses, so the lane is chosen in ONE place. This used
+            // to call the scanner's folder move for every mod, which on a direct-inject game enabled
+            // nothing and still reported success.
+            await ModToggle.SetEnabledAsync(ctx, mod, enabled);
         }
         catch (Exception e)
         {
             AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(
                 DateTime.UtcNow, "set_mod_enabled", gameId, args, "error", e.Message));
             return new { ok = false, refusal = "error", detail = e.Message };
+        }
+
+        // Check the result instead of assuming it. A write that returns normally is not a write that
+        // took: a lane can skip a move it considers unsafe, or a future lane can be routed wrong. The
+        // agent must never be told "on" while the listing still says "off".
+        if (!ModToggle.IsApplied(game, mod.Name, enabled))
+        {
+            var notApplied = $"Tried to turn {mod.Name} {(enabled ? "on" : "off")}, but the mod list still "
+                             + $"shows it {(enabled ? "off" : "on")}. Nothing was reported as changed.";
+            AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(
+                DateTime.UtcNow, "set_mod_enabled", gameId, args, "not_applied", notApplied));
+            return new { ok = false, refusal = "not_applied", detail = notApplied };
         }
 
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(

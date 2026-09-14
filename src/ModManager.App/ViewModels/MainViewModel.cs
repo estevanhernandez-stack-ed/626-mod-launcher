@@ -1401,24 +1401,11 @@ public sealed partial class MainViewModel : ObservableObject
         row.IsBusy = true;
         try
         {
-            // Proxy-loader rows are checked FIRST: they are appended by ModListing regardless of which
-            // lane listed the game's mods, so any later branch would claim them and route a DLL
-            // step-aside through a mod mover that knows nothing about it.
-            if (row.Mod.Location == ProxyLoaderRows.LocationTag)
-            {
-                if (row.Enabled) _direct.EnableProxy(_ctx.Game, row.Mod.Name);
-                else _direct.DisableProxy(_ctx.Game, row.Mod.Name);
-            }
-            // A library row is appended by ModListing, so BuildModList cannot resolve it by name and
-            // the ordinary disable would silently move nothing. Hand over the row itself. Only an
-            // idle library reaches here at all - one whose dependents are known and all switched off -
-            // because any other state leaves it ReadOnly and the toggle never offered.
-            else if (row.Mod.Class == "library")
-                await Scanner.SetAppendedRowEnabledAsync(row.Mod, row.Enabled, _ctx);
-            else if (ConfigBacked) _me2.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
-            else if (DirectInjectBacked) _direct.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
-            else if (LooseRootBacked) LooseRootService.SetEnabled(_ctx.Game, row.Mod.Name, row.Enabled);
-            else await Scanner.SetLoaderModEnabledAsync(row.Mod.Name, row.Enabled, _ctx);
+            // The lane is chosen in Core, in one place, shared with the agent-access MCP. Proxy-loader
+            // and library rows are claimed first there, then the game's listing mechanism decides. An
+            // idle library is the only library that reaches here - any other state leaves it ReadOnly
+            // and the toggle is never offered. The gates above stay here: how to ask is the view's call.
+            await ModToggle.SetEnabledAsync(_ctx, row.Mod, row.Enabled);
             // Warn when toggling an owned UE4SS mod — manifest flip succeeded, but the managing
             // tool may overwrite it on its next deploy (mirrors the config edit-with-warning rule).
             var wasOwnedLoader = row.Mod.ReadOnly && row.Mod.Loader is "ue4ss" or "bepinex";
