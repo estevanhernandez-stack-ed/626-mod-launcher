@@ -2293,3 +2293,26 @@ of leaving it invisible on disk.
 actually removed — not synthetic test data, and not guaranteed to still number seven or carry those
 names on the next run. Confirm the section lists whatever is really there; don't hardcode the count or
 the names into an automated check, and don't remove any of them as part of running this smoke case.
+
+## Ban risk follows the game, and a new change to a save asks first
+
+Shipped: `BanRiskCatalog.Effective(game)` resolves risk from the Steam id, the manifest id and a compiled
+floor for College Football 27 and Madden NFL 27. Save writes that put something new into a save on a
+high-risk game ask first (spec `docs/superpowers/specs/2026-09-13-ban-risk-for-games-without-a-steam-id-design.md`).
+
+1. **Steam games unchanged.** Open Monster Hunter Wilds and Elden Ring. `StateChip.ban-risk` is present
+   on both, and enabling a mod still shows *Enable mods on {game}?* unless already acknowledged.
+2. **A game with no Steam id.** Register a throwaway game by hand against an empty folder, with the id
+   `madden-nfl-27` and no Steam id. `StateChip.ban-risk` shows. Remove the game afterwards.
+3. **The editor asks before the form opens.** Point the Saves dialog at a **copy** of an Elden Ring save
+   in a throwaway folder, never the real save directory. Press Edit on a character: *Write to a save on
+   ELDEN RING?* appears before the editor. Cancel: the status line says *Nothing was written.* and the
+   file hash is unchanged.
+4. **Every time until ticked.** Edit again without ticking: it asks again. Tick *Don't ask again for this
+   game's saves* and write: the next edit does not ask. `ban-risk-save-acks.json` holds the game id and
+   `ban-risk-acks.json` is unchanged.
+5. **Fixes never ask.** Reset and Remove on a save mod, and restoring a snapshot, never show the prompt
+   on any game.
+
+Why it matters: before this, a game added from anywhere but Steam read no ban risk at all, and the
+character editor wrote changed saves on an anti-cheat game without saying so.
