@@ -2311,8 +2311,14 @@ high-risk game ask first (spec `docs/superpowers/specs/2026-09-13-ban-risk-for-g
 4. **Every time until ticked.** Edit again without ticking: it asks again. Tick *Don't ask again for this
    game's saves* and write: the next edit does not ask. `ban-risk-save-acks.json` holds the game id and
    `ban-risk-acks.json` is unchanged.
-5. **Fixes never ask.** Reset and Remove on a save mod, and restoring a snapshot, never show the prompt
-   on any game.
+5. **The drop asks once.** On the throwaway `madden-nfl-27` game from step 2, set its save folder to a
+   second throwaway folder holding `user1/RocksDB/1.0/`. Drop two world zips (`<32-hex-guid>/data.json`
+   each) at once: one prompt appears, not two. Cancel: the status line names both zips as *not installed,
+   nothing was written*, no Worlds folder appears, and neither zip is imported as a regular mod. Drop them
+   again and choose *Write the save*: both install. Drop a third with the box ticked, then a fourth: the
+   fourth does not ask. Remove the game and both folders afterwards.
+6. **Fixes never ask.** Reset and Remove on a save mod, restoring a snapshot, and restoring a profile
+   archive never show the prompt on any game.
 
 Why it matters: before this, a game added from anywhere but Steam read no ban risk at all, and the
 character editor wrote changed saves on an anti-cheat game without saying so.
