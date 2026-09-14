@@ -145,12 +145,17 @@ what you had, never does.**
 |---|---|---|
 | Edit character (`SavesDialog.OnEditCharacter`) | **yes** | puts a new change into a save |
 | Save-mod drop install (`SaveModFlow.TryHandleDrops` → `InstallWorld`) | **yes** | puts a new mod into a save |
+| Bring a save in (`SaveBundle.Restore`) | **yes** | puts save content from somewhere else into the save |
 | Reset a save mod (`SaveModInstaller.ResetWorld`) | no | a fix: puts back the starting state of a mod that is already installed, nothing new |
 | Remove a save mod (`SaveModInstaller.RemoveWorld`) | no | moves toward vanilla, like disabling a mod |
 | Restore a snapshot, a world, or a save type (`SaveManager.Restore*`) | no | undo is never gated |
 | Restore a profile archive (`ProfileRestore.Restore`) | no | the user's own backup, and undo |
+| Clone to another save type, or Replace (`SaveManager.CloneToType`) | no | moves your own progress between the game's own save types |
 | The EA roster writer, when it exists | **yes** for writing an edited roster | the contract it is built against |
 | Removing or restoring a roster, when that exists | no | back to normal play |
+
+Bundle import and clone were classified after the final review, applying the owner's rule; clone/replace
+is the call most open to reversal.
 
 **The edge this accepts:** a snapshot can hold a save that was edited. Restoring it puts back an edit
 that was either acknowledged when it was made, or made outside the launcher. Gating undo to close
@@ -164,7 +169,8 @@ to click through prompts.
 false and a drop is a save mod, the verdict is a new `SaveModDropOutcome.NeedsAcknowledgment` and
 nothing is written. The view-model asks once for the whole drop, then re-runs only those paths with
 `writeAllowed: true`. One prompt per drop, not one per file, and the decision is testable in Core
-with no dialog in it.
+with no dialog in it. On an un-acked high-risk game, a save-mod drop meets the enable prompt first and
+then the save prompt, because the two acknowledgments are separate by decision.
 
 **Agents.** No MCP tool writes saves today. When one does, it follows `AgentWriteRules`: an un-acked
 high-risk save write is refused with a named refusal, and an agent never answers the prompt on the
@@ -251,6 +257,14 @@ directory.
 
 - **The embedded snapshot's missing `banRisk`.** The floor covers the two EA titles only. The general
   fix belongs in the manifest miner, so the snapshot carries what the feed carries. Its own change.
+- **A game registered under a different id, or typed in by name.** `Effective` matches by manifest id
+  and Steam id only - it does none of its own name matching. A typed manual add slugifies the display
+  name ("EA SPORTS Madden NFL 27" -> `ea-sports-madden-nfl-27`), which is not the manifest id
+  (`madden-nfl-27`), so a game with no Steam id added that way still reads `None`. The fix belongs at
+  registration, not in the resolver, and it is a requirement rather than an aside: EA app detection
+  (sub-project 1) **must** register EA Sports College Football 27 and Madden NFL 27 with
+  `GameInput.Id` set to the manifest id (`ea-sports-college-football-27` / `madden-nfl-27`), not a
+  slugified display name.
 - **EA app detection and registration.** Sub-project 1, which this unblocks. The other Steam-id-only
   facades (`SaveDirHints`, `KnownEngines`, `KnownModPaths`, `SaveLayoutCatalog`) have the same shape
   and will miss an EA game too. Those are lookups that make a game less helpful, not less safe, so

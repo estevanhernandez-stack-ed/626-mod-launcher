@@ -2302,23 +2302,32 @@ high-risk game ask first (spec `docs/superpowers/specs/2026-09-13-ban-risk-for-g
 
 1. **Steam games unchanged.** Open Monster Hunter Wilds and Elden Ring. `StateChip.ban-risk` is present
    on both, and enabling a mod still shows *Enable mods on {game}?* unless already acknowledged.
-2. **A game with no Steam id.** Register a throwaway game by hand against an empty folder, with the id
-   `madden-nfl-27` and no Steam id. `StateChip.ban-risk` shows. Remove the game afterwards.
+2. **A game with no Steam id.** The add dialog has no id field, so pick *Madden NFL 27* from the curated
+   game list against an empty throwaway folder, and clear the Steam id box (or confirm it is already
+   empty). Confirm the registered id is `madden-nfl-27` — for example through the MCP `list_games`.
+   `StateChip.ban-risk` shows, and gates enable.
 3. **The editor asks before the form opens.** Point the Saves dialog at a **copy** of an Elden Ring save
    in a throwaway folder, never the real save directory. Press Edit on a character: *Write to a save on
    ELDEN RING?* appears before the editor. Cancel: the status line says *Nothing was written.* and the
-   file hash is unchanged.
+   file hash is unchanged. Point the Saves dialog back at the real save folder afterwards — the choice is
+   persisted.
 4. **Every time until ticked.** Edit again without ticking: it asks again. Tick *Don't ask again for this
-   game's saves* and write: the next edit does not ask. `ban-risk-save-acks.json` holds the game id and
-   `ban-risk-acks.json` is unchanged.
+   game's saves* and write: the next edit does not ask, and not for any other game. `ban-risk-save-acks.json`
+   holds the game id and `ban-risk-acks.json` is unchanged.
 5. **The drop asks once.** On the throwaway `madden-nfl-27` game from step 2, set its save folder to a
    second throwaway folder holding `user1/RocksDB/1.0/`. Drop two world zips (`<32-hex-guid>/data.json`
-   each) at once: one prompt appears, not two. Cancel: the status line names both zips as *not installed,
-   nothing was written*, no Worlds folder appears, and neither zip is imported as a regular mod. Drop them
-   again and choose *Write the save*: both install. Drop a third with the box ticked, then a fourth: the
-   fourth does not ask. Remove the game and both folders afterwards.
-6. **Fixes never ask.** Reset and Remove on a save mod, restoring a snapshot, and restoring a profile
-   archive never show the prompt on any game.
+   each) at once: the enable prompt appears first — choose *Enable anyway* — then exactly one save
+   prompt appears for both zips, not one per zip. Cancel the save prompt: the status line names both
+   zips as *not installed, nothing was written*, no Worlds folder appears, and neither zip is imported as
+   a regular mod. Drop them again, pass the enable prompt, and choose *Write the save*: both install.
+   Drop a third with the box ticked, then a fourth: the fourth does not ask. Remove the game and both
+   throwaway folders afterwards.
+6. **Bringing a save in asks too.** On the Elden Ring copy from step 3, use *Bring a save in…* to import
+   a bundle: *Write to a save on ELDEN RING?* appears before anything is replaced. Cancel: the status
+   line says *Nothing was written.*, the file hash from step 3 is unchanged, and the Saves dialog
+   re-shows.
+7. **Fixes never ask.** Reset and Remove on a save mod, restoring a snapshot, restoring a profile
+   archive, and Clone to another save type or Replace never show the prompt on any game.
 
-Why it matters: before this, a game added from anywhere but Steam read no ban risk at all, and the
-character editor wrote changed saves on an anti-cheat game without saying so.
+Why it matters: before this, a game registered under its manifest id with no Steam id read no ban risk
+at all, and the character editor wrote changed saves on an anti-cheat game without saying so.
