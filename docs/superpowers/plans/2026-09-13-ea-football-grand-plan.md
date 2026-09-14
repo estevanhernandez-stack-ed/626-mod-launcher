@@ -30,8 +30,28 @@ When the research was silent or not confirmed, this plan says so. It does not fi
 > - **No online/offline marker exists in the saves.** A writer can accept only the verified Road to
 >   Glory fingerprint and must refuse everything else.
 >
-> Still waiting on you: the boundary decision, decisions A3 and A4, and the Madden and College
-> Football captures in Band B.
+> **Update, later the same day.**
+>
+> - **You checked the live EA app. There is no cloud-save toggle.** College Football 27's properties
+>   have an advanced launch arguments field and nothing about cloud saves. That was the one door left
+>   open for option 2, and it's closed: B10 is now answered by direct observation, and **option 2 has
+>   no mechanism**. By the plan's own rule the decision is between options 1 and 3. The advanced launch
+>   arguments field is the EA app's per-game equivalent of Steam launch options, which bears on the
+>   launch-options-as-curated-data spec and on A8's `cmdParams`.
+> - **C4 is done: Madden NFL 27 is published in the signed feed** (`626-game-manifest` PR #24), at
+>   `banRisk: high` and `safeRoute: unclear`. Both of Madden's launch entries start through the
+>   anti-cheat launcher, so it has no anti-cheat-off mode. The signature was verified against the key
+>   pinned in the launcher, on the exact bytes the launcher downloads. K13 is resolved.
+> - **College Football 27's `safeRoute` was corrected from `offline` to `unclear`** in the same PR. The
+>   repo's guide defines `offline` as a mode with the anti-cheat off, which College Football doesn't have
+>   either. No user saw the old value.
+> - **This does not yet protect EA app installs in the launcher.** `BanRiskCatalog` still resolves only
+>   by Steam id (K8), so an EA app install with no Steam id still gets no warning. The published entry
+>   protects Steam-registered installs today; EA installs need the code fix in C1 and C2, which waits on
+>   your decision A3.
+>
+> Still waiting on you: the boundary decision between options 1 and 3, decisions A3 and A4, and the
+> Madden and College Football captures in Band B.
 
 ## 1. What this is
 
