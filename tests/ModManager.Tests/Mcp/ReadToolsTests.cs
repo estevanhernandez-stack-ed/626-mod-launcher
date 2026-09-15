@@ -6,6 +6,9 @@ namespace ModManager.Tests.Mcp;
 
 // Validates the MCP read tools' marshaling + error shape against a seeded registry. The cores these
 // project over (RegistryStore, Scanner) are unit-tested elsewhere; these lock the tool layer itself.
+// Sets the process-global McpConfig.DataRoot (directly, and via FromSoftFixture.SeedRegistry) — see
+// McpDataRootCollection.
+[Collection("McpDataRoot")]
 public class ReadToolsTests
 {
     private static void SeedTwoGames()
