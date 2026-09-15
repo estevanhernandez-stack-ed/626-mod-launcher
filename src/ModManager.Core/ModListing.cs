@@ -261,6 +261,13 @@ public static class ModListing
         return ProxyLoaderRows.Build(top, held, claimed, top.Concat(dirs));
     }
 
+    /// <summary>True when the resolved game has nowhere mods could live: the folder lane, with no mod
+    /// locations. A STATE, not a store or engine check (spec 6a) — the moment a location exists this is
+    /// false, so a later mod lane needs no migration. Direct-inject, Mod Engine 2 and loose-root games
+    /// do not use locations this way and are never "no lane".</summary>
+    public static bool HasNoModLane(GameContext ctx)
+        => ctx.Locations.Count == 0 && MechanismFor(ctx.Game, ctx) == ListingMechanism.Scanner;
+
     /// <summary>
     /// Which listing lane a game actually resolves through.
     ///
