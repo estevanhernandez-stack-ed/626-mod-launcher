@@ -2334,3 +2334,25 @@ high-risk game ask first (spec `docs/superpowers/specs/2026-09-13-ban-risk-for-g
 
 Why it matters: before this, a game registered under its manifest id with no Steam id read no ban risk
 at all, and the character editor wrote changed saves on an anti-cheat game without saying so.
+
+## College Football 27 and Madden NFL 27 from the EA app
+
+Shipped: EA app installs are detected, curated ones are offered in the discovery lane, and adding one
+registers it with its manifest id, the EA content id, a data folder under `%LOCALAPPDATA%\626mods`, and
+Play set to the EA app's launch link (spec `docs/superpowers/specs/2026-09-14-ea-app-games-slice-one-design.md`).
+
+Needs the `eaContentId` data PR merged in `626-game-manifest` and the feed refreshed first.
+
+1. **Offered.** With both games installed through the EA app, the library home's discovery lane shows
+   both. A game already added does not show again.
+2. **Added right.** Add each. `list_games` shows ids `ea-sports-college-football-27` and `madden-nfl-27`.
+   `get_game_shape` shows no mod locations. The row shows the BAN RISK chip and no SETUP warning.
+3. **Nothing written under Program Files.** Compare a listing of `C:\Program Files\EA Games` before and
+   after both adds: identical. `%LOCALAPPDATA%\626mods\madden-nfl-27` is where the game's data goes.
+4. **The mod list says so.** Open either game: the list reads *The launcher doesn't turn mods on or off
+   for this game yet.* Dropping a zip on the window changes nothing and says the same sentence.
+5. **Play (owner).** Press Play once on each. The EA app should start the game. If it does not, note it
+   here: the row action switches to Open the EA app.
+
+Why it matters: the first registration of a game from a store other than Steam, and the first where the
+launcher's default data folder would have been unwritable.
