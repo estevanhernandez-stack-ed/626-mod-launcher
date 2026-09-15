@@ -31,6 +31,8 @@ public static partial class EnginePresets
             "Death Stranding etc. — mods drop as loose files into the game root (ASI plugins, ReShade, addons). Nothing to group; each recognized file/addon is its own mod."),
         ["custom"] = new("Custom (set manually)", new[] { "pak" }, "filename_no_ext", "mods",
             "Set the extensions, grouping, and mod folder yourself."),
+        ["frostbite"] = new("Frostbite (EA)", Array.Empty<string>(), "filename_no_ext", "",
+            "EA SPORTS College Football, Madden. No mod locations yet: the launcher tracks these games and hands Play to the EA app."),
     };
 
     [GeneratedRegex(@"[^a-z0-9]+")]
@@ -85,13 +87,17 @@ public static partial class EnginePresets
             GameRoot = input.GameRoot ?? "",
             FileExtensions = input.FileExtensions ?? preset.FileExtensions,
             GroupingRule = input.GroupingRule ?? preset.GroupingRule,
-            ModLocations = new[] { modLocation },
+            ModLocations = string.IsNullOrEmpty(input.ModPath) && string.IsNullOrEmpty(preset.ModPath)
+                ? Array.Empty<ModLocation>() : new[] { modLocation },
         };
         if (!string.IsNullOrEmpty(input.SteamAppId))
         {
             entry.SteamAppId = input.SteamAppId;
             entry.LaunchUrl = "steam://rungameid/" + input.SteamAppId;
         }
+        if (!string.IsNullOrEmpty(input.EaContentId)) entry.EaContentId = input.EaContentId;
+        if (!string.IsNullOrEmpty(input.LaunchUrl)) entry.LaunchUrl = input.LaunchUrl;
+        if (!string.IsNullOrEmpty(input.DataDir)) entry.DataDir = input.DataDir;
         if (!string.IsNullOrEmpty(input.LaunchExe)) entry.LaunchExe = input.LaunchExe;
         if (!string.IsNullOrEmpty(input.RequiredLauncher)) entry.RequiredLauncher = input.RequiredLauncher;
         if (input.CurseforgeGameId is not null) entry.CurseforgeGameId = input.CurseforgeGameId;

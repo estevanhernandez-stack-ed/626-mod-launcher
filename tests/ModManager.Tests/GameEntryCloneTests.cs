@@ -27,6 +27,7 @@ public class GameEntryCloneTests
         GroupingRule = "by_folder",
         ModLocations = new[] { new ModLocation("mods", "Mods", "mod") },
         SteamAppId = "1245620",
+        EaContentId = "16425895",
         LaunchUrl = "steam://rungameid/1245620",
         LaunchExe = "Game/eldenring.exe",
         LaunchTargets = new[] { new LaunchTarget("Mod Engine 2", "exe", "Game/launchmod.bat") },

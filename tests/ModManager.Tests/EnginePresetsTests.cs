@@ -57,6 +57,10 @@ public class EnginePresetsTests
         Assert.Equal("windrose-2", e.Id);
     }
 
+    // Presets that deliberately declare no mod locations yet. A lane for one of them gives it a ModPath
+    // and removes it from this set (spec 2026-09-14 EA app games, section 6a).
+    private static readonly HashSet<string> NoModLocationsYet = new() { "frostbite" };
+
     [Fact]
     public void Every_preset_has_the_required_shape()
     {
@@ -65,7 +69,7 @@ public class EnginePresetsTests
             Assert.False(string.IsNullOrEmpty(p.Label), key);
             Assert.NotNull(p.FileExtensions);
             Assert.False(string.IsNullOrEmpty(p.GroupingRule), key);
-            Assert.False(string.IsNullOrEmpty(p.ModPath), key);
+            if (!NoModLocationsYet.Contains(key)) Assert.False(string.IsNullOrEmpty(p.ModPath), key);
         }
     }
 }
