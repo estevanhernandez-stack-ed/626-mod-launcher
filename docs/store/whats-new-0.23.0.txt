@@ -1,0 +1,11 @@
+Version 0.23.0
+
+• Games from the EA app. The launcher now finds games installed through the EA app, starting with EA SPORTS College Football 27 and Madden NFL 27. Add them from the list of installed games, and Play hands the launch to the EA app. The launcher does not turn mods on or off for these two yet, and it says so instead of offering a mod list that would do nothing.
+
+• Anti-cheat warnings follow the game, not the store it came from. A game added from anywhere but Steam could previously show no warning at all.
+
+• Changing a save on a game with anti-cheat now asks first: editing a character, installing a save mod, or bringing a save in from a backup. It asks every time until you tick "don't ask again" for that game. Putting a save back never asks.
+
+• Turning a mod on or off never deletes a copy it is holding. If a fresh install of the same mod is already in place, it stops, moves nothing, and names the files in the way.
+
+• Only the anti-cheat warning is red now. A launch option to set or a missing framework gets its own colour, so a real risk stands out.
