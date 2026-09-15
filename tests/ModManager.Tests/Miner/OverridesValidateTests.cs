@@ -13,8 +13,8 @@ namespace ModManager.Tests.Miner;
 /// </summary>
 public class OverridesValidateTests
 {
-    private static OverrideEntry E(string? id = null, string? steam = null, string? name = null, string? path = null)
-        => new() { Id = id, SteamAppId = steam, Name = name, SourcePath = path ?? (id ?? steam) + ".json" };
+    private static OverrideEntry E(string? id = null, string? steam = null, string? name = null, string? path = null, string? ea = null)
+        => new() { Id = id, SteamAppId = steam, Name = name, EaContentId = ea, SourcePath = path ?? (id ?? steam) + ".json" };
 
     [Fact]
     public void A_clean_set_has_no_problems()
@@ -98,4 +98,43 @@ public class OverridesValidateTests
 
         Assert.Single(problems);
     }
+
+    // F7: EaContentId gets the same duplicate treatment as SteamAppId, plus a shape check the Steam id
+    // doesn't need — it lands verbatim in a shell-executed origin2:// launch URL.
+
+    [Fact]
+    public void Two_overrides_sharing_an_EaContentId_are_a_problem_that_names_both_files()
+    {
+        var problems = OverridesValidate.Check(new[]
+        {
+            E(id: "madden-nfl-27", ea: "16425895", path: "madden.json"),
+            E(id: "college-football-27", ea: "16425895", path: "cfb.json"),
+        });
+
+        var p = Assert.Single(problems);
+        Assert.Contains("16425895", p.Message);
+        Assert.Contains("madden.json", p.Message);
+        Assert.Contains("cfb.json", p.Message);
+    }
+
+    [Fact]
+    public void An_EaContentId_with_a_space_is_rejected()
+    {
+        var problems = OverridesValidate.Check(new[] { E(id: "x", ea: "1642 5895", path: "x.json") });
+
+        var p = Assert.Single(problems);
+        Assert.Contains("x.json", p.Message);
+    }
+
+    [Fact]
+    public void An_EaContentId_with_an_ampersand_is_rejected()
+    {
+        var problems = OverridesValidate.Check(new[] { E(id: "x", ea: "1642&5895", path: "x.json") });
+
+        Assert.Single(problems);
+    }
+
+    [Fact]
+    public void A_normal_digits_EaContentId_is_accepted()
+        => Assert.Empty(OverridesValidate.Check(new[] { E(id: "madden-nfl-27", ea: "16425895") }));
 }
