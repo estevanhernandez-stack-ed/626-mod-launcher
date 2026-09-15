@@ -39,7 +39,14 @@ public partial class App : Application
                 services.AddSingleton<DirectInjectService>();
                 services.AddSingleton<ThemeService>();
                 services.AddSingleton<SteamService>();
-                services.AddSingleton<IStoreLibrary>(sp => sp.GetRequiredService<SteamService>());
+                services.AddSingleton<EaLibrary>();
+                // Store-agnostic surfaces (discovery, covers, last-played) see every store. Steam-specific
+                // code keeps resolving SteamService directly.
+                services.AddSingleton<IStoreLibrary>(sp => new CompositeStoreLibrary(new IStoreLibrary[]
+                {
+                    sp.GetRequiredService<SteamService>(),
+                    sp.GetRequiredService<EaLibrary>(),
+                }));
                 services.AddSingleton<LudusaviService>();
                 services.AddSingleton<GameDefinitionResolver>();
                 services.AddSingleton<NexusService>();

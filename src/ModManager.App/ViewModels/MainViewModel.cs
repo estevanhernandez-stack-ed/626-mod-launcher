@@ -1274,7 +1274,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void RefreshEmptyState(int totalRows, int visibleRows)
     {
-        var msg = ModListEmptyState.MessageFor(HasGame, totalRows, visibleRows, ModFilterText, ActiveMode);
+        var msg = ModListEmptyState.MessageFor(HasGame, totalRows, visibleRows, ModFilterText, ActiveMode,
+            noModLane: _ctx is not null && ModListing.HasNoModLane(_ctx));
         FilterEmptyText = msg ?? "";
         FilterEmptyVisibility = msg is null ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -3693,6 +3694,13 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
+
+        // Nowhere for a mod to go: say why, before any gate or extraction. Nothing is written.
+        if (ModListing.HasNoModLane(_ctx))
+        {
+            StatusText = ModListEmptyState.NoModLane;
+            return;
+        }
 
         if (!await GateBanRiskEnableAsync())
         {

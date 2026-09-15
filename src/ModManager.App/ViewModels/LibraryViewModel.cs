@@ -518,20 +518,14 @@ public sealed partial class LibraryViewModel : ObservableObject
     private void RebuildDiscovery(IReadOnlyList<GameEntry> registered)
     {
         DiscoveryRows.Clear();
-        var registeredAppIds = registered
-            .Where(g => !string.IsNullOrEmpty(g.SteamAppId))
-            .Select(g => g.SteamAppId!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         IReadOnlyList<InstalledGame> installed;
         try { installed = _store.InstalledGames(); }
         catch { installed = Array.Empty<InstalledGame>(); }
 
-        foreach (var ig in installed)
-        {
-            if (registeredAppIds.Contains(ig.AppId)) continue;
+        // Keyed by store, and EA games only when the manifest knows them (Core decides both).
+        foreach (var ig in ModManager.Core.Stores.StoreDiscovery.Offerable(
+                     installed, registered, ModManager.Core.Manifest.EffectiveManifest.Current.Games))
             DiscoveryRows.Add(new DiscoveredGameViewModel(ig, id => _covers.LocalPortrait(id)));
-        }
     }
 
     // --- Commands ----------------------------------------------------------------------------------

@@ -413,6 +413,17 @@ public sealed partial class MainWindow : Window
     // no new mechanism. Reversible: registration is additive; the launch mechanism is untouched.
     private async Task AddDiscoveredGameAsync(ModManager.Core.InstalledGame game)
     {
+        if (game.StoreKind == ModManager.Core.Stores.EaInstallScan.StoreKind)
+        {
+            var eaInput = ModManager.Core.Stores.EaGameImport.Plan(
+                game, ModManager.Core.Manifest.EffectiveManifest.Current.Games,
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            // Discovery only offers curated EA games, so a null here means the feed changed underneath
+            // the lane. Adding it under a guessed id would lose its ban risk; do nothing instead.
+            if (eaInput is not null) await ViewModel.AddGameAsync(eaInput);
+            return;
+        }
+
         var plan = ModManager.Core.SteamGameImport.Plan(
             new ModManager.Core.SteamImportCandidate(game.AppId, game.Name, game.InstallDir),
             Services.EngineScan.Detect(game.InstallDir));
