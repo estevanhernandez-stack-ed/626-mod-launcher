@@ -407,10 +407,13 @@ public sealed partial class MainWindow : Window
         ShowLibrary();
     }
 
-    // Add a store-discovered game. When the engine is auto-detectable, register it in one step through
-    // the same GameInput path the Steam quick-add uses (no guessing — Plan.Addable gates it). When it
-    // isn't, hand off to the full + Game dialog so the user sets the engine — reusing the existing flow,
-    // no new mechanism. Reversible: registration is additive; the launch mechanism is untouched.
+    // Add a store-discovered game. The EA path registers a curated game straight from the manifest match
+    // with no discovery sweep — Program Files\EA Games gets no read beyond installerdata.xml, and a game
+    // with no mod lane gets no adoption dialog offering it one. The Steam path is unchanged: when the
+    // engine is auto-detectable, register it in one step through the same GameInput path the Steam
+    // quick-add uses (no guessing — Plan.Addable gates it); when it isn't, hand off to the full + Game
+    // dialog so the user sets the engine — reusing the existing flow, no new mechanism. Reversible either
+    // way: registration is additive; the launch mechanism is untouched.
     private async Task AddDiscoveredGameAsync(ModManager.Core.InstalledGame game)
     {
         if (game.StoreKind == ModManager.Core.Stores.EaInstallScan.StoreKind)
@@ -420,7 +423,9 @@ public sealed partial class MainWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
             // Discovery only offers curated EA games, so a null here means the feed changed underneath
             // the lane. Adding it under a guessed id would lose its ban risk; do nothing instead.
-            if (eaInput is not null) await ViewModel.AddGameAsync(eaInput);
+            // sweep: false — this game has no mod lane, and a sweep would read up to 20,000 files (md5
+            // included) under C:\Program Files\EA Games, which nothing but installerdata.xml may touch.
+            if (eaInput is not null) await ViewModel.AddGameAsync(eaInput, sweep: false);
             return;
         }
 
