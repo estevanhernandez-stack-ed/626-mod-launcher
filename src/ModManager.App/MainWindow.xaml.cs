@@ -907,19 +907,28 @@ public sealed partial class MainWindow : Window
         // current mode at the top: in modded mode you can switch to a clean vanilla run; in vanilla
         // mode you can restore your exact mod set. Switching steps loaders aside / restores them, then
         // launches. The per-target items below still launch the current state on the chosen target.
-        if (ViewModel.CurrentLaunchMode == ModManager.Core.LaunchMode.Modded)
+        //
+        // A game with no mod lane has nothing to step aside or restore — the axis doesn't apply, so
+        // both items are omitted and the plain per-target list (or the "No launch options" line) is
+        // all the menu offers (F1).
+        if (!ViewModel.HasNoModLane)
         {
-            var vanilla = new MenuFlyoutItem { Text = "Play vanilla (no mods)" };
-            vanilla.Click += OnPlayVanilla;
-            menu.Items.Add(vanilla);
+            if (ViewModel.CurrentLaunchMode == ModManager.Core.LaunchMode.Modded)
+            {
+                var vanilla = new MenuFlyoutItem { Text = "Play vanilla (no mods)" };
+                vanilla.Click += OnPlayVanilla;
+                menu.Items.Add(vanilla);
+            }
+            else
+            {
+                var modded = new MenuFlyoutItem { Text = "Play modded (restore mods)" };
+                modded.Click += OnPlayModded;
+                menu.Items.Add(modded);
+            }
         }
-        else
-        {
-            var modded = new MenuFlyoutItem { Text = "Play modded (restore mods)" };
-            modded.Click += OnPlayModded;
-            menu.Items.Add(modded);
-        }
-        if (ViewModel.LaunchTargets.Count > 0)
+        // Only a separator when there's something above it to separate from — a no-mod-lane game
+        // that omitted the vanilla/modded item above starts the menu with its per-target list instead.
+        if (menu.Items.Count > 0 && ViewModel.LaunchTargets.Count > 0)
             menu.Items.Add(new MenuFlyoutSeparator());
 
         foreach (var target in ViewModel.LaunchTargets)
@@ -930,7 +939,7 @@ public sealed partial class MainWindow : Window
             item.Click += OnLaunchTargetClick;
             menu.Items.Add(item);
         }
-        if (ViewModel.LaunchTargets.Count == 0 && menu.Items.Count == 1)
+        if (ViewModel.LaunchTargets.Count == 0 && menu.Items.Count == 0)
             menu.Items.Add(new MenuFlyoutItem { Text = "No launch options for this game", IsEnabled = false });
     }
 
@@ -1400,6 +1409,11 @@ public sealed partial class MainWindow : Window
         // hands control back to it — which is after the user has chosen a folder. Asking someone a
         // question and then telling them it was never going to run is worse than not asking.
         if (ViewModel.RefuseIfLongOpRunning()) return;
+
+        // No mod lane: this whole feature is "find what's already installed so you can toggle it",
+        // and a no-lane game can't toggle anything. Refuse before the prompt too, for the same reason
+        // as the RefuseIfLongOpRunning check above — never ask a question this can't act on (F2).
+        if (ViewModel.HasNoModLane) { ViewModel.StatusText = ModManager.Core.ModListEmptyState.NoModLane; return; }
 
         var ask = new ContentDialog
         {
@@ -2099,6 +2113,13 @@ public sealed partial class MainWindow : Window
     private bool DropTargetIsHome => LibraryHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible
         || CatalogHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible; // storefront also paints over the receipt
 
+    // The full NoModLane sentence is three sentences and reads fine in the empty-state panel, but a
+    // drag caption is a one-line tooltip — every other caption here is a short phrase (23-34 chars).
+    // Only the first sentence fits that register; the rest is detail the empty state already carries
+    // once the drop is refused and the user looks at the mod list itself (F9).
+    private static readonly string NoModLaneDragCaption =
+        ModManager.Core.ModListEmptyState.NoModLane.Split('.')[0] + ".";
+
     private void OnDragOver(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
@@ -2107,6 +2128,14 @@ public sealed partial class MainWindow : Window
             e.AcceptedOperation = DataPackageOperation.None;
             if (e.DragUIOverride is not null) e.DragUIOverride.Caption = CatalogHost.Visibility == Microsoft.UI.Xaml.Visibility.Visible
                     ? "Close the store to install mods" : "Open a game first to install mods";
+            return;
+        }
+        if (ViewModel.HasNoModLane)
+        {
+            // Never promise an install this game refuses (F9) — AddModsAsync already refuses it too,
+            // but the caption up to now claimed "Install to <game>" right before that refusal fired.
+            e.AcceptedOperation = DataPackageOperation.None;
+            if (e.DragUIOverride is not null) e.DragUIOverride.Caption = NoModLaneDragCaption;
             return;
         }
         e.AcceptedOperation = DataPackageOperation.Copy;
