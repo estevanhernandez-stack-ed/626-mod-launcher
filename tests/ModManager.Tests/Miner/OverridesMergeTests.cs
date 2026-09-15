@@ -190,4 +190,24 @@ public class OverridesMergeTests
         Assert.Empty(result.MatchedIds);
         Assert.Equal(new[] { "skyrim" }, result.AddedIds);
     }
+
+    [Fact]
+    public void An_override_sets_the_ea_content_id_on_a_matched_entry()
+    {
+        var backbone = Backbone(("madden-nfl-27", "3940610", null));
+        var overrides = new[] { new OverrideEntry { SteamAppId = "3940610", EaContentId = "16425895" } };
+
+        var e = OverridesMerge.Apply(backbone, overrides).Games.Single(g => g.Id == "madden-nfl-27");
+        Assert.Equal("16425895", e.Stores.EaContentId);
+        Assert.Equal("3940610", e.Stores.SteamAppId);   // the Steam id is kept, not replaced
+    }
+
+    [Fact]
+    public void An_added_override_carries_its_ea_content_id()
+    {
+        var overrides = new[] { new OverrideEntry { Id = "some-ea-only-game", Name = "Some EA Game", EaContentId = "123" } };
+
+        var e = OverridesMerge.Apply(Backbone(), overrides).Games.Single(g => g.Id == "some-ea-only-game");
+        Assert.Equal("123", e.Stores.EaContentId);
+    }
 }

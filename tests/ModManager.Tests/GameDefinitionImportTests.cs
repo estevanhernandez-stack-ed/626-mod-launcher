@@ -33,7 +33,7 @@ public class GameProfileImportTests
     [Fact]
     public void Unknown_engine_is_rejected_listing_allowed_keys()
     {
-        var r = GameDefinitionImport.Load("""{ "name":"X","engine":"frostbite","saveRoot":"AppData","saveSubPath":"X" }""");
+        var r = GameDefinitionImport.Load("""{ "name":"X","engine":"not-a-real-engine","saveRoot":"AppData","saveSubPath":"X" }""");
         Assert.Contains(r.Errors, e => e.Contains("engine", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -87,14 +87,14 @@ public class GameProfileImportTests
         var json = """
         [
           { "name":"A","engine":"bethesda","saveRoot":"AppData","saveSubPath":"A" },
-          { "name":"B","engine":"frostbite","saveRoot":"AppData","saveSubPath":"B" }
+          { "name":"B","engine":"not-a-real-engine","saveRoot":"AppData","saveSubPath":"B" }
         ]
         """;
         var results = GameDefinitionImport.LoadMany(json);
         Assert.Equal(2, results.Count);
         Assert.Empty(results[0].Errors);
         Assert.Equal("A", results[0].Draft!.Name);
-        Assert.NotEmpty(results[1].Errors); // frostbite is not an engine preset
+        Assert.NotEmpty(results[1].Errors); // not-a-real-engine is not an engine preset
         Assert.Null(results[1].Draft);
     }
 

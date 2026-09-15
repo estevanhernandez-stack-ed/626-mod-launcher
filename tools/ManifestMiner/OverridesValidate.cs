@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ModManager.Core;
 
 namespace ManifestMiner;
@@ -16,9 +17,19 @@ public sealed record OverrideProblem(string Message);
 ///
 /// <para>So a duplicate is a BUILD FAILURE rather than a resolved conflict. There is no second key to
 /// disambiguate on, and picking a winner is what got us here.</para>
+///
+/// <para><b>EaContentId (F7)</b> gets the same duplicate treatment as the Steam app id — two overrides
+/// claiming the same EA content id would collide in <see cref="ModManager.Core.Stores.StoreDiscovery"/>
+/// exactly the way two Steam ids would. It also gets a shape check the Steam id doesn't need: it lands
+/// verbatim in a shell-executed <c>origin2://</c> launch URL (<see
+/// cref="ModManager.Core.Stores.EaGameImport.LaunchUrlFor"/>), so anything outside
+/// <c>[A-Za-z0-9._-]</c> — a space, an <c>&amp;</c>, a stray quote — is rejected before it ever reaches
+/// a registered game.</para>
 /// </summary>
-public static class OverridesValidate
+public static partial class OverridesValidate
 {
+    [GeneratedRegex(@"^[A-Za-z0-9._-]+$")] private static partial Regex EaContentIdShape();
+
     /// <summary>The slug an entry will be addressed by: its explicit id (slugified, same as every
     /// manifest id — curated files are already lowercase-kebab, so this is a no-op on all of them
     /// today), else one derived from its name, else empty — which is itself a problem.</summary>
@@ -58,6 +69,15 @@ public static class OverridesValidate
 
         Duplicates("Steam app id", e => e.SteamAppId);
         Duplicates("id", e => KeyOf(e) is { Length: > 0 } k ? k : null);
+        Duplicates("EA content id", e => e.EaContentId);
+
+        // Shape, not just uniqueness: EaContentId lands verbatim in a shell-executed origin2:// launch
+        // URL (EaGameImport.LaunchUrlFor), so a value with a space, an '&', or a quote is rejected
+        // before it ever reaches a registered game rather than corrupting a launch at runtime.
+        foreach (var e in overrides.Where(e => !string.IsNullOrEmpty(e.EaContentId) && !EaContentIdShape().IsMatch(e.EaContentId!)))
+            problems.Add(new OverrideProblem(
+                $"{FileOf(e)} has an EA content id '{e.EaContentId}' with characters outside letters, "
+                + "digits, '.', '_' and '-' — unsafe in a launch URL."));
 
         return problems;
     }

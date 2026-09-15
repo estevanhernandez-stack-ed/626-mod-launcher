@@ -183,6 +183,22 @@ public class ModListEmptyStateTests
             Assert.EndsWith(".", m);
         }
     }
+
+    [Fact]
+    public void A_game_with_no_mod_lane_says_so_and_offers_no_drop()
+    {
+        var m = ModListEmptyState.MessageFor(true, 0, 0, null, null, noModLane: true)!;
+
+        Assert.Equal(ModListEmptyState.NoModLane, m);
+        Assert.DoesNotContain("Drop", m);
+        Assert.DoesNotContain("+ Add mods", m);
+    }
+
+    [Fact]
+    public void The_no_mod_lane_sentence_is_the_one_the_spec_fixed()
+        => Assert.Equal(
+            "The launcher doesn't turn mods on or off for this game yet. It tracks the game and warns about its anti-cheat. Mod tools for this game replace EA's anti-cheat launcher, which the launcher won't do.",
+            ModListEmptyState.NoModLane);
 }
 
 /// <summary>

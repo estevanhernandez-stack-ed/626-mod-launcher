@@ -577,6 +577,12 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
     private bool isLoadOrderMode;
 
+    /// <summary>True when the active game resolves to no mod lane at all (spec 6a: a STATE, never a
+    /// store/engine check) — App-side surfaces (launch menu, drag caption, Play label) that live
+    /// outside this VM's private <c>_ctx</c> read this instead of reaching for <c>ModListing</c>
+    /// themselves.</summary>
+    public bool HasNoModLane => _ctx is not null && ModListing.HasNoModLane(_ctx);
+
     public Visibility GameVisibility => HasGame ? Visibility.Visible : Visibility.Collapsed;
     // EmptyVisibility (HasGame ? Collapsed : Visible) lived here and drove a TextBlock hard-coded to
     // "No game registered yet". A registered game with zero mods fell straight through it and rendered
@@ -1098,6 +1104,7 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(EffectiveLaunchTarget));
             OnPropertyChanged(nameof(LaunchButtonLabel));
             OnPropertyChanged(nameof(CurrentLaunchMode));
+            OnPropertyChanged(nameof(HasNoModLane));
             // The catalog surfaces gate on the Nexus connection plus the active game's domain, and a
             // game switch changes both; recompute them on every row rebuild too, or the buttons never
             // appear on switch.
@@ -1274,7 +1281,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void RefreshEmptyState(int totalRows, int visibleRows)
     {
-        var msg = ModListEmptyState.MessageFor(HasGame, totalRows, visibleRows, ModFilterText, ActiveMode);
+        var msg = ModListEmptyState.MessageFor(HasGame, totalRows, visibleRows, ModFilterText, ActiveMode,
+            noModLane: _ctx is not null && ModListing.HasNoModLane(_ctx));
         FilterEmptyText = msg ?? "";
         FilterEmptyVisibility = msg is null ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -1818,6 +1826,8 @@ public sealed partial class MainViewModel : ObservableObject
             var how = LaunchMechanismLabel(t);   // "Steam" | "<launcher>.exe name" | ""
             if (CurrentLaunchMode == LaunchMode.Vanilla)
                 return string.IsNullOrEmpty(how) ? "Play vanilla" : $"Play vanilla ({how})";
+            // No mod lane: there is no "modded" to distinguish from vanilla — plain Play, always.
+            if (HasNoModLane) return "Play";
             return string.IsNullOrEmpty(how) ? "Play (modded)" : $"Play modded ({how})";
         }
     }
@@ -1942,6 +1952,16 @@ public sealed partial class MainViewModel : ObservableObject
         // path for games with no registered targets at all (steam:// / LaunchExe).
         var target = EffectiveLaunchTarget;
         if (target is not null) { await LaunchTargetExplicit(target); return; }
+        LaunchWithNoTarget();
+    }
+
+    /// <summary>The legacy no-target launch path (steam:// / LaunchExe) — for games with no registered
+    /// LaunchTargets at all, including a <c>LaunchUrl</c>-only entry. Shared by the primary Launch
+    /// button and the vanilla/modded launch methods, so a target-less game is never silently left
+    /// un-launched by any of the three (F1): each falls back here exactly the way Launch() always did.</summary>
+    private void LaunchWithNoTarget()
+    {
+        if (_ctx is null) return;
         AutoBackupBeforeLaunch();
         try
         {
@@ -2000,10 +2020,14 @@ public sealed partial class MainViewModel : ObservableObject
         });
     }
 
-    /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.</summary>
+    /// <summary>Play vanilla: step every active loader aside (reversible), refresh rows, then launch clean.
+    /// Refuses before any stash write when the game has no mod lane (F1) — there is nothing to step
+    /// aside, and the menu item that reaches this is itself omitted for such a game; this is the
+    /// defence-in-depth copy of that guard.</summary>
     public async Task StepAsideAndLaunchAsync()
     {
         if (_ctx is null) return;
+        if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
         IsBusy = true;
         try
         {
@@ -2013,15 +2037,18 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = "Vanilla mode — mods stepped aside. Launching…";
             var target = EffectiveLaunchTarget;
             if (target is not null) await LaunchTargetExplicit(target);
+            else LaunchWithNoTarget();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
-    /// <summary>Play modded: restore exactly the stashed set, refresh rows, then launch with mods.</summary>
+    /// <summary>Play modded: restore exactly the stashed set, refresh rows, then launch with mods.
+    /// Refuses before any restore when the game has no mod lane (F1) — see <see cref="StepAsideAndLaunchAsync"/>.</summary>
     public async Task RestoreAndLaunchAsync()
     {
         if (_ctx is null) return;
+        if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
         IsBusy = true;
         try
         {
@@ -2031,6 +2058,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = "Modded mode — mods restored. Launching…";
             var target = EffectiveLaunchTarget;
             if (target is not null) await LaunchTargetExplicit(target);
+            else LaunchWithNoTarget();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
@@ -2836,6 +2864,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
 
+        // Nowhere to write an identification to: say why, before the folder sweep or any md5 read.
+        // MainWindow's OnIdentifyMyMods guards the same slot before the downloads-folder prompt even
+        // shows; this is the defence-in-depth copy for any other caller of this method (F2).
+        if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
+
         // The longest run in the app, behind a menu item nothing disables — the busy ring is 18px and
         // easy to miss, so a second click is the expected mistake, not the exotic one. Two runs in
         // flight would hand Stop only the second one's token, let the second's finally clear the busy
@@ -3097,6 +3130,17 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         var ctx = _ctx!;
+
+        // Nowhere to adopt a find into: never sweep the folder at all (F2) — this is the path
+        // AddGameAsync's silent first-add sweep reaches for every new game, EA curated ones included,
+        // so without this guard adding an EA game would md5-read C:\Program Files\EA Games\... on the
+        // very next line. Auto stays silent, same as its "found nothing" convention, so "Added
+        // {name}." survives; an explicit ask (auto: false, if a menu item ever reaches this) says why.
+        if (ModListing.HasNoModLane(ctx))
+        {
+            if (!auto) StatusText = ModListEmptyState.NoModLane;
+            return;
+        }
 
         // BuildDiscoveryProposalsAsync sets StatusText itself for every "nothing found" reason,
         // gated on auto exactly as this method used to gate it inline before the split.
@@ -3693,6 +3737,13 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task AddModsAsync(IReadOnlyList<string> paths)
     {
         if (_ctx is null || paths.Count == 0) return;
+
+        // Nowhere for a mod to go: say why, before any gate or extraction. Nothing is written.
+        if (ModListing.HasNoModLane(_ctx))
+        {
+            StatusText = ModListEmptyState.NoModLane;
+            return;
+        }
 
         if (!await GateBanRiskEnableAsync())
         {

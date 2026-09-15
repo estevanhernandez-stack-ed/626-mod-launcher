@@ -98,10 +98,16 @@ public static class ModBrowseRules
 /// </summary>
 public static class ModListEmptyState
 {
-    public static string? MessageFor(bool hasGame, int totalRows, int visibleRows, string? search, string? mode)
+    /// <summary>Said where the list would otherwise invite a drop: this game has no mod lane.</summary>
+    public const string NoModLane =
+        "The launcher doesn't turn mods on or off for this game yet. It tracks the game and warns about its anti-cheat. "
+        + "Mod tools for this game replace EA's anti-cheat launcher, which the launcher won't do.";
+
+    public static string? MessageFor(bool hasGame, int totalRows, int visibleRows, string? search, string? mode, bool noModLane = false)
     {
         if (!hasGame) return "No game registered yet. Add one with + Game.";
         if (visibleRows > 0) return null;
+        if (noModLane && totalRows == 0) return NoModLane;
 
         var query = (search ?? "").Trim();
         var m = ModeLabel(mode);

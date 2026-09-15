@@ -97,6 +97,7 @@ public static class OverridesMerge
         SafeRouteHint = ov.SafeRouteHint ?? e.SafeRouteHint,
         SaveDirHint = ov.SaveDirHint ?? e.SaveDirHint,
         FileExtensions = ov.FileExtensions ?? e.FileExtensions,
+        Stores = e.Stores with { EaContentId = ov.EaContentId ?? e.Stores.EaContentId },
         Provenance = Curate(e.Provenance),
     };
 
@@ -115,7 +116,7 @@ public static class OverridesMerge
         SafeRouteHint = ov.SafeRouteHint,
         SaveDirHint = ov.SaveDirHint,
         FileExtensions = ov.FileExtensions,
-        Stores = new StoreIds { SteamAppId = ov.SteamAppId },
+        Stores = new StoreIds { SteamAppId = ov.SteamAppId, EaContentId = ov.EaContentId },
         Provenance = new ManifestProvenance { Sources = new[] { "curated" }, Status = "curated" },
     };
 

@@ -126,6 +126,7 @@ public static class EffectiveManifest
         GogId = remote.GogId ?? embedded.GogId,
         EpicAppName = remote.EpicAppName ?? embedded.EpicAppName,
         XboxStoreId = remote.XboxStoreId ?? embedded.XboxStoreId,
+        EaContentId = remote.EaContentId ?? embedded.EaContentId,
     };
 
     // Non-empty remote string wins; otherwise keep the embedded one (Name is non-nullable).

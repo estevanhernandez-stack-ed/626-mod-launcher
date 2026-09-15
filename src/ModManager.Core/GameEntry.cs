@@ -42,6 +42,10 @@ public sealed class GameEntry
     public string GroupingRule { get; set; } = "";
     public IReadOnlyList<ModLocation> ModLocations { get; set; } = Array.Empty<ModLocation>();
     public string? SteamAppId { get; set; }
+
+    /// <summary>The EA app content id, for a game added from the EA app. Its store key, as SteamAppId is
+    /// Steam's. Never set together with a Steam launch.</summary>
+    public string? EaContentId { get; set; }
     public string? LaunchUrl { get; set; }
     public string? LaunchExe { get; set; }
 
@@ -155,6 +159,12 @@ public sealed class GameInput
     public string? Engine { get; init; }
     public string? GameRoot { get; init; }
     public string? SteamAppId { get; init; }
+    public string? EaContentId { get; init; }
+    /// <summary>An explicit launch link. Wins over the one derived from SteamAppId.</summary>
+    public string? LaunchUrl { get; init; }
+    /// <summary>Where the launcher keeps this game's data, when the default beside the game root is not
+    /// writable (for example under Program Files).</summary>
+    public string? DataDir { get; init; }
     public string? LaunchExe { get; init; }
     public string? ModPath { get; init; }
     public string? WindowTitle { get; init; }

@@ -27,6 +27,11 @@ public static class ModToggle
     {
         var game = ctx.Game;
 
+        // A game with nowhere for mods to live has no lane to route to. Refuse in words, before any
+        // lane could index an empty location list.
+        if (ModListing.HasNoModLane(ctx))
+            throw new InvalidOperationException(ModListEmptyState.NoModLane);
+
         // Appended by ModListing on any lane, so it must be claimed before the lane dispatch below
         // routes a DLL step-aside through a mod mover that knows nothing about it.
         if (mod.Location == ProxyLoaderRows.LocationTag)
