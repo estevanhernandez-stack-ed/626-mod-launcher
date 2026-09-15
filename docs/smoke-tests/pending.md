@@ -2354,5 +2354,14 @@ Needs the `eaContentId` data PR merged in `626-game-manifest` and the feed refre
 5. **Play (owner).** Press Play once on each. The EA app should start the game. If it does not, note it
    here: the row action switches to Open the EA app.
 
+**Verified 2026-09-14 on the dev build from master d8ddf85 (owner at the machine):**
+- Steps 1 to 3 passed. Both games were offered at the bottom of the library home under *Installed games
+  not added yet*, and added with manifest ids `ea-sports-college-football-27` / `madden-nfl-27`,
+  `eaContentId` 16425899 / 16425895, no Steam id, the `origin2` link, zero mod locations, and data folders
+  under `%LOCALAPPDATA%\626mods`. No `_626mods` folder appeared under `C:\Program Files\EA Games`.
+- Step 5 passed. Play started College Football 27, then Madden NFL 27, through the EA app.
+- Found while testing: the owner looked for the games under **+ Game** first. That dialog does not list EA
+  games yet. It is first on the slice-two list.
+
 Why it matters: the first registration of a game from a store other than Steam, and the first where the
 launcher's default data folder would have been unwritable.

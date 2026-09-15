@@ -49,7 +49,10 @@ never starts a game file.
 community sources: a Lutris issue from August 2023 and EA forum threads. No EA documentation was found,
 and some reports call it patchy. Nothing was launched during research.
 
-**The one live check is yours:** press Play once on each game after this ships. If the EA app does not
+**Verified 2026-09-14.** The owner added both games on a dev build of master (d8ddf85) and pressed Play:
+the EA app started College Football 27 and Madden NFL 27. The link is no longer only community-reported.
+
+**The one live check was yours:** press Play once on each game after this ships. If the EA app does not
 start the game, the fallback already named in the plan applies. The row's action becomes **Open the EA
 app**, which opens `origin2://` with no game. That means changing one import value, plus a small
 repair for the two entries already added, not a redesign.
