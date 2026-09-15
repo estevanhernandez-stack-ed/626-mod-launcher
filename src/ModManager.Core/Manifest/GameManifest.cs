@@ -10,6 +10,9 @@ public sealed record StoreIds
     public string? GogId { get; init; }
     public string? EpicAppName { get; init; }
     public string? XboxStoreId { get; init; }
+    /// <summary>The EA app's content id, from the game's <c>__Installer\installerdata.xml</c>
+    /// <c>contentIDs/contentID</c>. The key an EA install is matched on.</summary>
+    public string? EaContentId { get; init; }
 }
 
 /// <summary>Which legacy arrays / mining sources contributed this entry, and its curation status.

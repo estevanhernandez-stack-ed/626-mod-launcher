@@ -10,6 +10,9 @@ public sealed record OverrideEntry
     /// <summary>The Steam app id, when the game is on Steam. Null is normal now, not an error.</summary>
     public string? SteamAppId { get; init; }
 
+    /// <summary>The EA app content id, for games the EA app installs. Written into <c>Stores</c>.</summary>
+    public string? EaContentId { get; init; }
+
     /// <summary>The file this entry was read from. Set by <see cref="OverridesLoader"/>, never by the
     /// JSON — it exists so a build problem can name the offending file, and a curated file must not be
     /// able to lie about where it lives.</summary>

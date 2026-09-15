@@ -365,4 +365,28 @@ public class ManifestMergeCompletenessTests
         Assert.Contains(merged.Games, g => g.Id == "minecraft");   // no app id at all, so nothing can claim it
         Assert.Contains(merged.Games, g => g.Id == "kept");
     }
+
+    [Fact]
+    public void Every_store_id_survives_the_merge_in_both_directions()
+    {
+        // The walk above skips Stores, so a new store field was not covered. This one walks StoreIds
+        // itself: the next store id cannot be dropped silently either.
+        var full = new StoreIds();
+        foreach (var p in typeof(StoreIds).GetProperties()) p.SetValue(full, "sample-" + p.Name);
+
+        GameManifestEntry Merged(StoreIds embedded, StoreIds remote) => EffectiveManifest
+            .Merge(new GameManifest { Games = new[] { new GameManifestEntry { Id = "g", Stores = embedded } } },
+                   new GameManifest { Games = new[] { new GameManifestEntry { Id = "g", Stores = remote } } })
+            .Games.Single(g => g.Id == "g");
+
+        var fromRemote = Merged(new StoreIds(), full).Stores;
+        var fromEmbedded = Merged(full, new StoreIds()).Stores;
+
+        foreach (var p in typeof(StoreIds).GetProperties())
+        {
+            Assert.Equal("sample-" + p.Name, p.GetValue(fromRemote));
+            Assert.Equal("sample-" + p.Name, p.GetValue(fromEmbedded));
+        }
+        Assert.Contains(typeof(StoreIds).GetProperties(), p => p.Name == "EaContentId");
+    }
 }
