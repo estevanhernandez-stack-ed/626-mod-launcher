@@ -1,7 +1,7 @@
 # EA app games, slice one: find them, add them, play them
 
 **Date:** 2026-09-14
-**Status:** pending spec review
+**Status:** approved 2026-09-14, with the owner's note that the mod work will bring more changes (see 6a)
 **Program:** EA football, sub-project 1 (see `docs/superpowers/plans/2026-09-13-ea-football-grand-plan.md`)
 **Depends on:** ban risk for games without a Steam id (merged, #344). A4 decided: the EA store key is the
 `installerdata.xml` contentID. A8 decided 2026-09-14: Play opens the EA app's launch link.
@@ -109,9 +109,12 @@ genuinely about Steam (Steam's running check, the Steam build baseline, the Ludu
   a new store field is not covered automatically. Add an assertion that walks every `StoreIds` property
   through `MergeStores`, so the next store id cannot be dropped silently either.
 - The miner's `OverrideEntry` gains `EaContentId`, and `OverridesMerge` writes it into `Stores`.
-- **Data PR in `626-game-manifest`, needs your sign-off.** Add `"eaContentId": "16425899"` to
-  `overrides/ea-sports-college-football-27.json` and `"eaContentId": "16425895"` to
-  `overrides/madden-nfl-27.json`.
+- **Data PR in `626-game-manifest`, signed off by the owner 2026-09-14.** Add
+  `"eaContentId": "16425899"` to `overrides/ea-sports-college-football-27.json` and
+  `"eaContentId": "16425895"` to `overrides/madden-nfl-27.json`.
+- **Order matters.** That repo's CI checks out the launcher repo and runs *its* `tools/ManifestMiner`. The
+  launcher PR that teaches the miner `eaContentId` merges first. The data PR follows, or the field is
+  dropped on regeneration.
 
 ### 4. EA games are offered only when the manifest knows them
 
@@ -139,7 +142,7 @@ the operating law intact. Growing EA coverage is a data PR, like every other gam
 |---|---|
 | `Id` | the manifest id (`ea-sports-college-football-27`, `madden-nfl-27`) |
 | `GameName` | the manifest name |
-| `Engine` | `"ea-no-mods"`, a new preset with **no mod locations** (see 6) |
+| `Engine` | `"frostbite"`, a new preset that for now declares **no mod locations** (see 6) |
 | `GameRoot` | `Install Dir` |
 | `EaContentId` | the matched contentID, new on `GameInput` and `GameEntry` |
 | `LaunchUrl` | `origin2://game/launch/?offerIds=<contentID>` |
@@ -162,19 +165,39 @@ unchanged.
 
 ### 6. The mod list says what the launcher does for these games
 
-The `"ea-no-mods"` preset declares no mod locations. With none declared, setup-drift cannot fire. The
-mod list needs words, not a blank:
+The `"frostbite"` preset declares no mod locations for now. With none declared, setup-drift cannot fire.
+The mod list needs words, not a blank:
 
-> **The launcher doesn't turn mods on or off for this game.** It tracks the game and warns about its
+> **The launcher doesn't turn mods on or off for this game yet.** It tracks the game and warns about its
 > anti-cheat. Mod tools for this game replace EA's anti-cheat launcher, which the launcher won't do.
 
-This goes through `ModListEmptyState` as a fourth reason, keyed on the preset, and the drop-a-zip hint
-does not show. A dropped archive on one of these games is refused with the same sentence, and nothing is
-extracted.
+This goes through `ModListEmptyState` as a fourth reason, keyed on **the resolved game having no mod
+locations**, and the drop-a-zip hint does not show. A dropped archive on one of these games is refused
+with the same sentence, and nothing is extracted.
 
 **Toggles cannot reach a lane.** With no locations and no rows there is nothing to toggle.
-`ModToggle.SetEnabledAsync` also refuses the preset explicitly, so the agent tool gets a clear refusal
-instead of an index error if a row ever appears.
+`ModToggle.SetEnabledAsync` also refuses a game with no mod locations explicitly, so the agent tool gets
+a clear refusal instead of an index error if a row ever appears.
+
+### 6a. Built to change when the mods are looked at — decided 2026-09-14
+
+The owner expects more changes once the mods for these two games are studied. So nothing in this slice
+may make that a migration.
+
+- **Store facts, never policy.** The stored engine is `"frostbite"`, what the game *is*. The launcher
+  never stores "no mods" on a registered game. Every no-mods behaviour above keys on *the resolved game
+  has no mod locations*, a state that goes away the moment a location exists.
+- **A mod lane later is a preset or manifest change.** `Scanner.GameContext` already re-applies a
+  corrected definition to games the user added, without rewriting the stored entry. A future lane gives
+  the `"frostbite"` preset its locations, or gives the manifest entries an `engine`/`modPath`. It reaches
+  both registered games with no re-add.
+  - **One thing to verify then, not now:** the refresh today corrects an existing primary location. Taking
+    a game from zero locations to one may need a small change to `RegistrationRefresh`, and the tests for
+    that change belong with the lane.
+- **The manifest entries stay open.** They carry `eaContentId` now and are free to gain `engine`,
+  `modPath`, `saveDirHint` or new safety fields later, as ordinary data PRs.
+- **Curated-only matching stays** whatever the mod work finds. It is what keeps ban risk attached to the
+  right id.
 
 ### 7. Running check
 
@@ -203,10 +226,12 @@ signals any process. No change.
 5. **Discovery dedupe.** An EA install whose content id is registered is not re-offered, and a Steam
    game with the same numeric string as an EA id is not confused with it (the store kind is part of the
    key).
-6. **The preset.**
+6. **A game with no mod locations.**
    - `ModListEmptyState` gives the no-mods sentence and no drop hint;
-   - intake on the preset refuses with nothing extracted;
+   - intake refuses with nothing extracted;
    - `ModToggle` refuses it.
+   - Nothing about this is keyed on the store or on the name `frostbite`: the same game with a location
+     added behaves like any other game.
 7. **Miner.** An override with `eaContentId` lands in `Stores.EaContentId`.
 
 **Live, run rather than written:**
