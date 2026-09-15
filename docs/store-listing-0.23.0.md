@@ -59,8 +59,14 @@ so the one warning that can cost an account stands out.
 
 ## What's new in this version
 
-Paste [`store/whats-new-0.23.0.txt`](store/whats-new-0.23.0.txt) — **1,076 of 1,500 characters**,
+Paste [`store/whats-new-0.23.0.txt`](store/whats-new-0.23.0.txt) — **1,120 of 1,500 characters**,
 opening with the `Version 0.23.0` header. Plain text, written for a shopper.
+
+**The groundwork line is the owner's, and it is worded to promise direction, not a date or a
+feature.** "This lays the groundwork for mod support on these two" says what this release is for; the
+next sentence says mod switching is not here yet. It does not say mods *will* work on these games: they
+run EA's kernel anti-cheat, and whether the launcher can offer anything there without replacing EA's
+anti-cheat launcher is still an open question in the EA football plan.
 
 ## Short description and description
 
