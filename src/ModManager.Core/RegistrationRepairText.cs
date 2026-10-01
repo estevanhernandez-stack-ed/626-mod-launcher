@@ -61,11 +61,15 @@ public static class RegistrationRepairText
     /// <param name="writtenGameRoot">The game folder the registry holds after the read-back, or null
     /// when the game is missing from it altogether.</param>
     /// <param name="writtenDataDir">The data dir the registry holds after the read-back.</param>
+    /// <param name="movedFrom">Where the data was moved from this save, or null when nothing moved.</param>
     /// <param name="movedTo">Where the data was moved this save, or null when nothing moved.</param>
+    /// <param name="sourceSurvived">The move could not remove the old folder. With the registration
+    /// reverted, the game now reads from that old folder — which may be partly deleted — so the message
+    /// has to say which copy is the verified one.</param>
     public static string Clobbered(
         string? writtenGameRoot, string? writtenDataDir,
         string? proposedGameRoot, string? proposedDataDir,
-        string? movedTo)
+        string? movedFrom, string? movedTo, bool sourceSurvived)
         => "Your settings were saved and then changed back by something else running at the "
            + $"same time. This game now reads as being at {Describe(writtenGameRoot)} with its "
            + $"launcher data at {Describe(writtenDataDir)}; you asked for "
@@ -73,7 +77,11 @@ public static class RegistrationRepairText
            + (movedTo is null
                ? "Nothing was moved. Open the setup again and re-apply the change."
                : $"This game's launcher data has already been moved to {movedTo}, so open the "
-                 + "setup again and re-apply the change before using this game.");
+                 + "setup again and re-apply the change before using this game."
+                 + (sourceSurvived && movedFrom is not null
+                     ? $" The old folder at {movedFrom} could not be removed and may be partly "
+                       + $"deleted; the copy at {movedTo} is the one that was verified complete."
+                     : ""));
 
     private static string Describe(string? path) => string.IsNullOrWhiteSpace(path) ? "not set" : path;
 }

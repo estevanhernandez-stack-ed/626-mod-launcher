@@ -56,7 +56,7 @@ public class RegistrationRepairTextTests
             RegistrationRepairText.SaveFailedAfterMove(From, To, sourceSurvived: true),
             RegistrationRepairText.SaveFailedAfterMove(From, To, sourceSurvived: false),
             RegistrationRepairText.SavedOldFolderRemains(From, To),
-            RegistrationRepairText.Clobbered(From, From, To, To, movedTo: To),
+            RegistrationRepairText.Clobbered(From, From, To, To, From, To, sourceSurvived: true),
         };
 
         foreach (var text in all)
@@ -67,7 +67,7 @@ public class RegistrationRepairTextTests
     [Fact]
     public void A_clobbered_save_that_moved_nothing_says_nothing_moved()
     {
-        var text = RegistrationRepairText.Clobbered(@"C:\Old", null, @"C:\New", null, movedTo: null);
+        var text = RegistrationRepairText.Clobbered(@"C:\Old", null, @"C:\New", null, null, null, sourceSurvived: false);
 
         Assert.Contains(@"reads as being at C:\Old with its launcher data at not set", text);
         Assert.Contains(@"you asked for C:\New and not set", text);
@@ -79,7 +79,7 @@ public class RegistrationRepairTextTests
     [Fact]
     public void A_clobbered_save_after_a_move_says_where_the_data_now_is()
     {
-        var text = RegistrationRepairText.Clobbered(@"C:\Old", null, @"C:\New", null, movedTo: To);
+        var text = RegistrationRepairText.Clobbered(@"C:\Old", null, @"C:\New", null, From, To, sourceSurvived: false);
 
         Assert.Contains($"already been moved to {To}", text);
         Assert.Contains("before using this game", text);
@@ -89,9 +89,29 @@ public class RegistrationRepairTextTests
     [Fact]
     public void A_clobber_that_removed_the_game_entirely_reads_as_not_set_rather_than_blank()
     {
-        var text = RegistrationRepairText.Clobbered(null, null, @"C:\New", To, movedTo: null);
+        var text = RegistrationRepairText.Clobbered(null, null, @"C:\New", To, null, null, sourceSurvived: false);
 
         Assert.Contains("reads as being at not set", text);
         Assert.DoesNotContain("at  ", text);
+    }
+
+    // The registration was reverted underneath a move that could not delete the old folder: the game
+    // now reads from that old folder, which may be a partial tree. Say which copy was verified.
+    [Fact]
+    public void A_clobbered_save_whose_old_folder_survived_names_the_verified_copy()
+    {
+        var text = RegistrationRepairText.Clobbered(@"C:\Old", From, @"C:\New", To, From, To, sourceSurvived: true);
+
+        Assert.Contains($"already been moved to {To}", text);
+        Assert.Contains($"{From} could not be removed and may be partly deleted", text);
+        Assert.Contains($"{To} is the one that was verified complete", text);
+    }
+
+    [Fact]
+    public void A_clobbered_save_whose_move_removed_the_old_folder_says_nothing_about_a_leftover()
+    {
+        var text = RegistrationRepairText.Clobbered(@"C:\Old", From, @"C:\New", To, From, To, sourceSurvived: false);
+
+        Assert.DoesNotContain("partly deleted", text);
     }
 }

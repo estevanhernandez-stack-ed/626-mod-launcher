@@ -303,13 +303,15 @@ public sealed record DataDirMoveResult
 /// rarer; it could not make it cheap.</para>
 ///
 /// <para>WHAT IT REMEMBERS, AND WHAT IT DOES NOT. Only the walk: the file count and byte total under
-/// a source folder, keyed on the normalised path, so typing a different TARGET reuses it too. Every
-/// check that can refuse a move — the target already holding data, the free space on the far side —
-/// still runs live on every plan. A cached walk can show a slightly stale size; it can never let a
-/// refused move through.</para>
+/// a source folder, keyed on the normalised path, so typing a different TARGET reuses it too. The
+/// target-occupied refusal still runs live on every plan. The free-space check runs live too, but
+/// against the REMEMBERED size — so if the data dir grows while the dialog is open, a preview can
+/// miss a space refusal it would otherwise show. That is the price of not re-walking, and it is
+/// only safe because of the next rule.</para>
 ///
 /// <para>NEVER PASS ONE TO A PLAN THAT GETS EXECUTED. A preview may be minutes old by the time the
-/// user clicks Save, so the plan the save acts on is always taken fresh. The cache belongs to the
+/// user clicks Save, so the plan the save acts on is always taken fresh, and its refusals — space
+/// included — are the ones that decide. The cache belongs to the
 /// dialog that owns it — one per dialog, dropped with it — never to a singleton service, where it
 /// would outlive the folder it describes. Not thread-safe; a dialog previews on one thread.</para>
 /// </summary>
@@ -319,7 +321,7 @@ public sealed class DataDirWalkCache
 
     /// <summary>How many walks actually touched the disk. For tests: the cache is only worth having if
     /// this stays at one while the previews keep coming.</summary>
-    public int DiskWalks { get; private set; }
+    internal int DiskWalks { get; private set; }
 
     internal (int Files, long Bytes) Walk(string normalisedSource)
     {

@@ -46,8 +46,10 @@ public sealed class RegistrationRepairService
     public async Task<RepairSaveOutcome> SaveAsync(
         GameEntry stored, GameEntry proposed, bool moveDataDir, IProgress<(int Copied, int Total)>? progress)
     {
-        // A FRESH plan, never a preview's cached walk: this is the plan the move is executed from.
-        var plan = Preview(stored, proposed);
+        // A FRESH plan, never a preview's cached walk: this is the plan the move is executed from, so
+        // its refusals (free space included) are the ones that decide. Off the UI thread: it walks the
+        // whole data dir, and the caller awaits from the dispatcher.
+        var plan = await Task.Run(() => Preview(stored, proposed));
         if (!plan.CanSave)
             return new RepairSaveOutcome(false, string.Join(" ", plan.Blockers));
 
@@ -102,7 +104,8 @@ public sealed class RegistrationRepairService
                 || !PathEquals(written.GameRoot, proposed.GameRoot)
                 || !PathEquals(written.DataDir, proposed.DataDir))
                 return new RepairSaveOutcome(false, RegistrationRepairText.Clobbered(
-                    written?.GameRoot, written?.DataDir, proposed.GameRoot, proposed.DataDir, movedTo));
+                    written?.GameRoot, written?.DataDir, proposed.GameRoot, proposed.DataDir,
+                    movedFrom, movedTo, sourceSurvived));
         }
         catch (Exception e)
         {
@@ -145,8 +148,9 @@ public sealed class RegistrationRepairService
         // the old volume with no hint it is there. It is NOT called a spare: the recursive delete
         // removes children one at a time, so what survives a lock partway through may be a partial
         // tree, and "spare copy" invites treating it as a second complete one.
-        return new RepairSaveOutcome(true, sourceSurvived && movedFrom is not null && movedTo is not null
-            ? RegistrationRepairText.SavedOldFolderRemains(movedFrom, movedTo)
+        // sourceSurvived is only ever set in the block that assigns both paths.
+        return new RepairSaveOutcome(true, sourceSurvived
+            ? RegistrationRepairText.SavedOldFolderRemains(movedFrom!, movedTo!)
             : RegistrationRepairText.Saved);
     }
 

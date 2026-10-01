@@ -589,4 +589,44 @@ public class RegistrationChangeTests
         new ModLocation("mods2", "mods2", "Game/mod2"),
         new ModLocation("mods3", "mods3", "Game/mod3"),
     };
+
+    // A blank mod path resolves to the game root, so clearing the box would make the whole install the
+    // mod folder and pin it. "." is how a root-level mod folder is spelled; blank is only a cleared box.
+    [Fact]
+    public void Clearing_an_existing_mod_folder_is_blocked_rather_than_pointed_at_the_game_root()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, "   ");
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.False(plan.CanSave);
+        Assert.Contains(plan.Blockers, b => b.Contains("can't be blank"));
+    }
+
+    [Fact]
+    public void A_mod_folder_of_dot_is_the_game_folder_and_is_allowed()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, ".");
+
+        Assert.True(RegistrationChange.Plan(stored, proposed).CanSave);
+    }
+
+    // The old dialog could save a blank path. A registration already carrying one must not become
+    // uneditable: an unrelated rename still saves, as it did before.
+    [Fact]
+    public void A_registration_already_carrying_a_blank_path_can_still_be_renamed()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = new[] { new ModLocation("mods", "mods", "") };
+        var proposed = Copy(stored);
+        proposed.GameName = "Elden Ring";
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, "");
+
+        Assert.True(RegistrationChange.Plan(stored, proposed).CanSave);
+    }
 }

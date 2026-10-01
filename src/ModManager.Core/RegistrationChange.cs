@@ -136,6 +136,22 @@ public static class RegistrationChange
         else if (rootChanged && !Directory.Exists(proposed.GameRoot))
             blockers.Add($"There is no folder at {proposed.GameRoot}.");
 
+        // A BLANK MOD FOLDER IS NEVER A CHOICE. An empty relative path resolves to the game root
+        // (Scanner.LocationAbs is a Path.Combine), so clearing the box would quietly make the whole
+        // install the mod folder — every file with a matching extension listed and togglable as a mod —
+        // and pin that, opting the game out of mod-path corrections. Mods that genuinely live in the
+        // game folder are spelled "." (the loose-root presets do exactly that), so blank is only ever
+        // a cleared box. Only a NEWLY blank path blocks: a registration already carrying one keeps
+        // working for an unrelated edit, the way it did before.
+        for (var i = 0; i < proposed.ModLocations.Count; i++)
+            if (string.IsNullOrWhiteSpace(proposed.ModLocations[i].Path)
+                && !(i < stored.ModLocations.Count && string.IsNullOrWhiteSpace(stored.ModLocations[i].Path)))
+            {
+                blockers.Add("A mod folder can't be blank. Type the folder your mods go in, relative to "
+                             + "the game folder — or \".\" if they sit in the game folder itself.");
+                break;
+            }
+
         // Real changes that carry no pin and no move. Kept separate from `changed` so the two lists
         // stay disjoint: a UI renders both, and a field appearing twice would imply two consequences.
         var other = new List<string>();

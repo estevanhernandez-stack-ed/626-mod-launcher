@@ -211,10 +211,10 @@ public sealed partial class GameSetupDialog : ContentDialog
     private readonly DispatcherQueueTimer _previewTimer;
 
     /// <summary>
-    /// This dialog's own memory of the data-dir walk, so previews after the first reuse it. Core
-    /// remembers ONLY the walk — the checks that can refuse a move still run live on every preview —
-    /// and it dies with the dialog. <see cref="OnSave"/> deliberately plans without it, so the numbers
-    /// in the move confirm are taken at the moment the user commits.
+    /// This dialog's own memory of the data-dir walk, so previews after the first reuse it, and so
+    /// does <see cref="OnSave"/>: Save and the preview the user just read must agree. It dies with the
+    /// dialog. A remembered size can be stale, so it never decides a move — the save re-plans fresh in
+    /// <c>RegistrationRepairService.SaveAsync</c>, and a refusal found there is reported, not skipped.
     /// </summary>
     private readonly DataDirWalkCache _walks = new();
 
@@ -225,9 +225,10 @@ public sealed partial class GameSetupDialog : ContentDialog
         _previewTimer.Start();
     }
 
-    private void RenderPreview()
+    private void RenderPreview() => RenderPlan(_repair.Preview(_game, BuildProposed(), _walks));
+
+    private void RenderPlan(RegistrationChangePlan plan)
     {
-        var plan = _repair.Preview(_game, BuildProposed(), _walks);
         var lines = new List<string>();
 
         // THE LOCK-IN VERB BELONGS TO FieldsToPin, NOT FieldsChanged. The two answer different
@@ -302,8 +303,17 @@ public sealed partial class GameSetupDialog : ContentDialog
     private void OnSave(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         var proposed = BuildProposed();
-        var plan = _repair.Preview(_game, proposed);
-        if (!plan.CanSave) { args.Cancel = true; return; }   // keep the dialog open; typed edits survive
+        var plan = _repair.Preview(_game, proposed, _walks);
+        if (!plan.CanSave)
+        {
+            // Keep the dialog open, typed edits intact — and SAY why. The target-occupied check runs
+            // live, so it can refuse here after the last preview passed; cancelling without rendering
+            // left Save doing nothing at all.
+            _previewTimer.Stop();
+            RenderPlan(plan);
+            args.Cancel = true;
+            return;
+        }
         Proposed = proposed;
         MoveDataDirRequested = plan.DataDir;
     }
