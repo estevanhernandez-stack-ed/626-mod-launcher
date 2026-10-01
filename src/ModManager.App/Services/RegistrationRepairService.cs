@@ -22,8 +22,11 @@ public sealed class RegistrationRepairService
 
     public GameShape Shape(GameEntry game) => GameShape.Of(game);
 
-    public RegistrationChangePlan Preview(GameEntry stored, GameEntry proposed)
-        => RegistrationChange.Plan(stored, proposed);
+    /// <param name="walks">The calling dialog's own walk cache, so its keystroke previews walk the data
+    /// dir once. Never held here: this service is a singleton and would outlive the folder it
+    /// describes. <see cref="SaveAsync"/> deliberately plans without one.</param>
+    public RegistrationChangePlan Preview(GameEntry stored, GameEntry proposed, DataDirWalkCache? walks = null)
+        => RegistrationChange.Plan(stored, proposed, walks);
 
     /// <summary>
     /// Apply an edit.
@@ -43,7 +46,10 @@ public sealed class RegistrationRepairService
     public async Task<RepairSaveOutcome> SaveAsync(
         GameEntry stored, GameEntry proposed, bool moveDataDir, IProgress<(int Copied, int Total)>? progress)
     {
-        var plan = Preview(stored, proposed);
+        // A FRESH plan, never a preview's cached walk: this is the plan the move is executed from, so
+        // its refusals (free space included) are the ones that decide. Off the UI thread: it walks the
+        // whole data dir, and the caller awaits from the dispatcher.
+        var plan = await Task.Run(() => Preview(stored, proposed));
         if (!plan.CanSave)
             return new RepairSaveOutcome(false, string.Join(" ", plan.Blockers));
 
@@ -73,8 +79,9 @@ public sealed class RegistrationRepairService
             else
             {
                 // Pin: point the registration at where the data already is. Scanner.DataDirForGame
-                // honours an explicit DataDir ahead of its derivation, so nothing moves at all.
-                proposed.DataDir = Scanner.DataDirForGame(stored);
+                // honours an explicit DataDir ahead of its derivation, so nothing moves at all. Core
+                // owns which folder that is (stored, not proposed) — see PinDataDirTo.
+                proposed.DataDir = plan.PinDataDirTo;
             }
         }
 
@@ -96,15 +103,9 @@ public sealed class RegistrationRepairService
             if (written is null
                 || !PathEquals(written.GameRoot, proposed.GameRoot)
                 || !PathEquals(written.DataDir, proposed.DataDir))
-                return new RepairSaveOutcome(false,
-                    "Your settings were saved and then changed back by something else running at the "
-                    + $"same time. This game now reads as being at {Describe(written?.GameRoot)} with its "
-                    + $"launcher data at {Describe(written?.DataDir)}; you asked for "
-                    + $"{Describe(proposed.GameRoot)} and {Describe(proposed.DataDir)}. "
-                    + (movedTo is null
-                        ? "Nothing was moved. Open the setup again and re-apply the change."
-                        : $"This game's launcher data has already been moved to {movedTo}, so open the "
-                          + "setup again and re-apply the change before using this game."));
+                return new RepairSaveOutcome(false, RegistrationRepairText.Clobbered(
+                    written?.GameRoot, written?.DataDir, proposed.GameRoot, proposed.DataDir,
+                    movedFrom, movedTo, sourceSurvived));
         }
         catch (Exception e)
         {
@@ -136,14 +137,10 @@ public sealed class RegistrationRepairService
             // tree that was verified complete. Both halves of this compound failure — the write throwing
             // and the delete failing — have the same likeliest cause, the game running, so they arrive
             // together. Naming either copy disposable here can point the user at deleting the only
-            // complete one. Name which is which and let them compare.
-            return new RepairSaveOutcome(false, sourceSurvived
-                ? "Your settings could not be saved, so nothing about this game changed, and its "
-                  + $"launcher data is still at {movedFrom} where this game expects to find it. The "
-                  + $"copy at {movedTo} is the one that was verified complete, so compare the two "
-                  + "before you remove either."
-                : "Your settings could not be saved, and the launcher data could not be moved back. "
-                  + $"It is at {movedTo}; this game still expects it at {movedFrom}.");
+            // complete one. Name which is which and let them compare. The words live in Core, where a
+            // test holds them to that.
+            return new RepairSaveOutcome(false,
+                RegistrationRepairText.SaveFailedAfterMove(movedFrom, movedTo, sourceSurvived));
         }
 
         // A move that could not delete the old copy is still a successful move — the data is at the
@@ -151,11 +148,10 @@ public sealed class RegistrationRepairService
         // the old volume with no hint it is there. It is NOT called a spare: the recursive delete
         // removes children one at a time, so what survives a lock partway through may be a partial
         // tree, and "spare copy" invites treating it as a second complete one.
+        // sourceSurvived is only ever set in the block that assigns both paths.
         return new RepairSaveOutcome(true, sourceSurvived
-            ? $"Saved. The old launcher data folder at {movedFrom} could not be removed and may be "
-              + $"partly deleted; this game now reads its data from {movedTo}, which was verified "
-              + "complete, so check the old folder before you remove it."
-            : "Saved.");
+            ? RegistrationRepairText.SavedOldFolderRemains(movedFrom!, movedTo!)
+            : RegistrationRepairText.Saved);
     }
 
     // DataDirMove.Norm is internal to Core (visible only to the test assembly), so the read-back does
@@ -170,6 +166,4 @@ public sealed class RegistrationRepairService
         try { return Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
         catch { return p.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
     }
-
-    private static string Describe(string? path) => string.IsNullOrWhiteSpace(path) ? "not set" : path;
 }

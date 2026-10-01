@@ -154,6 +154,69 @@ public class DataDirMovePlanTests
     }
 }
 
+// The setup dialog re-plans on every pause in typing, and a plan walks the whole data dir. The walk
+// cache lets one dialog walk it once — but only the walk. Anything that can REFUSE a move must still
+// be checked live, or a stale preview could wave through a merge Plan would have refused.
+public class DataDirWalkCacheTests
+{
+    private static string Src(params string[] names)
+    {
+        var d = TestSupport.TempDir("ddw-src-");
+        foreach (var n in names) TestSupport.Write(Path.Combine(d, n), n);
+        return d;
+    }
+
+    [Fact]
+    public void Repeated_previews_walk_the_source_once()
+    {
+        var from = Src("a.txt", "sub/b.txt");
+        var walks = new DataDirWalkCache();
+
+        // The user keeps typing in the target box: different targets, same source.
+        var first = DataDirMove.Plan(from, Path.Combine(TestSupport.TempDir("ddw-to-"), "one"), walks);
+        var second = DataDirMove.Plan(from, Path.Combine(TestSupport.TempDir("ddw-to-"), "two"), walks);
+        var third = DataDirMove.Plan(from + Path.DirectorySeparatorChar, Path.Combine(TestSupport.TempDir("ddw-to-"), "three"), walks);
+
+        Assert.Equal(1, walks.DiskWalks);
+        Assert.Equal(2, first.FileCount);
+        Assert.Equal(first.FileCount, second.FileCount);
+        Assert.Equal(first.TotalBytes, third.TotalBytes);   // a trailing separator is the same folder
+    }
+
+    // The trade the cache makes, stated as a test so nobody mistakes it for a bug: a preview can show
+    // a slightly stale size. The plan a save acts on is taken without the cache, and is never stale.
+    [Fact]
+    public void A_cached_preview_can_be_stale_and_an_uncached_plan_never_is()
+    {
+        var from = Src("a.txt");
+        var to = Path.Combine(TestSupport.TempDir("ddw-to-"), "moved");
+        var walks = new DataDirWalkCache();
+
+        DataDirMove.Plan(from, to, walks);
+        TestSupport.Write(Path.Combine(from, "late.txt"), "arrived after the first preview");
+
+        Assert.Equal(1, DataDirMove.Plan(from, to, walks).FileCount);
+        Assert.Equal(2, DataDirMove.Plan(from, to).FileCount);
+    }
+
+    [Fact]
+    public void A_target_that_fills_up_after_the_walk_is_still_refused()
+    {
+        var from = Src("a.txt");
+        var to = TestSupport.TempDir("ddw-to-");   // exists and is empty — allowed
+        var walks = new DataDirWalkCache();
+
+        Assert.True(DataDirMove.Plan(from, to, walks).CanProceed);
+
+        TestSupport.Write(Path.Combine(to, "another-games-data.txt"), "x");
+        var again = DataDirMove.Plan(from, to, walks);
+
+        Assert.Equal(1, walks.DiskWalks);           // the walk was reused...
+        Assert.False(again.CanProceed);             // ...and the refusal was not
+        Assert.NotNull(again.Refusal);
+    }
+}
+
 // Execute is the only thing here that writes. The ordering IS the safety: the source is never
 // deleted until the target is verified in place, so any mid-flight failure leaves the user exactly
 // where they started.
