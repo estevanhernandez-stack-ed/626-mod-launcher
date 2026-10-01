@@ -43,6 +43,18 @@ public sealed record RegistrationChangePlan
     /// <summary>The data-dir move this edit implies, or null when it implies none.</summary>
     public DataDirMovePlan? DataDir { get; init; }
 
+    /// <summary>
+    /// What to write to the proposed entry's <see cref="GameEntry.DataDir"/> when the user declines
+    /// the move — or null when there is no move to decline.
+    ///
+    /// <para>It is the STORED entry's data dir, not the proposed one's, because the point of a pin is
+    /// to name where the data already is. Getting that one word wrong writes a <c>dataDir</c> pointing
+    /// at a folder with nothing in it: the registration then looks for this game's disabled mods,
+    /// profiles and tools in an empty place, and the real copy sits unreferenced beside the old game
+    /// folder. That is why the rule lives here behind a test rather than at the call site.</para>
+    /// </summary>
+    public string? PinDataDirTo { get; init; }
+
     /// <summary>Reasons this edit must not be saved as-is.</summary>
     public required IReadOnlyList<string> Blockers { get; init; }
 
@@ -81,7 +93,10 @@ public sealed record RegistrationChangePlan
 /// </summary>
 public static class RegistrationChange
 {
-    public static RegistrationChangePlan Plan(GameEntry stored, GameEntry proposed)
+    /// <param name="walks">Optional, for previews only: lets repeated plans in one editing session reuse
+    /// the data-dir walk. The plan a save acts on must be taken without it — see
+    /// <see cref="DataDirWalkCache"/>.</param>
+    public static RegistrationChangePlan Plan(GameEntry stored, GameEntry proposed, DataDirWalkCache? walks = null)
     {
         var changed = new List<string>();
         var blockers = new List<string>();
@@ -157,7 +172,7 @@ public static class RegistrationChange
         DataDirMovePlan? move = null;
         if (rootChanged && blockers.Count == 0)
         {
-            move = DataDirMove.Plan(Scanner.DataDirForGame(stored), Scanner.DataDirForGame(proposed));
+            move = DataDirMove.Plan(Scanner.DataDirForGame(stored), Scanner.DataDirForGame(proposed), walks);
             if (move.Refusal is not null) blockers.Add(move.Refusal);
             if (move.Kind == DataDirMoveKind.Nothing && move.Refusal is null) move = null;
         }
@@ -176,6 +191,7 @@ public static class RegistrationChange
             OtherChanges = other,
             FieldsToPin = pin,
             DataDir = move,
+            PinDataDirTo = move is null ? null : Scanner.DataDirForGame(stored),
             Blockers = blockers,
             Notes = notes,
         };
@@ -208,6 +224,47 @@ public static class RegistrationChange
                 _ => true,   // gameRoot has no preset default to be mistaken for
             };
         }
+    }
+
+    /// <summary>
+    /// The location list an edit to ONE mod location proposes: that location with its path replaced,
+    /// every other location carried through exactly as stored.
+    ///
+    /// <para>WHY THIS IS NOT LEFT TO THE CALLER. <see cref="Plan"/> compares location lists by count
+    /// first, and it is right to — a list that really grew or shrank is a real edit. So a caller that
+    /// RESHAPES the list while meaning to edit one path is read as having stated a new list, and that
+    /// lands <c>modLocations</c> in <see cref="RegistrationChangePlan.FieldsToPin"/>, permanently opting
+    /// the game out of every future manifest correction to its mod folders. The setup dialog did it
+    /// twice before this existed: rebuilding a one-element list for a three-location game (3 → 1), and
+    /// inventing an empty location for a game with none (0 → 1), each time from a rename.</para>
+    ///
+    /// <para>So the shape-preserving rule lives here, behind tests that assert on the reshape:</para>
+    /// <list type="bullet">
+    /// <item>No stored location and a blank path proposes NO location — not an invented one at the game
+    /// root.</item>
+    /// <item>No stored location and a typed path proposes one, legitimately: the user stated it.</item>
+    /// <item>Otherwise the list keeps its length; only the location at <paramref name="index"/> changes,
+    /// and only its path — its name keys the per-location disable metadata.</item>
+    /// </list>
+    /// </summary>
+    public static IReadOnlyList<ModLocation> EditLocation(
+        IReadOnlyList<ModLocation> stored, int index, string typedPath)
+    {
+        var path = typedPath.Trim();
+
+        if (stored.Count == 0)
+        {
+            if (index != 0) throw new ArgumentOutOfRangeException(nameof(index));
+            return path.Length == 0
+                ? Array.Empty<ModLocation>()
+                : new[] { new ModLocation("mods", "mods", path) };
+        }
+
+        if (index < 0 || index >= stored.Count) throw new ArgumentOutOfRangeException(nameof(index));
+
+        var edited = stored.ToArray();
+        edited[index] = stored[index] with { Path = path };
+        return edited;
     }
 
     // One spelling for a grouping-rule comparison, shared by the change test and the preset-default

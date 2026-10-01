@@ -41,7 +41,10 @@ public sealed record DataDirMovePlan
 /// </summary>
 public static class DataDirMove
 {
-    public static DataDirMovePlan Plan(string from, string to)
+    /// <param name="walks">Optional: a <see cref="DataDirWalkCache"/> that lets repeated previews in
+    /// one editing session reuse the source walk. Leave it null for a plan anything will be EXECUTED
+    /// from — see the cache's own doc for why.</param>
+    public static DataDirMovePlan Plan(string from, string to, DataDirWalkCache? walks = null)
     {
         var src = Norm(from);
         var dst = Norm(to);
@@ -52,8 +55,7 @@ public static class DataDirMove
         if (string.Equals(src, dst, StringComparison.OrdinalIgnoreCase))
             return Empty(src, dst);
 
-        var files = Directory.GetFiles(src, "*", SearchOption.AllDirectories);
-        var bytes = files.Sum(f => new FileInfo(f).Length);
+        var (fileCount, bytes) = walks?.Walk(src) ?? WalkTree(src);
 
         // Never merge two data dirs. Interleaving two games' disabled mods leaves no way to tell them
         // apart afterwards — the same stance the legacy MigrateDataDir already takes.
@@ -61,7 +63,7 @@ public static class DataDirMove
             return new DataDirMovePlan
             {
                 From = src, To = dst, Kind = DataDirMoveKind.Nothing,
-                FileCount = files.Length, TotalBytes = bytes,
+                FileCount = fileCount, TotalBytes = bytes,
                 Refusal = "There is already launcher data in that location. Move or remove it first — "
                           + "merging two data folders would leave no way to tell the two games' files apart.",
             };
@@ -78,14 +80,14 @@ public static class DataDirMove
             if (refusal is not null)
                 return new DataDirMovePlan
                 {
-                    From = src, To = dst, Kind = kind, FileCount = files.Length, TotalBytes = bytes,
+                    From = src, To = dst, Kind = kind, FileCount = fileCount, TotalBytes = bytes,
                     Refusal = refusal,
                 };
         }
 
         return new DataDirMovePlan
         {
-            From = src, To = dst, Kind = kind, FileCount = files.Length, TotalBytes = bytes,
+            From = src, To = dst, Kind = kind, FileCount = fileCount, TotalBytes = bytes,
         };
     }
 
@@ -234,6 +236,14 @@ public static class DataDirMove
         return true;
     }
 
+    /// <summary>Every file under <paramref name="src"/>, counted and sized. The expensive half of a
+    /// plan — the one <see cref="DataDirWalkCache"/> exists to avoid repeating.</summary>
+    internal static (int Files, long Bytes) WalkTree(string src)
+    {
+        var files = Directory.GetFiles(src, "*", SearchOption.AllDirectories);
+        return (files.Length, files.Sum(f => new FileInfo(f).Length));
+    }
+
     private static DataDirMovePlan Empty(string src, string dst) => new()
     {
         From = src, To = dst, Kind = DataDirMoveKind.Nothing, FileCount = 0, TotalBytes = 0,
@@ -282,4 +292,41 @@ public sealed record DataDirMoveResult
 
     /// <summary>Why the move did not happen, in the user's words, or null on success.</summary>
     public string? Error { get; init; }
+}
+
+/// <summary>
+/// Remembers the source walk of <see cref="DataDirMove.Plan"/> for one editing session.
+///
+/// <para>WHY IT EXISTS. The setup dialog re-plans on every pause in typing, and once the game folder
+/// has been corrected every re-plan walks the whole data dir — <c>disabled\</c>, <c>tools\</c>, every
+/// held framework — thousands of files for a well-used game, on the UI thread. The debounce made that
+/// rarer; it could not make it cheap.</para>
+///
+/// <para>WHAT IT REMEMBERS, AND WHAT IT DOES NOT. Only the walk: the file count and byte total under
+/// a source folder, keyed on the normalised path, so typing a different TARGET reuses it too. Every
+/// check that can refuse a move — the target already holding data, the free space on the far side —
+/// still runs live on every plan. A cached walk can show a slightly stale size; it can never let a
+/// refused move through.</para>
+///
+/// <para>NEVER PASS ONE TO A PLAN THAT GETS EXECUTED. A preview may be minutes old by the time the
+/// user clicks Save, so the plan the save acts on is always taken fresh. The cache belongs to the
+/// dialog that owns it — one per dialog, dropped with it — never to a singleton service, where it
+/// would outlive the folder it describes. Not thread-safe; a dialog previews on one thread.</para>
+/// </summary>
+public sealed class DataDirWalkCache
+{
+    private readonly Dictionary<string, (int Files, long Bytes)> _walks = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How many walks actually touched the disk. For tests: the cache is only worth having if
+    /// this stays at one while the previews keep coming.</summary>
+    public int DiskWalks { get; private set; }
+
+    internal (int Files, long Bytes) Walk(string normalisedSource)
+    {
+        if (_walks.TryGetValue(normalisedSource, out var known)) return known;
+        var walked = DataDirMove.WalkTree(normalisedSource);
+        DiskWalks++;
+        _walks[normalisedSource] = walked;
+        return walked;
+    }
 }

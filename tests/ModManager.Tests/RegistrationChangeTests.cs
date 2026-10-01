@@ -453,4 +453,140 @@ public class RegistrationChangeTests
 
         Assert.Empty(RegistrationChange.Plan(stored, Copy(stored)).OtherChanges);
     }
+
+    // A6. Declining the move pins the registration to where the data ALREADY is. The rule is one word
+    // — stored, not proposed — and getting it wrong writes a dataDir that points at an empty folder,
+    // so the launcher stops finding this game's disabled mods while the real copy sits unreferenced.
+    [Fact]
+    public void Declining_the_move_pins_the_data_dir_to_where_the_data_already_is()
+    {
+        var oldRoot = Path.Combine(TestSupport.TempDir("rc-old-"), "ELDEN RING");
+        Directory.CreateDirectory(oldRoot);
+        var stored = Stored(oldRoot);
+        var held = Path.Combine(Scanner.DataDirForGame(stored), "disabled", "SomeMod.dll");
+        TestSupport.Write(held, "held file");
+
+        var proposed = Copy(stored);
+        proposed.GameRoot = Path.Combine(TestSupport.TempDir("rc-new-"), "ELDEN RING");
+        Directory.CreateDirectory(proposed.GameRoot);
+
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Equal(Scanner.DataDirForGame(stored), plan.PinDataDirTo);
+        Assert.NotEqual(Scanner.DataDirForGame(proposed), plan.PinDataDirTo);
+
+        // And the point of it: once pinned, the corrected registration finds the held file.
+        proposed.DataDir = plan.PinDataDirTo;
+        Assert.True(File.Exists(Path.Combine(Scanner.DataDirForGame(proposed), "disabled", "SomeMod.dll")));
+    }
+
+    [Fact]
+    public void There_is_nothing_to_pin_when_there_is_no_move()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        var proposed = Copy(stored);
+        proposed.GameName = "Elden Ring";
+
+        Assert.Null(RegistrationChange.Plan(stored, proposed).PinDataDirTo);
+    }
+
+    // A6's reshape hazard. Plan compares location lists by count first, and is RIGHT to: a list that
+    // really grew or shrank is a real edit. This test says so out loud, because it is the reason
+    // callers must not rebuild the list themselves — a rebuilt list is read as a stated choice and
+    // pinned, opting the game out of every future mod-path correction.
+    [Fact]
+    public void A_reshaped_location_list_reads_as_a_change_which_is_why_callers_edit_in_place()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = ThreeLocations();
+        var proposed = Copy(stored);
+        proposed.ModLocations = new[] { stored.ModLocations[0] };   // 3 → 1, same first path
+
+        Assert.Contains(GameEntry.UserSetModLocations, RegistrationChange.Plan(stored, proposed).FieldsToPin);
+    }
+
+    [Fact]
+    public void Editing_one_location_of_three_keeps_all_three()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = ThreeLocations();
+        var proposed = Copy(stored);
+
+        // A rename, with the mod-path box left as it was: nothing about the locations changed.
+        proposed.GameName = "Elden Ring";
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, stored.ModLocations[0].Path);
+        var unchanged = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Equal(3, proposed.ModLocations.Count);
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, unchanged.FieldsChanged);
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, unchanged.FieldsToPin);
+
+        // A real correction to the first path: one location changes, the other two ride along.
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, "  Game/mod  ");
+        var corrected = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Equal(3, proposed.ModLocations.Count);
+        Assert.Equal(new ModLocation("mods", "mods", "Game/mod"), proposed.ModLocations[0]);
+        Assert.Equal(stored.ModLocations.Skip(1), proposed.ModLocations.Skip(1));
+        Assert.Contains(GameEntry.UserSetModLocations, corrected.FieldsToPin);
+    }
+
+    // The setup dialog only edits the first location today. A user whose SECOND location is wrong had
+    // no repair path at all; the rule itself is index-agnostic so the dialog can grow one.
+    [Fact]
+    public void The_second_location_can_be_corrected_without_touching_the_first()
+    {
+        var stored = ThreeLocations();
+
+        var edited = RegistrationChange.EditLocation(stored, 1, "Game/mod2-fixed");
+
+        Assert.Equal(stored[0], edited[0]);
+        Assert.Equal(new ModLocation("mods2", "mods2", "Game/mod2-fixed"), edited[1]);
+        Assert.Equal(stored[2], edited[2]);
+    }
+
+    [Fact]
+    public void No_stored_location_and_a_blank_path_proposes_no_location_and_pins_nothing()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = Array.Empty<ModLocation>();
+        var proposed = Copy(stored);
+        proposed.GameName = "Elden Ring";
+
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, "   ");
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Empty(proposed.ModLocations);   // 0 → 0, not 0 → 1 with an empty path at the game root
+        Assert.DoesNotContain(GameEntry.UserSetModLocations, plan.FieldsToPin);
+    }
+
+    [Fact]
+    public void No_stored_location_and_a_typed_path_is_a_stated_choice_and_is_pinned()
+    {
+        var stored = Stored(TestSupport.TempDir("rc-"));
+        stored.ModLocations = Array.Empty<ModLocation>();
+        var proposed = Copy(stored);
+
+        proposed.ModLocations = RegistrationChange.EditLocation(stored.ModLocations, 0, "mods");
+        var plan = RegistrationChange.Plan(stored, proposed);
+
+        Assert.Single(proposed.ModLocations);
+        Assert.Contains(GameEntry.UserSetModLocations, plan.FieldsToPin);
+    }
+
+    [Fact]
+    public void Editing_a_location_that_does_not_exist_is_refused_rather_than_invented()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => RegistrationChange.EditLocation(ThreeLocations(), 3, "x"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RegistrationChange.EditLocation(ThreeLocations(), -1, "x"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RegistrationChange.EditLocation(Array.Empty<ModLocation>(), 1, "x"));
+    }
+
+    // What ModLocator.Detect produces for a game with several mod folders on disk.
+    private static ModLocation[] ThreeLocations() => new[]
+    {
+        new ModLocation("mods", "mods", "mod"),
+        new ModLocation("mods2", "mods2", "Game/mod2"),
+        new ModLocation("mods3", "mods3", "Game/mod3"),
+    };
 }
