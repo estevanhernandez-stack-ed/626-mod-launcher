@@ -71,7 +71,35 @@ public static class EffectiveManifest
             order.Remove(g.Id);
         }
 
-        return embedded with { Games = order.Select(id => byId[id]).ToList() };
+        return embedded with
+        {
+            Games = order.Select(id => byId[id]).ToList(),
+            Loaders = MergeLoaders(embedded.Loaders, remote.Loaders),
+        };
+    }
+
+    /// <summary>
+    /// A feed loader REPLACES the built-in loader with the same id; a new id is appended; absence from
+    /// the feed never removes a built-in loader.
+    ///
+    /// <para>Replace, not field-merge as game entries do, because a feed loader is always complete: the
+    /// remote manifest is validated on its own before it gets here, and
+    /// <see cref="ManifestValidator.LoaderProblem"/> rejects an entry missing its identity, exe names or
+    /// URL. A partial "just flip banSafe" entry would never arrive, so field-merging would only blur
+    /// what the feed actually said. Replacement also lets the feed widen a pinned loader to engine-wide
+    /// (a null <c>steamAppId</c>), or withdraw a ban-safety claim with <c>"banSafe": false</c>.</para>
+    /// </summary>
+    private static IReadOnlyList<LoaderManifestEntry> MergeLoaders(
+        IReadOnlyList<LoaderManifestEntry> embedded, IReadOnlyList<LoaderManifestEntry> remote)
+    {
+        var merged = new List<LoaderManifestEntry>(embedded);
+        foreach (var r in remote)
+        {
+            var i = merged.FindIndex(e => string.Equals(e.Id, r.Id, StringComparison.Ordinal));
+            if (i < 0) merged.Add(r);
+            else merged[i] = r;
+        }
+        return merged;
     }
 
     /// <summary>
