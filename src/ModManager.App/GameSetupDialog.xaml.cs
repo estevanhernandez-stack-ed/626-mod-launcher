@@ -165,25 +165,6 @@ public sealed partial class GameSetupDialog : ContentDialog
     {
         var exts = ExtensionsBox.Text
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var typedPath = ModPathBox.Text.Trim();
-        var loc = _game.ModLocations.Count > 0 ? _game.ModLocations[0] : new ModLocation("mods", "mods", "mods");
-        var first = loc with { Path = typedPath };
-
-        // EDIT THE FIRST LOCATION, CARRY THE REST. Rebuilding a single-element list would do two
-        // separate kinds of damage to a game with more than one declared location — and multi-location
-        // registrations are ordinary, not a corner case (ModLocator.Detect adds every folder that
-        // exists, as "mods" / "mods2" / "mods3").
-        //
-        // 1. Saving would DELETE locations 2..n. Every mod in those folders drops out of the
-        //    launcher's view and the per-location disable metadata keyed on "mods2" is orphaned.
-        // 2. RegistrationChange.SameLocations compares Count first, so 3-vs-1 always reads as
-        //    changed — landing modLocations in FieldsChanged, then FieldsToPin, then UserSet, and
-        //    permanently opting that game out of every future manifest correction to its mod paths.
-        //    Someone fixing a typo in the game name would trigger exactly the failure this feature
-        //    exists to prevent.
-        var locations = _game.ModLocations.Count > 1
-            ? new[] { first }.Concat(_game.ModLocations.Skip(1)).ToArray()
-            : new[] { first };
 
         // CLONE, THEN ASSIGN THE EIGHT EDITED FIELDS. An object initialiser naming all 27 properties
         // was correct the day it was written and unmaintainable the day after: the 28th field added to
@@ -203,20 +184,12 @@ public sealed partial class GameSetupDialog : ContentDialog
         p.SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim();
         p.RequiredLauncher = string.IsNullOrWhiteSpace(LauncherBox.Text) ? null : LauncherBox.Text.Trim();
 
-        // NO STORED LOCATION AND A BLANK BOX MEANS NO LOCATION — not an invented one. This is the
-        // same count-first failure as the multi-location case above, at the other end: proposing
-        // [("mods", "mods", "")] against a stored [] makes SameLocations read 0-vs-1 as changed on
-        // ANY edit, so renaming the game would pin modLocations, permanently opting it out of
-        // future manifest corrections to a mod folder the user never typed — and the panel would
-        // promise exactly that in words. It would also save a location with an empty path at the
-        // game root. "None declared." is this dialog's headline case (see RenderDiagnosis), so it
-        // is the one that had to be right.
-        //
-        // A typed path with no stored location is the opposite: a real edit, a real proposal,
-        // legitimately pinned, because the user did state it.
-        p.ModLocations = _game.ModLocations.Count == 0 && typedPath.Length == 0
-            ? Array.Empty<ModLocation>()
-            : locations;
+        // EDIT THE FIRST LOCATION, CARRY THE REST — and with none stored, a blank box proposes none.
+        // Rebuilding the list here reshaped it twice before (3 → 1 for a multi-location game, 0 → 1
+        // for "None declared."), and the planner rightly reads a reshape as a stated choice: a rename
+        // pinned modLocations and opted the game out of every future mod-path correction. The rule
+        // lives in Core, behind tests that assert on the reshape.
+        p.ModLocations = RegistrationChange.EditLocation(_game.ModLocations, 0, ModPathBox.Text);
 
         return p;
     }
@@ -232,13 +205,18 @@ public sealed partial class GameSetupDialog : ContentDialog
     /// <c>direct-disabled\</c>, <c>frameworks\*\disabled-proxy\</c> and <c>tools\</c> — thousands of
     /// files and gigabytes for a well-used game.</para>
     ///
-    /// <para>Coalescing here rather than caching the move plan because the walk happens INSIDE the
-    /// Core planner, which the App cannot reach into: the same call produces the field diff, the
-    /// blockers (a move refusal becomes one) and the move plan together. A dialog-side cache could
-    /// only avoid it by re-deriving which blocker came from where, which would put consequence
-    /// decisions back in the UI — the exact thing <c>RegistrationChange</c>'s doc forbids.</para>
+    /// <para>The debounce makes the walk rarer; <see cref="_walks"/> makes it happen once. Both stay:
+    /// the field diff still runs per keystroke, and that is cheap only because it is coalesced.</para>
     /// </summary>
     private readonly DispatcherQueueTimer _previewTimer;
+
+    /// <summary>
+    /// This dialog's own memory of the data-dir walk, so previews after the first reuse it. Core
+    /// remembers ONLY the walk — the checks that can refuse a move still run live on every preview —
+    /// and it dies with the dialog. <see cref="OnSave"/> deliberately plans without it, so the numbers
+    /// in the move confirm are taken at the moment the user commits.
+    /// </summary>
+    private readonly DataDirWalkCache _walks = new();
 
     private void Preview()
     {
@@ -249,7 +227,7 @@ public sealed partial class GameSetupDialog : ContentDialog
 
     private void RenderPreview()
     {
-        var plan = _repair.Preview(_game, BuildProposed());
+        var plan = _repair.Preview(_game, BuildProposed(), _walks);
         var lines = new List<string>();
 
         // THE LOCK-IN VERB BELONGS TO FieldsToPin, NOT FieldsChanged. The two answer different
