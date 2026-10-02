@@ -455,12 +455,11 @@ public class DataDirMoveExecuteTests
         var stale = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete, FileCount = 99 };
         var seen = new List<(int Copied, int Total)>();
 
-        var result = DataDirMove.Execute(stale, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+        // In order, on the calling thread: see A_copy_move_reports_progress_for_every_file.
+        var result = DataDirMove.Execute(stale, new InlineProgress<(int, int)>(seen.Add));
 
         Assert.True(result.Moved);
-        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
-                    "progress callbacks did not arrive within 5s");
-        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
+        Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
     }
 
     // The default keeps every existing call site and all current tests compiling unchanged.

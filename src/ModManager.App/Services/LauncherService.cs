@@ -32,7 +32,9 @@ public sealed class LauncherService
     public GameContext? ActiveContext()
     {
         var game = Registry.GetActiveGame(LoadRegistry());
-        return game is null ? null : Scanner.GameContext(game);
+        // The save folder the game USES, which can be the curated one rather than a stored guess
+        // (SaveDirRefresh). Read time only: the registry keeps what it had.
+        return game is null ? null : Scanner.GameContext(game, SaveLocator.EffectiveSaveDir(game));
     }
 
     public void SetActiveGame(string id) => SaveRegistry(Registry.SetActiveGame(LoadRegistry(), id));
@@ -41,12 +43,18 @@ public sealed class LauncherService
     public void RemoveGame(string id) => SaveRegistry(Registry.RemoveGame(LoadRegistry(), id));
 
     /// <summary>Persist the configured save folder for a game (used by the save manager).</summary>
-    public void SetSaveDir(string gameId, string saveDir)
+    /// <param name="userChosen">True when the user picked the folder (Saves, Change…). It is then marked
+    /// <see cref="GameEntry.UserSetSaveDir"/>, so a curated folder never replaces it; a detected folder
+    /// clears the mark, being nobody's choice.</param>
+    public void SetSaveDir(string gameId, string saveDir, bool userChosen = false)
     {
         var reg = LoadRegistry();
         var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
         if (g is null) return;
         g.SaveDir = saveDir;
+        var marks = (g.UserSet ?? Array.Empty<string>())
+            .Where(m => !string.Equals(m, GameEntry.UserSetSaveDir, StringComparison.OrdinalIgnoreCase));
+        g.UserSet = (userChosen ? marks.Append(GameEntry.UserSetSaveDir) : marks).ToList() is { Count: > 0 } kept ? kept : null;
         SaveRegistry(reg);
     }
 

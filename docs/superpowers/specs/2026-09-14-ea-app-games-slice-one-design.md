@@ -319,8 +319,11 @@ nothing else.
 
 Found reviewing the `saveDirHint` data PR (626-game-manifest#26). A game added before the feed named
 its save folder fell back to the folder guess, which stores `Documents\<title>`: the parent of `saves`.
-That folder exists, so it was never detected again, and the top-level listing showed no saves. When the
-Saves panel opens, `SaveDirRefresh` moves a stored folder to the curated one when the stored folder
-contains it, and only for a game whose saves the launcher never writes. A game that can restore keeps
-its folder, because an old snapshot rooted at the parent would come back one level down as
-`saves\saves`.
+That folder exists, so it was never detected again, and the top-level listing showed no saves.
+
+`SaveDirRefresh` corrects this **at read time**: the context (and the machine backup) use the curated
+folder, and the registry keeps what it had, so nothing is permanent. Every condition must hold: the
+launcher never writes this game's saves (a game that can restore would bring an old parent-rooted
+snapshot back as `saves\saves`); the user did not pick the stored folder (Saves, Change… now marks it);
+the hint names no store account; the stored folder is the curated folder's direct parent; and the
+curated folder exists.

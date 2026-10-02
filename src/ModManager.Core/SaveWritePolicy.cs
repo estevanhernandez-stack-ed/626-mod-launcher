@@ -19,6 +19,12 @@ namespace ModManager.Core;
 /// it could be carries, never on a name: a game added by hand that resolves to an EA entry is the same
 /// game with the same cloud sync.</para>
 ///
+/// <para><b>Before lifting this for a whole-folder restore</b>, account for <see cref="SaveDirRefresh"/>:
+/// while writes are refused, a game's effective save folder can be the curated <c>saves</c> under a stored
+/// <c>Documents\&lt;title&gt;</c>, so its snapshot list can hold snapshots rooted at either. Lifting the
+/// refusal switches the narrowing off (the stored folder comes back), and a restore must then tell the two
+/// roots apart. The grand plan's writer avoids this by never reusing the whole-folder restore.</para>
+///
 /// <para>Enforced at the App's call sites, because the write primitives take folders, not games. A
 /// source-scan test (<c>SaveWriteCallSiteTests</c>) holds every App method that calls one to this
 /// policy, so a new handler that forgets fails a test.</para>

@@ -31,6 +31,16 @@ public static class SaveLocator
         return LudusaviPaths.Resolve(hint, tokens);
     }
 
+    /// <summary>The save folder this game USES: the curated folder where <see cref="SaveDirRefresh"/>
+    /// says a stored guess should give way to it, else the stored folder. Read time only. Cheap for
+    /// the games it can never apply to, which stop at the write policy before any folder is resolved.</summary>
+    public static string? EffectiveSaveDir(GameEntry game)
+    {
+        if (SaveWritePolicy.Refusal(game) is null) return game.SaveDir;
+        // No Steam user: a hint naming one never narrows (SaveDirRefresh), and unresolved it is null.
+        return SaveDirRefresh.Narrowed(game, CuratedFolder(game)) ?? game.SaveDir;
+    }
+
     // The signed-in Steam user names a Steam game's save subfolder and nothing else's. Handing it to a
     // game with no Steam id would resolve a <storeUserId> hint to a folder that is not its.
     private static string? SteamUserFor(GameEntry game, string? steamUserId)
