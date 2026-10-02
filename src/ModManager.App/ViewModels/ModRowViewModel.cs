@@ -247,18 +247,17 @@ public sealed partial class ModRowViewModel : ObservableObject
     public Visibility ManagedVisibility => IsManaged ? Visibility.Visible : Visibility.Collapsed;
     public string ManagedBadge => string.IsNullOrEmpty(Mod.Managed) ? "" : Mod.Managed.ToUpperInvariant();
 
-    /// <summary>The game's other mod folders that also hold files with this mod's name (B4, see first).
-    /// Toggling this row still moves only its primary folder's files; the row says so rather than let
-    /// the user believe the whole mod went off.</summary>
-    public IReadOnlyList<string> AlsoInTrees { get; init; } = Array.Empty<string>();
+    /// <summary>What this row says about its files in the game's other mod folders (B4 stage two): which
+    /// of them turn on and off with it, which stay put and why, or, while it is off, which are held.
+    /// Worded in Core (<see cref="ModTreesText"/>) from the toggle's own selection, so the row never
+    /// promises a move the toggle won't make.</summary>
+    public ModTreesText AlsoIn { get; init; } = ModTreesText.None;
 
-    public Visibility AlsoInVisibility => AlsoInTrees.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility AlsoInVisibility => AlsoIn.Visible ? Visibility.Visible : Visibility.Collapsed;
 
-    public string AlsoInText => AlsoInTrees.Count == 0 ? "" : "Also has files in " + string.Join(", ", AlsoInTrees);
+    public string AlsoInText => AlsoIn.Line;
 
-    public string AlsoInTooltip =>
-        "626 turns this mod on and off in its main folder only. Its files in these other folders stay "
-        + "where they are, on or off.";
+    public string AlsoInTooltip => AlsoIn.Tooltip;
 
     // Capsule chips (uppercase, tracked in XAML).
     public string LocationChip => Mod.Location;

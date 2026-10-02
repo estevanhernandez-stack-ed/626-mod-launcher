@@ -842,15 +842,35 @@ public static class Scanner
     private static IReadOnlyList<ModTreeEntry> ExtraTreeMovesFor(Mod m, GameContext c)
     {
         if (c.ExtraModTrees is not { Count: > 0 }) return Array.Empty<ModTreeEntry>();
-        var otherRows = BuildModList(c).Select(r => r.Name)
-            .Where(n => !string.Equals(n, m.Name, StringComparison.Ordinal)).ToList();
-        return ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs))
-            .MovableFor(m.Name, otherRows,
-                // Re-deployed is owned too: the other manager put its files back into a folder the user
-                // had taken over, so what is there is that manager's again, not 626's to move.
-                dir => ToolOwnership.Resolve(Path.GetFullPath(dir), c.TakenOver).State
-                    is OwnershipState.Owned or OwnershipState.ReDeployed)
-            .Movable;
+        return ExtraTreeRowsFor(c).Select(m).Movable;
+    }
+
+    /// <summary>
+    /// The extra-tree picture for every row of a game (B4 stage two), built once: the declared trees read
+    /// once, the mod list's names read once. The row text and the toggle ask the same object, so a row
+    /// says exactly what turning it off would move. A game that declares no extra trees gets
+    /// <see cref="ExtraTreeRows.None"/> and pays nothing, not even the mod-list read.
+    /// </summary>
+    public static ExtraTreeRows ExtraTreeRowsFor(GameContext c)
+    {
+        if (c.ExtraModTrees is not { Count: > 0 }) return ExtraTreeRows.None;
+        var names = BuildModList(c).Select(r => r.Name).ToList();
+        return new ExtraTreeRows(c,
+            ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)), names);
+    }
+
+    /// <summary>
+    /// The folder still holding files for <paramref name="modName"/> in <c>disabled-trees</c>, or null
+    /// when nothing is held. After a turn-on this is the leftover <see cref="EnableOutcome.Reason"/> warns
+    /// about: files under a tree the game no longer declares, which no toggle will find. A folder that
+    /// cannot be read is not known to be empty, so it is reported too.
+    /// </summary>
+    public static string? ExtraTreeLeftover(GameContext c, string modName)
+    {
+        if (string.IsNullOrEmpty(modName)) return null;
+        bool held;
+        try { held = TreeHolding.HoldsFiles(c, modName); } catch { held = true; }
+        return held ? TreeHolding.ModDir(c, modName) : null;
     }
 
     /// <summary>Result of an enable attempt — lets bulk / Safe-Clear callers see WHY a mod didn't
