@@ -185,3 +185,69 @@ record, and the mods show as turned off when the game is re-added).
 - **The sheet** says where each lane's mods went: the data folder (scanner, direct-inject, loose-root), the
   game's `_626\vanilla-proxy` (proxy loaders), or Mod Engine 2's config. It describes a copy in the restore
   point only for the mods that actually have one.
+
+## Round 3: vanilla means vanilla (Este's call, 2026-10-02)
+
+A replica of the real Cyberpunk set showed that after the per-mod turn-offs, 1,195 files stayed live: files
+no mod row claims (loose redscript, unpaired tweaks and input files, CET mods, red4ext plugins, ArchiveXL
+`.xl` sidecars). The round trip was exact, but the sheet said "returned to vanilla" and the game wasn't.
+The phase-1 honesty section already promised that unclaimed loose files go into the restore point. Now
+they do.
+
+**The remainder sweep.** After a vanilla game's turn-offs, framework uninstall, loader sweep and held
+copy, everything still in the game's **mod-only folders** is moved into the restore point under
+`games/<id>/vanilla-remainder/<path relative to the game root>`, recorded as
+`vanillaRemainder: [{ rel, bytes, sha256 }]`.
+
+- **Mod-only folders:**
+  - the declared extra trees;
+  - mod locations that are not the game root, not the direct-inject / loose-root play folder, and not a
+    base-content folder. A UE `Paks` root on the loader-less pak lane (`paks-root`) is base content and
+    is never swept; it is named instead.
+  - Another tool's folder (ToolOwnership Owned or ReDeployed, or a location declared Managed) is left
+    whole and named.
+- **Left alone inside them, each named in `leftInPlace: [{ path, reason }]` unless noted:**
+  - `_626` bookkeeping (not named);
+  - a registered framework's installed files (its uninstall and captured state own them; not named);
+  - the files of a mod whose turn-off refused (reported as still active, never swept by a second
+    mechanism; not named here);
+  - a pak, ucas or utoc file `PakClassifier.IsBaseGamePak` protects;
+  - a file reachable only by its exact name.
+- **Frameworks** that aren't registered (ArchiveXL, Codeware and the like in `red4ext/plugins`) go,
+  per Este.
+
+**Seal discipline.** The plan, with every file's SHA-256, is recorded by an atomic manifest rewrite
+**before anything moves**. If that write fails, nothing moves and the clear warns. Each file then goes
+by `SafeMove.Move`: a rename on one volume, copy-verify-delete across volumes. At every instant a file is
+live or archived under its record, never neither. Each archived file is checked against its record, and
+a mismatch moves it back. A file that won't move (locked, read-only) stays live, is taken out of the
+record and added to `leftInPlace` by a second rewrite, and the clear warns. A crash midway needs no
+special recovery: Restore treats a live file with its recorded content as already back.
+
+**Restore.** Before the loader manifests and the turn-ons (a UE4SS `mods.txt` and the `.xl` sidecars
+of held mods are part of it), each remainder file goes back:
+
+- a rooted or escaping path is refused;
+- a live file with the recorded content is left as it is;
+- a **different** live file is never overwritten and is reported;
+- the archived copy is SHA-checked, written to a temp sibling, checked again and moved into place.
+
+**Skip-archive** (no restore point) does not sweep: with no record there would be nothing to restore
+from.
+
+**Sheet.**
+
+- "Returned to vanilla" appears only when the sweep ran, nothing was left in place, no turn-off refused
+  and no other tool's mods remain. Otherwise it says the game may not be fully vanilla, and lists
+  STILL IN PLACE (path and why).
+- A new ALSO MOVED TO YOUR RESTORE POINT line counts the remainder.
+- For vanilla, the mod list is headed YOUR MODS (KEPT, TURNED OFF) instead of WHAT'S STILL INSTALLED,
+  which read as a contradiction under "turned off 194 mods".
+- An archive from before the sweep never claims vanilla.
+
+**Re-review minors.**
+
+- The "already on" skip matches name **and** location. A same-named live row elsewhere is reported as
+  "already on (a different copy)" and is neither put back nor turned on.
+- The put-back rollback deletes a final file only if this call's own move placed it.
+- One held mod reads "A copy of it".

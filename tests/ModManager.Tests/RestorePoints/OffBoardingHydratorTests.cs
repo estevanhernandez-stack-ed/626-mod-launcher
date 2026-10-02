@@ -41,9 +41,18 @@ public class OffBoardingHydratorTests
         Assert.Equal("T", report.GameName);
         Assert.Equal(@"C:\rp\20260528-141233", report.RestorePointPath);
 
-        // Derived launch line — vanilla branch
+        // Derived launch line — vanilla branch. An archive with no remainder sweep (and a Vortex mod left)
+        // never claims a clean vanilla game: its mod folders were not cleared.
         Assert.Single(report.LaunchLines);
-        Assert.Contains("returned to vanilla", report.LaunchLines[0]);
+        Assert.DoesNotContain("returned to vanilla", report.LaunchLines[0]);
+        Assert.Contains("may not be fully vanilla", report.LaunchLines[0]);
+        var clean = OffBoardingHydrator.Hydrate(VanillaArchive() with
+        {
+            OwnedMods = Array.Empty<OwnedModNote>(),
+            VanillaRemainder = Array.Empty<MovedFile>(),
+            LeftInPlace = Array.Empty<InPlaceNote>(),
+        }, "rp");
+        Assert.Contains("returned to vanilla", Assert.Single(clean.LaunchLines));
 
         // Frameworks / mods / owned mods pass through unchanged
         Assert.Contains("Elden Mod Loader (by TechieW)", report.Frameworks);

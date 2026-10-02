@@ -28,7 +28,14 @@ public sealed record OffBoardingReport(
     int InConfig = 0,
     // How many of the data-folder ones have a copy in the restore point (heldCopies). Only those may be
     // described as saved there; the rest are only in the data folder.
-    int CopiedToRestorePoint = 0);
+    int CopiedToRestorePoint = 0,
+    // Vanilla with a turn-off record: the mods are kept and turned off, not "still installed" and live, so
+    // the mod list is headed accordingly.
+    bool KeptTurnedOff = false,
+    // How many leftover files in the mod-only folders (no mod row claims them) went into the restore point,
+    // and what vanilla knowingly left in place and why. Null = an older archive with no sweep.
+    int RemainderMoved = 0,
+    IReadOnlyList<InPlaceNote>? StillInPlace = null);
 
 public sealed record OffBoardingOwnedMod(string Name, string ManagedBy);
 

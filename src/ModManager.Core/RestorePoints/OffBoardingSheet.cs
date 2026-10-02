@@ -53,7 +53,9 @@ public static class OffBoardingSheet
                     if (!string.IsNullOrEmpty(r.HeldInDataDir)) sb.AppendLine("    " + r.HeldInDataDir);
                     var copied = Math.Min(r.CopiedToRestorePoint, inData);
                     sb.AppendLine(copied == inData
-                        ? "  A copy of each of them is saved in your restore point too, so restoring works from that folder or, if it's gone, from the restore point."
+                        ? (inData == 1
+                            ? "  A copy of it is saved in your restore point too, so restoring works from that folder or, if it's gone, from the restore point."
+                            : "  A copy of each of them is saved in your restore point too, so restoring works from that folder or, if it's gone, from the restore point.")
                         : copied > 0
                             ? $"  A copy of {copied} of them is saved in your restore point. Keep that folder until you restore: it is the only copy of the other {inData - copied}."
                             : "  Keep that folder until you restore: it is where they are.");
@@ -70,11 +72,33 @@ public static class OffBoardingSheet
             sb.AppendLine();
         }
 
-        sb.AppendLine("WHAT'S STILL INSTALLED");
+        // The files no mod row claims, swept out of the mod folders into the restore point.
+        if (r.RemainderMoved > 0)
+        {
+            sb.AppendLine("ALSO MOVED TO YOUR RESTORE POINT");
+            var files = r.RemainderMoved == 1 ? "1 other file" : $"{r.RemainderMoved} other files";
+            sb.AppendLine($"  {files} in the game's mod folders (loose scripts, plugins, sidecars no mod row claims) "
+                + (r.RemainderMoved == 1 ? "was" : "were") + " moved into your restore point. Restoring puts "
+                + (r.RemainderMoved == 1 ? "it" : "them") + " back.");
+            sb.AppendLine();
+        }
+        // What vanilla knowingly left, and why: the honest exception list behind "may not be fully vanilla".
+        if (r.StillInPlace is { Count: > 0 } still)
+        {
+            sb.AppendLine("STILL IN PLACE");
+            foreach (var n in still) sb.AppendLine($"  {n.Path} — {n.Reason}");
+            sb.AppendLine();
+        }
+
+        // Vanilla: the mods are kept and turned off, so "still installed" under "turned off" would read as a
+        // contradiction. Say what the list is.
+        sb.AppendLine(r.KeptTurnedOff ? "YOUR MODS (KEPT, TURNED OFF)" : "WHAT'S STILL INSTALLED");
         sb.AppendLine(r.Frameworks.Count == 0
             ? "  Frameworks:  (none)"
             : "  Frameworks:  " + string.Join(", ", r.Frameworks));
-        sb.AppendLine($"  Mods ({r.Mods.Count}):");
+        sb.AppendLine(r.KeptTurnedOff
+            ? $"  Mods ({r.Mods.Count}), with where to find each again:"
+            : $"  Mods ({r.Mods.Count}):");
         foreach (var m in r.Mods)
         {
             var date = m.InstalledDate is null ? "" : $"   (installed {m.InstalledDate})";

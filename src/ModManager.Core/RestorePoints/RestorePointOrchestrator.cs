@@ -214,6 +214,75 @@ public sealed class RestorePointOrchestrator
                             warnings.Add($"{g.GameName}: the restore point's record couldn't be updated ({e.Message}).");
                     }
                 }
+                // Vanilla means vanilla: whatever is still in the game's mod-only folders (files no mod row
+                // claims) goes into the restore point. The plan is RECORDED first (an atomic manifest rewrite),
+                // and only then does anything move, so after a crash every file is live or archived under its
+                // record, never neither. If the record can't be written, nothing moves and the sheet says the
+                // folders weren't cleared. Files that won't move stay live and are named.
+                if (current is not null && turnOffsByGame.ContainsKey(g.Id))
+                {
+                    RemainderPlan? plan = null;
+                    try { plan = RestorePointEngine.PlanVanillaRemainder(ctx, end.TurnOffSkips); }
+                    catch (Exception e)
+                    {
+                        warnings.Add($"{g.GameName}: 626 couldn't read the mod folders to clear what's left in them ({e.Message}). Nothing more was moved.");
+                    }
+                    if (plan is not null)
+                    {
+                        var recorded = current with
+                        {
+                            TotalBytes = current.TotalBytes + plan.Files.Sum(f => f.Bytes),
+                            FileCount = current.FileCount + plan.Files.Count,
+                            Games = current.Games.Select(ga => ga.Id != g.Id ? ga : ga with
+                            {
+                                VanillaRemainder = plan.Files,
+                                LeftInPlace = plan.LeftInPlace,
+                            }).ToList(),
+                        };
+                        var isRecorded = false;
+                        try
+                        {
+                            BeforeManifestRewriteForTests?.Invoke();
+                            RestorePointManifestStore.WriteSealed(rpDir, recorded);
+                            current = recorded;
+                            isRecorded = true;
+                        }
+                        catch (Exception e)
+                        {
+                            warnings.Add($"{g.GameName}: the restore point's record of the files left in the mod folders couldn't be saved ({e.Message}), so 626 left them in place.");
+                        }
+
+                        if (isRecorded && plan.Files.Count > 0)
+                        {
+                            var stayed = RestorePointEngine.SweepRemainder(ctx, plan.Files, gameArchiveDir);
+                            if (stayed.Count > 0)
+                            {
+                                var stayedRels = new HashSet<string>(stayed.Select(s => s.Path), StringComparer.OrdinalIgnoreCase);
+                                var kept = plan.Files.Where(f => !stayedRels.Contains(f.Rel)).ToList();
+                                var gone = plan.Files.Where(f => stayedRels.Contains(f.Rel)).ToList();
+                                var settled = current with
+                                {
+                                    TotalBytes = current.TotalBytes - gone.Sum(f => f.Bytes),
+                                    FileCount = current.FileCount - gone.Count,
+                                    Games = current.Games.Select(ga => ga.Id != g.Id ? ga : ga with
+                                    {
+                                        VanillaRemainder = kept,
+                                        LeftInPlace = plan.LeftInPlace.Concat(stayed).ToList(),
+                                    }).ToList(),
+                                };
+                                try { RestorePointManifestStore.WriteSealed(rpDir, settled); current = settled; }
+                                catch (Exception e)
+                                {
+                                    // The record still lists them; Restore finds each live with its recorded
+                                    // content and leaves it. Only the sheet's "still in place" list is short.
+                                    warnings.Add($"{g.GameName}: the restore point's record couldn't be updated ({e.Message}).");
+                                }
+                                warnings.Add($"{g.GameName}: {stayed.Count} file(s) in the mod folders couldn't be moved and are still in place, "
+                                    + $"e.g. {stayed[0].Path} ({stayed[0].Reason}).");
+                            }
+                        }
+                    }
+                }
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, SheetFileName));
             }
@@ -305,6 +374,13 @@ public sealed class RestorePointOrchestrator
                 var replay = RestorePointEngine.ReplayGame(ga, Path.Combine(rpDir, "games", ga.Id), _provider.ContextFor(game));
                 // The mods the clear turned off that are not back on, grouped by reason so a 200-mod game
                 // that hit one cause reads as one line, not two hundred.
+                // Remainder files not put back, grouped by reason, a few named per line.
+                foreach (var grp in replay.RemainderIssues.GroupBy(n => n.Reason))
+                {
+                    var names = grp.Select(n => $"\"{n.Name}\"").ToList();
+                    var shown = string.Join(", ", names.Take(5)) + (names.Count > 5 ? $" and {names.Count - 5} more" : "");
+                    warnings.Add($"{ga.GameName}: {shown} {(names.Count == 1 ? "was" : "were")} not put back: {grp.Key}");
+                }
                 foreach (var rec in replay.Recovered)
                     warnings.Add($"{ga.GameName}: \"{rec.Name}\" had stopped partway through turning off; it is back on now.");
                 foreach (var grp in replay.NotBackOn.GroupBy(n => n.Reason))

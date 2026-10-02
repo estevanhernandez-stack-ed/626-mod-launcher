@@ -56,7 +56,19 @@ public sealed record GameArchive(
     // after MUTATE by an atomic rewrite, and only once every copy for the game has finished and verified, so
     // a non-null list always describes a complete copy. Null = not copied (an older manifest, a clear that
     // died before the copy was recorded, or a copy that failed): Restore turns mods on from the data folder.
-    IReadOnlyList<HeldCopy>? HeldCopies = null);
+    IReadOnlyList<HeldCopy>? HeldCopies = null,
+    // Vanilla only: every file still left in the game's MOD-ONLY folders after the turn-offs (files no mod
+    // row claims: loose scripts, framework plugins, sidecars), moved into the restore point under
+    // games/<id>/vanilla-remainder/<rel>. Rel is relative to the game root. Recorded (atomic manifest
+    // rewrite) BEFORE any of them moves, so after a crash each is live or archived, never neither.
+    // Null = an older manifest, or no sweep: Restore puts nothing back from here.
+    IReadOnlyList<MovedFile>? VanillaRemainder = null,
+    // What vanilla knowingly left in place, and why (another tool's folder, the base game's own content, a
+    // file that could not be moved). Empty with a non-null VanillaRemainder means the mod folders are clean.
+    IReadOnlyList<InPlaceNote>? LeftInPlace = null);
+
+/// <summary>Something vanilla left in place: a folder or file (relative to the game root) and why.</summary>
+public sealed record InPlaceNote(string Path, string Reason);
 
 /// <summary>The archived copy of one turned-off mod's data-dir holding folders.</summary>
 public sealed record HeldCopy(string Name, IReadOnlyList<MovedFile> Files);

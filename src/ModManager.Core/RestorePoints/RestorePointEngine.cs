@@ -17,8 +17,14 @@ public sealed record EndStateResult(
 /// <summary>Result of <see cref="RestorePointEngine.ReplayGame"/>: the mods from the sealed turn-off set
 /// that are not on after Restore, each with the lane's reason when it gave one. Empty means every mod the
 /// clear turned off is back on (or the archive carried no turn-off record).
-/// <para><c>Recovered</c>: turn-offs that had refused partway (their files stranded in holding) and are back on.</para></summary>
-public sealed record ReplayResult(IReadOnlyList<ClearSkip> NotBackOn, IReadOnlyList<ClearSkip> Recovered);
+/// <para><c>Recovered</c>: turn-offs that had refused partway (their files stranded in holding) and are back on.</para>
+/// <para><c>RemainderIssues</c>: vanilla-remainder files not put back (Name is the path relative to the game
+/// root), each with why: a different file is live there, the archived copy is damaged, or the path is refused.</para></summary>
+public sealed record ReplayResult(IReadOnlyList<ClearSkip> NotBackOn, IReadOnlyList<ClearSkip> Recovered,
+    IReadOnlyList<ClearSkip>? RemainderIssues = null)
+{
+    public IReadOnlyList<ClearSkip> RemainderIssues { get; init; } = RemainderIssues ?? Array.Empty<ClearSkip>();
+}
 
 /// <summary>
 /// The headless Safe Clear / Restore file engine. Takes explicit archive paths — no %APPDATA%
@@ -330,30 +336,35 @@ public static partial class RestorePointEngine
                 return $"its copy in the restore point is damaged (checksum mismatch on \"{f.Rel}\"); nothing was restored for it";
         }
 
-        var touched = new List<string>();   // every path this call may create: temps AND finals
+        var temps = new List<string>();   // tracked BEFORE writing: a failing file's temp is rolled back too
+        var placed = new List<string>();  // finals this call's own move put there, and only those
         try
         {
             foreach (var f in missing)
             {
                 var dest = Path.Combine(liveCtx.DataDir, f.Rel);
                 var tmp = dest + ".rp-tmp";
-                touched.Add(tmp);
-                touched.Add(dest);
+                temps.Add(tmp);
                 BeforeHeldPutBackFileForTests?.Invoke(dest);
                 SafeMove.CopyFileVerified(Path.Combine(gameArchiveDir, HeldDirName, f.Rel), tmp);
                 if (f.Sha256 is not null && !string.Equals(FileTally.Sha256(tmp), f.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new IOException($"checksum mismatch after copying \"{f.Rel}\" back");
                 File.Move(tmp, dest);   // dest was missing: never over a file the data folder has
+                placed.Add(dest);
             }
             return null;
         }
         catch (Exception e)
         {
-            // Take back only what this call wrote: copies of the archive's files, the archive keeps its own.
-            foreach (var w in touched) try { if (File.Exists(w)) File.Delete(w); } catch { }
+            // Take back only what this call wrote: its temps, and the finals ITS moves placed. A file that
+            // appeared at a destination from elsewhere (the move onto it failed) is not this call's to delete.
+            foreach (var w in temps.Concat(placed)) try { if (File.Exists(w)) File.Delete(w); } catch { }
             return $"its copy couldn't be put back into the data folder ({e.Message}); nothing was restored for it";
         }
     }
+
+    /// <summary>Why Restore left a mod that is live under the same name from another location.</summary>
+    public const string AlreadyOnDifferentCopy = "already on (a different copy), so 626 left it as it is";
 
     /// <summary>Why Restore left a mod whose data-folder copy differs from the restore point's.</summary>
     public const string DifferentCopy =
@@ -519,6 +530,10 @@ public static partial class RestorePointEngine
             }
         }
 
+        // 3b. The vanilla remainder back into the game's mod folders, verified, BEFORE the loader manifests
+        //     (a UE4SS mods.txt can be part of it) and before the turn-ons (sidecars beside held mods).
+        var remainderIssues = RestoreRemainder(ga, gameArchiveDir, liveCtx);
+
         // 4. Re-apply loader enable state (best effort — loader manifest may be absent).
         foreach (var lm in ga.LoaderMods)
         {
@@ -543,7 +558,7 @@ public static partial class RestorePointEngine
             && File.Exists(ga.OffboardingSheetGameFolderPath))
             try { File.Delete(ga.OffboardingSheetGameFolderPath); } catch { /* best effort */ }
 
-        return new ReplayResult(notBackOn, recovered);
+        return new ReplayResult(notBackOn, recovered, remainderIssues);
     }
 
     /// <summary>Why Restore left a ban-risk game's mods held.</summary>
@@ -583,7 +598,16 @@ public static partial class RestorePointEngine
             .ToDictionary(g => g.Key, g => new HeldCopy(g.Key, g.SelectMany(h => h.Files).ToList()), StringComparer.OrdinalIgnoreCase);
         foreach (var cm in wanted.ToList())
         {
-            if (FindRow(rowsBefore, cm) is { Enabled: true }) continue;   // already live: nothing to put back
+            var exact = rowsBefore.FirstOrDefault(m => string.Equals(m.Name, cm.Name, StringComparison.OrdinalIgnoreCase)
+                                                       && string.Equals(m.Location, cm.Location, StringComparison.OrdinalIgnoreCase));
+            if (exact is { Enabled: true }) continue;   // already live: nothing to put back
+            if (exact is null && rowsBefore.FirstOrDefault(m => string.Equals(m.Name, cm.Name, StringComparison.OrdinalIgnoreCase)) is { Enabled: true })
+            {
+                // Live under the same name somewhere else: a different copy. Neither put back nor turned on.
+                notBack.Add(new ClearSkip(cm.Name, AlreadyOnDifferentCopy));
+                wanted.Remove(cm);
+                continue;
+            }
             if (!copies.TryGetValue(cm.Name, out var h)) continue;
             if (PutBackHeldCopy(h, gameArchiveDir, liveCtx) is { } why)
             {

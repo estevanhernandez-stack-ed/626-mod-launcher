@@ -23,7 +23,21 @@ public static class OffBoardingHydrator
             Proxies: TurnedOff(ga).Count(IsProxy),
             InConfig: TurnedOff(ga).Count(IsConfig),
             CopiedToRestorePoint: TurnedOff(ga).Count(m => !IsProxy(m) && !IsConfig(m)
-                && (ga.HeldCopies ?? Array.Empty<HeldCopy>()).Any(h => string.Equals(h.Name, m.Name, StringComparison.OrdinalIgnoreCase))));
+                && (ga.HeldCopies ?? Array.Empty<HeldCopy>()).Any(h => string.Equals(h.Name, m.Name, StringComparison.OrdinalIgnoreCase))),
+            KeptTurnedOff: IsVanilla(ga) && ga.TurnedOffByClear is not null,
+            RemainderMoved: ga.VanillaRemainder?.Count ?? 0,
+            StillInPlace: ga.LeftInPlace);
+
+    private static bool IsVanilla(GameArchive ga) => string.Equals(ga.EndState, "vanilla", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True only when the clear can honestly say the game is vanilla: the mod folders were swept
+    /// (a remainder record exists), nothing was left in place, no turn-off refused, and no other tool's mods
+    /// remain. An archive from before the sweep never qualifies: its mod folders were never cleared.</summary>
+    public static bool FullyVanilla(GameArchive ga)
+        => IsVanilla(ga) && ga.VanillaRemainder is not null
+           && (ga.LeftInPlace?.Count ?? 0) == 0
+           && (ga.TurnOffSkipped?.Count ?? 0) == 0
+           && ga.OwnedMods.Count == 0;
 
     private static bool IsProxy(ClearedMod m) => m.Location == ProxyLoaderRows.LocationTag;
     private static bool IsConfig(ClearedMod m) => m.Location == "mod engine 2";
@@ -51,9 +65,16 @@ public static class OffBoardingHydrator
     private static IReadOnlyList<string> LaunchLinesFrom(GameArchive ga)
     {
         var lines = new List<string>();
-        if (string.Equals(ga.EndState, "vanilla", StringComparison.OrdinalIgnoreCase))
+        if (IsVanilla(ga))
         {
-            lines.Add("Your game has been returned to vanilla — launch it the way you normally would (e.g. from Steam).");
+            if (FullyVanilla(ga))
+                lines.Add("Your game has been returned to vanilla — launch it the way you normally would (e.g. from Steam).");
+            else if (ga.VanillaRemainder is not null)
+                lines.Add("626 turned off its mods and cleared its mod folders, but some files are still in place (listed under "
+                    + "STILL IN PLACE), so the game may not be fully vanilla. Launch it the way you normally would (e.g. from Steam).");
+            else
+                lines.Add("626 turned off the mods it manages. Files it doesn't manage may still be in the game's mod folders, "
+                    + "so the game may not be fully vanilla. Launch it the way you normally would (e.g. from Steam).");
             return lines;
         }
         // modsActive — mods + their launchers are still installed.
