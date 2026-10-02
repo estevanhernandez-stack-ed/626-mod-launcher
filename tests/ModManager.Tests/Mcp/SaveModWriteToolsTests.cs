@@ -39,7 +39,8 @@ public class SaveModWriteToolsTests : IDisposable
     private string WorldDir => Path.Combine(Profiles, "76561198000000000", "RocksDB", "0.10.0", "Worlds", World);
 
     // A Windrose-shaped save tree: one profile, a RocksDB version, and the game-managed RocksDB_v2 beside it.
-    private GameEntry Game(string id = "windrose", string? steamAppId = null, string? eaContentId = null, bool saveDir = true)
+    private GameEntry Game(string id = "windrose", string? steamAppId = null, string? eaContentId = null, bool saveDir = true,
+                           string? registeredSaveDir = null)
     {
         var prof = Path.Combine(Profiles, "76561198000000000");
         Directory.CreateDirectory(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds"));
@@ -48,7 +49,7 @@ public class SaveModWriteToolsTests : IDisposable
         var game = new GameEntry
         {
             Id = id, GameName = "Test", Engine = "ue-pak", GameRoot = Path.Combine(_root, "game-" + id),
-            DataDir = Path.Combine(_root, "data-" + id), SaveDir = saveDir ? Profiles : null,
+            DataDir = Path.Combine(_root, "data-" + id), SaveDir = saveDir ? registeredSaveDir ?? Profiles : null,
             SteamAppId = steamAppId, EaContentId = eaContentId,
         };
         Directory.CreateDirectory(game.GameRoot);
@@ -258,6 +259,31 @@ public class SaveModWriteToolsTests : IDisposable
         Assert.Equal("confirmation_required", Json(SaveModTools.RemoveSaveMod(g.Id, World)).GetProperty("refusal").GetString());
 
         Assert.False(Directory.Exists(worlds));
+    }
+
+    // #380: Windrose's curated save folder is <profile>\RocksDB_v2. Worlds go beside it, and each message says
+    // where the undo is, because Saves doesn't list a snapshot of a folder it doesn't hold.
+    [Fact]
+    public void With_the_save_folder_inside_the_profile_the_world_installs_beside_it_and_the_undo_is_named()
+    {
+        var registered = Path.Combine(Profiles, "76561198000000000", "RocksDB_v2");
+        Directory.CreateDirectory(Path.Combine(Profiles, "76561198000000000_Backups"));
+        var g = Game(registeredSaveDir: registered);
+        Directory.CreateDirectory(Path.Combine(registered, "0.10.0"));
+
+        var install = Json(SaveModTools.InstallSaveMod(g.Id, WorldZip()));
+        Assert.True(install.GetProperty("ok").GetBoolean(), install.ToString());
+        Assert.Equal(WorldDir, install.GetProperty("installedTo").GetString());
+        Assert.Contains("new world", install.GetProperty("detail").GetString());
+
+        var ask = Json(SaveModTools.ResetSaveMod(g.Id, World)).GetProperty("detail").GetString();
+        var outside = SaveModInstaller.SaveModSnapshotsFor(Scanner.GameContext(g).SavesDir, World);
+        Assert.Contains(outside, ask);
+        Assert.DoesNotContain("restored from Saves", ask);
+
+        Assert.True(Json(SaveModTools.RemoveSaveMod(g.Id, World, confirm: true)).GetProperty("ok").GetBoolean());
+        Assert.Single(SaveManager.ListSnapshots(outside));
+        Assert.Empty(SaveManager.ListSnapshots(Scanner.GameContext(g).SavesDir));
     }
 
     [Fact]

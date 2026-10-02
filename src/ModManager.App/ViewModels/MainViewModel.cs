@@ -4040,7 +4040,8 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     if (v.Outcome == SaveModDropOutcome.Installed) { savedCount++; remaining.Remove(v.SourcePath); }
                     else if (v.Outcome is SaveModDropOutcome.Failed or SaveModDropOutcome.AlreadyInstalled)
-                    { saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: {v.Reason}"); remaining.Remove(v.SourcePath); }
+                    // A save-mod reason is a sentence; the line joins its parts with ". ", so its own period would print "..".
+                    { saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: {v.Reason?.TrimEnd('.')}"); remaining.Remove(v.SourcePath); }
                 }
             }
 
@@ -4153,8 +4154,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Reload first: it resets the status line to the enabled count, which would replace this
             // drop's outcome the moment it was shown (the direct-inject branch already reloads first).
             await ReloadModsAsync();
-            // Parts that end in their own period (a save-mod reason does) would print "..".
-            StatusText = string.Join(". ", statusParts.Select(part => part.TrimEnd('.')))
+            StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
                 + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
                 + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")

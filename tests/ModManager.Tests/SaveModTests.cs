@@ -409,19 +409,62 @@ public class SaveModTests : IDisposable
     }
 
     [Fact]
-    public void Writing_outside_the_registered_folder_snapshots_the_worlds_folder_apart_from_the_saves_list()
+    public void Writing_outside_the_registered_folder_snapshots_only_that_world_apart_from_the_saves_list()
     {
         var prof = MakeWindroseTree();
         var registered = Path.Combine(prof, "RocksDB_v2");
+        var worldDir = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32);
 
+        // A new world has nothing to lose: no snapshot. Removing it then snapshots that world alone.
         SaveModInstaller.InstallWorld(registered, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+        Assert.Empty(SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsFor(Snaps, Guid32)));
         SaveModInstaller.RemoveWorld(registered, Snaps, Guid32, null, null);
 
         Assert.Empty(SaveManager.ListSnapshots(Snaps));   // nothing the Saves dialog would restore into RocksDB_v2
-        var kept = SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsDir(Snaps));
-        Assert.Equal(2, kept.Count);
-        Assert.All(kept, k => Assert.Equal(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds"), SaveManager.SourceOf(k.Path)));
-        Assert.Throws<InvalidOperationException>(() => SaveManager.Restore(kept[0].Path, registered, Snaps));
+        var kept = SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsFor(Snaps, Guid32)).Single();
+        Assert.Equal(worldDir, SaveManager.SourceOf(kept.Path));
+        using (var zip = ZipFile.OpenRead(kept.Path))
+            Assert.Equal(new[] { "level.db" }, zip.Entries.Select(e => e.FullName));   // the one world, not every world
+        Assert.Throws<InvalidOperationException>(() => SaveManager.Restore(kept.Path, registered, Snaps));
+    }
+
+    [Fact]
+    public void Snapshots_kept_outside_the_saves_list_are_pruned_to_the_newest()
+    {
+        var prof = MakeWindroseTree();
+        var registered = Path.Combine(prof, "RocksDB_v2");
+        var zip = MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W"));
+        SaveModInstaller.InstallWorld(registered, Snaps, Store, zip, Guid32, null, null);
+
+        for (var i = 0; i < SaveModInstaller.SaveModSnapshotsKept + 3; i++)
+            SaveModInstaller.ResetWorld(registered, Snaps, zip, Guid32, null, null);
+
+        Assert.Equal(SaveModInstaller.SaveModSnapshotsKept,
+            SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsFor(Snaps, Guid32)).Count);
+    }
+
+    // Review on #380: the registered folder can BE the Worlds folder; that is inside, and Saves can restore it.
+    [Fact]
+    public void A_registered_folder_that_is_the_worlds_folder_snapshots_into_the_saves_list()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        var worlds = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds");
+
+        Assert.True(SaveModInstaller.WritesInsideSaveFolder(worlds, worlds));
+        Assert.True(SaveModInstaller.WritesInsideSaveFolder(Profiles, worlds));
+        Assert.False(SaveModInstaller.WritesInsideSaveFolder(Path.Combine(prof, "RocksDB_v2"), worlds));
+    }
+
+    // Review on #380: the store folder's name comes from the game's save-mod path, not a hard-coded one.
+    [Fact]
+    public void The_store_folder_name_comes_from_the_save_mod_path()
+    {
+        var prof = Path.Combine(Profiles, "player");
+        Directory.CreateDirectory(Path.Combine(prof, "Store", "2.0", "Worlds"));
+        Directory.CreateDirectory(Path.Combine(prof, "Store_live"));
+
+        Assert.Equal(Path.Combine(prof, "Store", "2.0", "Worlds"),
+            SaveModInstaller.ResolveWorldsTarget(Path.Combine(prof, "Store_live"), "Store/{version}/Worlds", null));
     }
 
     [Fact]

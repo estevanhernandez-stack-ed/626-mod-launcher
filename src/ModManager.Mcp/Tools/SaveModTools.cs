@@ -9,7 +9,7 @@ namespace ModManager.Mcp.Tools;
 /// Save/world mods for an agent. The list (E1, third slice) is what the Saves dialog shows, read from the
 /// same store (<see cref="SaveModStore.Load"/>) in the same order, plus the reasons around it. Install,
 /// reset and remove (E1, seventh slice) go through the Core the app uses (<see cref="SaveModFlow"/>,
-/// <see cref="SaveModInstaller"/>), so each snapshots the save folder before it writes and never touches
+/// <see cref="SaveModInstaller"/>), so each snapshots what it can lose before it writes and never touches
 /// a game-managed folder. Each refuses where the app would, and also where the user's ban-risk
 /// acknowledgment is missing, which an agent can never give. Reset and remove take <c>confirm: true</c>.
 /// Every write is audited.
@@ -70,7 +70,7 @@ public static class SaveModTools
 
     [McpServerTool(Name = "install_save_mod")]
     [Description("Install one save/world mod zip (a Worlds/<id> package) into the game's save folder, as dropping "
-                 + "it on the app does: the save folder is snapshotted first, game-managed folders are never "
+                 + "it on the app does: what it can lose is snapshotted first, game-managed folders are never "
                  + "written, and a copy of the zip is kept so the world can be reset later. Refuses a zip that "
                  + "isn't a save mod (use intake for regular mods), a world that is already installed (use "
                  + "reset_save_mod), and a game whose saves 626 may not write or whose ban-risk acknowledgment the "
@@ -121,22 +121,22 @@ public static class SaveModTools
                 $"Installed {v.WorldGuid}, but 626 can't confirm it: world folder present {Directory.Exists(worldDir)}, "
                 + $"recorded {entry is not null}, kept zip {kept is not null}. Open Saves in the app to check.");
 
-        var done = $"Installed {entry.Name} (world {entry.Guid}). The save folder was snapshotted first.";
+        var done = $"Installed {entry.Name} (world {entry.Guid}). " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: true);
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "ok", done));
         return new
         {
             ok = true, gameId, worldId = entry.Guid, name = entry.Name, installedTo = worldDir, keptZip = kept,
             detail = done,
             hint = "reset_save_mod starts this world over from keptZip; remove_save_mod deletes it. Both snapshot the "
-                   + "save folder first and take confirm: true.",
+                   + "world first and take confirm: true; each result says where that snapshot is.",
         };
     }
 
     [McpServerTool(Name = "reset_save_mod")]
     [Description("Start an installed save/world mod over: its world folder is replaced with a fresh copy from the zip "
                  + "kept at install, as the Saves dialog's Reset does. Progress in that world is lost, so it refuses "
-                 + "without confirm: true (then it says what it would do). The save folder is snapshotted first, so the "
-                 + "user can restore it from Saves. Refuses when the kept zip is gone, and where install_save_mod would. "
+                 + "without confirm: true (then it says what it would do). It is snapshotted first, and the result says "
+                 + "where that snapshot is. Refuses when the kept zip is gone, and where install_save_mod would. "
                  + "Audited.")]
     public static object ResetSaveMod(
         [Description("The game id, from list_games.")] string gameId,
@@ -156,17 +156,17 @@ public static class SaveModTools
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
                 $"Resetting {entry.Name} deletes {worldDir} and extracts a fresh copy from {kept}. Progress in that world "
-                + "is lost; 626 snapshots the save folder first, so it can be restored from Saves. "
-                + "Call again with confirm: true to reset.");
+                + "is lost. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false)
+                + " Call again with confirm: true to reset.");
 
         try { SaveModInstaller.ResetWorld(ctx.SaveDir!, ctx.SavesDir, kept, entry.Guid, game.SaveModPath, game.SaveModForbidden); }
         catch (Exception e) { return Error(tool, ctx, gameId, args, ErrorRemedy.Describe(e)); }
 
         if (!HoldsFiles(worldDir))
             return Error(tool, ctx, gameId, args, $"Reset {entry.Name}, but its world folder {worldDir} is empty afterwards. "
-                                                 + "Restore the snapshot from Saves in the app.");
+                                                 + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false));
 
-        var done = $"Reset {entry.Name} (world {entry.Guid}) from its kept zip. The save folder was snapshotted first.";
+        var done = $"Reset {entry.Name} (world {entry.Guid}) from its kept zip. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false);
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "ok", done));
         return new { ok = true, gameId, worldId = entry.Guid, name = entry.Name, worldDir, resetFrom = kept, detail = done };
     }
@@ -174,7 +174,7 @@ public static class SaveModTools
     [McpServerTool(Name = "remove_save_mod")]
     [Description("Remove an installed save/world mod: its world folder is deleted from the save folder and 626 stops "
                  + "listing it, as the Saves dialog's Remove does. Refuses without confirm: true (then it says what it "
-                 + "would delete). The save folder is snapshotted first, so the user can restore it from Saves; the zip "
+                 + "would delete). It is snapshotted first, and the result says where that snapshot is; the zip "
                  + "kept for resetting it is deleted. Refuses an EA game or no save folder, but not for ban risk: removing "
                  + "a mod is the safe direction. Audited.")]
     public static object RemoveSaveMod(
@@ -193,8 +193,8 @@ public static class SaveModTools
 
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
-                $"Removing {entry.Name} deletes {worldDir} and stops listing it. 626 snapshots the save folder first, so it "
-                + "can be restored from Saves. Call again with confirm: true to remove.");
+                $"Removing {entry.Name} deletes {worldDir} and stops listing it. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false)
+                + " Call again with confirm: true to remove.");
 
         try
         {
@@ -208,7 +208,7 @@ public static class SaveModTools
             return Error(tool, ctx, gameId, args, $"Removed {entry.Name}, but its world folder is still there "
                                                  + $"({Directory.Exists(worldDir)}) or it is still listed ({stillListed}).");
 
-        var done = $"Removed {entry.Name} (world {entry.Guid}). The save folder was snapshotted first.";
+        var done = $"Removed {entry.Name} (world {entry.Guid}). " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false);
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "ok", done));
         return new { ok = true, gameId, worldId = entry.Guid, name = entry.Name, deleted = worldDir, detail = done };
     }
@@ -269,6 +269,17 @@ public static class SaveModTools
     {
         try { return Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any(); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    // Where this write's undo lives, in words, by the rule SaveModInstaller.SnapshotBeforeWrite follows.
+    private static string SnapshotNote(GameContext ctx, GameEntry game, string worldDir, string worldGuid, bool newWorld)
+    {
+        if (SaveModSnapshots.OutsideSavesList(ctx.SaveDir!, ctx.SavesDir, game.SaveModPath, game.SaveModForbidden, worldGuid) is not { } dir)
+            return "626 snapshots the save folder first, so it can be restored from Saves.";
+        if (newWorld)
+            return "It is a new world, so there was nothing to snapshot; remove_save_mod undoes it.";
+        return $"626 snapshots this world first, into {dir}. Saves doesn't list those: to undo, unzip the newest one "
+               + $"into {worldDir}.";
     }
 
     private static object Error(string tool, GameContext ctx, string gameId, Dictionary<string, string> args, string detail)

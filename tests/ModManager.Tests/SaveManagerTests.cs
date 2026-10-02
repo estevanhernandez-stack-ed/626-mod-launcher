@@ -145,4 +145,60 @@ public class SaveManagerTests
 
         Assert.Equal("OLD", File.ReadAllText(Path.Combine(saveDir, "slot1.dat")));
     }
+
+    // Review on #380: a snapshot from before 626 recorded its folder is refused when it is plainly of a folder
+    // above this one, which is the incident itself.
+    [Theory]
+    [InlineData("123/RocksDB_v2/0.10.0/a.db")]   // a snapshot of the profiles folder, restored into <profiles>/123/RocksDB_v2
+    [InlineData("RocksDB_v2/0.10.0/a.db")]       // a snapshot of the profile, restored into its RocksDB_v2
+    public void A_pre_recording_snapshot_of_a_folder_above_is_refused(string entry)
+    {
+        var root = TestSupport.TempDir("saves-");
+        var saveDir = Path.Combine(root, "SaveProfiles", "123", "RocksDB_v2");
+        Directory.CreateDirectory(saveDir);
+        File.WriteAllText(Path.Combine(saveDir, "live.db"), "LIVE");
+        var snaps = Path.Combine(root, "snapshots");
+        Directory.CreateDirectory(snaps);
+        var legacy = Path.Combine(snaps, "20260101-000000__old.zip");
+        using (var zip = ZipFile.Open(legacy, ZipArchiveMode.Create))
+            zip.CreateEntry(entry);
+
+        var e = Assert.Throws<InvalidOperationException>(() => SaveManager.Restore(legacy, saveDir, snaps));
+
+        Assert.Contains("folder above", e.Message);
+        Assert.Equal("LIVE", File.ReadAllText(Path.Combine(saveDir, "live.db")));
+    }
+
+    [Fact]
+    public void A_pre_recording_snapshot_that_merely_shares_a_folder_name_deeper_down_still_restores()
+    {
+        var (saveDir, snaps) = Fixture();
+        Directory.CreateDirectory(snaps);
+        var legacy = Path.Combine(snaps, "20260101-000000__old.zip");
+        using (var zip = ZipFile.Open(legacy, ZipArchiveMode.Create))
+        using (var w = new StreamWriter(zip.CreateEntry("worlds/save/slot.dat").Open())) w.Write("OLD");   // "save" two levels down
+
+        SaveManager.Restore(legacy, saveDir, snaps);
+
+        Assert.Equal("OLD", File.ReadAllText(Path.Combine(saveDir, "worlds", "save", "slot.dat")));
+    }
+
+    // Review on #380: a save folder that moved (OneDrive, a renamed account) is the same folder under a new path.
+    [Fact]
+    public void A_snapshot_of_a_folder_that_moved_restores_into_its_new_place()
+    {
+        var root = TestSupport.TempDir("saves-");
+        var oldDir = Path.Combine(root, "Documents", "Game");
+        var newDir = Path.Combine(root, "OneDrive", "Documents", "Game");
+        var snaps = Path.Combine(root, "snapshots");
+        Directory.CreateDirectory(oldDir);
+        File.WriteAllText(Path.Combine(oldDir, "slot.dat"), "V1");
+        var snap = SaveManager.Backup(oldDir, snaps);
+        Directory.CreateDirectory(Path.GetDirectoryName(newDir)!);
+        Directory.Move(oldDir, newDir);
+
+        SaveManager.Restore(snap.Path, newDir, snaps);
+
+        Assert.Equal("V1", File.ReadAllText(Path.Combine(newDir, "slot.dat")));
+    }
 }
