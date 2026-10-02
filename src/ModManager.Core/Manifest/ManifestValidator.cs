@@ -46,9 +46,9 @@ public static class ManifestValidator
             // The same gate for every extra tree (B4), but it drops the TREE, not the entry: these are
             // descriptive, and rejecting the whole entry over one bad tree would throw away its ban-risk,
             // store-id and modPath corrections with it. An unsafe tree is simply never read.
-            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeRelativePath(t)))
+            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeExtraTree(t)))
             {
-                var safe = trees.Where(IsSafeRelativePath).ToList();
+                var safe = trees.Where(IsSafeExtraTree).ToList();
                 kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
                 continue;
             }
@@ -150,6 +150,18 @@ public static class ManifestValidator
 
     private static bool IsSteamAppId(string app)
         => app.Length > 0 && app.All(char.IsAsciiDigit);
+
+    /// <summary>
+    /// Whether an <see cref="GameManifestEntry.ExtraModTrees"/> entry may be read (B4). It must pass the
+    /// same check as <c>modPath</c> and also name a folder BELOW the game root. "." or "./" pass the
+    /// relative-path check, but they would make the root itself a mod tree, so a mod named "bin" or
+    /// "r6" would be told it "also has files in ." The miner refuses a curated file that breaks this
+    /// rule, and a launcher reading the feed drops the tree.
+    /// </summary>
+    public static bool IsSafeExtraTree(string? path)
+        => path is not null
+           && IsSafeRelativePath(path)
+           && path.Split('/', '\\').Any(s => s.Length > 0 && s != ".");
 
     private static bool IsSafeRelativePath(string path)
     {

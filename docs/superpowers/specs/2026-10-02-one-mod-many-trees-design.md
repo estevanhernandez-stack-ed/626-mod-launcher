@@ -36,8 +36,10 @@ holds paths relative to the game root, in the order the row should list them.
 - **Descriptive only**, like every manifest field: it says where mods put files, never how to enable
   them. Whether a tree may be toggled is deliberately NOT a field yet. It is stage two's question, and
   a flag shipped now would be answered by guesswork.
-- **Gated like `modPath`, but per tree.** `ManifestValidator` drops any tree that is absolute,
-  drive-qualified or contains `..`, and keeps the rest of the entry. The trees are descriptive, and
+- **Gated like `modPath`, but per tree.** `ManifestValidator.IsSafeExtraTree` drops any tree that is
+  absolute, drive-qualified, contains `..`, or names no folder below the game root (`.`, `./`, empty),
+  and keeps the rest of the entry. The miner's `OverridesValidate` refuses a curated file holding such
+  a tree, so the drop is never silent at build time (review on 626-game-manifest#27). The trees are descriptive, and
   rejecting the whole entry over one bad tree would throw away its ban-risk, store-id and `modPath`
   corrections with it.
 - **No schema bump.** An older binary ignores the key, as it did for `loaders`.
@@ -69,8 +71,8 @@ where they are, on or off."
 ## Data
 
 The curated data lives in the `626-game-manifest` repo. Cyberpunk 2077 is the first entry, carrying
-`"extraModTrees": ["r6/scripts", "r6/tweaks", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods"]`.
-It lands there after this schema ships. Until a feed carries the field, no row shows the line.
+`"extraModTrees": ["r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods"]`
+(626-game-manifest#27). Until a feed carries the field, no row shows the line.
 
 ## Out of scope
 
@@ -88,7 +90,8 @@ It lands there after this schema ships. Until a feed carries the field, no row s
 - case-insensitivity
 - the camelCase round trip, with string-contains asserts
 - an absent field reading as none
-- one unsafe tree rejecting the entry
+- an unsafe tree (including the game root itself) dropped and the entry kept
+- a curated unsafe tree failing the miner's build (`OverridesValidateTests`)
 - safe trees passing
 - a curated override carrying the field through the miner
 

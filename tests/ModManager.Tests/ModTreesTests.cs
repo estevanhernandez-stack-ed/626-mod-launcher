@@ -127,6 +127,9 @@ public class ModTreesTests : IDisposable
     [InlineData("../escape")]
     [InlineData("r6/../../escape")]
     [InlineData("D:relative")]
+    [InlineData(".")]           // the game root itself, not a tree below it (review on 626-game-manifest#27)
+    [InlineData("./")]
+    [InlineData("")]
     public void An_unsafe_extra_tree_is_dropped_and_the_entry_kept(string bad)
     {
         // Descriptive data: one bad tree must not throw away the entry's ban-risk and store corrections.

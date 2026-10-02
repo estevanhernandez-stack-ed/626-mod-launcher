@@ -25,11 +25,13 @@ entry; one that matches OVERRIDES the mined fields. Unspecified fields are left 
 
 `extraModTrees` (optional) lists the OTHER folders, relative to the game root, where this game's mods
 also put files, beside `modPath`. For example, Cyberpunk 2077:
-`"extraModTrees": ["r6/scripts", "r6/tweaks", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods"]`.
-The launcher only SHOWS which of these trees a mod has files in. It still turns mods on and off in
-`modPath` alone (B4, `docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`). Each path is
-gated like `modPath` (relative, no drive letter, no `..`), but a bad path drops only itself. The rest of
-the entry is kept.
+`"extraModTrees": ["r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods"]`.
+The launcher only SHOWS which of these trees hold an entry at their top level named exactly like a
+mod. It still turns mods on and off in `modPath` alone (B4,
+`docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`). Each path must be a folder below the
+game root: relative, no drive letter, no `..`, and not `.` itself. A launcher reading the feed drops a
+bad tree and keeps the rest of the entry, but this build REFUSES a curated file that has one, so a typo
+can't vanish from the signed feed unnoticed.
 
 To add a game: drop a `<game>.json` here, run `dotnet run --project tools/ManifestMiner -- --with-mo2
 --with-overrides`, and check the coverage summary + the diff. Verify the Steam id (a wrong id just

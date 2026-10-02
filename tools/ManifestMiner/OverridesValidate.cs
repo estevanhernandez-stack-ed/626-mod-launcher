@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ModManager.Core;
+using ModManager.Core.Manifest;
 
 namespace ManifestMiner;
 
@@ -78,6 +79,14 @@ public static partial class OverridesValidate
             problems.Add(new OverrideProblem(
                 $"{FileOf(e)} has an EA content id '{e.EaContentId}' with characters outside letters, "
                 + "digits, '.', '_' and '-' — unsafe in a launch URL."));
+
+        // A curated tree the launcher's gate would drop is a build failure here, not a silent drop. The
+        // signed feed would otherwise ship without it and the curator would never hear about it (B4).
+        foreach (var e in overrides.Where(e => e.ExtraModTrees is not null))
+            foreach (var tree in e.ExtraModTrees!.Where(t => !ManifestValidator.IsSafeExtraTree(t)))
+                problems.Add(new OverrideProblem(
+                    $"{FileOf(e)} has an extra mod tree '{tree}' that is not a folder below the game root "
+                    + "(absolute, drive-qualified, '..', '.' or empty). The launcher would drop it."));
 
         return problems;
     }
