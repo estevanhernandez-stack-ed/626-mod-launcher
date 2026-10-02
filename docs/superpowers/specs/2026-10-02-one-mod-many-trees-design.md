@@ -37,8 +37,9 @@ holds paths relative to the game root, in the order the row should list them.
   them. Whether a tree may be toggled is deliberately NOT a field yet. It is stage two's question, and
   a flag shipped now would be answered by guesswork.
 - **Gated like `modPath`, but per tree.** `ManifestValidator.IsSafeExtraTree` drops any tree that is
-  absolute, drive-qualified, contains `..`, or names no folder below the game root (`.`, `./`, empty),
-  and keeps the rest of the entry. The miner's `OverridesValidate` refuses a curated file holding such
+  absolute, drive-qualified, contains `..`, names no folder below the game root (`.`, `./`, empty), or
+  is the entry's `modPath` or a folder above it (`archive` above `archive/pc/mod` would list `pc` as a
+  mod), and keeps the rest of the entry. The miner's `OverridesValidate` refuses a curated file holding such
   a tree, so the drop is never silent at build time (review on 626-game-manifest#27). The trees are descriptive, and
   rejecting the whole entry over one bad tree would throw away its ban-risk, store-id and `modPath`
   corrections with it.

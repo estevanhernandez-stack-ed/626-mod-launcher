@@ -46,9 +46,9 @@ public static class ManifestValidator
             // The same gate for every extra tree (B4), but it drops the TREE, not the entry: these are
             // descriptive, and rejecting the whole entry over one bad tree would throw away its ban-risk,
             // store-id and modPath corrections with it. An unsafe tree is simply never read.
-            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeExtraTree(t)))
+            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeExtraTree(t, g.ModPath)))
             {
-                var safe = trees.Where(IsSafeExtraTree).ToList();
+                var safe = trees.Where(t => IsSafeExtraTree(t, g.ModPath)).ToList();
                 kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
                 continue;
             }
@@ -153,15 +153,26 @@ public static class ManifestValidator
 
     /// <summary>
     /// Whether an <see cref="GameManifestEntry.ExtraModTrees"/> entry may be read (B4). It must pass the
-    /// same check as <c>modPath</c> and also name a folder BELOW the game root. "." or "./" pass the
-    /// relative-path check, but they would make the root itself a mod tree, so a mod named "bin" or
-    /// "r6" would be told it "also has files in ." The miner refuses a curated file that breaks this
+    /// same check as <c>modPath</c> and also name a folder BELOW the game root that is not the entry's
+    /// own <paramref name="modPath"/> or a folder above it. "." would make the root a mod tree, and
+    /// "archive" above "archive/pc/mod" would list "pc" as a mod's other home: a mod named "bin" or
+    /// "pc" would be told it "also has files" there. The miner refuses a curated file that breaks this
     /// rule, and a launcher reading the feed drops the tree.
     /// </summary>
-    public static bool IsSafeExtraTree(string? path)
-        => path is not null
-           && IsSafeRelativePath(path)
-           && path.Split('/', '\\').Any(s => s.Length > 0 && s != ".");
+    public static bool IsSafeExtraTree(string? tree, string? modPath = null)
+    {
+        if (tree is null || !IsSafeRelativePath(tree)) return false;
+        var t = NormalizeRelative(tree);
+        if (t.Length == 0) return false;                                  // ".", "./", "/" and the like
+        if (modPath is null) return true;
+        var m = NormalizeRelative(modPath);
+        return !(m.Equals(t, StringComparison.OrdinalIgnoreCase)
+                 || m.StartsWith(t + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>A relative path as its real segments joined by '/': no empty or "." segments.</summary>
+    private static string NormalizeRelative(string path)
+        => string.Join('/', path.Split('/', '\\').Where(s => s.Length > 0 && s != "."));
 
     private static bool IsSafeRelativePath(string path)
     {

@@ -29,7 +29,7 @@ also put files, beside `modPath`. For example, Cyberpunk 2077:
 The launcher only SHOWS which of these trees hold an entry at their top level named exactly like a
 mod. It still turns mods on and off in `modPath` alone (B4,
 `docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`). Each path must be a folder below the
-game root: relative, no drive letter, no `..`, and not `.` itself. A launcher reading the feed drops a
+game root: relative, no drive letter, no `..`, not `.` itself, and not `modPath` or a folder above it. A launcher reading the feed drops a
 bad tree and keeps the rest of the entry, but this build REFUSES a curated file that has one, so a typo
 can't vanish from the signed feed unnoticed.
 

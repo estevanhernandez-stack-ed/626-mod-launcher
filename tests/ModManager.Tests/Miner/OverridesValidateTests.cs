@@ -156,11 +156,21 @@ public class OverridesValidateTests
     }
 
     [Fact]
+    public void A_curated_extra_tree_above_its_modPath_fails_the_build()
+    {
+        var entry = E(id: "cyberpunk-2077", steam: "1091500", path: "cyberpunk-2077.json")
+            with { ModPath = "archive/pc/mod", ExtraModTrees = new[] { "archive" } };
+
+        Assert.Contains("'archive'", Assert.Single(OverridesValidate.Check(new[] { entry })).Message);
+    }
+
+    [Fact]
     public void Curated_extra_trees_below_the_game_root_pass()
         => Assert.Empty(OverridesValidate.Check(new[]
         {
             E(id: "cyberpunk-2077", steam: "1091500") with
             {
+                ModPath = "archive/pc/mod",
                 ExtraModTrees = new[] { "r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods" },
             },
         }));

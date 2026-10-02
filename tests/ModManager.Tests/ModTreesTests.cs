@@ -146,6 +146,23 @@ public class ModTreesTests : IDisposable
         Assert.Empty(result.RejectedEntries);
     }
 
+    // Review on 626-game-manifest#27: a tree above modPath lists modPath's own parents as mods.
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("archive/pc")]
+    [InlineData("Archive\\PC\\mod\\")]
+    public void A_tree_that_is_or_holds_the_entrys_modPath_is_dropped(string tree)
+    {
+        var manifest = new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "cp", Name = "CP", Engine = "custom", ModPath = "archive/pc/mod", ExtraModTrees = new[] { tree, "r6/scripts", "archived" } } },
+        };
+
+        // "archived" only shares a prefix with "archive": it is a sibling, not a parent, and stays.
+        Assert.Equal(new[] { "r6/scripts", "archived" },
+            Assert.Single(ManifestValidator.Validate(manifest, EnginePresets.Presets.Keys.ToHashSet()).Manifest.Games).ExtraModTrees);
+    }
+
     [Fact]
     public void An_entry_whose_only_tree_is_unsafe_keeps_none()
     {
