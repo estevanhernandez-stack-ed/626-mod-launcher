@@ -57,10 +57,37 @@ re-detected.
 - `turnedOffByClear: []` is a vanilla game with nothing to turn off.
 
 The held files stay where every turn-off puts them, in the game's data dir (`disabled/`,
-`disabled-trees/`, `direct-disabled/`, `loose-disabled/`, or the play folder's `_626\vanilla-proxy`).
-They are not copied into the restore point. Safe Clear never deletes the data dir, and leaves its
-`RESTORE-AVAILABLE.json` breadcrumb there; a game re-added without a restore shows those mods as
-turned off, which is true. The sheet names the data dir so nobody tidies it away.
+`disabled-trees/`, `direct-disabled/`, `loose-disabled/`, or the play folder's `_626anilla-proxy`).
+Safe Clear never deletes the data dir, and leaves its `RESTORE-AVAILABLE.json` breadcrumb there; a game
+re-added without a restore shows those mods as turned off, which is true.
+
+### The restore point carries a copy (round 1, Este's call)
+
+The data folder is not the only copy. After each vanilla game's turn-offs, every turned-off mod's
+data-dir holding folders (`disabled/<HoldingName>`, `disabled-trees/<HoldingName>`, and the
+direct-inject / loose-root holding folders) are **copied** into the restore point under
+`games/<id>/held/<path relative to the data dir>`, each file size-verified, and recorded per game as
+`heldCopies: [{ name, files: [{ rel, bytes, sha256 }] }]`. Copy, not move: the toggle's own holding
+stays exactly as the toggle left it. A proxy loader is held inside the play folder and a Mod Engine 2
+mod is a config flip, so neither has anything in the data dir to copy. Pre-flight free space counts the
+turned-off mods' main files (extra-tree entries are not estimated, so it runs a little low on a
+Cyberpunk-shaped game).
+
+**How it fits the seal.** The capture seal stays where Law A puts it, before anything moves. Planning the
+held set during capture and sealing after the copy would have moved the seal past the turn-offs, which
+is the one thing Law A forbids. Instead, after a game's turn-offs and copy finish, the manifest is
+rewritten atomically with `heldCopies` (and `turnOffSkipped`) added for that game, plus the copied bytes
+in `totalBytes` / `fileCount`. The rewrite happens only once every copy for the game has finished and
+verified, so a non-null `heldCopies` always describes a complete copy. The manifest only ever describes
+what is in the archive.
+
+**A crash between the turn-offs and the copy** leaves `heldCopies: null` for that game, possibly a
+half-written `held/` folder the manifest does not mention, and the safe-clear lock. Nothing is lost: the
+mods are still held in the data folder. Startup recovery sees a sealed point and offers resume or
+restore, as before. Restore reads `heldCopies: null` as "no copy" and turns the mods on from the data
+folder. If the data folder is also gone, those mods are reported as not back on rather than restore
+claiming success. A copy that fails outright (disk full) removes its own half-made `held/` folder,
+records no `heldCopies`, and warns that the data folder is the only copy.
 
 Any turn-off that does not take is recorded after MUTATE as `turnOffSkipped` (`{ name, reason }`), by an
 atomic rewrite of the already-sealed manifest. It is a note, not part of the seal: if that rewrite fails,
@@ -85,7 +112,19 @@ with "update the launcher" is the honest answer. v1 manifests restore unchanged.
 
 After `ReplayGame` copies the data dir back, returns the `vanilla-moved` files, restores framework files
 and re-applies loader manifests, it turns the recorded set back on through `ModToggle`: loader rows
-first, then ordinary rows, minus anything in `turnOffSkipped` (it never went off). Then one listing
+first, then ordinary rows, minus anything in `turnOffSkipped` (it never went off).
+
+For each mod with a `heldCopies` record: if every recorded file is still in the data folder, it is
+turned on from there as before. If any is missing, the archived copy goes back into the data folder's
+holding first, in the same `HoldingName` layout. Every archived file is checked against its SHA-256
+before anything is written, each destination is PathGate-checked against the data dir, only missing
+files are written (never over one the data folder still has), and each is verified after the write.
+Then the mod is turned on through the toggle path like any other. A damaged or incomplete copy refuses
+that mod alone: nothing is written for it, it is reported, and the others continue.
+
+Vanilla's turn-offs and Restore's turn-ons each run through one `Scanner.BulkScope` (#382), so a large
+library pays a constant number of mod-list and extra-tree reads, not one per mod. Still one lane
+chooser: `ModToggle`'s dispatch, with the scope handed to the scanner's lane only. Then one listing
 reconciles: any recorded mod not on comes back as a warning with the lane's reason when it gave one,
 the same way `modsActive` surfaces an `EnableOutcome` skip.
 
@@ -99,8 +138,10 @@ the copy-back.
 ## The sheet
 
 For a vanilla game with the new record, the sheet gains a *Mods turned off* section: how many mods 626
-turned off and is holding in the named data folder, that the folder must not be deleted, and that
-restoring this setup turns exactly those back on. Each skipped turn-off is listed with its reason as
+turned off and is holding in the named data folder, and that restoring this setup turns exactly those
+back on. With `heldCopies` the sheet adds that copies are saved in the restore point too, so Restore
+works from the folder or, if it is gone, from the restore point. There is no "don't delete". Without a
+copy it says, more softly, to keep that folder until restoring, because then it is the only copy. Each skipped turn-off is listed with its reason as
 still active. *Return-to-vanilla honesty* in the phase-1 spec is updated to match.
 
 ## What does not change

@@ -137,6 +137,39 @@ public class RestorePointManifestTests : IDisposable
     }
 
     [Fact]
+    public void Held_copy_record_round_trips_as_camelCase()
+    {
+        Directory.CreateDirectory(_tmp);
+        var m = Sample(complete: true);
+        m = m with
+        {
+            Games = new[]
+            {
+                m.Games[0] with
+                {
+                    HeldCopies = new[] { new HeldCopy("CoolMod", new[] { new MovedFile("disabled/CoolMod/CoolMod.pak", 4, "ABCD") }) },
+                },
+            },
+        };
+        RestorePointManifestStore.WriteSealed(_tmp, m);
+        var json = File.ReadAllText(Path.Combine(_tmp, RestorePointManifestStore.FileName));
+
+        Assert.Contains("\"heldCopies\"", json);
+        Assert.Contains("\"files\"", json);
+        Assert.Contains("\"sha256\"", json);
+        Assert.DoesNotContain("\"HeldCopies\"", json);
+        Assert.DoesNotContain("\"Files\"", json);
+        Assert.DoesNotContain("\"Sha256\"", json);
+
+        var h = Assert.Single(RestorePointManifestStore.Read(_tmp)!.Games[0].HeldCopies!);
+        Assert.Equal("CoolMod", h.Name);
+        var f = Assert.Single(h.Files);
+        Assert.Equal("disabled/CoolMod/CoolMod.pak", f.Rel);
+        Assert.Equal(4, f.Bytes);
+        Assert.Equal("ABCD", f.Sha256);
+    }
+
+    [Fact]
     public void A_manifest_written_before_the_turn_off_record_reads_it_as_null()
     {
         Directory.CreateDirectory(_tmp);

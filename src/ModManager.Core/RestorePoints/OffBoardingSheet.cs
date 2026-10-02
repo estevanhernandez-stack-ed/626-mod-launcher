@@ -44,10 +44,14 @@ public static class OffBoardingSheet
             if (r.TurnedOffCount > 0)
             {
                 var mods = r.TurnedOffCount == 1 ? "1 mod" : $"{r.TurnedOffCount} mods";
-                sb.AppendLine($"  626 turned off {mods} and is holding {(r.TurnedOffCount == 1 ? "it" : "them")} in its data folder:");
+                var them = r.TurnedOffCount == 1 ? "it" : "them";
+                sb.AppendLine($"  626 turned off {mods} and is holding {them} in its data folder:");
                 if (!string.IsNullOrEmpty(r.HeldInDataDir)) sb.AppendLine("    " + r.HeldInDataDir);
-                sb.AppendLine("  Don't delete that folder. Restoring this setup turns exactly "
-                    + (r.TurnedOffCount == 1 ? "that 1 back on." : $"those {r.TurnedOffCount} back on."));
+                var back = r.TurnedOffCount == 1 ? "that 1 back on" : $"those {r.TurnedOffCount} back on";
+                sb.AppendLine(r.TurnedOffModsCopied
+                    ? $"  Copies of {them} are saved in your restore point too. Restoring this setup turns exactly {back}, "
+                      + "from that folder or, if it's gone, from the restore point."
+                    : $"  Keep that folder until you restore: it is where they are. Restoring this setup turns exactly {back}.");
             }
             foreach (var s in skips)
                 sb.AppendLine($"  {s.Name} is still active: 626 couldn't turn it off. {s.Reason}");

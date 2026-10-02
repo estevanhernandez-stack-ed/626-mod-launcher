@@ -104,11 +104,29 @@ public class OffBoardingSheetTests
         Assert.Contains("MODS TURNED OFF", s);
         Assert.Contains("turned off 12 mods", s);
         Assert.Contains(@"D:\SteamLibrary\_626mods\elden-ring", s);
-        Assert.Contains("don't delete", s, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("turns exactly those 12 back on", s);
+        // Without a copy in the restore point the data folder is the only copy, and the sheet says to keep it.
+        Assert.Contains("keep that folder", s, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("StubbornMod", s);
         Assert.Contains("still active", s);
         Assert.Contains("an earlier turned-off copy of it is already held", s);
+    }
+
+    [Fact]
+    public void Render_says_the_restore_point_holds_copies_when_it_does_and_never_says_dont_delete()
+    {
+        var r = Report() with
+        {
+            TurnedOffCount = 3,
+            HeldInDataDir = @"D:\SteamLibrary\_626mods\elden-ring",
+            TurnedOffModsCopied = true,
+        };
+        var s = OffBoardingSheet.Render(r);
+
+        Assert.Contains("copies of them are saved in your restore point", s, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("turns exactly those 3 back on", s);
+        Assert.DoesNotContain("don't delete", s, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("keep that folder", s, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

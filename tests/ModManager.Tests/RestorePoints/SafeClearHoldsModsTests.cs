@@ -259,7 +259,7 @@ public class SafeClearHoldsModsTests : IDisposable
         RestorePointManifestStore.WriteSealed(RpDir, m with
         {
             SchemaVersion = 1,
-            Games = m.Games.Select(g => g with { TurnedOffByClear = null, TurnOffSkipped = null }).ToList(),
+            Games = m.Games.Select(g => g with { TurnedOffByClear = null, TurnOffSkipped = null, HeldCopies = null }).ToList(),
         });
         Assert.DoesNotContain("turnedOffByClear\": [", File.ReadAllText(Path.Combine(RpDir, RestorePointManifestStore.FileName)));
 
@@ -366,5 +366,121 @@ public class SafeClearHoldsModsTests : IDisposable
         Assert.True(r.Ok);
         Assert.Equal("ALPHA", File.ReadAllText(Path.Combine(p.ContextFor(pak).DisabledRoot, "alpha", "alpha.pak")));
         Assert.Contains(ModListing.Resolve(pak), x => x.Name == "alpha" && !x.Enabled);
+    }
+
+    // ---- Round 1: the restore point carries a copy of every mod vanilla turned off ----
+
+    private static void DeleteHoldings(GameContext c)
+    {
+        foreach (var d in new[] { c.DisabledRoot, Path.Combine(c.DataDir, "disabled-trees") })
+            if (Directory.Exists(d)) Directory.Delete(d, recursive: true);
+    }
+
+    [Fact]
+    public async Task Vanilla_copies_each_turned_off_mods_held_folders_into_the_restore_point_with_checksums()
+    {
+        var (p, pak, tree, _) = await ThreeGamesAsync();
+        Assert.True((await Make(p).SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+
+        var m = RestorePointManifestStore.Read(RpDir)!;
+        Assert.True(RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion).Ok);
+
+        var alpha = Assert.Single(Archive(m, "pak").HeldCopies!);
+        Assert.Equal("alpha", alpha.Name);
+        Assert.Contains(alpha.Files, f => f.Rel.Replace('\\', '/') == "disabled/alpha/alpha.pak");
+        // The copy is the held folder as a whole, its record included, so it can go back exactly as it was.
+        Assert.Contains(alpha.Files, f => f.Rel.Replace('\\', '/') == "disabled/alpha/meta.json");
+
+        var cool = Assert.Single(Archive(m, "tree").HeldCopies!);
+        Assert.Contains(cool.Files, f => f.Rel.Replace('\\', '/') == "disabled-trees/CoolMod/r6/scripts/CoolMod/main.reds");
+        Assert.Contains(cool.Files, f => f.Rel.Replace('\\', '/') == "disabled-trees/CoolMod/r6/tweaks/CoolMod.yaml");
+
+        // Every recorded file is in the archive, byte for byte what is held.
+        foreach (var (id, ga) in new[] { ("pak", Archive(m, "pak")), ("tree", Archive(m, "tree")) })
+            foreach (var f in ga.HeldCopies!.SelectMany(h => h.Files))
+            {
+                var archived = Path.Combine(RpDir, "games", id, "held", f.Rel);
+                Assert.True(File.Exists(archived), archived);
+                Assert.Equal(f.Sha256, FileTally.Sha256(archived), ignoreCase: true);
+                Assert.Equal(f.Sha256, FileTally.Sha256(Path.Combine(ga.DataDir!, f.Rel)), ignoreCase: true);
+            }
+        // The pre-clear held mod is the data-dir capture's, not a held copy.
+        Assert.DoesNotContain(Archive(m, "pak").HeldCopies!, h => h.Name == "offmod");
+    }
+
+    [Fact]
+    public async Task Restore_after_the_data_folder_holdings_were_deleted_brings_every_mod_back_byte_identical()
+    {
+        var (p, pak, tree, di) = await ThreeGamesAsync();
+        var before = new[] { pak, tree, di }.ToDictionary(g => g.Id, g => Snapshot(g.GameRoot));
+        var orch = Make(p);
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+
+        DeleteHoldings(p.ContextFor(pak));
+        DeleteHoldings(p.ContextFor(tree));
+
+        var restore = await orch.RestoreAsync(Ts, default);
+
+        Assert.True(restore.Ok, restore.RefusedReason);
+        Assert.Empty(restore.Warnings);
+        foreach (var g in new[] { pak, tree, di }) AssertSameTree(before[g.Id], g.GameRoot);
+        // The mod that was off before the clear came back off, from the data-dir capture.
+        Assert.Equal("OFF", File.ReadAllText(Path.Combine(p.ContextFor(pak).DisabledRoot, "offmod", "offmod.pak")));
+    }
+
+    [Fact]
+    public async Task A_damaged_archived_copy_is_refused_for_that_mod_reported_and_the_others_continue()
+    {
+        var (p, pak, tree, _) = await ThreeGamesAsync();
+        var orch = Make(p);
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+        File.WriteAllText(Path.Combine(RpDir, "games", "pak", "held", "disabled", "alpha", "alpha.pak"), "TAMPERED");
+        DeleteHoldings(p.ContextFor(pak));
+        DeleteHoldings(p.ContextFor(tree));
+
+        var restore = await orch.RestoreAsync(Ts, default);
+
+        Assert.True(restore.Ok);
+        Assert.Contains(restore.Warnings, w => w.Contains("alpha") && w.Contains("checksum", StringComparison.OrdinalIgnoreCase));
+        // Nothing of alpha was put anywhere: not in the game, not in holding.
+        Assert.False(File.Exists(Path.Combine(pak.GameRoot, "mods", "alpha.pak")));
+        Assert.False(Directory.Exists(Path.Combine(p.ContextFor(pak).DisabledRoot, "alpha")));
+        // The other game's mod came back whole.
+        Assert.Equal("MAIN", File.ReadAllText(Path.Combine(tree.GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(tree.GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+    }
+
+    [Fact]
+    public async Task A_crash_before_the_copy_was_recorded_restores_from_the_data_folder()
+    {
+        // Turn-offs done, copy never recorded (heldCopies null): the mods are still in the data folder.
+        var (p, pak, tree, di) = await ThreeGamesAsync();
+        var before = new[] { pak, tree, di }.ToDictionary(g => g.Id, g => Snapshot(g.GameRoot));
+        var orch = Make(p);
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+        var m = RestorePointManifestStore.Read(RpDir)!;
+        RestorePointManifestStore.WriteSealed(RpDir, m with { Games = m.Games.Select(g => g with { HeldCopies = null }).ToList() });
+
+        var restore = await orch.RestoreAsync(Ts, default);
+
+        Assert.True(restore.Ok);
+        Assert.Empty(restore.Warnings);
+        foreach (var g in new[] { pak, tree, di }) AssertSameTree(before[g.Id], g.GameRoot);
+    }
+
+    [Fact]
+    public async Task A_crash_before_the_copy_with_the_data_folder_gone_says_so_instead_of_claiming_success()
+    {
+        var (p, pak, _, _) = await ThreeGamesAsync();
+        var orch = Make(p);
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+        var m = RestorePointManifestStore.Read(RpDir)!;
+        RestorePointManifestStore.WriteSealed(RpDir, m with { Games = m.Games.Select(g => g with { HeldCopies = null }).ToList() });
+        DeleteHoldings(p.ContextFor(pak));
+
+        var restore = await orch.RestoreAsync(Ts, default);
+
+        Assert.True(restore.Ok);
+        Assert.Contains(restore.Warnings, w => w.Contains("alpha"));
     }
 }

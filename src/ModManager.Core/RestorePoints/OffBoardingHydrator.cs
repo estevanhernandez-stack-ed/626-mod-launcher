@@ -18,7 +18,8 @@ public static class OffBoardingHydrator
             SaveBackupCount: ga.SaveBackupCount,
             TurnedOffCount: TurnedOffCount(ga),
             HeldInDataDir: ga.TurnedOffByClear is null ? null : ga.DataDir,
-            TurnOffSkips: ga.TurnOffSkipped);
+            TurnOffSkips: ga.TurnOffSkipped,
+            TurnedOffModsCopied: ga.HeldCopies is not null);
 
     // What actually went off: the sealed set minus the turn-offs that refused (those are still active).
     private static int TurnedOffCount(GameArchive ga)

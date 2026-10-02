@@ -50,7 +50,16 @@ public sealed record GameArchive(
     // rewrite of the sealed manifest: a note for the sheet and for Restore, never part of the seal.
     IReadOnlyList<ClearSkip>? TurnOffSkipped = null,
     // The game's data dir at clear time: where the turned-off mods are held. Named on the sheet.
-    string? DataDir = null);
+    string? DataDir = null,
+    // Vanilla only: a copy, inside this restore point (games/<id>/held/<rel>), of every data-dir holding
+    // folder the turn-offs filled, each file with its size + SHA-256. Rel is relative to the data dir. Written
+    // after MUTATE by an atomic rewrite, and only once every copy for the game has finished and verified, so
+    // a non-null list always describes a complete copy. Null = not copied (an older manifest, a clear that
+    // died before the copy was recorded, or a copy that failed): Restore turns mods on from the data folder.
+    IReadOnlyList<HeldCopy>? HeldCopies = null);
+
+/// <summary>The archived copy of one turned-off mod's data-dir holding folders.</summary>
+public sealed record HeldCopy(string Name, IReadOnlyList<MovedFile> Files);
 
 /// <summary>A framework whose install state was captured before any uninstall. CapturedStateRel is
 /// the archive-relative folder holding the captured installed files (with live config edits).</summary>

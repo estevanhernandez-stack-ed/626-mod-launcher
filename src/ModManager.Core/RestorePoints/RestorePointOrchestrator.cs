@@ -66,7 +66,14 @@ public sealed class RestorePointOrchestrator
             if (opts.CreateRestorePoint)
             {
                 long payload = TopLevelBytes();
-                foreach (var g in games) payload += FileTally.ByteSize(_provider.ContextFor(g).DataDir);
+                foreach (var g in games)
+                {
+                    var ctx = _provider.ContextFor(g);
+                    payload += FileTally.ByteSize(ctx.DataDir);
+                    // Vanilla copies every mod it turns off into the restore point: count them up front.
+                    if (string.Equals(EndStateFor(g.Id, opts), "vanilla", StringComparison.OrdinalIgnoreCase))
+                        payload += RestorePointEngine.EstimateTurnOffBytes(ctx);
+                }
                 var space = SpaceCheck.Require(_restorePointsRoot, payload);
                 if (!space.Ok)
                     return new SafeClearResult(false,
@@ -143,38 +150,51 @@ public sealed class RestorePointOrchestrator
             // (recoverable manually); ListRestorePoints shows only sealed points.
             // A turn-off that refuses (a held earlier copy, a locked file) does not abort: that mod stays as it
             // was, the rest carry on, and the skip is recorded below and returned as a warning.
-            var skipsByGame = new Dictionary<string, IReadOnlyList<ClearSkip>>();
+            // After each vanilla game's turn-offs, its held mods are COPIED into the restore point and the
+            // manifest is rewritten (atomically) to describe them: turnOffSkipped and heldCopies are appended
+            // to the already-sealed manifest. The seal stays where Law A puts it, before anything moved; this
+            // second write only ever adds a description of files that are already in the archive and verified.
+            // A crash before it leaves heldCopies null, the mods still held in the data folder, and Restore
+            // turns them on from there. A failed copy is a warning, never an abort: the mods are still held.
+            var current = sealedManifest;
             foreach (var g in games)
             {
                 var ctx = _provider.ContextFor(g);
-                var end = RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id),
+                var gameArchiveDir = Path.Combine(rpDir, "games", g.Id);
+                var end = RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), gameArchiveDir,
                     plannedByGame.TryGetValue(g.Id, out var pm) ? pm : null,
                     turnOffsByGame.TryGetValue(g.Id, out var to) ? to : null);
-                if (end.TurnOffSkips.Count > 0)
+                foreach (var s in end.TurnOffSkips)
+                    warnings.Add($"{g.GameName}: \"{s.Name}\" is still active: {s.Reason}");
+
+                if (current is not null && to is { Count: > 0 })
                 {
-                    skipsByGame[g.Id] = end.TurnOffSkips;
-                    foreach (var s in end.TurnOffSkips)
-                        warnings.Add($"{g.GameName}: \"{s.Name}\" is still active: {s.Reason}");
+                    IReadOnlyList<HeldCopy>? copies = null;
+                    try { copies = RestorePointEngine.CopyHeldIntoArchive(ctx, to, end.TurnOffSkips, gameArchiveDir); }
+                    catch (Exception e)
+                    {
+                        // The half-made copy is the launcher's own, inside its own archive: it goes, so the
+                        // restore point holds only what its manifest describes.
+                        try { var held = Path.Combine(gameArchiveDir, RestorePointEngine.HeldDirName); if (Directory.Exists(held)) Directory.Delete(held, recursive: true); } catch { }
+                        warnings.Add($"{g.GameName}: the turned-off mods couldn't be copied into the restore point ({e.Message}). "
+                            + $"They are still held in {ctx.DataDir}; keep that folder until you restore.");
+                    }
+                    var heldFiles = copies?.SelectMany(h => h.Files).ToList() ?? new List<MovedFile>();
+                    var next = current with
+                    {
+                        TotalBytes = current.TotalBytes + heldFiles.Sum(f => f.Bytes),
+                        FileCount = current.FileCount + heldFiles.Count,
+                        Games = current.Games.Select(ga => ga.Id != g.Id ? ga : ga with
+                        {
+                            TurnOffSkipped = end.TurnOffSkips.Count > 0 ? end.TurnOffSkips : null,
+                            HeldCopies = copies,
+                        }).ToList(),
+                    };
+                    try { RestorePointManifestStore.WriteSealed(rpDir, next); current = next; }
+                    catch { /* best effort: the sealed manifest still restores from the data folder */ }
                 }
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, SheetFileName));
-            }
-
-            // Note the refusals on the sealed manifest, for the sheet and so Restore doesn't try to turn on a
-            // mod that never went off. An atomic rewrite of an already-complete manifest: a note, not part of
-            // the seal. If it fails, the sealed manifest still restores (Restore judges by the final listing).
-            if (sealedManifest is not null && skipsByGame.Count > 0)
-            {
-                try
-                {
-                    RestorePointManifestStore.WriteSealed(rpDir, sealedManifest with
-                    {
-                        Games = sealedManifest.Games
-                            .Select(ga => skipsByGame.TryGetValue(ga.Id, out var sk) ? ga with { TurnOffSkipped = sk } : ga)
-                            .ToList(),
-                    });
-                }
-                catch { /* best effort: the warnings above still name every skip */ }
             }
 
             // RESET — delete top-level launcher state (archived); nexus only if not keeping it.

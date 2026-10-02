@@ -20,7 +20,10 @@ public sealed record OffBoardingReport(
     // the ones whose turn-off refused (still active). Zero / null renders no section (an older archive).
     int TurnedOffCount = 0,
     string? HeldInDataDir = null,
-    IReadOnlyList<ClearSkip>? TurnOffSkips = null);
+    IReadOnlyList<ClearSkip>? TurnOffSkips = null,
+    // True when the restore point carries copies of the turned-off mods (heldCopies), so the data folder is
+    // no longer the only copy and the sheet need not ask the user to keep it.
+    bool TurnedOffModsCopied = false);
 
 public sealed record OffBoardingOwnedMod(string Name, string ManagedBy);
 
