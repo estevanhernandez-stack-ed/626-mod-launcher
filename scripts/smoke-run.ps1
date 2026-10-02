@@ -61,6 +61,10 @@ function Case {
         $status = 'FAIL'; $detail = $_.Exception.Message
     }
     try { Save-Shot -Path $shot | Out-Null } catch { $shot = '' }
+    # The last state the harness itself is answerable for. Every case drives the app, and the app
+    # writes games.json (activeGameId, fixture registrations), so "after the last case" is the
+    # harness's last own write. The end-of-run restore refuses to overwrite anything newer.
+    if ($null -ne $script:GamesSnapshot) { $script:GamesHashAfterHarness = Get-GamesJsonHash }
     $script:Results.Add([pscustomobject]@{
         Case = $Id; Section = $Section; Status = $status; Detail = "$detail"; Shot = (Split-Path $shot -Leaf)
     })
@@ -108,9 +112,18 @@ Start-Sleep -Seconds 2
 $gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
 $fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating')
 $script:GamesSnapshot = $null
+$script:GamesHashAfterHarness = $null
+$gamesSnapshotPath = Join-Path $OutDir 'games.json.run-start'
+function Get-GamesJsonHash {
+    try { [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData([System.IO.File]::ReadAllBytes($gamesJson))) }
+    catch { $null }
+}
 if ((-not $Only -or @($Only | Where-Object { $fixtureCases -contains $_ }).Count -gt 0) -and (Test-Path -LiteralPath $gamesJson)) {
     $script:GamesSnapshot = [System.IO.File]::ReadAllBytes($gamesJson)
-    Write-Host "  games.json snapshotted ($($script:GamesSnapshot.Length) bytes); restored at the end of the run" -ForegroundColor DarkGray
+    # Also on disk, so a refused restore below still leaves the user a copy to put back by hand.
+    [System.IO.File]::WriteAllBytes($gamesSnapshotPath, $script:GamesSnapshot)
+    $script:GamesHashAfterHarness = Get-GamesJsonHash
+    Write-Host "  games.json snapshotted to $gamesSnapshotPath; restored at the end of the run" -ForegroundColor DarkGray
 }
 
 # Closed by the finally just before the report. A try block is not a new scope in PowerShell, so the
@@ -1170,12 +1183,20 @@ finally {
         Start-Sleep -Seconds 2   # let the app's last write land before it is overwritten
         $want = [System.BitConverter]::ToString(
             [System.Security.Cryptography.SHA256]::HashData($script:GamesSnapshot))
+        $now = Get-GamesJsonHash
         try {
-            [System.IO.File]::WriteAllBytes($gamesJson, $script:GamesSnapshot)
-            $got = [System.BitConverter]::ToString(
-                [System.Security.Cryptography.SHA256]::HashData([System.IO.File]::ReadAllBytes($gamesJson)))
-            if ($got -eq $want) { Write-Host '  games.json restored byte-identical to the run-start snapshot' -ForegroundColor Green }
-            else { Write-Host '  !! games.json restore did NOT match the snapshot - check it by hand' -ForegroundColor Red }
+            # Someone else changed games.json after the harness's last own write (the user, another
+            # tool, another launcher instance). Overwriting would destroy their change, so leave it.
+            if ($now -ne $script:GamesHashAfterHarness -and $now -ne $want) {
+                # Not `return`: at script level that would end the run before the report.
+                Write-Host "  !! games.json changed outside the harness during the run - NOT restored. The run-start copy is $gamesSnapshotPath" -ForegroundColor Red
+            }
+            else {
+                [System.IO.File]::WriteAllBytes($gamesJson, $script:GamesSnapshot)
+                $got = Get-GamesJsonHash
+                if ($got -eq $want) { Write-Host '  games.json restored byte-identical to the run-start snapshot' -ForegroundColor Green }
+                else { Write-Host "  !! games.json restore did NOT match the snapshot - check it by hand against $gamesSnapshotPath" -ForegroundColor Red }
+            }
         }
         catch { Write-Host "  !! games.json could not be restored: $($_.Exception.Message)" -ForegroundColor Red }
     }

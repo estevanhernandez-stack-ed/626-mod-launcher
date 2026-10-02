@@ -93,7 +93,7 @@ public sealed record GameShape
     /// something the registration says, so its absence is not a registration defect — and the banner's
     /// only action is a dialog that edits the registration, which could not fix it.</para>
     /// </summary>
-    public bool NeedsAttention => Attention(ModCount, DeclaredLocations);
+    public bool NeedsAttention => Attention(ModCount, DeclaredLocations, GameRoot);
 
     /// <summary>
     /// The same predicate as <see cref="NeedsAttention"/>, for a caller that already has the context
@@ -107,14 +107,21 @@ public sealed record GameShape
     /// that line.</para>
     /// </summary>
     public static bool NeedsAttentionFor(GameContext ctx, int modCount)
-        => Attention(modCount, DeclaredFor(ctx));
+        => Attention(modCount, DeclaredFor(ctx), ctx.GameRoot);
 
     /// <summary>The one predicate. A location the game's DEFINITION corrected
     /// (<see cref="DeclaredLocation.CorrectedFrom"/> set) is skipped: its path is the definition's, not
     /// one the user chose, and a definition's folder that is not on disk means "not started", not
-    /// "broken" (Este, 2026-08-18, recorded in ModFolderSeed). It stays declared everywhere else.</summary>
-    private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared)
-        => modCount == 0 && declared.Any(d => d.Declared && d.CorrectedFrom is null && !d.Exists);
+    /// "broken" (Este, 2026-08-18, recorded in ModFolderSeed). It stays declared everywhere else.
+    /// "Not started" needs a game to have started on, though: with the game folder itself missing or
+    /// wrong, a corrected location counts again, so the chip still leads to the dialog that fixes the
+    /// folder.</summary>
+    private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared, string gameRoot)
+    {
+        if (modCount != 0) return false;
+        var rootThere = !string.IsNullOrEmpty(gameRoot) && Directory.Exists(gameRoot);
+        return declared.Any(d => d.Declared && !d.Exists && (d.CorrectedFrom is null || !rootThere));
+    }
 
     /// <summary>
     /// The locations the scanner will actually look in, each tagged with whether the REGISTRATION
@@ -370,19 +377,19 @@ public sealed record GameShape
     /// "file" IS a directory (UE4SS Lua mods, REFramework script folders) and checking only for a
     /// file would erase every one of them from the shape report. Any IO failure counts as absent:
     /// a path we cannot read is not a path we can claim content for.</summary>
+    private static bool Exists(string? abs)
+    {
+        if (string.IsNullOrEmpty(abs)) return false;
+        try { return File.Exists(abs) || Directory.Exists(abs); }
+        catch { return false; }
+    }
+
     /// <summary>Files anywhere under a folder; zero when it is absent or cannot be read.</summary>
     private static int FileCountUnder(string? dir)
     {
         if (string.IsNullOrEmpty(dir)) return 0;
         try { return Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Count() : 0; }
         catch { return 0; }
-    }
-
-    private static bool Exists(string? abs)
-    {
-        if (string.IsNullOrEmpty(abs)) return false;
-        try { return File.Exists(abs) || Directory.Exists(abs); }
-        catch { return false; }
     }
 
     private static string Norm(string? p)

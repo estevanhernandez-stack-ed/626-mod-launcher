@@ -107,6 +107,24 @@ public class GameShapeCorrectedPathTests : IDisposable
                                           && n.Contains("corrected it from 'mods'", StringComparison.Ordinal));
     }
 
+    // "Not started" only holds when the game is actually there. With the game folder itself missing
+    // or wrong, nothing found plus a missing corrected folder is a broken registration, and the chip
+    // is the way to the dialog that fixes the game folder.
+    [Fact]
+    public void A_missing_game_folder_with_a_corrected_location_and_no_mods_needs_attention()
+    {
+        FeedSays("nativePC");
+        var root = Path.Combine(TestSupport.TempDir("shape-corrected-noroot-"), "not-here");
+        var game = Game(root);
+
+        var shape = GameShape.Of(game);
+
+        Assert.Equal("mods", Assert.Single(shape.DeclaredLocations).CorrectedFrom);
+        Assert.Equal(0, shape.ModCount);
+        Assert.True(shape.NeedsAttention);
+        Assert.True(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
+    }
+
     // The other half of the ruling: a declared path the REGISTRATION chose (nothing corrected it) that
     // is missing, with nothing found, is still the shape the chip exists for.
     [Fact]
