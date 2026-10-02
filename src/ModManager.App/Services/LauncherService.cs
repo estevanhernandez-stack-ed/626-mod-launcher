@@ -79,6 +79,15 @@ public sealed class LauncherService
         g.LastKnownSteamBuildId = buildId;
     });
 
+    /// <summary>A17. Record the game executable's write time the user checked their loaders against, so the
+    /// OLD LOADER chip stays away until a patch rewrites the executable.</summary>
+    public void SetLoaderChecked(string gameId, DateTime exeUtc) => UpdateRegistry(reg =>
+    {
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        g.LoaderCheckedExeUtc = exeUtc;
+    });
+
     /// <summary>Assemble a game entry from wizard input, persist it, and make it active.
     /// <para>An install the registry already knows about is never added twice — it is switched to instead,
     /// with <paramref name="alreadyRegistered"/> true and the existing entry returned. Without that guard a

@@ -438,6 +438,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock AutomationProperties.AutomationId="StateChipDetail" Grid.Column="0"
+                                   IsTextSelectionEnabled="True"
                                    Text="{x:Bind ViewModel.StateDetailText, Mode=OneWay}"
                                    Foreground="{x:Bind ViewModel.StateDetailAccent, Mode=OneWay}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />

@@ -83,6 +83,10 @@ public sealed class GameEntry
     // Null = no baseline yet (e.g. an old registry) = no warning.
     public string? LastKnownSteamBuildId { get; set; }
 
+    // A17. The game executable's write time the user last marked loaders as checked against. The stale-loader
+    // chip stays away until the executable is rewritten (a patch); null = never checked.
+    public DateTime? LoaderCheckedExeUtc { get; set; }
+
     // Where this game came from ("steam"|"gog"|"epic"|"xbox"|"manual"); null for older registries.
     public string? StoreSource { get; set; }
 

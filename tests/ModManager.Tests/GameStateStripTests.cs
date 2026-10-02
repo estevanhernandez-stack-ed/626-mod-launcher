@@ -35,6 +35,7 @@ public class GameStateStripTests
     [InlineData("framework-missing")]
     [InlineData("setup-drift")]
     [InlineData("steam-updated")]
+    [InlineData("stale-loader")]
     [InlineData("coop-launcher")]
     [InlineData("mp-desync")]
     [InlineData("vortex-redeployed")]
@@ -59,6 +60,7 @@ public class GameStateStripTests
             "framework-missing",
             "setup-drift",
             "steam-updated",
+            "stale-loader",
             "coop-launcher",
             "mp-desync",
             "backup-waiting",
@@ -113,6 +115,21 @@ public class GameStateStripTests
 
         Assert.False(steam.Dismissible);
         Assert.Equal("Mark as rechecked", steam.ActionLabel);
+    }
+
+    [Fact]
+    public void The_old_loader_chip_says_both_dates_and_is_marked_checked_not_dismissed()
+    {
+        // A17. Dismissing for the session would bring it back every launch; marking it checked records the
+        // executable it was checked against, so only the next patch brings it back. Below UPDATED: that one
+        // is a fact from Steam, this one an inference from file dates.
+        var chip = GameStateStrip.For(Only("stale-loader"))[0];
+
+        Assert.Equal(StaleSentence, chip.Detail);
+        Assert.Equal(GameStateSeverity.Warning, chip.Severity);
+        Assert.False(chip.Dismissible);
+        Assert.Equal("Mark as checked", chip.ActionLabel);
+        Assert.Empty(GameStateStrip.For(new GameStateConditions { StaleLoader = " " }));
     }
 
     [Fact]
@@ -206,7 +223,7 @@ public class GameStateStripTests
         foreach (var id in new[]
                  {
                      "ban-risk", "launch-options", "framework-missing", "setup-drift",
-                     "steam-updated", "coop-launcher", "mp-desync", "vortex-redeployed", "vortex-managed",
+                     "steam-updated", "stale-loader", "coop-launcher", "mp-desync", "vortex-redeployed", "vortex-managed",
                  })
         {
             var lead = GameStateStrip.LeadFor(GameStateStrip.For(Only(id)));
@@ -253,7 +270,7 @@ public class GameStateStripTests
     {
         var chips = GameStateStrip.For(Everything()).ToDictionary(c => c.Id);
 
-        foreach (var id in new[] { "setup-drift", "steam-updated", "coop-launcher", "mp-desync", "vortex-redeployed" })
+        foreach (var id in new[] { "setup-drift", "steam-updated", "stale-loader", "coop-launcher", "mp-desync", "vortex-redeployed" })
             Assert.Equal(GameStateTone.Accent, chips[id].Tone);
         Assert.Equal(GameStateTone.Quiet, chips["backup-waiting"].Tone);
         Assert.Equal(GameStateTone.Quiet, GameStateStrip.For(Only("vortex-managed"))[0].Tone);
@@ -322,6 +339,9 @@ public class GameStateStripTests
         Assert.Null(GameStateStrip.ExpandedFor(null, "steam-updated"));
     }
 
+    private const string StaleSentence =
+        "REFramework (dinput8.dll, 2025-03-10) is older than the game's executable (MonsterHunterWilds.exe, 2026-08-17).";
+
     private static GameStateConditions Everything() => new()
     {
         BanRisk = true,
@@ -329,6 +349,7 @@ public class GameStateStripTests
         MissingFrameworks = "UE4SS — loader present, runtime missing",
         SetupDrift = true,
         SteamUpdated = true,
+        StaleLoader = StaleSentence,
         CoopLauncherMissing = true,
         MpWarning = "2 enabled mods may desync co-op.",
         VortexReDeployed = true,
@@ -343,6 +364,7 @@ public class GameStateStripTests
         "framework-missing" => new GameStateConditions { MissingFrameworks = "UE4SS — loader present, runtime missing" },
         "setup-drift" => new GameStateConditions { SetupDrift = true },
         "steam-updated" => new GameStateConditions { SteamUpdated = true },
+        "stale-loader" => new GameStateConditions { StaleLoader = StaleSentence },
         "coop-launcher" => new GameStateConditions { CoopLauncherMissing = true },
         "mp-desync" => new GameStateConditions { MpWarning = "2 enabled mods may desync co-op." },
         "vortex-redeployed" => new GameStateConditions { VortexReDeployed = true },

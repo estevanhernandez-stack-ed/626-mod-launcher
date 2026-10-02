@@ -389,6 +389,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     public Visibility SteamBuildWarningVisibility => SteamBuildChanged ? Visibility.Visible : Visibility.Collapsed;
 
+    // A17. A version-locked loader older than the game's executable, not yet marked checked against it.
+    [ObservableProperty] public partial string? StaleLoaderMessage { get; set; }
+
+    // The executable write time "Mark as checked" records.
+    private DateTime? _staleLoaderExeUtc;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CoopHintVisibility))]
     public partial bool CoopLauncherMissing { get; set; }
@@ -498,6 +504,7 @@ public sealed partial class MainViewModel : ObservableObject
         SetupDrift = SetupNeedsAttention,
         SteamUpdated = SteamBuildChanged,
         SteamMessage = SteamBuildMessage,
+        StaleLoader = StaleLoaderMessage,
         CoopLauncherMissing = CoopLauncherMissing,
         MpWarning = MpRiskyEnabledCount > 0 ? MpWarningText + "." : null,
         VortexReDeployed = HasReDeployedLocations,
@@ -555,12 +562,13 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(StateStripVisibility));
     }
 
-    // The strip is derived state, so it rebuilds wherever its inputs move. These four are
+    // The strip is derived state, so it rebuilds wherever its inputs move. These five are
     // [ObservableProperty] fields; the collection-backed ones rebuild at the end of ReloadModsAsync.
     partial void OnSetupNeedsAttentionChanged(bool value) => RebuildStateChips();
     partial void OnSteamBuildChangedChanged(bool value) => RebuildStateChips();
     partial void OnLaunchNeedsAttentionChanged(bool value) => RebuildStateChips();
     partial void OnCoopLauncherMissingChanged(bool value) => RebuildStateChips();
+    partial void OnStaleLoaderMessageChanged(string? value) => RebuildStateChips();
 
     /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
     public void SetMpOverride(ModRowViewModel row, MpRisk? value)
@@ -823,6 +831,7 @@ public sealed partial class MainViewModel : ObservableObject
             ReDeployedLocations.Clear();
             SetupNeedsAttention = false; // collapse the setup banner when no game is active
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
+            StaleLoaderMessage = null;
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(HasLoaders));
@@ -1062,6 +1071,13 @@ public sealed partial class MainViewModel : ObservableObject
                     SteamBuildChanged = false;
                     break;
             }
+
+            // A17. The version-locked loaders' file dates against the game's executable. Off the UI thread:
+            // it lists the executables in every probe root, and this reload runs on every toggle.
+            var loaderCtx = _ctx;
+            var stale = await Task.Run(() => StaleLoaders.Find(loaderCtx));
+            _staleLoaderExeUtc = stale.Loaders.Count > 0 ? stale.GameExeUtc : null;
+            StaleLoaderMessage = stale.Summary(loaderCtx.Game.LoaderCheckedExeUtc);
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
                 // read as "you don't have Mod Engine 2 (you should)" — which is wrong; for a
@@ -1740,6 +1756,15 @@ public sealed partial class MainViewModel : ObservableObject
         _svc.SetSteamBuildBaseline(_ctx.Game.Id, _pendingSteamBuild);
         _ctx.Game.LastKnownSteamBuildId = _pendingSteamBuild;   // keep in-memory baseline in sync
         SteamBuildChanged = false;
+    }
+
+    [RelayCommand]
+    private void MarkLoadersChecked()
+    {
+        if (_ctx?.Game is null || _staleLoaderExeUtc is not { } exeUtc) return;
+        _svc.SetLoaderChecked(_ctx.Game.Id, exeUtc);
+        _ctx.Game.LoaderCheckedExeUtc = exeUtc;   // keep the in-memory entry in sync
+        StaleLoaderMessage = null;
     }
 
     /// <summary>Public reload hook for dialogs that change mod state (e.g. loading a profile).</summary>

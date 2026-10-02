@@ -32,12 +32,13 @@ public static class ProxyLoaderRows
     /// </summary>
     /// <summary>One recognisable loader: the proxy it ships as, plus something beside it that only
     /// this loader has. The pair is what makes the name a fact instead of a guess.</summary>
-    private sealed record KnownProxyLoader(string Proxy, string Sibling, string Name, string Author, string Url);
+    internal sealed record KnownProxyLoader(string Proxy, string Sibling, string Name, string Author, string Url);
 
     /// <summary>Loaders we can name from disk. Deliberately small: an entry earns its place by having
     /// a sibling nothing else ships. Absent from here means the row says the filename and admits it
     /// cannot say more, which is the honest answer and not a gap to be filled with a guess.</summary>
-    private static readonly IReadOnlyList<KnownProxyLoader> Known = new[]
+    // internal so StaleLoaders recognises a loader by the same proxy-plus-sibling pair it is named by here.
+    internal static readonly IReadOnlyList<KnownProxyLoader> Known = new[]
     {
         new KnownProxyLoader("dinput8.dll", "reframework", "REFramework", "praydog",
             "https://github.com/praydog/REFramework/releases"),
