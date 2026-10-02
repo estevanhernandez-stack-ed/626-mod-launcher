@@ -32,22 +32,23 @@ public sealed record UninstallPreview(IReadOnlyList<UninstallPreviewMod> Mods, I
     public bool HeldFolderUnreadable => HeldFolders.Any(h => h.Unreadable);
 
     /// <summary>
-    /// The confirm dialog's sentence about held folders, or null when nothing is held. Readable folders make
-    /// one sentence naming their trees (a family's, merged, each once), or the folder's path when its files
-    /// fit no declared tree; each unreadable folder adds a sentence naming its path.
+    /// The confirm dialog's sentences about held folders, or null when nothing is held. Readable folders with
+    /// trees make one sentence naming the trees (a family's merged, each once). A readable folder whose files
+    /// fit no declared tree gets its own sentence naming its path, never spliced into the tree list. Each
+    /// unreadable folder adds a sentence naming its path. "its"/"it" for one mod, "their"/"them" for several.
     /// </summary>
     public string? HeldSentence()
     {
+        var (its, it) = Mods.Count > 1 ? ("their", "them") : ("its", "it");
         var sentences = new List<string>();
-        var readable = HeldFolders.Where(h => !h.Unreadable).ToList();
-        if (readable.Count > 0)
-        {
-            var places = readable.SelectMany(h => h.Trees).Distinct(StringComparer.OrdinalIgnoreCase)
-                .Concat(readable.Where(h => h.Trees.Count == 0).Select(h => h.Path)).ToList();
-            sentences.Add($"626 is also holding some of its files in {string.Join(", ", places)}, and will delete those too.");
-        }
+        var trees = HeldFolders.Where(h => !h.Unreadable).SelectMany(h => h.Trees)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (trees.Count > 0)
+            sentences.Add($"626 is also holding some of {its} files in {string.Join(", ", trees)}, and will delete those too.");
+        foreach (var h in HeldFolders.Where(h => !h.Unreadable && h.Trees.Count == 0))
+            sentences.Add($"626 is also holding files for {it} in {h.Path} and will delete those too.");
         foreach (var h in HeldFolders.Where(h => h.Unreadable))
-            sentences.Add($"626 couldn't read {h.Path} to see what it's holding for it; anything there will be deleted too.");
+            sentences.Add($"626 couldn't read {h.Path} to see what it's holding for {it}; anything there will be deleted too.");
         return sentences.Count == 0 ? null : string.Join(" ", sentences);
     }
 }
@@ -108,9 +109,16 @@ public static class ModUninstall
             var dir = HeldDir(ctx, m.Name);
             try
             {
-                if (!TreeHolding.HoldsFiles(ctx, m.Name)) continue;
-                var trees = TreeHolding.Held(ctx, m.Name, ctx.ExtraModTrees)
-                    .Select(e => e.Tree).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                TreeHolding.BeforeReadForTests?.Invoke(dir);
+                if (!HeldPresent(ctx, m.Name)) continue;
+                // The same no-following rule as the delete: a link counts as something held, but nothing
+                // behind it is read, so no tree is named from a link's target.
+                if (!LinkSafeDelete.HoldsAnything(dir)) continue;
+                var trees = LinkSafeDelete.IsLink(new DirectoryInfo(dir))
+                    ? Array.Empty<string>()
+                    : TreeHolding.Held(ctx, m.Name, ctx.ExtraModTrees)
+                        .Where(e => !ThroughLink(dir, e.AbsPath))
+                        .Select(e => e.Tree).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
                 held.Add(new UninstallHeldFolder(m.Name, dir, trees, Unreadable: false));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
@@ -121,24 +129,40 @@ public static class ModUninstall
         return new UninstallPreview(listed, held.ToArray());
     }
 
+    // True when the entry, or any folder between the held folder and it, is a link.
+    private static bool ThroughLink(string heldDir, string path)
+    {
+        for (var p = path; p is not null && p.Length > heldDir.Length; p = Path.GetDirectoryName(p))
+        {
+            FileAttributes attrs;
+            try { attrs = File.GetAttributes(p); }
+            catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException) { continue; }
+            if (attrs.HasFlag(FileAttributes.ReparsePoint)) return true;
+        }
+        return false;
+    }
+
     /// <summary>Delete the mod. See <see cref="RunAll"/>.</summary>
     public static IReadOnlyList<string> Run(GameContext ctx, Mod mod) => RunAll(ctx, new[] { mod });
 
     /// <summary>
     /// Delete several mods (a variant family) as one decision. Each mod loses its live files from every
     /// location and mirror, any held (disabled) copy, and the install records that claimed them; for a
-    /// Mod Engine 2 game, its folder and its config entry. Then each mod's <c>disabled-trees/&lt;Mod&gt;</c>
+    /// Mod Engine 2 game, its folder and its config entry. Then that mod's <c>disabled-trees/&lt;Mod&gt;</c>
     /// folder goes too: a turned-off mod's held extras, or a live mod's leftovers.
     ///
     /// <para>Every mod is checked first, so a refused member stops the whole family before anything is
-    /// deleted. The checks are <see cref="Refusal(GameContext, Mod)"/> and containment: each held folder must
-    /// resolve strictly under the holding root inside the data folder, with no link above it.</para>
+    /// deleted. The checks are <see cref="Refusal(GameContext, Mod)"/> and containment (<see cref="HeldDir"/>):
+    /// the name must name a folder directly inside the holding root, which must not be a link. The folder is
+    /// only touched when the root lists an entry by that real name, so an 8.3 alias never reaches it.</para>
     ///
-    /// <para>The held folders go only after the main uninstall has succeeded, so a failure there leaves them
-    /// intact and the mod still listed. They are deleted file by file and then folder by folder, deepest
-    /// first, never recursively; a junction or symlink is removed as the link, and its target is never
-    /// touched. Afterwards each is checked, and one that still holds anything throws an
-    /// <see cref="IOException"/> naming it. Locked-file errors surface.</para>
+    /// <para>Each mod's held folder goes right after that mod's own uninstall succeeds, so a failure there
+    /// leaves it intact and the mod still listed, and a later member's failure leaves no orphan. It is deleted
+    /// file by file and then folder by folder, deepest first, never recursively; a junction or symlink is
+    /// removed as the link, and its target is never touched. Afterwards it is checked. A held folder that
+    /// can't be fully deleted doesn't stop the run: once every mod is done, one
+    /// <see cref="HeldFolderLeftException"/> names every folder left, with the first cause inside. Errors
+    /// in the main uninstall surface as before.</para>
     /// </summary>
     /// <returns>The held folders that existed and were deleted.</returns>
     public static IReadOnlyList<string> RunAll(GameContext ctx, IReadOnlyList<Mod> mods)
@@ -147,24 +171,35 @@ public static class ModUninstall
         foreach (var m in mods)
             if (Refusal(lane, m) is { } why) throw new InvalidOperationException(why.Message);
         // Containment before anything is deleted: a name that escapes stops the whole run here.
-        var heldDirs = mods.Where(m => !string.IsNullOrEmpty(m.Name)).Select(m => HeldDir(ctx, m.Name))
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-        foreach (var m in mods)
-        {
-            if (lane == ListingMechanism.ModEngine2) ModEngine2Writer.RemoveMod(ctx.Game, m.Name);
-            else Scanner.UninstallMod(m.Name, ctx);
-        }
+        var heldDirs = mods.Select(m => string.IsNullOrEmpty(m.Name) ? null : HeldDir(ctx, m.Name)).ToList();
 
         var deleted = new List<string>();
-        foreach (var dir in heldDirs)
+        var left = new List<(string Mod, string Path)>();
+        Exception? firstFailure = null;
+        for (var i = 0; i < mods.Count; i++)
         {
-            if (!Directory.Exists(dir) && !File.Exists(dir)) continue;
-            DeleteHeldFolder(dir);
-            if (LinkSafeDelete.HoldsAnything(dir))
-                throw new IOException($"The mod was uninstalled, but files are still held in {dir}. Delete that folder by hand, or close what is using it and try again.");
-            deleted.Add(dir);
+            var m = mods[i];
+            if (lane == ListingMechanism.ModEngine2) ModEngine2Writer.RemoveMod(ctx.Game, m.Name);
+            else Scanner.UninstallMod(m.Name, ctx);
+
+            // This mod's held folder goes right after its own uninstall, so a later member that fails leaves
+            // no orphan behind. A folder that can't be fully deleted is recorded and the run carries on: the
+            // mod is already gone, and stopping would only leave more behind.
+            if (heldDirs[i] is not { } dir) continue;
+            try
+            {
+                if (!HeldPresent(ctx, m.Name)) continue;
+                DeleteHeldFolder(dir);
+                if (LinkSafeDelete.HoldsAnything(dir)) left.Add((m.Name, dir));
+                else deleted.Add(dir);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                firstFailure ??= e;
+                left.Add((m.Name, dir));
+            }
         }
+        if (left.Count > 0) throw new HeldFolderLeftException(left, deleted, firstFailure);
         return deleted;
     }
 
@@ -179,29 +214,93 @@ public static class ModUninstall
     }
 
     /// <summary>
-    /// The mod's holding folder, refused (throws) unless it sits strictly under <see cref="TreeHolding.Root"/>,
-    /// which sits strictly under the data folder, with no link from the root down to it. The folder itself
-    /// may be a link: the delete removes it as one.
+    /// The mod's holding folder, refused (throws) unless the name names a folder directly inside
+    /// <see cref="TreeHolding.Root"/>: the resolved path's parent is the root and its last segment is the name,
+    /// unchanged. That rejects separators, <c>..</c>, <c>.</c> and trailing dots or spaces, which path
+    /// resolution would otherwise quietly normalise onto another mod's folder. The root must sit strictly under
+    /// the data folder and must not be a link. The folder itself may be a link: the delete removes it as one.
     /// </summary>
     internal static string HeldDir(GameContext ctx, string modName)
     {
         var dataDir = Path.GetFullPath(ctx.DataDir);
-        var root = Path.GetFullPath(TreeHolding.Root(ctx));
-        var dir = Path.GetFullPath(TreeHolding.ModDir(ctx, modName));
-        if (!StrictlyUnder(root, dataDir) || !StrictlyUnder(dir, root))
+        var root = Path.GetFullPath(TreeHolding.Root(ctx)).TrimEnd(Path.DirectorySeparatorChar);
+        // Built by joining, never by resolving: GetFullPath expands an existing folder's 8.3 alias, so a mod
+        // named OTHERL~1 would come back as another mod's long-named folder. The name is checked as text
+        // instead (the same rejections as comparing the resolved last segment, without the expansion), and
+        // the parent is checked on the resolved form.
+        var dir = Path.Combine(root, modName);
+        if (!StrictlyUnder(root, dataDir)
+            || !NamesOneFolder(modName)
+            || !string.Equals(Path.GetDirectoryName(Path.GetFullPath(dir)), root, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
-                $"626 won't delete \"{dir}\" for \"{modName}\": it is not inside 626's holding folder {root}. Nothing was changed.");
+                $"626 won't delete \"{dir}\" for \"{modName}\": that name doesn't name a folder directly inside "
+                + $"626's holding folder {root}. Nothing was changed.");
 
-        for (var p = Path.GetDirectoryName(dir); p is not null && p.Length >= root.Length; p = Path.GetDirectoryName(p))
-            if (Directory.Exists(p) && LinkSafeDelete.IsLink(new DirectoryInfo(p)))
-                throw new InvalidOperationException(
-                    $"626 won't delete \"{dir}\" for \"{modName}\": \"{p}\" is a link, so it may lead outside the holding folder. Nothing was changed.");
+        if (Directory.Exists(root) && LinkSafeDelete.IsLink(new DirectoryInfo(root)))
+            throw new InvalidOperationException(
+                $"626 won't delete \"{dir}\" for \"{modName}\": the holding folder {root} is a link, so it may lead "
+                + "somewhere else. Nothing was changed.");
         return dir;
     }
+
+    /// <summary>
+    /// True when the holding root has an entry whose real name is the mod's name (case-insensitive, as
+    /// Windows is). Listed without a search pattern, so an 8.3 short name never matches: a mod literally named
+    /// <c>OTHERL~1</c> does not reach <c>Other Long Name Mod</c>, though opening that path would.
+    /// </summary>
+    private static bool HeldPresent(GameContext ctx, string modName)
+    {
+        var root = TreeHolding.Root(ctx);
+        if (!Directory.Exists(root)) return false;
+        return new DirectoryInfo(root).EnumerateFileSystemInfos()
+            .Any(e => string.Equals(e.Name, modName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // One path segment that Windows keeps exactly as written: no separators or other invalid characters (':'
+    // included, so no alternate stream), not "." or "..", and no trailing dot or space, which Windows strips.
+    private static bool NamesOneFolder(string name)
+        => name.Length > 0 && name is not ("." or "..")
+           && !name.EndsWith('.') && !name.EndsWith(' ')
+           && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 
     private static bool StrictlyUnder(string path, string parent)
     {
         var withSep = parent.EndsWith(Path.DirectorySeparatorChar) ? parent : parent + Path.DirectorySeparatorChar;
         return path.Length > withSep.Length && path.StartsWith(withSep, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+
+/// <summary>
+/// The mods were uninstalled, but some of what 626 was holding for them could not be deleted (a file in use,
+/// a permission). Thrown once at the end of the run, naming every folder left; the first cause is the
+/// <see cref="Exception.InnerException"/>.
+/// </summary>
+public sealed class HeldFolderLeftException : IOException
+{
+    public HeldFolderLeftException(IReadOnlyList<(string Mod, string Path)> left, IReadOnlyList<string> deleted, Exception? inner)
+        : base(MessageFor(left), inner)
+    {
+        Left = left.Select(l => l.Path).ToArray();
+        Deleted = deleted.ToArray();
+    }
+
+    /// <summary>The held folders still there.</summary>
+    public IReadOnlyList<string> Left { get; }
+
+    /// <summary>The held folders that were deleted.</summary>
+    public IReadOnlyList<string> Deleted { get; }
+
+    public static string MessageFor(IReadOnlyList<(string Mod, string Path)> left)
+        => left.Count == 1
+            ? $"{left[0].Mod} was uninstalled, but 626 couldn't delete everything it was holding for it in {left[0].Path}. "
+              + "Close anything using those files and delete the folder, or try again."
+            : $"{JoinAnd(left.Select(l => l.Mod))} were uninstalled, but 626 couldn't delete everything it was holding for them in "
+              + $"{JoinAnd(left.Select(l => l.Path))}. Close anything using those files and delete the folders, or try again.";
+
+    private static string JoinAnd(IEnumerable<string> items)
+    {
+        var list = items.ToList();
+        return list.Count <= 1 ? string.Concat(list) : string.Join(", ", list.Take(list.Count - 1)) + " and " + list[^1];
     }
 }

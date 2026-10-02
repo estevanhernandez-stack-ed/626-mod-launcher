@@ -71,10 +71,14 @@ internal static class LinkSafeDelete
     {
         if (entry is DirectoryInfo)
         {
+            // A read-only folder link refuses a delete. Clearing the flag on the link entry changes the
+            // link's own attributes, not its target's (a test pins this).
+            if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
+                entry.Attributes &= ~FileAttributes.ReadOnly;
             Directory.Delete(entry.FullName);
             return;
         }
-        // Copied game files can be read-only. A link's attributes are left alone: setting them is one more
+        // Copied game files can be read-only. A file link's attributes are left alone: setting them is one more
         // call that could reach the target.
         if (!IsLink(entry) && entry.Attributes.HasFlag(FileAttributes.ReadOnly))
             entry.Attributes &= ~FileAttributes.ReadOnly;

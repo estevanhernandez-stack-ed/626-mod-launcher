@@ -246,10 +246,17 @@ mods = [
         Assert.Equal("CoolMod", Assert.Single(preview.HeldFolders).ModName);
     }
 
-    // ---- The confirm dialog's held sentence (strings verbatim from the brief) ----
+    // ---- The confirm dialog's held sentence (strings verbatim from the brief and round-1 rulings) ----
 
     private static UninstallPreview With(params UninstallHeldFolder[] held)
         => new(new[] { new UninstallPreviewMod("CoolMod", new[] { "CoolMod.archive" }) }, held);
+
+    private static UninstallPreview Family(params UninstallHeldFolder[] held)
+        => new(new[]
+        {
+            new UninstallPreviewMod("A", new[] { "A.archive" }),
+            new UninstallPreviewMod("B", new[] { "B.archive" }),
+        }, held);
 
     [Fact]
     public void The_held_sentence_names_the_trees_of_one_held_folder()
@@ -262,15 +269,22 @@ mods = [
             With(new UninstallHeldFolder("CoolMod", @"D:\d\disabled-trees\CoolMod", Array.Empty<string>(), true)).HeldSentence());
 
     [Fact]
-    public void The_held_sentence_names_the_folder_when_its_files_fit_no_tree()
-        => Assert.Equal(@"626 is also holding some of its files in D:\d\disabled-trees\CoolMod, and will delete those too.",
+    public void The_held_sentence_gives_a_folder_whose_files_fit_no_tree_its_own_sentence()
+        => Assert.Equal(@"626 is also holding files for it in D:\d\disabled-trees\CoolMod and will delete those too.",
             With(new UninstallHeldFolder("CoolMod", @"D:\d\disabled-trees\CoolMod", Array.Empty<string>(), false)).HeldSentence());
 
     [Fact]
+    public void The_held_sentence_never_splices_a_path_into_the_tree_list()
+        => Assert.Equal("626 is also holding some of their files in r6/scripts, and will delete those too. "
+                        + @"626 is also holding files for them in D:\d\disabled-trees\B and will delete those too.",
+            Family(new UninstallHeldFolder("A", @"D:\d\disabled-trees\A", new[] { "r6/scripts" }, false),
+                   new UninstallHeldFolder("B", @"D:\d\disabled-trees\B", Array.Empty<string>(), false)).HeldSentence());
+
+    [Fact]
     public void The_held_sentence_aggregates_a_family_without_repeating_a_tree()
-        => Assert.Equal("626 is also holding some of its files in r6/scripts, r6/tweaks, and will delete those too.",
-            With(new UninstallHeldFolder("A", @"D:\d\disabled-trees\A", new[] { "r6/scripts" }, false),
-                 new UninstallHeldFolder("B", @"D:\d\disabled-trees\B", new[] { "r6/scripts", "r6/tweaks" }, false)).HeldSentence());
+        => Assert.Equal("626 is also holding some of their files in r6/scripts, r6/tweaks, and will delete those too.",
+            Family(new UninstallHeldFolder("A", @"D:\d\disabled-trees\A", new[] { "r6/scripts" }, false),
+                   new UninstallHeldFolder("B", @"D:\d\disabled-trees\B", new[] { "r6/scripts", "r6/tweaks" }, false)).HeldSentence());
 
     [Fact]
     public void Nothing_held_means_no_held_sentence()
@@ -282,7 +296,10 @@ mods = [
     [InlineData("..\\x")]
     [InlineData("..")]
     [InlineData(".")]
-    public void A_mod_name_that_resolves_outside_the_holding_root_throws_and_deletes_nothing(string name)
+    [InlineData("x\\..\\Bystander")]
+    [InlineData("Bystander.")]
+    [InlineData("Bystander ")]
+    public void A_mod_name_that_does_not_name_a_folder_directly_in_the_holding_root_throws_and_deletes_nothing(string name)
     {
         var (g, ctx) = TreeGame();
         var outside = Path.Combine(ctx.DataDir, "x", "keep.txt");
@@ -293,11 +310,82 @@ mods = [
         var row = new Mod { Name = name, Location = "mods", Enabled = true, Files = new List<string> { "Plain.archive" } };
 
         var e = Assert.ThrowsAny<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
-
         Assert.Contains("holding folder", e.Message);   // refused by the containment rail, not by chance
+        Assert.ThrowsAny<InvalidOperationException>(() => ModUninstall.Preview(ctx, row));
 
         Assert.Equal("KEEP", File.ReadAllText(outside));
         Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
+        Assert.Equal("PLAIN", File.ReadAllText(pak));
+    }
+
+    // An 8.3 short name resolves to the long-named folder it abbreviates. A mod literally named like the
+    // alias must not reach another mod's held folder through it.
+    [Fact]
+    public void A_mod_named_like_another_held_folders_short_name_does_not_reach_it()
+    {
+        var (g, ctx) = TreeGame();
+        var longDir = TreeHolding.ModDir(ctx, "Other Long Name Mod");
+        var victim = Path.Combine(longDir, "r6", "scripts", "Other Long Name Mod", "o.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(victim)!);
+        File.WriteAllText(victim, "OTHER");
+        var alias = ShortNameOf(longDir);
+        if (alias is null)
+        {
+            // xUnit 2 has no runtime skip. 8.3 generation is off on this volume, so the alias this test
+            // needs cannot exist and there is nothing to reach the folder through. Passing vacuously.
+            return;
+        }
+        Assert.True(Directory.Exists(Path.Combine(TreeHolding.Root(ctx), alias))); // pre-condition: the alias resolves
+        File.WriteAllText(Path.Combine(ctx.GameRoot, "archive", "pc", "mod", alias + ".archive"), "ALIAS");
+        var row = ModListing.Resolve(g).Single(m => m.Name == alias);
+
+        Assert.Empty(ModUninstall.Preview(ctx, row).HeldFolders);
+        ModUninstall.Run(ctx, row);
+
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == alias);
+        Assert.Equal("OTHER", File.ReadAllText(victim));
+    }
+
+    // The 8.3 alias of the last segment, from `dir /x`, or null when the volume makes none.
+    private static string? ShortNameOf(string dir)
+    {
+        var parent = Path.GetDirectoryName(dir)!;
+        var name = Path.GetFileName(dir);
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd", $"/c dir /x /ad \"{parent}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+        };
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var lines = p.StandardOutput.ReadToEnd().Split('\n');
+        p.WaitForExit();
+        foreach (var raw in lines)
+        {
+            var line = raw.TrimEnd('\r');
+            if (!line.EndsWith(" " + name, StringComparison.Ordinal)) continue;
+            var before = line[..^(name.Length + 1)].TrimEnd();
+            var token = before.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            return token is not null && token.Contains('~') ? token : null;
+        }
+        return null;
+    }
+
+    [Fact]
+    public void A_link_at_the_holding_root_is_refused_and_nothing_is_deleted()
+    {
+        var (g, ctx) = TreeGame();
+        var target = Path.Combine(_root, "elsewhere-root");
+        var targetFile = Path.Combine(target, "Plain", "r6", "scripts", "Plain", "p.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
+        File.WriteAllText(targetFile, "NOT 626'S");
+        Directory.CreateDirectory(ctx.DataDir);
+        MakeJunction(TreeHolding.Root(ctx), target);
+        var pak = Path.Combine(ctx.GameRoot, "archive", "pc", "mod", "Plain.archive");
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+
+        var e = Assert.ThrowsAny<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
+
+        Assert.Contains("link", e.Message);
+        Assert.Equal("NOT 626'S", File.ReadAllText(targetFile));
         Assert.Equal("PLAIN", File.ReadAllText(pak));
     }
 
@@ -322,6 +410,29 @@ mods = [
     }
 
     [Fact]
+    public async Task A_read_only_junction_is_removed_and_its_targets_attributes_are_untouched()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var heldDir = TreeHolding.ModDir(ctx, "CoolMod");
+        var target = Path.Combine(_root, "elsewhere-ro");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "t.txt"), "NOT 626'S");
+        var targetAttrs = File.GetAttributes(target);
+        var link = Path.Combine(heldDir, "r6", "scripts", "link");
+        MakeJunction(link, target);
+        new DirectoryInfo(link).Attributes |= FileAttributes.ReadOnly;
+        Assert.Equal(targetAttrs, File.GetAttributes(target)); // pre-condition: the link's flag is its own
+        var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
+
+        ModUninstall.Run(ctx, row);
+
+        Assert.False(Directory.Exists(heldDir));
+        Assert.Equal("NOT 626'S", File.ReadAllText(Path.Combine(target, "t.txt")));
+        Assert.Equal(targetAttrs, File.GetAttributes(target));
+    }
+
+    [Fact]
     public async Task A_held_folder_that_is_itself_a_junction_is_removed_as_a_link()
     {
         var (g, ctx) = TreeGame();
@@ -339,6 +450,26 @@ mods = [
         Assert.Equal("NOT 626'S", File.ReadAllText(Path.Combine(target, "t.txt")));
     }
 
+    // Preview must not read through a link either: a held folder whose only content is a junction is listed
+    // by path, with no trees, rather than with trees found in the link's target.
+    [Fact]
+    public void Preview_does_not_read_through_a_junction_in_the_held_folder()
+    {
+        var (g, ctx) = TreeGame();
+        var target = Path.Combine(_root, "elsewhere-preview");
+        File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(target, "scripts", "Plain")).FullName, "p.reds"), "X");
+        var heldDir = TreeHolding.ModDir(ctx, "Plain");
+        Directory.CreateDirectory(heldDir);
+        MakeJunction(Path.Combine(heldDir, "r6"), target);
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+
+        var held = Assert.Single(ModUninstall.Preview(ctx, row).HeldFolders);
+
+        Assert.Equal(heldDir, held.Path);
+        Assert.Empty(held.Trees);
+        Assert.False(held.Unreadable);
+    }
+
     [Fact]
     public async Task A_held_folder_still_there_after_the_delete_throws_naming_it()
     {
@@ -347,12 +478,43 @@ mods = [
         var heldDir = TreeHolding.ModDir(ctx, "CoolMod");
         var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
         ModUninstall.DeleteHeldForTests = _ => { };   // a delete that does nothing
-        IOException e;
-        try { e = Assert.Throws<IOException>(() => ModUninstall.Run(ctx, row)); }
+        HeldFolderLeftException e;
+        try { e = Assert.Throws<HeldFolderLeftException>(() => ModUninstall.Run(ctx, row)); }
         finally { ModUninstall.DeleteHeldForTests = null; }
 
         Assert.Contains(heldDir, e.Message);
+        Assert.Equal(new[] { heldDir }, e.Left);
     }
+
+    // A held file another process has open can't be deleted. The mod itself is gone, so the error says so,
+    // names the folder, and keeps the cause; the rest of the run is not abandoned.
+    [Fact]
+    public async Task A_locked_held_file_leaves_the_mod_gone_and_says_which_folder_is_left()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var heldDir = TreeHolding.ModDir(ctx, "CoolMod");
+        var lockedFile = Path.Combine(heldDir, "r6", "scripts", "CoolMod", "main.reds");
+        var bystander = HoldForSomeoneElse(ctx);
+        var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
+
+        HeldFolderLeftException e;
+        using (new FileStream(lockedFile, FileMode.Open, FileAccess.Read, FileShare.None))
+            e = Assert.Throws<HeldFolderLeftException>(() => ModUninstall.Run(ctx, row));
+
+        Assert.Equal($"CoolMod was uninstalled, but 626 couldn't delete everything it was holding for it in {heldDir}. "
+                     + "Close anything using those files and delete the folder, or try again.", e.Message);
+        Assert.NotNull(e.InnerException);
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == "CoolMod");
+        Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
+        Assert.True(File.Exists(lockedFile));
+    }
+
+    [Fact]
+    public void The_left_behind_message_has_a_plural_form()
+        => Assert.Equal(@"A and B were uninstalled, but 626 couldn't delete everything it was holding for them in D:\h\A and D:\h\B. "
+                        + "Close anything using those files and delete the folders, or try again.",
+            HeldFolderLeftException.MessageFor(new[] { ("A", @"D:\h\A"), ("B", @"D:\h\B") }));
 
     // The same idiom as SafeMoveFallbackTests: a real junction, made by mklink.
     private static void MakeJunction(string link, string target)
