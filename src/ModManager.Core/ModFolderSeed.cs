@@ -27,8 +27,9 @@ public static class ModFolderSeed
         if (game is null) return null;
         exists ??= Directory.Exists;
 
-        // The same join Scanner.GameContext makes, so the folder created is the folder it scans (A30).
-        var curated = ManifestIdLookup.EntryFor(game)?.ModPath;
+        // The same join Scanner.GameContext makes (A30).
+        var entry = ManifestIdLookup.EntryFor(game);
+        var curated = entry?.ModPath;
         if (string.IsNullOrWhiteSpace(curated)) return null;   // not the manifest's claim -> not ours to create
 
         // The user saying "this is my folder" outranks the manifest, exactly as it does in
@@ -37,6 +38,14 @@ public static class ModFolderSeed
             return null;
 
         if (string.IsNullOrEmpty(game.GameRoot) || !exists(game.GameRoot)) return null;
+
+        // Only the folder the scan reads, and only when that folder is the manifest's. A stored path the
+        // refresh leaves alone (one the user typed, or a layout detected at add time) is the user's, and
+        // creating the curated folder beside it would leave an empty folder nothing ever scans.
+        var preset = game.Engine is not null && EnginePresets.Presets.TryGetValue(game.Engine, out var ep) ? ep : null;
+        var primary = Scanner.RefreshedModLocations(game, entry, preset)
+            .FirstOrDefault(l => string.Equals(l.Name, "mods", StringComparison.OrdinalIgnoreCase));
+        if (primary is null || !RegistrationRefresh.SamePath(primary.Path, curated)) return null;
 
         var abs = Scanner.LocationAbs(Path.GetFullPath(game.GameRoot), curated!.Replace('/', Path.DirectorySeparatorChar));
 

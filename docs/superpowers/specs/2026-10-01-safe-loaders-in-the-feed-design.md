@@ -60,12 +60,16 @@ pinned two ways, and either one is enough:
   EA-only games and every store's copy of a multi-store game. It is the same lesson the ban-risk work
   learned on 2026-09-13: `BanRiskCatalog.Effective(game)` resolves by manifest id as well as Steam id.
 
-A `gameIds` pin is matched against every manifest id the registration **resolves** to
+A `gameIds` pin is matched against the manifest ids the registration **resolves** to
 (`ManifestIdLookup.IdsFor`), case-insensitively, never against its raw id alone:
 
-- its own id
 - the manifest entry that claims its Steam app id
 - the manifest entry that claims its EA content id
+- its own id, only when neither store id names an entry
+
+Store identity outranks the own id (since #358, A30), the same precedence as the manifest join the
+scan uses (`ManifestIdLookup.EntryFor`). A slug can collide with a different game's manifest id, and a
+loader pinned to that other game must not be offered as this one's safe path.
 
 The raw id is not reliable. A second store copy of a game the user already has is renamed `<id>-2` by
 `EnginePresets.UniqueId`, and a game added before `ManifestIdLookup` existed (or while the feed was

@@ -49,6 +49,50 @@ public static class Scanner
     public static string LocationAbs(string gameRoot, string path)
         => Path.IsPathRooted(path) ? path : Path.Combine(gameRoot, path);
 
+    /// <summary>
+    /// The registration's mod locations as the scan reads them: the stored list, with the primary
+    /// ("mods") location's path corrected from the manifest when the stored one is still the engine
+    /// preset's default. Read-only; the stored entry is never rewritten. <see cref="ModFolderSeed"/>
+    /// reads this too, so the folder it creates is the folder the scan reads.
+    /// </summary>
+    internal static IReadOnlyList<ModLocation> RefreshedModLocations(
+        GameEntry game, GameManifestEntry? manifestEntry, EnginePreset? preset)
+    {
+        // The same correction, applied to the field that decides whether the scan looks anywhere at
+        // all. Only the PRIMARY location is refreshed: the manifest states one modPath, and it is the
+        // one EnginePresets.BuildGameEntry writes as the "mods" location. Extra locations a user or
+        // an engine added (mods2, ue4ss-mods) are untouched - the manifest has nothing to say about
+        // them and guessing would delete real configuration. Pinning modLocations opts out entirely.
+        var userSetLocations = game.UserSet?.Contains(GameEntry.UserSetModLocations, StringComparer.OrdinalIgnoreCase) == true;
+        IReadOnlyList<ModLocation> modLocations = game.ModLocations;
+        if (preset is not null && !userSetLocations && !string.IsNullOrWhiteSpace(manifestEntry?.ModPath))
+        {
+            var primary = modLocations.FirstOrDefault(l => string.Equals(l.Name, "mods", StringComparison.OrdinalIgnoreCase));
+            if (primary is not null)
+            {
+                // The manifest writes forward slashes; registrations on disk carry the platform's.
+                // LocationAbs is a Path.Combine, which leaves inner separators alone, so an unadjusted
+                // manifest path yields a mixed spelling like <root>\game\archive/pc/mod. Windows opens
+                // that happily, which is exactly why it would go unnoticed - but GameShape decides
+                // insideDeclared by comparing path strings, so a mixed declared path makes the launcher
+                // report drift against its own folder. Normalise once, here, at the point of adoption.
+                var curated = manifestEntry!.ModPath?.Replace('/', Path.DirectorySeparatorChar);
+                var effective = RegistrationRefresh.ModPath(primary.Path, preset.ModPath, curated, userSetLocations);
+                if (!string.Equals(effective, primary.Path, StringComparison.Ordinal))
+                {
+                    modLocations = modLocations
+                        // `with`, not a new ModLocation: the record also carries Form and Managed, and
+                        // Managed is the flag that says another tool owns this folder. Rebuilding by
+                        // hand and forgetting it would hand 626 write access to Vortex's files - the
+                        // one thing the ownership law exists to prevent - for the sake of a path edit.
+                        .Select(l => ReferenceEquals(l, primary) ? l with { Path = effective ?? l.Path } : l)
+                        .ToList();
+                }
+            }
+        }
+        return modLocations;
+    }
+
     public static GameContext GameContext(GameEntry? game)
     {
         game ??= new GameEntry();
@@ -75,38 +119,7 @@ public static class Scanner
             ? game.GroupingRule
             : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule, userSetGrouping);
 
-        // The same correction, applied to the field that decides whether the scan looks anywhere at
-        // all. Only the PRIMARY location is refreshed: the manifest states one modPath, and it is the
-        // one EnginePresets.BuildGameEntry writes as the "mods" location. Extra locations a user or
-        // an engine added (mods2, ue4ss-mods) are untouched - the manifest has nothing to say about
-        // them and guessing would delete real configuration. Pinning modLocations opts out entirely.
-        var userSetLocations = game.UserSet?.Contains(GameEntry.UserSetModLocations, StringComparer.OrdinalIgnoreCase) == true;
-        var modLocations = game.ModLocations;
-        if (preset is not null && !userSetLocations && !string.IsNullOrWhiteSpace(manifestEntry?.ModPath))
-        {
-            var primary = modLocations.FirstOrDefault(l => string.Equals(l.Name, "mods", StringComparison.OrdinalIgnoreCase));
-            if (primary is not null)
-            {
-                // The manifest writes forward slashes; registrations on disk carry the platform's.
-                // LocationAbs is a Path.Combine, which leaves inner separators alone, so an unadjusted
-                // manifest path yields a mixed spelling like <root>\game\archive/pc/mod. Windows opens
-                // that happily, which is exactly why it would go unnoticed - but GameShape decides
-                // insideDeclared by comparing path strings, so a mixed declared path makes the launcher
-                // report drift against its own folder. Normalise once, here, at the point of adoption.
-                var curated = manifestEntry!.ModPath?.Replace('/', Path.DirectorySeparatorChar);
-                var effective = RegistrationRefresh.ModPath(primary.Path, preset.ModPath, curated, userSetLocations);
-                if (!string.Equals(effective, primary.Path, StringComparison.Ordinal))
-                {
-                    modLocations = modLocations
-                        // `with`, not a new ModLocation: the record also carries Form and Managed, and
-                        // Managed is the flag that says another tool owns this folder. Rebuilding by
-                        // hand and forgetting it would hand 626 write access to Vortex's files - the
-                        // one thing the ownership law exists to prevent - for the sake of a path edit.
-                        .Select(l => ReferenceEquals(l, primary) ? l with { Path = effective ?? l.Path } : l)
-                        .ToList();
-                }
-            }
-        }
+        var modLocations = RefreshedModLocations(game, manifestEntry, preset);
 
         // ONE spelling of "the extensions this game scans with", because there is more than one
         // reader. A registration written by hand carries extensions the way a person types them —

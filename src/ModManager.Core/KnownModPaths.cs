@@ -18,39 +18,8 @@ namespace ModManager.Core;
 /// </summary>
 public static class KnownModPaths
 {
-    private static IReadOnlyDictionary<string, string>? _map;
-    private static int _mapGen = -1;
-    private static readonly object _gate = new();
-
-    private static IReadOnlyDictionary<string, string> Map
-    {
-        get
-        {
-            lock (_gate)
-            {
-                var gen = EffectiveManifest.Generation;
-                if (_map is null || _mapGen != gen)
-                {
-                    _map = Build();
-                    _mapGen = gen;
-                }
-                return _map;
-            }
-        }
-    }
-
-    private static IReadOnlyDictionary<string, string> Build()
-    {
-        var map = new Dictionary<string, string>();
-        foreach (var g in EffectiveManifest.Current.Games)
-        {
-            if (g.Stores.SteamAppId is { } appId && !string.IsNullOrWhiteSpace(g.ModPath))
-                map[appId] = g.ModPath!;
-        }
-        return map;
-    }
-
-    /// <summary>The curated mod folder for a Steam app id, or null when the manifest states none.</summary>
+    /// <summary>The curated mod folder for a Steam app id, or null when the manifest states none. Read
+    /// through <see cref="ManifestIdLookup"/>, so the add path picks the same entry the scan joins to.</summary>
     public static string? ByAppId(string? steamAppId)
-        => !string.IsNullOrEmpty(steamAppId) && Map.TryGetValue(steamAppId, out var p) ? p : null;
+        => ManifestIdLookup.EntryBySteamAppId(steamAppId)?.ModPath is { } p && !string.IsNullOrWhiteSpace(p) ? p : null;
 }
