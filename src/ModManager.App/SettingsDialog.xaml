@@ -99,6 +99,14 @@
                         <ComboBoxItem Content="Acrylic (more translucent)" Tag="acrylic" />
                     </ComboBox>
                 </StackPanel>
+
+                <!-- Close to tray (B1). Default off: closing means closing until the user says
+                     otherwise. Applies immediately; the tray icon appears the moment it is ticked so
+                     Quit is never more than a right-click away. -->
+                <CheckBox AutomationProperties.AutomationId="CloseToTrayCheck" x:Name="CloseToTrayCheck"
+                          Content="Keep running in the notification area when I close the window"
+                          Click="OnCloseToTrayToggled"
+                          ToolTipService.ToolTip="Closing the window hides it instead. Click the tray icon to bring it back; right-click it to quit." />
             </StackPanel>
 
             <!-- Divider -->

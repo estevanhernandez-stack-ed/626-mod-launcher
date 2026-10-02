@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModManager.App.Services;
 
@@ -38,7 +39,7 @@ public sealed class AppSettingsService
     {
         if (_autoUpdateDefinitions == enabled) return;
         _autoUpdateDefinitions = enabled;
-        Save();
+        Save("autoUpdateDefinitions", enabled);
     }
 
     /// <summary>Whether the launcher polls Nexus by mod id on game load to flag mods with a newer
@@ -50,7 +51,7 @@ public sealed class AppSettingsService
     {
         if (_autoCheckModUpdates == enabled) return;
         _autoCheckModUpdates = enabled;
-        Save();
+        Save("autoCheckModUpdates", enabled);
     }
 
     /// <summary>Whether the launcher auto-updates installed off-Store plugins on a 24h debounce
@@ -61,7 +62,26 @@ public sealed class AppSettingsService
     {
         if (_keepPluginsUpdated == enabled) return;
         _keepPluginsUpdated = enabled;
-        Save();
+        Save("keepPluginsUpdated", enabled);
+    }
+
+    /// <summary>Whether closing the window keeps the launcher running in the notification area (B1,
+    /// default off: closing means closing until the user says otherwise). The tray icon is shown
+    /// for as long as this is on, so Quit is always one right-click away.</summary>
+    public bool CloseToTray => _closeToTray;
+
+    private bool _closeToTray;
+
+    /// <summary>Raised when <see cref="CloseToTray"/> changes, so the shell can add or remove the
+    /// tray icon on the live window.</summary>
+    public event EventHandler? CloseToTrayChanged;
+
+    public void SetCloseToTray(bool enabled)
+    {
+        if (_closeToTray == enabled) return;
+        _closeToTray = enabled;
+        Save("closeToTray", enabled);
+        CloseToTrayChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>The last theme the user picked, restored at launch (F-080). Null means no pick
@@ -74,7 +94,7 @@ public sealed class AppSettingsService
     {
         if (_themeId == id) return;
         _themeId = id;
-        Save();
+        Save("themeId", id);
     }
 
     public AppSettingsService()
@@ -82,113 +102,64 @@ public sealed class AppSettingsService
         Path = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "ModManagerBuilder", "app-settings.json");
-        _backdrop = Load();
-        _autoUpdateDefinitions = LoadAutoUpdate();
-        _autoCheckModUpdates = LoadAutoCheckModUpdates();
-        _keepPluginsUpdated = LoadKeepPluginsUpdated();
-        _themeId = LoadThemeId();
+
+        // One read, one parse; each key then falls back to its own default on its own (a missing or
+        // mistyped key never resets the others). A missing or corrupt file is all defaults.
+        using var doc = TryParse(Path);
+        var root = doc?.RootElement;
+        _backdrop = ReadString(root, "backdrop")?.ToLowerInvariant() switch
+        {
+            "mica"    => WindowBackdropKind.Mica,
+            "acrylic" => WindowBackdropKind.Acrylic,
+            _         => WindowBackdropKind.Solid,
+        };
+        _autoUpdateDefinitions = ReadBool(root, "autoUpdateDefinitions", true);
+        _autoCheckModUpdates = ReadBool(root, "autoCheckModUpdates", true);
+        _keepPluginsUpdated = ReadBool(root, "keepPluginsUpdated", true);
+        _closeToTray = ReadBool(root, "closeToTray", false);
+        _themeId = ReadString(root, "themeId") is { } id && !string.IsNullOrWhiteSpace(id) ? id : null;   // no saved pick
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
     {
         if (_backdrop == kind) return;
         _backdrop = kind;
-        Save();
+        Save("backdrop", kind.ToString().ToLowerInvariant());
         BackdropChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private WindowBackdropKind Load()
+    private static JsonDocument? TryParse(string path)
     {
-        try
-        {
-            if (!File.Exists(Path)) return WindowBackdropKind.Solid;
-            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
-            if (doc.RootElement.TryGetProperty("backdrop", out var b) && b.ValueKind == JsonValueKind.String)
-            {
-                return b.GetString()?.ToLowerInvariant() switch
-                {
-                    "mica"    => WindowBackdropKind.Mica,
-                    "acrylic" => WindowBackdropKind.Acrylic,
-                    _         => WindowBackdropKind.Solid,
-                };
-            }
-        }
-        catch { /* missing / corrupt — default */ }
-        return WindowBackdropKind.Solid;
+        try { return File.Exists(path) ? JsonDocument.Parse(File.ReadAllText(path)) : null; }
+        catch { return null; }   // corrupt — defaults
     }
 
-    private bool LoadAutoUpdate()
-    {
-        try
-        {
-            if (!File.Exists(Path)) return true;
-            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
-            if (doc.RootElement.TryGetProperty("autoUpdateDefinitions", out var v)
-                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
-                return v.GetBoolean();
-        }
-        catch { /* missing / corrupt — default on */ }
-        return true;
-    }
+    private static bool ReadBool(JsonElement? root, string key, bool fallback)
+        => root is { ValueKind: JsonValueKind.Object } r && r.TryGetProperty(key, out var v)
+           && v.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? v.GetBoolean()
+            : fallback;
 
-    private bool LoadAutoCheckModUpdates()
-    {
-        try
-        {
-            if (!File.Exists(Path)) return true;
-            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
-            if (doc.RootElement.TryGetProperty("autoCheckModUpdates", out var v)
-                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
-                return v.GetBoolean();
-        }
-        catch { /* missing / corrupt — default on */ }
-        return true;
-    }
+    private static string? ReadString(JsonElement? root, string key)
+        => root is { ValueKind: JsonValueKind.Object } r && r.TryGetProperty(key, out var v)
+           && v.ValueKind == JsonValueKind.String
+            ? v.GetString()
+            : null;
 
-    private bool LoadKeepPluginsUpdated()
-    {
-        try
-        {
-            if (!File.Exists(Path)) return true;
-            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
-            if (doc.RootElement.TryGetProperty("keepPluginsUpdated", out var v)
-                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
-                return v.GetBoolean();
-        }
-        catch { /* missing / corrupt — default on */ }
-        return true;
-    }
-
-    private string? LoadThemeId()
-    {
-        try
-        {
-            if (!File.Exists(Path)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
-            if (doc.RootElement.TryGetProperty("themeId", out var v) && v.ValueKind == JsonValueKind.String)
-            {
-                var id = v.GetString();
-                return string.IsNullOrWhiteSpace(id) ? null : id;
-            }
-        }
-        catch { /* missing / corrupt — no saved pick */ }
-        return null;
-    }
-
-    private void Save()
+    private void Save(string key, JsonNode? value)
     {
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-            // themeId is serializer-escaped: user-theme ids come from Slugify today, but the
-            // camelCase-JSON rule wants round-trip safety, not luck.
-            var themeId = _themeId is null ? "null" : JsonSerializer.Serialize(_themeId);
-            var json =
-                $"{{\"backdrop\":\"{_backdrop.ToString().ToLowerInvariant()}\","
-                + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")},"
-                + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")},"
-                + $"\"keepPluginsUpdated\":{(_keepPluginsUpdated ? "true" : "false")},"
-                + $"\"themeId\":{themeId}}}";
+            // Merge the ONE changed key into what is on disk, never a dump of this instance's memory:
+            // a second launcher window holds its own copy of every setting, and rewriting them all
+            // would put back its stale values over the other window's changes (B1 review — the
+            // startup redirect reads closeToTray from this file). Keys stay camelCase, written here.
+            JsonObject root;
+            try { root = (File.Exists(Path) ? JsonNode.Parse(File.ReadAllText(Path)) as JsonObject : null) ?? new JsonObject(); }
+            catch { root = new JsonObject(); }   // corrupt — start over rather than refuse to save
+            root[key] = value;
+            var json = root.ToJsonString();
             // Atomic temp-write + rename (file-op law): theme picks made this write frequent,
             // and a kill mid-WriteAllText would truncate the file and silently reset every toggle.
             var tmp = Path + ".tmp";

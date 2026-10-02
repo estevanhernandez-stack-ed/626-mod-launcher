@@ -19,6 +19,12 @@ public sealed partial class MainWindow : Window
     private readonly LibraryView _libraryView;
 
     private bool _loaded;
+    // The bundled icon: the window's, the taskbar's fallback, and the tray's.
+    private static readonly string BundledIconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+
+    // Close to tray (B1): the icon while the setting is on, and whether the next close is a real one.
+    private Services.TrayIcon? _tray;
+    private bool _quitting;
     // Session-level opt-out for the "managed by another tool" toggle warning (set from the dialog).
     private bool _suppressOwnedToggleWarning;
 
@@ -127,8 +133,7 @@ public sealed partial class MainWindow : Window
         };
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
-        if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
+        if (System.IO.File.Exists(BundledIconPath)) AppWindow.SetIcon(BundledIconPath);
 
         // Window backdrop (Solid / Mica / Acrylic). Applied on launch and re-applied whenever the
         // user picks a different value in Settings. Mica/Acrylic need a SystemBackdrop instance;
@@ -136,6 +141,19 @@ public sealed partial class MainWindow : Window
         var appSettings = App.AppHost.Services.GetRequiredService<Services.AppSettingsService>();
         ApplyBackdrop(appSettings.Backdrop);
         appSettings.BackdropChanged += (_, _) => ApplyBackdrop(appSettings.Backdrop);
+
+        // Close to tray (B1). The icon lives exactly as long as the setting is on; a close with it on
+        // hides the window instead, and the tray's Quit is the real exit.
+        ApplyCloseToTray(appSettings.CloseToTray);
+        appSettings.CloseToTrayChanged += (_, _) => ApplyCloseToTray(appSettings.CloseToTray);
+        AppWindow.Closing += (_, e) =>
+        {
+            // Only with the icon actually showing: a hidden window with no icon has no way back.
+            if (_quitting || _tray is not { IsAdded: true }) return;
+            e.Cancel = true;
+            AppWindow.Hide();
+        };
+        Closed += (_, _) => { ReleaseInstanceKey(); _tray?.Dispose(); _tray = null; };
 
         Activated += OnFirstActivated;
     }
@@ -155,6 +173,76 @@ public sealed partial class MainWindow : Window
         RootGrid.Background = kind == Services.WindowBackdropKind.Solid
             ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeBg"]
             : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    private void ApplyCloseToTray(bool on)
+    {
+        if (!on)
+        {
+            _tray?.Dispose();
+            _tray = null;
+            ReleaseInstanceKey();
+            return;
+        }
+        if (_tray is not null) return;
+        try
+        {
+            var tray = new Services.TrayIcon(BundledIconPath, "626 Mod Launcher");
+            // Through the dispatcher, never inline: the tray raises these from inside its window
+            // procedure (and the menu's modal loop), which is no place to re-enter WinUI.
+            tray.OpenRequested += () => DispatcherQueue.TryEnqueue(ShowFromTray);
+            tray.QuitRequested += () => DispatcherQueue.TryEnqueue(QuitFromTray);
+            // The icon is gone for good (Explorer restarted and refused it): a hidden window comes
+            // back, since nothing else could bring it; a showing one is left where it is.
+            tray.Lost += () => DispatcherQueue.TryEnqueue(() => { if (!AppWindow.IsVisible) ShowFromTray(); });
+            _tray = tray;
+        }
+        catch (Exception ex)
+        {
+            // No icon means no way back to a hidden window, so the close stays a close.
+            ModManager.App.Services.AppDiagnostics.Log("tray", ex);
+            _tray = null;
+            return;
+        }
+
+        // The window with the tray is the one a relaunch must find (Program.RedirectedToRunningInstance),
+        // so it claims the key here, not only at startup: a window that turned the setting on after
+        // launching is still the one that hides. A key another tray window already holds stays theirs.
+        try { Microsoft.Windows.AppLifecycle.AppInstance.FindOrRegisterForKey(App.InstanceKey); }
+        catch (Exception ex) { ModManager.App.Services.AppDiagnostics.Log("tray", ex); }
+    }
+
+    // Let go of the relaunch key, so a launch no longer comes here: when the tray is turned off (this
+    // window will never hide again) and on the way out (a launch redirected to a closing process
+    // would land nowhere).
+    private static void ReleaseInstanceKey()
+    {
+        try { Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().UnregisterKey(); }
+        catch { /* never held, or already gone */ }
+    }
+
+    /// <summary>Bring the window back from the tray (or forward, when another launch was redirected
+    /// here). Safe to call when it is already showing.</summary>
+    public void ShowFromTray()
+    {
+        AppWindow.Show();
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } p)
+            p.Restore();
+        Activate();
+        // Activate alone loses to the foreground lock when this process is not in front (a redirected
+        // launch): the window opens behind whatever the user is in, or only flashes its taskbar
+        // button. The redirecting process grants this one the right first (AllowSetForegroundWindow).
+        SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hwnd);
+
+    private void QuitFromTray()
+    {
+        _quitting = true;
+        ReleaseInstanceKey();   // first, so a launch racing this quit starts fresh instead of landing here
+        Close();
     }
 
     private async void OnFirstActivated(object sender, WindowActivatedEventArgs args)
@@ -1264,7 +1352,7 @@ public sealed partial class MainWindow : Window
             // Re-apply the window/taskbar icon: prefer the user's, fall back to the bundled.
             var iconPath = System.IO.File.Exists(avatars.AvatarIcoPath)
                 ? avatars.AvatarIcoPath
-                : System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+                : BundledIconPath;
             if (System.IO.File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         }
         // A restore rewrote files under the active game; the list on screen is now stale.

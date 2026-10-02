@@ -22,6 +22,9 @@ public partial class App : Application
     /// walking the visual tree.</summary>
     public static Window? MainWindow { get; private set; }
 
+    /// <summary>The AppInstance key the tray window holds, so a relaunch can find it (close to tray, B1).</summary>
+    public const string InstanceKey = "main";
+
     private Window? _window;
 
     public App()
@@ -153,9 +156,15 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new MainWindow();
+        var shell = new MainWindow();
+        _window = shell;
         MainWindow = _window;
         _window.Activate();
+
+        // Another launch of the launcher was redirected here (Program.RedirectedToRunningInstance,
+        // close to tray): bring this window back. Raised on a background thread.
+        Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().Activated +=
+            (_, _) => shell.DispatcherQueue.TryEnqueue(shell.ShowFromTray);
 
         // Fire-and-forget update check (debounced 24h, fails silently). Comfort, not load-bearing.
         // Only meaningful when the app was installed via the Velopack Setup.exe — UpdateChecker
