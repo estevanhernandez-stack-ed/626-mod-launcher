@@ -46,6 +46,7 @@ public class GameEntryCloneTests
         StoreSource = "steam",
         LastLaunchedUtc = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc),
         UserSet = new[] { GameEntry.UserSetModLocations },
+        ManifestId = "madden-nfl-27",
     };
 
     // The whole point: no property list in this test either. Reflection walks whatever GameEntry has

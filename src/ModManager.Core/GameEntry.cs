@@ -110,6 +110,19 @@ public sealed class GameEntry
     public IReadOnlyList<string>? UserSet { get; set; }
 
     /// <summary>
+    /// The manifest entry this game was added AS, recorded at add time when the add named one (the
+    /// curated picker, Steam import, EA import), before any <c>-2</c> rename. Null for a game added by
+    /// name, and for every registration made before this existed: those resolve exactly as before.
+    ///
+    /// <para>The identity a second copy with no store id has. A GOG or hand-added second copy is
+    /// renamed <c>&lt;id&gt;-2</c> and carries no Steam or EA id, so nothing else names its game.
+    /// Every resolver reads it after the store ids and before the own id
+    /// (<see cref="ManifestIdLookup.EntryFor"/>).</para>
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ManifestId { get; set; }
+
+    /// <summary>
     /// A field-for-field copy of this entry.
     ///
     /// <para>WHY THIS EXISTS AND WHY IT IS <c>MemberwiseClone</c>. An editor that proposes a change

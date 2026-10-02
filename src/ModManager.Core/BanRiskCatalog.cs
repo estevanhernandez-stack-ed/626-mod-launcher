@@ -122,6 +122,8 @@ public static class BanRiskCatalog
             ? byApp
             : GameBanRisk.None;
         level = BanRiskRules.Max(level, ByManifestId(maps, game.Id));
+        // The entry it was added as: a second copy with no store id (GOG, hand-added "-2") has only this.
+        level = BanRiskRules.Max(level, ByManifestId(maps, game.ManifestId));
         if (!string.IsNullOrEmpty(game.EaContentId) && maps.IdByEaContentId.TryGetValue(game.EaContentId, out var eaId))
             level = BanRiskRules.Max(level, ByManifestId(maps, eaId));
         if (!string.IsNullOrEmpty(game.SteamAppId) && FloorByAppId.TryGetValue(game.SteamAppId, out var floorApp))
