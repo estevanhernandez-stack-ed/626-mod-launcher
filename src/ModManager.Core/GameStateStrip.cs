@@ -70,6 +70,9 @@ public sealed record GameStateConditions
     public bool SetupDrift { get; init; }
     public bool SteamUpdated { get; init; }
     public string? SteamMessage { get; init; }
+    /// <summary>Non-empty when a version-locked loader is older than the game's executable and the user
+    /// has not marked it checked against this build (<see cref="StaleLoaders.Summary"/>).</summary>
+    public string? StaleLoader { get; init; }
     public bool CoopLauncherMissing { get; init; }
     /// <summary>Non-empty when enabled mods may desync co-op.</summary>
     public string? MpWarning { get; init; }
@@ -140,6 +143,16 @@ public static class GameStateStrip
                 // An ACTION, not a dismissal: it re-records the baseline. Keeping the distinction is
                 // why the strip can state one dismiss rule and still keep this button.
                 "Mark as rechecked", Dismissible: false));
+
+        // 5b. The same question asked of the loader: it hooks the game's own code, and it is older than
+        // the binary it hooks. Below UPDATED because that one is a fact (Steam changed the build) and this
+        // one is an inference from file dates.
+        if (!string.IsNullOrWhiteSpace(c.StaleLoader))
+            chips.Add(new GameStateChip("stale-loader", GameStateSeverity.Warning, "OLD LOADER",
+                c.StaleLoader!.Trim(),
+                // An ACTION like UPDATED's: it records the executable it was checked against, so the next
+                // patch brings it back. A session dismissal would bring it back every launch instead.
+                "Mark as checked", Dismissible: false));
 
         // 6. Co-op specifically is broken.
         if (c.CoopLauncherMissing)

@@ -229,7 +229,8 @@ public static class FrameworkDeps
     // bare game root as a fallback. For FromSoft: the play folder (<gameRoot>/Game) if that
     // subfolder exists (the exe lives there + DLL proxies must sit next to the exe), plus the
     // bare game root. For everything else: just the game root.
-    private static IReadOnlyList<string> ResolveProbeRoots(GameContext ctx)
+    // internal so StaleLoaders looks for a loader in exactly the folders this detects it in.
+    internal static IReadOnlyList<string> ResolveProbeRoots(GameContext ctx)
     {
         var roots = new List<string>();
         if (ctx.Game.Engine == "ue-pak")

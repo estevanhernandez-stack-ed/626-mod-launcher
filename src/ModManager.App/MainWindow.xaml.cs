@@ -1736,6 +1736,8 @@ public sealed partial class MainWindow : Window
             case "vortex-redeployed": OnTakeOverGame(this, e); break;
             // An ACTION, not a dismissal: it re-records the build baseline the warning compares to.
             case "steam-updated": ViewModel.DismissBuildWarningCommand.Execute(null); break;
+            // The same kind of action: it records the executable the loaders were checked against.
+            case "stale-loader": ViewModel.MarkLoadersCheckedCommand.Execute(null); break;
             case "framework-missing": _ = OfferMissingFrameworkAsync(); break;
             case "backup-waiting": _ = PutHeldBackupBackAsync(); break;
         }
