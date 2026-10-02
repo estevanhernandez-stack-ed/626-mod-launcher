@@ -207,6 +207,10 @@ public class SmokeCatalogueTests
             Assert.Contains("pending.md", Str(c, "source"));
 
             var canonical = Regex.Match(note, @"; ([a-z0-9-]+(?: / [a-z0-9-]+)*) is canonical");
+            // A duplicate's whole claim is "that other case carries the verdict", so it must name the
+            // case in the one form this test can check. Reworded, the existence check would skip it.
+            if (note.StartsWith("Duplicate.", StringComparison.Ordinal))
+                Assert.True(canonical.Success, $"{id} is retired as a duplicate but its note names no canonical case as '; <id> is canonical'");
             if (!canonical.Success) continue;
             foreach (var target in canonical.Groups[1].Value.Split(" / "))
                 Assert.True(ids.Contains(target), $"{id} names {target} as canonical, and no such case exists");
