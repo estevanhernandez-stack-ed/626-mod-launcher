@@ -681,28 +681,74 @@ public static class Scanner
                 + "and the mod list only shows the copy that is live. Nothing was moved. Move or remove one of "
                 + "the two copies first.");
 
+        // B4 stage two: the mod's same-named entries in the game's extra trees (Cyberpunk's r6/scripts,
+        // red4ext/plugins, ...) go to disabled-trees/<Mod> in the same operation. Decided and checked
+        // BEFORE anything moves, so a refusal leaves both the game and the holding areas as they were.
+        var extras = ExtraTreeMovesFor(m, c);
+        var treesDir = TreeHolding.ModDir(c, m.Name);
+        if (c.ExtraModTrees is { Count: > 0 })
+        {
+            // Same rule as the main holding folder: an earlier turned-off copy is the user's files, and a
+            // move onto it would either fail halfway through or merge two copies into one. A folder that
+            // cannot be read is not known to be empty, so it refuses too.
+            bool collides;
+            try
+            {
+                collides = TreeHolding.HoldsFiles(c, m.Name)
+                    || extras.Any(x =>
+                    {
+                        var to = TreeHolding.PathFor(c, m.Name, x.Tree, x.EntryName);
+                        return File.Exists(to) || Directory.Exists(to);
+                    });
+            }
+            catch { collides = true; }
+            if (collides)
+                throw new HeldCopyCollisionException(
+                    $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of its files in other folders is "
+                    + $"already held in {treesDir}, or that folder could not be read. Nothing was moved. Move or "
+                    + "remove the held copy first.");
+        }
+
         var destExisted = Directory.Exists(dest);
+        var treesDirExisted = Directory.Exists(treesDir);
         Directory.CreateDirectory(dest);
 
-        // Phase 1: move every primary file into the holding folder. Any failure rolls back
-        // the ones already moved so the mod is never left half-disabled, then surfaces it.
-        var moved = new List<string>();
+        // Phase 1: move every primary file into the holding folder, then each extra-tree entry into
+        // disabled-trees, in ONE ordered list. Any failure rolls back everything already moved, in
+        // reverse (so extras first), so the mod is never left half-disabled across its trees, then
+        // surfaces it.
+        var moved = new List<(string From, string To, string Label, bool Extra)>();
         try
         {
             foreach (var f in files)
             {
                 MoveAny(Path.Combine(loc.Abs, f), Path.Combine(dest, f));
-                moved.Add(f);
+                moved.Add((Path.Combine(loc.Abs, f), Path.Combine(dest, f), f, false));
+            }
+            foreach (var x in extras)
+            {
+                var to = TreeHolding.PathFor(c, m.Name, x.Tree, x.EntryName);
+                Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                MoveAny(x.AbsPath, to);
+                moved.Add((x.AbsPath, to, x.Tree + "/" + x.EntryName, true));
             }
         }
         catch (Exception e)
         {
-            var stranded = new List<string>();
-            foreach (var f in moved)
+            var strandedMoves = new List<(string From, string To, string Label, bool Extra)>();
+            for (var i = moved.Count - 1; i >= 0; i--)
             {
-                try { MoveAny(Path.Combine(dest, f), Path.Combine(loc.Abs, f)); }
-                catch { stranded.Add(f); }
+                try { MoveAny(moved[i].To, moved[i].From); }
+                catch { strandedMoves.Add(moved[i]); }
             }
+            var stranded = strandedMoves.Where(s => !s.Extra).Select(s => s.Label).Reverse().ToList();
+            var strandedExtras = strandedMoves.Where(s => s.Extra).Select(s => s.Label).Reverse().ToList();
+
+            // A held extra that could not go back stays where it is, named in the message. Otherwise the
+            // tree folders this call created go, and only once no file is left under them: never a
+            // recursive delete over something that could be the user's.
+            if (strandedExtras.Count == 0 && !treesDirExisted) TreeHolding.RemoveIfEmpty(c, m.Name);
+
             if (stranded.Count > 0)
             {
                 // What could not go back stays held WITH a record, so it lists as turned off and can be
@@ -725,7 +771,9 @@ public static class Scanner
             throw new InvalidOperationException(
                 $"Couldn't disable \"{m.Name}\" ({e.Message})"
                 + (stranded.Count == 0 ? ""
-                    : $" {string.Join(", ", stranded.Select(f => $"\"{f}\""))} could not be moved back and {(stranded.Count == 1 ? "is" : "are")} held in {dest}."), e);
+                    : $" {string.Join(", ", stranded.Select(f => $"\"{f}\""))} could not be moved back and {(stranded.Count == 1 ? "is" : "are")} held in {dest}.")
+                + (strandedExtras.Count == 0 ? ""
+                    : $" {string.Join(", ", strandedExtras.Select(f => $"\"{f}\""))} could not be moved back and {(strandedExtras.Count == 1 ? "is" : "are")} held in {treesDir}."), e);
         }
 
         // Phase 2: primary files are safely held. Snapshot-first — write meta.json BEFORE clearing any
@@ -753,6 +801,22 @@ public static class Scanner
         }
 
         WriteMeta();   // confirmed record
+    }
+
+    /// <summary>
+    /// The extra-tree entries that move with <paramref name="m"/> (B4 stage two), decided by
+    /// <see cref="ModTrees.MovableFor"/>: one claimant, nothing protected inside, tree not owned by
+    /// another tool. A game that declares no extra trees pays nothing, not even the mod-list read.
+    /// </summary>
+    private static IReadOnlyList<ModTreeEntry> ExtraTreeMovesFor(Mod m, GameContext c)
+    {
+        if (c.ExtraModTrees is not { Count: > 0 }) return Array.Empty<ModTreeEntry>();
+        var otherRows = BuildModList(c).Select(r => r.Name)
+            .Where(n => !string.Equals(n, m.Name, StringComparison.Ordinal)).ToList();
+        return ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs))
+            .MovableFor(m.Name, otherRows,
+                dir => ToolOwnership.Resolve(Path.GetFullPath(dir), c.TakenOver).State == OwnershipState.Owned)
+            .Movable;
     }
 
     /// <summary>Result of an enable attempt — lets bulk / Safe-Clear callers see WHY a mod didn't
