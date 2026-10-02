@@ -134,4 +134,63 @@ public class DiscoveryNameSearchTests
     [Fact]
     public void The_auto_cap_is_smaller_than_the_requested_one()
         => Assert.True(DiscoveryNameSearch.AutoCap < DiscoveryNameSearch.RequestedCap);
+
+    // Review on #367: a vanilla Data/Skyrim.esm cleans to the one-word query "Skyrim", which scores
+    // exactly 0.5 against "Skyrim Together". The index already refuses that; the live search must too.
+    [Fact]
+    public async Task A_one_word_filename_is_never_fuzzy_matched()
+    {
+        var proposals = new[] { AdoptionProposal.Unidentified(Swept("Skyrim.esm", DiscoveryKind.Signature)) };
+
+        var r = await DiscoveryNameSearch.NameAsync(proposals, q => Hits(Hit("Skyrim Together")), cap: 10);
+
+        Assert.Equal(AdoptionEvidence.None, r.Proposals[0].Evidence);
+        Assert.Equal(0, r.Named);
+    }
+
+    [Fact]
+    public async Task A_one_word_filename_still_matches_a_mod_with_exactly_that_name()
+    {
+        var proposals = new[] { AdoptionProposal.Unidentified(Swept("Ragnarok.pak")) };
+
+        var r = await DiscoveryNameSearch.NameAsync(proposals, q => Hits(Hit("Ragnarok Mod"), Hit("Ragnarok", 5)), cap: 10);
+
+        Assert.Equal(5, r.Proposals[0].ModId);
+    }
+
+    // Review on #367: a search that throws (a timeout) was indistinguishable from "Nexus has no such
+    // mod". It is counted and said.
+    [Fact]
+    public async Task Searches_that_fail_are_counted_and_said_not_read_as_misses()
+    {
+        var proposals = new[]
+        {
+            AdoptionProposal.Unidentified(Swept("Slow Mod One.pak")),
+            AdoptionProposal.Unidentified(Swept("Slow Mod Two.pak")),
+        };
+
+        var r = await DiscoveryNameSearch.NameAsync(proposals, q => throw new TimeoutException(), cap: 10);
+
+        Assert.Equal((2, 2), (r.Searched, r.Failed));
+        Assert.Equal("2 couldn't be searched because Nexus didn't answer in time.", DiscoveryNameSearch.Note(r, auto: true));
+    }
+
+    // Review on #367: a stopped run reported the CAP as the number searched.
+    [Fact]
+    public async Task A_stopped_run_reports_what_it_asked_not_what_the_cap_allowed()
+    {
+        using var cts = new CancellationTokenSource();
+        var proposals = new[] { "Alpha", "Bravo", "Charlie", "Delta", "Echo" }
+            .Select(n => AdoptionProposal.Unidentified(Swept($"{n}Tweaks.pak"))).ToList();
+
+        var r = await DiscoveryNameSearch.NameAsync(proposals, q =>
+        {
+            if (q.Contains("Bravo", StringComparison.OrdinalIgnoreCase)) cts.Cancel();
+            return Hits();
+        }, cap: 10, maxConcurrency: 1, ct: cts.Token);
+
+        Assert.Equal(2, r.Searched);
+        Assert.Equal("The name search stopped after 2 of 5 unnamed finds; the rest are listed as not identified.",
+            DiscoveryNameSearch.Note(r, auto: false));
+    }
 }

@@ -7,9 +7,12 @@ namespace ModManager.Core.Discovery;
 /// <param name="Proposals">The input list, in its order, with every candidate the search named
 /// upgraded to <see cref="AdoptionEvidence.NameSearch"/>. A miss is left exactly as it was.</param>
 /// <param name="Worth">How many candidates were worth searching (unidentified, not a loader).</param>
-/// <param name="Searched">How many of those were actually asked about and settled.</param>
+/// <param name="Searched">How many of those were actually asked about and settled. Fewer than
+/// were under the cap when the run was stopped or throttled.</param>
 /// <param name="Named">How many of the searched ones came back with a confident match.</param>
 /// <param name="LeftByCap">Worth searching, but past this run's cap: never asked about.</param>
+/// <param name="Failed">Asked about, but the search threw (Nexus didn't answer in time, a network
+/// error): listed as not identified, and not a finding that Nexus has no such mod.</param>
 /// <param name="RateLimited">The source throttled the run, so it stopped early.</param>
 /// <param name="Hits">Every match found, for the caller to fold into the per-game name index.</param>
 public sealed record DiscoveryNameSearchResult(
@@ -18,6 +21,7 @@ public sealed record DiscoveryNameSearchResult(
     int Searched,
     int Named,
     int LeftByCap,
+    int Failed,
     bool RateLimited,
     IReadOnlyList<SourceSearchHit> Hits);
 
@@ -25,8 +29,10 @@ public sealed record DiscoveryNameSearchResult(
 /// Tier 2b of "find what's already there" (B2): a swept candidate the per-game name index could not
 /// place (the index holds the top ~500 browsable mods; a big library is mostly outside that) gets a
 /// live name search, the same one unidentified rows get. Same engine as the row search
-/// (<see cref="LooseIdentify.SearchEachAsync{T}"/>), so the ladder, the threshold, the concurrency and
-/// the rate-limit rules cannot drift between the two.
+/// (<see cref="LooseIdentify.SearchEachAsync{T}"/>), so the ladder, the concurrency and the
+/// rate-limit rules cannot drift between the two. The one difference is scoring: these queries come
+/// from arbitrary filenames, vanilla files included, so they take the name index's single-token rule
+/// (<see cref="NameMatch.PickForFileName{T}"/>) and a lone word never fuzzy-matches.
 ///
 /// <para><b>Capped per run, and the cap is never silent.</b> The search is Nexus's GraphQL mods search,
 /// which does not draw on the user's v1 day budget the md5 tier spends, so the cap is about
@@ -43,9 +49,10 @@ public static class DiscoveryNameSearch
     /// concurrency, worst case ~600 calls, about a minute.</summary>
     public const int RequestedCap = 200;
 
-    /// <summary>The cap for the silent sweep when a game is added. It has no Stop button and sits
-    /// between the user and their new game, so it searches the first 50 (worst case ~150 calls,
-    /// seconds) and says how many it left for "Identify my mods".</summary>
+    /// <summary>The cap for the sweep when a game is added. It stands between the user and their new
+    /// game, so it searches the first 50 (at most ~150 calls) and says how many it left for "Identify
+    /// my mods". If Nexus stops answering, each candidate gives up after one timed-out call, so the
+    /// worst case is about two minutes, and the sweep has a Stop button for exactly that.</summary>
     public const int AutoCap = 50;
 
     public static async Task<DiscoveryNameSearchResult> NameAsync(
@@ -61,9 +68,10 @@ public static class DiscoveryNameSearch
         var rateLimited = false;
 
         var results = asked.Count == 0
-            ? Array.Empty<(AdoptionProposal Item, string Query, SourceSearchHit? Match)>()
+            ? Array.Empty<(AdoptionProposal Item, string Query, SourceSearchHit? Match, bool Failed)>()
             : await LooseIdentify.SearchEachAsync(asked, p => p.Candidate.FileName, search, maxConcurrency,
-                progress, ct, onRateLimited: () => rateLimited = true).ConfigureAwait(false);
+                progress, ct, onRateLimited: () => rateLimited = true,
+                pick: static (query, hits) => NameMatch.PickForFileName(query, hits, h => h.Name)).ConfigureAwait(false);
 
         // Keyed by the candidate's path: two candidates never share one (the sweep deduplicates).
         var named = new Dictionary<string, SourceSearchHit>(StringComparer.OrdinalIgnoreCase);
@@ -72,8 +80,7 @@ public static class DiscoveryNameSearch
 
         var upgraded = named.Count == 0
             ? proposals
-            : proposals.Select(p => p.Evidence == AdoptionEvidence.None
-                                    && named.TryGetValue(p.Candidate.RelativePath, out var hit)
+            : proposals.Select(p => named.TryGetValue(p.Candidate.RelativePath, out var hit)
                     ? AdoptionProposal.FromSearch(p.Candidate, hit)
                     : p)
                 .ToList();
@@ -81,6 +88,7 @@ public static class DiscoveryNameSearch
         return new DiscoveryNameSearchResult(
             upgraded, worth.Count, results.Count, named.Count,
             LeftByCap: worth.Count - asked.Count,
+            Failed: results.Count(r => r.Failed),
             RateLimited: rateLimited,
             Hits: named.Values.ToList());
     }
@@ -94,13 +102,27 @@ public static class DiscoveryNameSearch
     /// finds were already searched, so running it again would ask about the same first ones.</param>
     public static string? Note(DiscoveryNameSearchResult r, bool auto)
     {
+        var parts = new List<string>();
+        var underCap = r.Worth - r.LeftByCap;
+
+        // Counts are what was ASKED, never what the cap allowed: a stopped or throttled run that
+        // reported the cap would claim searches it never made.
         if (r.RateLimited)
-            return $"Nexus rate-limited the name search after {r.Searched} of {r.Worth} unnamed finds, "
-                   + "so the rest are listed as not identified. Try Identify my mods again later.";
-        if (r.LeftByCap > 0)
-            return auto
-                ? $"Searched Nexus by name for {r.Worth - r.LeftByCap} of {r.Worth} unnamed finds; Identify my mods searches more."
-                : $"Searched Nexus by name for the first {r.Worth - r.LeftByCap} of {r.Worth} unnamed finds; the rest are listed as not identified.";
-        return null;
+            parts.Add($"Nexus rate-limited the name search after {r.Searched} of {r.Worth} unnamed finds, "
+                      + "so the rest are listed as not identified. Try Identify my mods again later.");
+        else if (r.Searched < underCap)
+            parts.Add($"The name search stopped after {r.Searched} of {r.Worth} unnamed finds; "
+                      + "the rest are listed as not identified.");
+        else if (r.LeftByCap > 0)
+            parts.Add(auto
+                ? $"Searched Nexus by name for {r.Searched} of {r.Worth} unnamed finds; Identify my mods searches more."
+                : $"Searched Nexus by name for the first {r.Searched} of {r.Worth} unnamed finds; the rest are listed as not identified.");
+
+        if (r.Failed > 0)
+            parts.Add(r.Failed == 1
+                ? "1 couldn't be searched because Nexus didn't answer in time."
+                : $"{r.Failed} couldn't be searched because Nexus didn't answer in time.");
+
+        return parts.Count == 0 ? null : string.Join(" ", parts);
     }
 }

@@ -38,10 +38,10 @@ public sealed record IdentifyRunOutcome
     /// <see cref="IdentifyRunReport.DownloadsFolderNote"/>.</summary>
     public string? DownloadsNote { get; init; }
 
-    /// <summary>What the swept-candidate name search left undone (a cap or a throttle), from
-    /// <see cref="DiscoveryNameSearch.Note"/>. Without it, finds the search never asked about read as
-    /// finds Nexus had no match for.</summary>
-    public string? SweptSearchNote { get; init; }
+    /// <summary>What the name searches left undone: a cap, a stop, unanswered calls (from
+    /// <see cref="DiscoveryNameSearch.Note"/>), or a throttle on the row search. Without it, mods a
+    /// search never asked about read as mods Nexus had no match for.</summary>
+    public string? NameSearchNote { get; init; }
 
     /// <summary>What to say when no pass wrote anything and the run was not stopped. The caller
     /// supplies it because only the caller knows WHY nothing happened — a gated-out pass has already
@@ -122,7 +122,7 @@ public static class IdentifyRunReport
 
         if (o.IdentifyNote is not null) parts.Add(o.IdentifyNote);
         if (o.DownloadsNote is not null) parts.Add(o.DownloadsNote);
-        if (o.SweptSearchNote is not null) parts.Add(o.SweptSearchNote);
+        if (o.NameSearchNote is not null) parts.Add(o.NameSearchNote);
         if (o.Stopped && did.Count > 0) parts.Add("Stopped early — run it again for the rest.");
 
         return string.Join(" ", parts);

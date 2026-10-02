@@ -306,11 +306,11 @@ public class IdentifyRunReportTests
     {
         const string note = "Searched Nexus by name for the first 200 of 260 unnamed finds; the rest are listed as not identified.";
 
-        var withWrites = IdentifyRunReport.Summarize(new IdentifyRunOutcome { Adopted = 3, SweptSearchNote = note });
+        var withWrites = IdentifyRunReport.Summarize(new IdentifyRunOutcome { Adopted = 3, NameSearchNote = note });
         Assert.StartsWith("Adopted 3 mods.", withWrites);
         Assert.EndsWith(note, withWrites);
 
-        var nothing = IdentifyRunReport.Summarize(new IdentifyRunOutcome { NothingHappenedLine = "No mods found.", SweptSearchNote = note });
+        var nothing = IdentifyRunReport.Summarize(new IdentifyRunOutcome { NothingHappenedLine = "No mods found.", NameSearchNote = note });
         Assert.Equal($"No mods found. {note}", nothing);
     }
 }

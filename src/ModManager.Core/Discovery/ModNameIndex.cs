@@ -53,10 +53,6 @@ public sealed record ModNameIndex(IReadOnlyList<ModNameIndexEntry> Entries)
         var query = NameMatch.CleanModName(fileName);
         if (string.IsNullOrWhiteSpace(query)) return null;
 
-        var queryTokens = NameMatch.Tokenize(query);
-        if (queryTokens.Count < 2)
-            return Entries.FirstOrDefault(e => queryTokens.SequenceEqual(NameMatch.Tokenize(e.Name)));
-
-        return NameMatch.PickBestMatch(query, Entries, e => e.Name);
+        return NameMatch.PickForFileName(query, Entries, e => e.Name);
     }
 }
