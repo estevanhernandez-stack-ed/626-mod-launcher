@@ -65,7 +65,6 @@ public sealed record DropPlan(
     string? Ue4ssModsDir,
     string? IntakeProblem = null)
 {
-    public IEnumerable<DropItem> Of(DropRoute route) => Items.Where(i => i.Route == route);
 }
 
 /// <summary>
@@ -84,7 +83,11 @@ public sealed record DropPlan(
 /// </summary>
 public static class DropRouter
 {
-    public static DropPlan Plan(GameContext ctx, IReadOnlyList<string> paths, IArchiveReader? archiveReader = null)
+    /// <param name="planIntake">Build <see cref="DropPlan.Intake"/>. The app passes false: it plans its
+    /// intake after its questions, over what the user kept, so planning it here too would read every
+    /// archive twice.</param>
+    public static DropPlan Plan(GameContext ctx, IReadOnlyList<string> paths, IArchiveReader? archiveReader = null,
+        bool planIntake = true)
     {
         archiveReader ??= new SharpCompressArchiveReader();
         var game = ctx.Game;
@@ -94,41 +97,47 @@ public static class DropRouter
             : DirectInjectListing.Applies(game) ? DropLane.DirectInject
             : DropLane.ModFolder;
 
-        var ue4ssModsDir = FrameworkRegistry.List(ctx.DataDir)
-            .FirstOrDefault(m => string.Equals(m.FrameworkId, "ue4ss", StringComparison.OrdinalIgnoreCase)) is { } owned
-            ? Path.Combine(owned.InstallPath, "ue4ss", "Mods")
-            : null;
+        if (blocked is not null)
+            return new DropPlan(blocked, needsAck, lane, Array.Empty<DropItem>(), EmptyIntake, null);
+
+        var ue4ssModsDir = OwnedUe4ssModsDir(ctx.DataDir);
 
         var saveRefusal = SaveWritePolicy.Refusal(game);
         var saveTypeExts = string.IsNullOrEmpty(ctx.SaveDir)
             ? null
             : GameSaveTypesCatalog.Resolve(game).SaveTypes.Select(t => t.Extension).ToList();
 
+        var classified = paths.Select(p => (Path: p, Fw: FrameworkOf(p, ctx))).ToList();
+        // A UE4SS install in this same drop goes in first, so its Lua mods have somewhere to go (the app
+        // reads the owned folder again after its framework step).
+        var ue4ssInThisDrop = classified.Any(c => string.Equals(c.Fw.Match?.Match.FrameworkId, "ue4ss", StringComparison.OrdinalIgnoreCase));
         var items = new List<DropItem>();
-        foreach (var path in paths)
+        foreach (var (path, (fw, looksLike)) in classified)
         {
-            var (fw, looksLike) = FrameworkOf(path, game);
             if (fw is not null)
             {
-                items.Add(FrameworkItem(path, fw, ctx));
+                items.Add(fw.Item);
                 continue;
             }
-            items.Add(LaneItem(path, lane, ctx, saveTypeExts, saveRefusal, ue4ssModsDir, archiveReader) with { LooksLikeFramework = looksLike });
+            var item = LaneItem(path, lane, ctx, saveTypeExts, saveRefusal, ue4ssModsDir, archiveReader) with { LooksLikeFramework = looksLike };
+            if (item.Route == DropRoute.Ue4ssLua && ue4ssModsDir is null && ue4ssInThisDrop)
+                item = item with { Problem = null };
+            items.Add(item);
         }
 
-        var modPaths = items.Where(i => i.Route == DropRoute.Mod).Select(i => i.Path).ToList();
+        var modPaths = planIntake ? items.Where(i => i.Route == DropRoute.Mod).Select(i => i.Path).ToList() : new List<string>();
         // Planning never throws: the app plans before its drop's try block. A corrupt archive throws in
         // the lane's planner, and the app's drop meets that same error when it reaches the step.
         IntakePlan intake;
         string? intakeProblem = null;
         try
         {
-            intake = blocked is not null ? EmptyIntake : lane switch
+            intake = modPaths.Count == 0 ? EmptyIntake : lane switch
             {
                 DropLane.DirectInject => DirectInjectListing.PlayFolder(ctx.GameRoot) is { } play
                     ? DirectInject.Plan(play, modPaths)
                     : EmptyIntake,
-                DropLane.ModFolder => modPaths.Count == 0 ? EmptyIntake : Scanner.PlanIntake(modPaths, ctx),
+                DropLane.ModFolder => Scanner.PlanIntake(modPaths, ctx),
                 _ => EmptyIntake,
             };
         }
@@ -144,10 +153,12 @@ public static class DropRouter
     private static readonly IntakePlan EmptyIntake =
         new(Array.Empty<IntakeItem>(), Array.Empty<IntakeCollision>(), Array.Empty<SkippedItem>());
 
+    private sealed record FrameworkHit(KnownFramework Match, DropItem Item);
+
     /// <summary>The framework check the app runs first: a zip (and only a zip; 7z and rar are not
     /// peeked) whose entries match the catalog for this engine and store id, or that looks like an
-    /// unrecognised framework.</summary>
-    public static (KnownFramework? Match, bool LooksLike) FrameworkOf(string path, GameEntry game)
+    /// unrecognised framework. A match comes back as its finished item, from one read of the zip.</summary>
+    private static (FrameworkHit? Match, bool LooksLike) FrameworkOf(string path, GameContext ctx)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path) || !IsArchive(path)) return (null, false);
         IReadOnlyList<string> entries;
@@ -157,11 +168,12 @@ public static class DropRouter
             entries = zip.Entries.Select(e => e.FullName).ToList();
         }
         catch { return (null, false); }   // can't peek: regular intake tries it
-        var c = KnownFramework.Classify(entries, game.Engine ?? "", game.SteamAppId);
-        return (c.Match, c.Match is null && c.LooksLikeFramework);
+        var c = KnownFramework.Classify(entries, ctx.Game.Engine ?? "", ctx.Game.SteamAppId);
+        if (c.Match is null) return (null, c.LooksLikeFramework);
+        return (new FrameworkHit(c.Match, FrameworkItem(path, c.Match, entries, ctx)), false);
     }
 
-    private static DropItem FrameworkItem(string path, KnownFramework fw, GameContext ctx)
+    private static DropItem FrameworkItem(string path, KnownFramework fw, IReadOnlyList<string> entries, GameContext ctx)
     {
         var relPaths = ctx.Game.ModLocations.Select(l => l.Path).ToList();
         var root = FrameworkInstaller.ResolveInstallRoot(fw.InstallRoot, ctx.GameRoot ?? "", relPaths);
@@ -170,13 +182,7 @@ public static class DropRouter
                 Problem: $"Couldn't install {fw.DisplayName}: no project subfolder found in the game's mod locations. "
                          + "Re-scan the game's mod folders and try again.");
 
-        IReadOnlyList<string> files;
-        try
-        {
-            using var zip = ZipFile.OpenRead(path);
-            files = zip.Entries.Select(e => e.FullName.Replace('\\', '/')).Where(e => !e.EndsWith('/')).ToList();
-        }
-        catch { files = Array.Empty<string>(); }
+        var files = entries.Select(e => e.Replace('\\', '/')).Where(e => !e.EndsWith('/')).ToList();
         // Checked where the installer will write, so the confirm shows the truth about what it replaces.
         var overwrites = files.Where(e => File.Exists(Path.Combine(root, e))).ToList();
         return new DropItem(path, DropRoute.Framework, Framework: fw, FrameworkInstallRoot: root,
@@ -234,9 +240,13 @@ public static class DropRouter
     public const string ModEngine2DropNotice =
         "For Mod Engine 2 games, place the mod's folder under the ME2 'mod' folder, then add it in the config. Auto-install is coming.";
 
-    public static bool IsArchive(string path)
-    {
-        var lower = path.ToLowerInvariant();
-        return Intake.ArchiveExtensions.Any(a => lower.EndsWith(a));
-    }
+    private static bool IsArchive(string path) => Intake.IsArchive(path);
+
+    /// <summary>The ue4ss\Mods folder of a UE4SS install 626 owns for this game, or null. Read when it is
+    /// needed: a drop that installs UE4SS and a Lua mod together reads it again after the framework.</summary>
+    public static string? OwnedUe4ssModsDir(string dataDir)
+        => FrameworkRegistry.List(dataDir)
+            .FirstOrDefault(m => string.Equals(m.FrameworkId, "ue4ss", StringComparison.OrdinalIgnoreCase)) is { } owned
+            ? Path.Combine(owned.InstallPath, "ue4ss", "Mods")
+            : null;
 }

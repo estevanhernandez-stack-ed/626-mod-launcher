@@ -335,11 +335,11 @@ public static class DirectInject
         return result;
     }
 
-    /// <summary>Classify a drop against the play folder into add / collision / unsafe — no writes.</summary>
     /// <summary>Where a direct-inject drop keeps the originals it replaces: under the play folder, so they
     /// travel with the game and can be reverted. The app and the agent's intake both use it.</summary>
     public static string ReplacedRoot(string playFolder) => Path.Combine(playFolder, "_626", "replaced");
 
+    /// <summary>Classify a drop against the play folder into add / collision / unsafe — no writes.</summary>
     public static IntakePlan Plan(string playFolder, IEnumerable<string> sourcePaths)
     {
         var add = new List<IntakeItem>();

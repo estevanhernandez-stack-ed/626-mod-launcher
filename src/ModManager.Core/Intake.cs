@@ -12,6 +12,10 @@ public static class Intake
     /// The classifier still labels them "zip" so existing intake branches stay unchanged.</summary>
     public static readonly string[] ArchiveExtensions = { ".zip", ".7z", ".rar" };
 
+    /// <summary>Whether a path names an archive by its extension (any case). One check for every caller.</summary>
+    public static bool IsArchive(string path)
+        => ArchiveExtensions.Any(a => path.EndsWith(a, StringComparison.OrdinalIgnoreCase));
+
     public static string ClassifyDrop(string filePath, IEnumerable<string>? exts)
     {
         var lower = filePath.ToLowerInvariant();

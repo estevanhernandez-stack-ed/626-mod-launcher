@@ -156,9 +156,12 @@ public class IntakeToolsTests : IDisposable
         File.WriteAllText(existing, "old");
         var drop = Loose("CoolMod_P.pak", "new");
 
-        var skipped = Json(IntakeTools.Intake("wr", new[] { drop }));
+        var kept = Json(IntakeTools.Intake("wr", new[] { drop }));
         Assert.Equal("old", File.ReadAllText(existing));
-        Assert.Contains(skipped.GetProperty("skipped").EnumerateArray(), s => s.GetProperty("relPath").GetString() == "CoolMod_P.pak");
+        // Reported once, as kept, with the relPath that would replace it (review on #372: it was twice).
+        Assert.Equal("CoolMod_P.pak", Assert.Single(kept.GetProperty("mods").GetProperty("kept").EnumerateArray()).GetProperty("relPath").GetString());
+        Assert.Empty(kept.GetProperty("mods").GetProperty("refused").EnumerateArray());
+        Assert.Empty(kept.GetProperty("skipped").EnumerateArray());
 
         var replaced = Json(IntakeTools.Intake("wr", new[] { drop }, replace: new[] { "CoolMod_P.pak" }));
         Assert.Equal("new", File.ReadAllText(existing));
@@ -278,6 +281,106 @@ public class IntakeToolsTests : IDisposable
         Assert.True(Items(Json(IntakeTools.DryRunIntake("er", new[] { odd }))).Single().GetProperty("looksLikeFramework").GetBoolean());
         var r = Json(IntakeTools.Intake("er", new[] { odd }));
         Assert.Equal("looks_like_framework", Assert.Single(r.GetProperty("skipped").EnumerateArray()).GetProperty("route").GetString());
+    }
+
+    // ---- review on #372 ----
+
+    // Windrose's shape: the UE4SS project folder is found from the R5 mod location.
+    private GameEntry Windrose()
+    {
+        var gameRoot = Path.Combine(_root, "Windrose");
+        var bin = Path.Combine(gameRoot, "R5", "Binaries", "Win64");
+        Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(bin, "Windrose-Win64-Shipping.exe"), "game");
+        Directory.CreateDirectory(Path.Combine(gameRoot, "R5", "Content", "Paks", "~mods"));
+        return Save(new GameEntry
+        {
+            Id = "windrose", GameName = "Windrose", Engine = "ue-pak", GameRoot = gameRoot,
+            DataDir = Path.Combine(_root, "data-windrose"),
+            ModLocations = new List<ModLocation> { new("mods", "Mods", "R5/Content/Paks/~mods") },
+            FileExtensions = new List<string> { "pak" },
+        });
+    }
+
+    private string Ue4ssZip() => Zip("UE4SS_v3.zip", ("dwmapi.dll", "1"), ("ue4ss/UE4SS.dll", "2"), ("ue4ss/UE4SS-settings.ini", "3"));
+
+    // The regression: the plan read "does 626 own UE4SS" before the framework step installed it, so a
+    // Lua mod dropped WITH UE4SS was turned away. Before the router it installed.
+    [Fact]
+    public void A_lua_mod_dropped_with_ue4ss_installs_into_the_ue4ss_this_drop_installed()
+    {
+        var g = Windrose();
+        var lua = Zip("lua.zip", ("R5ModSettings/Scripts/main.lua", "x"));
+
+        var plan = Json(IntakeTools.DryRunIntake("windrose", new[] { Ue4ssZip(), lua }));
+        Assert.Equal(JsonValueKind.Null, Items(plan).Single(i => i.GetProperty("path").GetString() == lua).GetProperty("problem").ValueKind);
+
+        var r = Json(IntakeTools.Intake("windrose", new[] { Ue4ssZip(), lua }, allowFrameworks: true));
+
+        Assert.Equal(new[] { "framework", "ue4ss_lua" }, r.GetProperty("installed").EnumerateArray().Select(i => i.GetProperty("route").GetString()));
+        Assert.True(File.Exists(Path.Combine(g.GameRoot!, "R5", "Binaries", "Win64", "ue4ss", "Mods", "R5ModSettings", "Scripts", "main.lua")));
+    }
+
+    [Fact]
+    public void Without_allowFrameworks_the_lua_mod_says_the_ue4ss_in_this_drop_was_not_installed()
+    {
+        Windrose();
+        var lua = Zip("lua.zip", ("R5ModSettings/Scripts/main.lua", "x"));
+
+        var r = Json(IntakeTools.Intake("windrose", new[] { Ue4ssZip(), lua }));
+
+        var s = r.GetProperty("skipped").EnumerateArray().Single(x => x.GetProperty("route").GetString() == "ue4ss_lua");
+        Assert.Contains("was not installed", s.GetProperty("reason").GetString());
+    }
+
+    // The app installs frameworks in every lane, Mod Engine 2 included; the agent must too.
+    [Fact]
+    public void A_mod_engine_2_game_still_takes_a_framework_and_skips_the_mods()
+    {
+        var g = EldenRing();
+        var cfg = Path.Combine(g.GameRoot!, "config_eldenring.toml");
+        File.WriteAllText(cfg, "[modengine]");
+        g.ModEngineConfig = cfg;
+        Save(g);
+        var dll = Loose("SomeMod.dll", "dll");
+
+        var r = Json(IntakeTools.Intake("er", new[] { ElmZip(), dll }, allowFrameworks: true));
+
+        Assert.Equal("framework", Assert.Single(r.GetProperty("installed").EnumerateArray()).GetProperty("route").GetString());
+        Assert.Equal("not_installed", Assert.Single(r.GetProperty("skipped").EnumerateArray()).GetProperty("route").GetString());
+    }
+
+    [Fact]
+    public void A_direct_inject_install_says_a_rescan_is_needed()
+    {
+        EldenRing();
+        var r = Json(IntakeTools.Intake("er", new[] { Loose("SomeMod.dll", "dll") }));
+        Assert.True(r.GetProperty("rescanNeeded").GetBoolean());
+    }
+
+    [Fact]
+    public void A_game_with_no_mod_folder_is_refused_not_reported_missing()
+    {
+        var e = EnginePresets.BuildGameEntry(new GameInput { Id = "madden-nfl-27", Name = "Madden NFL 27", Engine = "frostbite", GameRoot = _root }, null);
+        e.DataDir = Path.Combine(_root, "data-madden");
+        Save(e);
+
+        var r = Json(IntakeTools.Intake("madden-nfl-27", new[] { Loose("a.pak") }));
+
+        Assert.Equal("refused", r.GetProperty("refusal").GetString());
+        Assert.Equal(ModListEmptyState.NoModLane, r.GetProperty("detail").GetString());
+    }
+
+    // A save mod on a game that asks before save writes is intake's to refuse, so the dry run says so.
+    [Fact]
+    public void A_dry_run_says_a_save_mod_on_a_game_that_asks_first_is_the_users_to_install()
+    {
+        var g = UePak("madden", steamAppId: "3940610", withSaves: true);
+        BanRiskAckStore.Ack(g.DataDir!, g.Id);   // mods acknowledged, save writes not
+
+        var r = Json(IntakeTools.DryRunIntake("madden", new[] { Zip("world.zip", ("0123456789abcdef0123456789abcdef/data.json", "{}")) }));
+
+        Assert.Equal("needs_user", Items(r).Single().GetProperty("saveMod").GetProperty("outcome").GetString());
     }
 
     [Fact]

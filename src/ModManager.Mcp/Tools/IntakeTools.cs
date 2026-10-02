@@ -39,7 +39,7 @@ public static class IntakeTools
         if (game is null) return ModTools.UnknownGame(gameId);
         var ctx = Scanner.GameContext(game);
         var plan = DropRouter.Plan(ctx, paths);
-        return Describe(gameId, plan, paths);
+        return Describe(gameId, plan, paths, SaveWritePolicy.NeedsAcknowledgment(game, ctx.DataDir));
     }
 
     [McpServerTool(Name = "intake")]
@@ -49,7 +49,7 @@ public static class IntakeTools
                  + "goes ahead as a mod only with continueAsMod; a file that would replace an existing one is "
                  + "skipped unless its relPath is in replace (the old file is kept and can be reverted). Not "
                  + "idempotent: a retry can install a second copy of a tool or save mod. Call dry_run_intake "
-                 + "first. Every call is recorded in agent-log.jsonl.")]
+                 + "first. Every call on a registered game is recorded in its agent-log.jsonl, refusals included.")]
     public static object Intake(
         [Description("The game id, from list_games.")] string gameId,
         [Description("Absolute paths of the files or archives to drop.")] string[] paths,
@@ -75,14 +75,11 @@ public static class IntakeTools
         var plan = DropRouter.Plan(ctx, paths);
 
         if (plan.Blocked is not null)
-            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.NotFound, plan.Blocked);
+            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, plan.Blocked);
         if (plan.NeedsBanRiskAcknowledgment)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.BanRiskNotAcknowledged,
                 $"{game.GameName} is a high ban-risk game and the user has not acknowledged it in the app. Nothing "
                 + "was installed. Ask the user to acknowledge the risk in the app; an agent cannot.");
-        if (plan.Lane == DropLane.ModEngine2)
-            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, DropRouter.ModEngine2DropNotice);
-
         var installed = new List<object>();
         var skipped = new List<object>();
         var failed = new List<object>();
@@ -109,6 +106,12 @@ public static class IntakeTools
                 catch (Exception e) { failed.Add(new { path = item.Path, route = "framework", reason = e.Message }); }
                 continue;
             }
+            if (item.Route == DropRoute.NotInstalled)
+            {
+                // A Mod Engine 2 game: frameworks above still install, as in the app; mods don't.
+                skipped.Add(new { path = item.Path, route = "not_installed", reason = item.Problem });
+                continue;
+            }
             if (item.LooksLikeFramework && !continueAsMod)
             {
                 skipped.Add(new { path = item.Path, route = "looks_like_framework", reason = "Looks like a framework 626 doesn't recognise; pass continueAsMod to install it as a mod." });
@@ -118,6 +121,8 @@ public static class IntakeTools
         }
 
         IntakeResult? intakeResult = null;
+        IReadOnlyList<IntakeCollision> keptCollisions = Array.Empty<IntakeCollision>();
+        var rescanNeeded = false;
         if (plan.Lane == DropLane.DirectInject)
         {
             var play = DirectInjectListing.PlayFolder(ctx.GameRoot);
@@ -127,7 +132,10 @@ public static class IntakeTools
                 {
                     var diPlan = DirectInject.Plan(play, remaining);
                     intakeResult = DirectInject.Execute(play, DirectInject.ReplacedRoot(play), diPlan, replaceSet);
-                    AddCollisionSkips(diPlan, replaceSet, skipped);
+                    keptCollisions = KeptCollisions(diPlan, replaceSet);
+                    // The app re-detects after a direct-inject drop (a new Seamless or Mod Engine 2 shows its
+                    // launcher); that detection lives in the app, so say it is needed instead.
+                    rescanNeeded = intakeResult.Added.Count > 0 || intakeResult.Updated.Count > 0;
                 }
                 catch (Exception e) { failed.Add(new { route = "mod", reason = ErrorRemedy.Describe(e) }); }
             }
@@ -160,11 +168,18 @@ public static class IntakeTools
                         break;
 
                     case DropRoute.Ue4ssLua:
-                        if (plan.Ue4ssModsDir is null) { skipped.Add(new { path = p, route = "ue4ss_lua", reason = item.Problem }); break; }
+                        // Read now: a UE4SS this same call installed above is where its Lua mods go.
+                        var luaDir = DropRouter.OwnedUe4ssModsDir(ctx.DataDir);
+                        if (luaDir is null)
+                        {
+                            skipped.Add(new { path = p, route = "ue4ss_lua", reason = item.Problem
+                                ?? "A UE4SS Lua mod, but 626 doesn't manage this game's UE4SS (the UE4SS in this drop was not installed)." });
+                            break;
+                        }
                         try
                         {
-                            var res = Ue4ssLuaInstaller.Install(p, plan.Ue4ssModsDir, new SharpCompressArchiveReader());
-                            installed.Add(new { path = p, route = "ue4ss_lua", name = res.ModName, into = plan.Ue4ssModsDir });
+                            var res = Ue4ssLuaInstaller.Install(p, luaDir, new SharpCompressArchiveReader());
+                            installed.Add(new { path = p, route = "ue4ss_lua", name = res.ModName, into = luaDir });
                         }
                         catch (Exception e) { failed.Add(new { path = p, route = "ue4ss_lua", reason = e.Message }); }
                         break;
@@ -191,15 +206,21 @@ public static class IntakeTools
                 {
                     var intakePlan = Scanner.PlanIntake(modPaths, ctx);
                     intakeResult = Scanner.ExecuteIntake(intakePlan, replaceSet, ctx);
-                    AddCollisionSkips(intakePlan, replaceSet, skipped);
+                    keptCollisions = KeptCollisions(intakePlan, replaceSet);
                 }
                 catch (Exception e) { failed.Add(new { route = "mod", reason = ErrorRemedy.Describe(e) }); }
             }
         }
 
+        // A collision left alone comes back from the installer as "kept existing" too; report it once,
+        // as kept, with the relPath that would replace it.
+        var keptNames = keptCollisions.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var refused = (intakeResult?.Skipped ?? new List<SkippedItem>())
+            .Where(x => !(x.Reason == "kept existing" && keptNames.Contains(x.Name)))
+            .Select(x => new { name = x.Name, reason = x.Reason }).ToArray();
         var outcome = failed.Count > 0 ? "partial" : "ok";
         var summary = $"installed {installed.Count}, mods added {intakeResult?.Added.Count ?? 0}, updated {intakeResult?.Updated.Count ?? 0}, "
-                      + $"skipped {skipped.Count + (intakeResult?.Skipped.Count ?? 0)}, failed {failed.Count}";
+                      + $"kept {keptCollisions.Count}, skipped {skipped.Count + refused.Length}, failed {failed.Count}";
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, outcome, summary));
 
         return new
@@ -212,25 +233,24 @@ public static class IntakeTools
             {
                 added = intakeResult.Added,
                 updated = intakeResult.Updated,
-                refused = intakeResult.Skipped.Select(s => new { name = s.Name, reason = s.Reason }).ToArray(),
+                kept = keptCollisions.Select(c => new { name = c.Name, relPath = c.RelPath,
+                    reason = "An existing file has this name; pass its relPath in replace to replace it (the old one is kept)." }).ToArray(),
+                refused,
             },
+            rescanNeeded,
             skipped,
             failed,
             detail = summary,
-            hint = "Updated files keep their old version and can be reverted in the app. The app identifies new "
+            hint = (rescanNeeded ? "New files landed in the game's play folder: run Re-scan in the app so a new launcher "
+                    + "(Seamless Co-op, Mod Engine 2) shows up. " : "")
+                   + "Updated files keep their old version and can be reverted in the app. The app identifies new "
                    + "mods on Nexus/CurseForge after its own drops; an agent's intake does not, so new rows may show "
                    + "no title until the user runs Identify my mods. Call list_mods to see the result.",
         };
     }
 
-    // A collision the agent did not list in `replace` is left alone. ExecuteIntake skips it silently, so
-    // say so, with the relPath to pass if replacing it was meant.
-    private static void AddCollisionSkips(IntakePlan plan, ISet<string> replace, List<object> skipped)
-    {
-        foreach (var c in plan.Collisions.Where(c => !replace.Contains(c.RelPath)))
-            skipped.Add(new { path = c.IncomingSource, route = "mod", relPath = c.RelPath,
-                reason = "An existing file has this name; pass its relPath in replace to replace it (the old one is kept)." });
-    }
+    private static IReadOnlyList<IntakeCollision> KeptCollisions(IntakePlan plan, ISet<string> replace)
+        => plan.Collisions.Where(c => !replace.Contains(c.RelPath)).ToList();
 
     private static string LaneName(DropLane lane) => lane switch
     {
@@ -249,7 +269,7 @@ public static class IntakeTools
         _ => "mod",
     };
 
-    private static object Describe(string gameId, DropPlan plan, IReadOnlyList<string> paths) => new
+    private static object Describe(string gameId, DropPlan plan, IReadOnlyList<string> paths, bool saveWritesNeedAck) => new
     {
         ok = true,
         gameId,
@@ -273,7 +293,10 @@ public static class IntakeTools
             saveMod = i.SaveMod is null ? null : new
             {
                 worldId = i.SaveMod.WorldGuid,
-                outcome = i.SaveMod.Outcome == SaveModDropOutcome.NeedsAcknowledgment ? "would_install" : "refused",
+                // What intake will do with it: a save mod on a game that asks before save writes is the
+                // user's to install, in the app.
+                outcome = i.SaveMod.Outcome != SaveModDropOutcome.NeedsAcknowledgment ? "refused"
+                    : saveWritesNeedAck ? "needs_user" : "would_install",
             },
             luaModFolder = i.LuaModFolder,
             tool = i.Tool is null ? null : new { id = i.Tool.ToolId, name = i.Tool.DisplayName },

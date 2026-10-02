@@ -3798,18 +3798,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null || paths.Count == 0) return;
 
-        // Every route is decided up front, by the same router the agent's dry_run_intake and intake use
-        // (E1, fourth slice), and nothing is written by deciding. The steps below ask their questions
-        // and then act on the plan, so a dry run describes this drop rather than a guess at it.
-        var archiveReader = new SharpCompressArchiveReader();
-        var plan = DropRouter.Plan(_ctx, paths, archiveReader);
-        var routeOf = plan.Items.GroupBy(i => i.Path).ToDictionary(g => g.Key, g => g.First());
-        DropRoute RouteOf(string p) => routeOf.TryGetValue(p, out var item) ? item.Route : DropRoute.Mod;
-
         // Nowhere for a mod to go: say why, before any gate or extraction. Nothing is written.
-        if (plan.Blocked is not null)
+        // (DropRouter.Plan reports the same check as Blocked, for the agent's dry run.)
+        if (ModListing.HasNoModLane(_ctx))
         {
-            StatusText = plan.Blocked;
+            StatusText = ModListEmptyState.NoModLane;
             return;
         }
 
@@ -3826,14 +3819,26 @@ public sealed partial class MainViewModel : ObservableObject
         // ship any catalog-recognized framework. Catalog match -> confirmation dialog -> install
         // via FrameworkInstaller (game root, with backup snapshot). Looks-like-framework ->
         // feedback nudge then fall through to the engine-specific intake (or cancel).
+        // Every route is decided here, by the same router the agent's dry_run_intake and intake use
+        // (E1, fourth slice), and nothing is written by deciding. The steps below ask their questions and
+        // then act on the plan, so a dry run describes this drop rather than a guess at it. It reads the
+        // dropped archives, so off the UI thread; the intake plan is made later, over what the user kept.
+        var archiveReader = new SharpCompressArchiveReader();
+        var ctxForPlan = _ctx;
+        var dropped = paths;
+        var plan = await Task.Run(() => DropRouter.Plan(ctxForPlan, dropped, archiveReader, planIntake: false));
+        var routeOf = plan.Items.GroupBy(i => i.Path).ToDictionary(g => g.Key, g => g.First());
+        DropRoute RouteOf(string p) => routeOf.TryGetValue(p, out var item) ? item.Route : DropRoute.Mod;
+
         var frameworkOutcome = await TryInstallFrameworksAsync(plan);
         paths = frameworkOutcome.Remaining;
         if (paths.Count == 0)
         {
             // Everything dropped was a framework (or got cancelled). Surface results + return.
+            // Reload first, or its enabled count replaces this outcome as soon as it is shown.
+            if (frameworkOutcome.AnyInstalled) await ReloadModsAsync();
             if (frameworkOutcome.StatusParts.Count > 0)
                 StatusText = string.Join(". ", frameworkOutcome.StatusParts) + ".";
-            if (frameworkOutcome.AnyInstalled) await ReloadModsAsync();
             return;
         }
 
@@ -3958,7 +3963,9 @@ public sealed partial class MainViewModel : ObservableObject
             var luaInstalledSources = new List<(string ArchivePath, string ModName)>(); // for post-install metadata identify
             var luaNeedsManual = new List<string>();   // detected but not ours to install
             var luaFailures = new List<string>();
-            var ue4ssModsDir = plan.Ue4ssModsDir;
+            // Read now, not from the plan: a UE4SS installed by this same drop's framework step is where
+            // its Lua mods go.
+            var ue4ssModsDir = DropRouter.OwnedUe4ssModsDir(_ctx.DataDir);
             remaining = remaining.Where(p =>
             {
                 if (RouteOf(p) != DropRoute.Ue4ssLua) return true;   // not a Lua mod — leave for the next step
@@ -4053,12 +4060,14 @@ public sealed partial class MainViewModel : ObservableObject
                 statusParts.Add($"Installed {t.DisplayName} as a tool for {_ctx.Game.GameName}");
             foreach (var fail in toolFailures) statusParts.Add($"Tool install failed: {fail}");
             statusParts.Add($"updated {r.Updated.Count}, added {r.Added.Count}, skipped {r.Skipped.Count}");
+            // Reload first: it resets the status line to the enabled count, which would replace this
+            // drop's outcome the moment it was shown (the direct-inject branch already reloads first).
+            await ReloadModsAsync();
             StatusText = string.Join(". ", statusParts)
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
                 + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
                 + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")
                 + MissingFrameworkDropSuffix();
-            await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
