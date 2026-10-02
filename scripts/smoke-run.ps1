@@ -1012,6 +1012,18 @@ function Invoke-McpTool([string]$Tool, [hashtable]$Arguments) {
     finally { try { $p.StandardInput.Close() } catch {}; if (-not $p.WaitForExit(5000)) { $p.Kill() } }
 }
 
+# The app does not watch games.json: the library re-reads it when it is SHOWN, not while it sits on
+# screen. A run that starts on the home (any -Only run) never leaves it, so a game registered after
+# launch never gets a row. Leave the home through a game; the next time the home shows it re-reads.
+# Windrose, as everywhere in this script; opening a game is read-only. Call after registering a fixture.
+function Sync-LibraryWithGamesJson {
+    if (-not (Find-ById (Get-Tree $root) 'HomeButton')) {
+        $wr = Find-ById (Get-Tree $root) 'GameRow.windrose'
+        if (-not $wr) { $wr = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.') | Select-Object -First 1 }
+        if ($wr) { Invoke-Node $wr; Wait-Idle 4000; Set-HarnessOwnedGames }
+    }
+}
+
 function New-RepairFixture {
     Remove-RepairFixtureFiles
     $mods = Join-Path $fixtureRoot 'FixtureGame\FixtureGame\Content\Paks\~mods'
@@ -1020,6 +1032,7 @@ function New-RepairFixture {
     $r = Invoke-McpTool 'register_game' @{ name = 'Repair Harness Fixture'; gameRoot = (Join-Path $fixtureRoot 'FixtureGame'); engine = 'ue-pak' }
     Set-HarnessOwnedGames   # the register, if it wrote anything, was ours
     Assert-True ($r.ok -and $r.gameId -eq $fixtureId) "fixture registration failed: $($r | ConvertTo-Json -Compress)"
+    Sync-LibraryWithGamesJson   # a run that starts on the home never sees the row otherwise
     Open-GameById $fixtureId
 }
 
@@ -1224,15 +1237,7 @@ function Register-LoaderFixture([string]$Name, [string]$GameRoot, [string]$Engin
     $r = Invoke-McpTool 'register_game' @{ name = $Name; gameRoot = $GameRoot; engine = $Engine }
     Set-HarnessOwnedGames
     Assert-True ($r.ok -and -not $r.alreadyRegistered) "fixture registration failed: $($r | ConvertTo-Json -Compress)"
-    # The app does not watch games.json: the library re-reads it when it is SHOWN, not while it sits on
-    # screen. A run that starts on the home (any -Only run) never leaves it, so the fixture's row never
-    # appears. Leave the home through a game and come back. Windrose, as everywhere in this script; opening
-    # a game is read-only.
-    if (-not (Find-ById (Get-Tree $root) 'HomeButton')) {
-        $wr = Find-ById (Get-Tree $root) 'GameRow.windrose'
-        if (-not $wr) { $wr = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.') | Select-Object -First 1 }
-        if ($wr) { Invoke-Node $wr; Wait-Idle 4000; Set-HarnessOwnedGames }
-    }
+    Sync-LibraryWithGamesJson
     return $r.gameId
 }
 
