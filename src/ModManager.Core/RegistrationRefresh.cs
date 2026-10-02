@@ -69,8 +69,9 @@ public static class RegistrationRefresh
             : stored;
 
     /// <summary>One spelling of "the same folder": separators normalised, trailing slash and case
-    /// ignored. Kept private so the comparison cannot drift the way the extension one did.</summary>
-    private static bool SamePath(string? a, string? b)
+    /// ignored. One comparison for the refresh and the folder seed, so the two cannot drift the way the
+    /// extension one did.</summary>
+    internal static bool SamePath(string? a, string? b)
         => string.Equals(NormalisePath(a), NormalisePath(b), StringComparison.OrdinalIgnoreCase);
 
     private static string NormalisePath(string? p)

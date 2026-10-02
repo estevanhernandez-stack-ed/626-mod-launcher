@@ -49,38 +49,22 @@ public static class Scanner
     public static string LocationAbs(string gameRoot, string path)
         => Path.IsPathRooted(path) ? path : Path.Combine(gameRoot, path);
 
-    public static GameContext GameContext(GameEntry? game)
+    /// <summary>
+    /// The registration's mod locations as the scan reads them: the stored list, with the primary
+    /// ("mods") location's path corrected from the manifest when the stored one is still the engine
+    /// preset's default. Read-only; the stored entry is never rewritten. <see cref="ModFolderSeed"/>
+    /// reads this too, so the folder it creates is the folder the scan reads.
+    /// </summary>
+    internal static IReadOnlyList<ModLocation> RefreshedModLocations(
+        GameEntry game, GameManifestEntry? manifestEntry, EnginePreset? preset)
     {
-        game ??= new GameEntry();
-        var gameRoot = Path.GetFullPath(string.IsNullOrEmpty(game.GameRoot) ? "." : game.GameRoot);
-        var dataDir = DataDirForGame(game);
-        // Let a corrected definition reach a game the user already added. The registration froze its
-        // engine preset's values the day it was created; the manifest has kept learning since, and
-        // without this nothing ever re-applies a correction — the exact failure that showed 194
-        // .archive mods on disk as zero mods, because the entry still said "pak". Read-only: the
-        // stored entry is never rewritten, so what the user chose stays visible and editable.
-        // See RegistrationRefresh for why the untouched-preset-default test is the safe rule.
-        var manifestEntry = EffectiveManifest.Current.Games.FirstOrDefault(g => g.Id == game.Id);
-        var preset = game.Engine is not null && EnginePresets.Presets.TryGetValue(game.Engine, out var ep)
-            ? ep : null;
-        // A marked field is a choice the user stated outright; it outranks the untouched-default
-        // inference below it. Null UserSet means "not recorded" — the pre-marker path, unchanged.
-        var userSetExts = game.UserSet?.Contains(GameEntry.UserSetFileExtensions, StringComparer.OrdinalIgnoreCase) == true;
-        var userSetGrouping = game.UserSet?.Contains(GameEntry.UserSetGroupingRule, StringComparer.OrdinalIgnoreCase) == true;
-        var declaredExts = preset is null
-            ? game.FileExtensions
-            : RegistrationRefresh.Extensions(game.FileExtensions, preset.FileExtensions, manifestEntry?.FileExtensions, userSetExts);
-        var groupingRule = preset is null
-            ? game.GroupingRule
-            : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule, userSetGrouping);
-
         // The same correction, applied to the field that decides whether the scan looks anywhere at
         // all. Only the PRIMARY location is refreshed: the manifest states one modPath, and it is the
         // one EnginePresets.BuildGameEntry writes as the "mods" location. Extra locations a user or
         // an engine added (mods2, ue4ss-mods) are untouched - the manifest has nothing to say about
         // them and guessing would delete real configuration. Pinning modLocations opts out entirely.
         var userSetLocations = game.UserSet?.Contains(GameEntry.UserSetModLocations, StringComparer.OrdinalIgnoreCase) == true;
-        var modLocations = game.ModLocations;
+        IReadOnlyList<ModLocation> modLocations = game.ModLocations;
         if (preset is not null && !userSetLocations && !string.IsNullOrWhiteSpace(manifestEntry?.ModPath))
         {
             var primary = modLocations.FirstOrDefault(l => string.Equals(l.Name, "mods", StringComparison.OrdinalIgnoreCase));
@@ -106,6 +90,36 @@ public static class Scanner
                 }
             }
         }
+        return modLocations;
+    }
+
+    public static GameContext GameContext(GameEntry? game)
+    {
+        game ??= new GameEntry();
+        var gameRoot = Path.GetFullPath(string.IsNullOrEmpty(game.GameRoot) ? "." : game.GameRoot);
+        var dataDir = DataDirForGame(game);
+        // Let a corrected definition reach a game the user already added. The registration froze its
+        // engine preset's values the day it was created; the manifest has kept learning since, and
+        // without this nothing ever re-applies a correction — the exact failure that showed 194
+        // .archive mods on disk as zero mods, because the entry still said "pak". Read-only: the
+        // stored entry is never rewritten, so what the user chose stays visible and editable.
+        // See RegistrationRefresh for why the untouched-preset-default test is the safe rule.
+        // Joined through store identity, not the raw id: a second store copy is "<id>-2" (A30).
+        var manifestEntry = ManifestIdLookup.EntryFor(game);
+        var preset = game.Engine is not null && EnginePresets.Presets.TryGetValue(game.Engine, out var ep)
+            ? ep : null;
+        // A marked field is a choice the user stated outright; it outranks the untouched-default
+        // inference below it. Null UserSet means "not recorded" — the pre-marker path, unchanged.
+        var userSetExts = game.UserSet?.Contains(GameEntry.UserSetFileExtensions, StringComparer.OrdinalIgnoreCase) == true;
+        var userSetGrouping = game.UserSet?.Contains(GameEntry.UserSetGroupingRule, StringComparer.OrdinalIgnoreCase) == true;
+        var declaredExts = preset is null
+            ? game.FileExtensions
+            : RegistrationRefresh.Extensions(game.FileExtensions, preset.FileExtensions, manifestEntry?.FileExtensions, userSetExts);
+        var groupingRule = preset is null
+            ? game.GroupingRule
+            : RegistrationRefresh.Grouping(game.GroupingRule, preset.GroupingRule, manifestEntry?.GroupingRule, userSetGrouping);
+
+        var modLocations = RefreshedModLocations(game, manifestEntry, preset);
 
         // ONE spelling of "the extensions this game scans with", because there is more than one
         // reader. A registration written by hand carries extensions the way a person types them —
