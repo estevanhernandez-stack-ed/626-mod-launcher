@@ -169,6 +169,7 @@ public class GameWriteToolsTests : IDisposable
         Assert.True(r.GetProperty("ok").GetBoolean());
         Assert.False(File.Exists(pak));
         Assert.Empty(ModListing.Resolve(g));
+        Assert.Empty(r.GetProperty("deletedHeld").EnumerateArray());
     }
 
     [Fact]
@@ -195,5 +196,61 @@ public class GameWriteToolsTests : IDisposable
     {
         UePak();
         Assert.Equal("not_found", Json(GameWriteTools.UninstallMod("wr", "Nope", confirm: true)).GetProperty("refusal").GetString());
+    }
+
+    // B4 follow-up: a turned-off mod's extra-tree entries wait in disabled-trees/<Mod>. Uninstall no longer
+    // refuses it: the preview names the held folder and its trees, and confirm deletes that folder too.
+    private async Task<(GameEntry Game, string HeldDir)> CyberpunkWithCoolModOff()
+    {
+        var root = Path.Combine(_root, "Cyberpunk 2077");
+        void Put(string rel, string content)
+        {
+            var p = Path.Combine(root, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+            File.WriteAllText(p, content);
+        }
+        Put("archive/pc/mod/CoolMod.archive", "MAIN");
+        Put("r6/scripts/CoolMod/main.reds", "SCRIPTS");
+        Put("r6/tweaks/CoolMod.yaml", "TWEAK");
+        var g = new GameEntry
+        {
+            Id = "cyberpunk-2077", GameName = "Cyberpunk 2077", Engine = "custom", GameRoot = root, DataDir = Path.Combine(_root, "data-cp"),
+            ModLocations = new List<ModLocation> { new("mods", "Mods", "archive/pc/mod") },
+            FileExtensions = new List<string> { "archive" },
+        };
+        RegistryStore.Save(McpConfig.DataRoot, Registry.UpsertGame(Registry.EmptyRegistry(), g));
+        var ctx = Scanner.GameContext(g);
+        Assert.Contains("r6/scripts", ctx.ExtraModTrees ?? Array.Empty<string>()); // pre-condition: the curated trees
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var heldDir = Path.Combine(ctx.DataDir, "disabled-trees", "CoolMod");
+        Assert.True(File.Exists(Path.Combine(heldDir, "r6", "scripts", "CoolMod", "main.reds"))); // pre-condition
+        return (g, heldDir);
+    }
+
+    [Fact]
+    public async Task Uninstalling_without_confirm_names_the_held_folder_and_its_trees()
+    {
+        var (g, heldDir) = await CyberpunkWithCoolModOff();
+
+        var r = Json(GameWriteTools.UninstallMod("cyberpunk-2077", "CoolMod"));
+
+        Assert.Equal("confirmation_required", r.GetProperty("refusal").GetString());
+        var detail = r.GetProperty("detail").GetString()!;
+        Assert.Contains("CoolMod.archive", detail);
+        Assert.Contains($"and the files 626 is holding for it in {heldDir} (r6/scripts, r6/tweaks)", detail);
+        Assert.True(Directory.Exists(heldDir));
+    }
+
+    [Fact]
+    public async Task Uninstalling_with_confirm_deletes_the_held_folder_too()
+    {
+        var (g, heldDir) = await CyberpunkWithCoolModOff();
+
+        var r = Json(GameWriteTools.UninstallMod("cyberpunk-2077", "CoolMod", confirm: true));
+
+        Assert.True(r.GetProperty("ok").GetBoolean(), r.GetRawText());
+        Assert.False(Directory.Exists(heldDir));
+        Assert.Equal(new[] { heldDir }, r.GetProperty("deletedHeld").EnumerateArray().Select(e => e.GetString()));
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == "CoolMod");
     }
 }
