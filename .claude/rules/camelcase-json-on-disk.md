@@ -65,7 +65,7 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `TakenOverState` taken-over.json (`src/ModManager.Core/VortexTakeover.cs`)
 - `VanillaStash` vanilla-stash.json (`src/ModManager.Core/VanillaLaunch.cs`)
 - `NexusOAuthConfig` nexus-oauth-cache.json (`src/ModManager.Core/Nexus/NexusOAuthConfig.cs` — `JsonOpts`; written/read via `src/ModManager.App/Services/NexusOAuthConfigSource.cs`)
-- `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — hand-built camelCase JSON, atomic temp+rename; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs`)
+- `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — camelCase keys merged one at a time by `AppSettingsFile.WriteKey` in `src/ModManager.Core/AppSettingsFile.cs`, locked, atomic temp+rename, shared with the agent's `apply_theme`; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs` and `AppSettingsFileTests.WriteKey_merges_one_key_and_keeps_every_other_setting`)
 - `ModNameIndex` nexus-name-index.json (`src/ModManager.Core/Discovery/ModNameIndex.cs` — per-game Nexus name cache; written via `AtomicJson` by `ModNameIndexSource`)
 
 - `ModInstallManifest` per-install records (`src/ModManager.Core/ModInstallRegistry.cs` — written to

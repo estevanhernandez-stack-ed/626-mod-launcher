@@ -37,6 +37,10 @@
     <Compile Include="..\..\src\ModManager.Core\AppSettingsFile.cs">
       <Link>AppSettingsFile.cs</Link>
     </Compile>
+    <!-- AppSettingsFile.WriteKey holds the lock file games.json uses. -->
+    <Compile Include="..\..\src\ModManager.Core\Persistence\FileLock.cs">
+      <Link>FileLock.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

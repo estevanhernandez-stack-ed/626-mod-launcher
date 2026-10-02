@@ -616,9 +616,30 @@ public sealed partial class MainViewModel : ObservableObject
         _restoringTheme = true;
         try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, appSettings.ThemeId).Active; }
         finally { _restoringTheme = false; }
+
+        // A theme saved outside this window (an agent's apply_theme, another launcher window) shows
+        // here as it happens, not at the next start (agent-access law 10).
+        appSettings.ThemeSavedElsewhere += (_, id) => _dispatcherQueue?.TryEnqueue(() => OnThemeSavedElsewhere(id));
+        appSettings.WatchForOutsideChanges();
     }
 
     private bool _restoringTheme;
+
+    private void OnThemeSavedElsewhere(string savedId)
+    {
+        // Reload first: an agent may have picked a user theme file this window has not listed yet.
+        // Selected under the restore gate because the pick is already on disk, so it must not be saved
+        // again, and a saved id with no usable theme falls back the way it does at start.
+        _themes.Reload();
+        ThemeOptions = _themes.Themes;
+        _restoringTheme = true;
+        try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, savedId).Active; }
+        finally { _restoringTheme = false; }
+        if (SelectedTheme is not { } showing) return;
+        StatusText = showing.Id == savedId
+            ? $"Theme switched to {showing.Name}. It was changed outside this window."
+            : $"The theme was changed outside this window to \"{savedId}\", which 626 can't open, so {showing.Name} is showing.";
+    }
 
     // Segmented Loadout control: the selected segment tints with the theme accent; the others stay
     // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.

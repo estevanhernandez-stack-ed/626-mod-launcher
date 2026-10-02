@@ -125,6 +125,149 @@ public class AppStateToolsTests : IDisposable
         Assert.True(t.GetProperty("overridesBuiltin").GetBoolean());
     }
 
+    // ---- apply_theme (E1, sixth slice) ----
+
+    private string SavedThemeId() => AppSettingsFile.Read(AppSettingsFile.PathIn(DataRoot)).ThemeId!;
+
+    [Fact]
+    public void Applying_a_builtin_saves_it_and_list_themes_then_shows_it()
+    {
+        var r = Json(AppStateTools.ApplyTheme("forge"));
+
+        Assert.True(r.GetProperty("ok").GetBoolean());
+        Assert.True(r.GetProperty("changed").GetBoolean());
+        Assert.Equal(Themes.DefaultThemeId, r.GetProperty("previousThemeId").GetString());
+        Assert.Equal(JsonValueKind.Null, r.GetProperty("previousSavedThemeId").ValueKind);
+        Assert.Equal("forge", SavedThemeId());
+        Assert.Contains("\"themeId\":\"forge\"", File.ReadAllText(AppSettingsFile.PathIn(DataRoot)));   // camelCase
+        Assert.Equal("forge", Json(AppStateTools.ListThemes()).GetProperty("activeThemeId").GetString());
+    }
+
+    [Fact]
+    public void Applying_keeps_every_other_setting()
+    {
+        Settings("{\"backdrop\":\"acrylic\",\"closeToTray\":true,\"themeId\":\"ember\"}");
+
+        AppStateTools.ApplyTheme("aurora");
+
+        var s = AppSettingsFile.Read(AppSettingsFile.PathIn(DataRoot));
+        Assert.Equal(("acrylic", true, "aurora"), (s.Backdrop, s.CloseToTray, s.ThemeId));
+    }
+
+    [Fact]
+    public void Applying_the_saved_theme_again_changes_nothing_and_says_so()
+    {
+        AppStateTools.ApplyTheme("matrix");
+        var before = File.GetLastWriteTimeUtc(AppSettingsFile.PathIn(DataRoot));
+
+        var r = Json(AppStateTools.ApplyTheme("matrix"));
+
+        Assert.True(r.GetProperty("ok").GetBoolean());
+        Assert.False(r.GetProperty("changed").GetBoolean());
+        Assert.Equal("matrix", r.GetProperty("previousThemeId").GetString());
+        Assert.Equal(before, File.GetLastWriteTimeUtc(AppSettingsFile.PathIn(DataRoot)));
+    }
+
+    [Fact]
+    public void The_id_is_matched_in_any_case_and_saved_as_the_theme_id()
+    {
+        var r = Json(AppStateTools.ApplyTheme("  Forge "));
+
+        Assert.Equal("forge", r.GetProperty("themeId").GetString());
+        Assert.Equal("forge", SavedThemeId());
+    }
+
+    [Fact]
+    public void A_user_theme_can_be_applied()
+    {
+        UserTheme("midnight", "Midnight");
+
+        var r = Json(AppStateTools.ApplyTheme("midnight"));
+
+        Assert.Equal("Midnight", r.GetProperty("name").GetString());
+        Assert.Equal("midnight", SavedThemeId());
+    }
+
+    [Fact]
+    public void Undo_is_applying_previousThemeId()
+    {
+        AppStateTools.ApplyTheme("ember");
+        var r = Json(AppStateTools.ApplyTheme("forge"));
+
+        AppStateTools.ApplyTheme(r.GetProperty("previousThemeId").GetString()!);
+
+        Assert.Equal("ember", SavedThemeId());
+    }
+
+    [Fact]
+    public void An_unknown_theme_is_refused_lists_the_themes_and_writes_nothing()
+    {
+        Settings("{\"themeId\":\"ember\"}");
+
+        var r = Json(AppStateTools.ApplyTheme("nope"));
+
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        Assert.Equal("not_found", r.GetProperty("refusal").GetString());
+        Assert.Contains("forge", r.GetProperty("detail").GetString());
+        Assert.Equal("ember", SavedThemeId());
+    }
+
+    [Fact]
+    public void A_theme_file_the_picker_leaves_out_is_refused_with_its_reason()
+    {
+        Directory.CreateDirectory(Path.Combine(DataRoot, "themes"));
+        File.WriteAllText(Path.Combine(DataRoot, "themes", "half.json"), "{\"name\":\"Half\",\"bg\":\"#000000\"}");
+
+        var r = Json(AppStateTools.ApplyTheme("half"));
+
+        Assert.Equal("not_found", r.GetProperty("refusal").GetString());
+        Assert.Contains("half.json is not offered: missing required colors", r.GetProperty("detail").GetString());
+        Assert.False(File.Exists(AppSettingsFile.PathIn(DataRoot)));
+    }
+
+    [Fact]
+    public void A_low_contrast_theme_applies_with_its_warnings()
+    {
+        var tokens = new Dictionary<string, string>(Themes.BuiltinThemes[Themes.DefaultThemeId].Tokens)
+            { ["name"] = "Murk", ["text"] = "#101010", ["bg"] = "#111111" };
+        Directory.CreateDirectory(Path.Combine(DataRoot, "themes"));
+        File.WriteAllText(Path.Combine(DataRoot, "themes", "murk.json"), JsonSerializer.Serialize(tokens));
+
+        var r = Json(AppStateTools.ApplyTheme("murk"));
+
+        Assert.True(r.GetProperty("ok").GetBoolean());
+        Assert.NotEqual(0, r.GetProperty("contrastWarnings").GetArrayLength());
+        Assert.Equal("murk", SavedThemeId());
+    }
+
+    [Fact]
+    public void A_corrupt_settings_file_is_started_over_and_says_so()
+    {
+        Settings("{ not json");
+
+        var r = Json(AppStateTools.ApplyTheme("forge"));
+
+        Assert.True(r.GetProperty("settingsFileStartedOver").GetBoolean());
+        Assert.Equal("forge", SavedThemeId());
+    }
+
+    [Fact]
+    public void Every_apply_and_refusal_is_in_the_launcher_log_get_agent_log_reads_with_no_game()
+    {
+        AppStateTools.ApplyTheme("forge");
+        AppStateTools.ApplyTheme("nope");
+
+        var log = Json(WriteTools.GetAgentLog());
+
+        Assert.Equal(AgentAuditPath(), log.GetProperty("path").GetString());
+        var entries = log.GetProperty("entries").EnumerateArray().ToList();
+        Assert.Equal(new[] { "ok", "not_found" }, entries.Select(e => e.GetProperty("result").GetString()).ToArray());
+        Assert.All(entries, e => Assert.Equal("apply_theme", e.GetProperty("tool").GetString()));
+        Assert.Equal("nope", entries[1].GetProperty("args").GetProperty("themeId").GetString());
+    }
+
+    private string AgentAuditPath() => ModManager.Core.Agent.AgentAudit.PathFor(DataRoot);
+
     // ---- get_app_settings ----
 
     [Fact]
