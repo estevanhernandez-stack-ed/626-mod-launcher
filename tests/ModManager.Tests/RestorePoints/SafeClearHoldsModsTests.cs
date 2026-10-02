@@ -63,7 +63,7 @@ public class SafeClearHoldsModsTests : IDisposable
         Put(Path.Combine(root, "vortex", "vortex.deployment.pak.json"), "{}");
         return new GameEntry
         {
-            Id = "pak", GameName = "Pak Game", GameRoot = root, DataDir = DataDir("pak"), SteamAppId = steamAppId,
+            Id = "pak", GameName = "Pak Game", Engine = "minecraft", GameRoot = root, DataDir = DataDir("pak"), SteamAppId = steamAppId,
             FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
             ModLocations = new[]
             {
@@ -81,7 +81,7 @@ public class SafeClearHoldsModsTests : IDisposable
         Put(Path.Combine(root, "r6", "tweaks", "CoolMod.yaml"), "TWEAK");
         return new GameEntry
         {
-            Id = "tree", GameName = "Tree Game", Engine = "custom", GameRoot = root, DataDir = DataDir("tree"),
+            Id = "tree", GameName = "Tree Game", Engine = "custom", SteamAppId = "1091500", GameRoot = root, DataDir = DataDir("tree"),
             FileExtensions = new[] { "archive" },
             ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
         };

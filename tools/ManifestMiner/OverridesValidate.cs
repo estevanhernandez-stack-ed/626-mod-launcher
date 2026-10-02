@@ -88,6 +88,12 @@ public static partial class OverridesValidate
                     problems.Add(new OverrideProblem(
                         $"{FileOf(e)} has an extra mod tree '{tree}' that {why}. The launcher would drop it."));
 
+        // modPathModOnly describes modPath; on an entry that names no modPath it describes nothing, and a
+        // curator who meant it for the engine default should say which folder they mean.
+        foreach (var e in overrides.Where(e => e.ModPathModOnly == true && string.IsNullOrWhiteSpace(e.ModPath)))
+            problems.Add(new OverrideProblem(
+                $"{FileOf(e)} sets modPathModOnly without a modPath. Name the folder it describes."));
+
         return problems;
     }
 }

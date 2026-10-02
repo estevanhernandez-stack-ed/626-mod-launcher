@@ -89,6 +89,7 @@ public static partial class RestorePointEngine
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return ModListing.Resolve(c.Game)
             .Where(m => m.Enabled && !m.ReadOnly && m.Loader is not ("ue4ss" or "bepinex"))
+            .Where(m => InTurnOffScope(c, m))
             .Where(m => !CoveredByMoves(c, m, moved))
             .Where(m => !CoveredByMoves(c, m, frameworkOwned))
             .Where(m => seen.Add(m.Location + "\u0000" + m.Name))
@@ -102,7 +103,12 @@ public static partial class RestorePointEngine
     /// every row it would turn off (folders summed whole) plus the extra-tree entries each turn-off would move
     /// (the same <see cref="ExtraTreeRows"/> selection the toggle uses). A pre-flight free-space estimate, read-only.
     /// </summary>
-    public static long EstimateTurnOffBytes(GameContext c)
+    public static long EstimateTurnOffBytes(GameContext c) => EstimateTurnOffBytes(c, outsideModOnlyOnly: false);
+
+    /// <summary><see cref="EstimateTurnOffBytes(GameContext)"/>, optionally counting only the rows whose held
+    /// copies come from OUTSIDE the mod-only folders (direct-inject and loose-root holds), so a pre-flight
+    /// can add them to <see cref="EstimateModOnlyBytes"/> without counting a mod-only folder twice.</summary>
+    public static long EstimateTurnOffBytes(GameContext c, bool outsideModOnlyOnly)
     {
         long total = 0;
         var rows = ModListing.Resolve(c.Game);
@@ -113,6 +119,7 @@ public static partial class RestorePointEngine
             var row = FindRow(rows, cm);
             var baseDir = row is null ? null : BaseDirFor(c, row);
             if (row is null || baseDir is null) continue;
+            if (outsideModOnlyOnly && row.Location is not ("direct-inject" or LooseMods.LooseRootListing.LooseRootLocation)) continue;
             try
             {
                 foreach (var x in extraRows.MovesFor(row).Movable)
@@ -141,6 +148,19 @@ public static partial class RestorePointEngine
         LooseMods.LooseRootListing.LooseRootLocation => LooseMods.LooseRootListing.PlayFolder(c.GameRoot),
         _ => c.Locations.FirstOrDefault(l => l.Name == m.Location)?.Abs,
     };
+
+    // A row vanilla may turn off (review r4, I5): one on a lane with its own safe mechanism (direct-inject,
+    // loose-root, Mod Engine 2's config, a proxy step-aside), or one whose location the launcher KNOWS holds
+    // only mods. A scanner row anywhere else (Skyrim.esm in Data, a base pak in a files-form Content/Paks)
+    // could be the game itself: it is left on, and the sheet lists it as still active.
+    private static bool InTurnOffScope(GameContext c, Mod m)
+    {
+        if (m.Location is "direct-inject" or "mod engine 2" or ProxyLoaderRows.LocationTag
+            || m.Location == LooseMods.LooseRootListing.LooseRootLocation)
+            return true;
+        var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
+        return loc is not null && string.IsNullOrEmpty(loc.Managed) && ModOnlyFolders.WhyModOnly(c, loc) is not null;
+    }
 
     // A loader row: what other mods load through. Turned off last, turned back on first.
     private static bool IsLoaderRow(Mod m) => m.IsLoader || m.Location == ProxyLoaderRows.LocationTag;
@@ -532,7 +552,15 @@ public static partial class RestorePointEngine
 
         // 3b. The vanilla remainder back into the game's mod folders, verified, BEFORE the loader manifests
         //     (a UE4SS mods.txt can be part of it) and before the turn-ons (sidecars beside held mods).
-        var remainderIssues = RestoreRemainder(ga, gameArchiveDir, liveCtx);
+        //     On a ban-risk game with no acknowledgment, the remainder stays in the restore point (I3): it is
+        //     mod files, and putting them live would enable mods without the say-so step 5 also waits for.
+        var banGated = BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(liveCtx.Game),
+            BanRiskAckStore.IsAcked(liveCtx.DataDir, liveCtx.Game.Id ?? ""));
+        IReadOnlyList<ClearSkip> remainderIssues = banGated
+            ? (ga.VanillaRemainder is { Count: > 0 } rem
+                ? new[] { new ClearSkip($"{rem.Count} file(s) no mod claims", RemainderKeptForBanRisk) }
+                : Array.Empty<ClearSkip>())
+            : RestoreRemainder(ga, gameArchiveDir, liveCtx);
 
         // 4. Re-apply loader enable state (best effort — loader manifest may be absent).
         foreach (var lm in ga.LoaderMods)
@@ -549,7 +577,7 @@ public static partial class RestorePointEngine
 
         // 5. Turn back on exactly what the vanilla clear turned off (null = an archive from before the
         //    record: nothing to do, as before). Last, so the files and loaders those mods need are back.
-        var (notBackOn, recovered) = TurnBackOn(ga, gameArchiveDir, liveCtx);
+        var (notBackOn, recovered) = TurnBackOn(ga, gameArchiveDir, liveCtx, banGated ? Array.Empty<ClearSkip>() : remainderIssues);
 
         // 6. Remove the launcher-authored off-boarding sheet if present.
         // Law B: gate the manifest-supplied path against the game root before deleting.
@@ -573,7 +601,7 @@ public static partial class RestorePointEngine
     // A turn-off that refused is included too: usually it is still live and nothing happens, but one whose
     // rollback stranded its files in holding lists as off, and is turned back on and reported as recovered.
     private static (IReadOnlyList<ClearSkip> NotBack, IReadOnlyList<ClearSkip> Recovered) TurnBackOn(
-        GameArchive ga, string gameArchiveDir, GameContext liveCtx)
+        GameArchive ga, string gameArchiveDir, GameContext liveCtx, IReadOnlyList<ClearSkip> remainderIssues)
     {
         var none = ((IReadOnlyList<ClearSkip>)Array.Empty<ClearSkip>(), (IReadOnlyList<ClearSkip>)Array.Empty<ClearSkip>());
         if (ga.TurnedOffByClear is not { Count: > 0 } set
@@ -626,6 +654,25 @@ public static partial class RestorePointEngine
         if (BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(game), BanRiskAckStore.IsAcked(liveCtx.DataDir, game.Id ?? "")))
             return (notBack.Concat(wanted.Where(cm => FindRow(rows, cm) is not { Enabled: true })
                 .Select(cm => new ClearSkip(cm.Name, BanRiskLeftOff))).ToList(), Array.Empty<ClearSkip>());
+
+        // A mod some of whose files are among the remainder that didn't come back isn't turned on half
+        // there (M3): it stays off and says why.
+        var missingPaths = remainderIssues
+            .Select(i => IsRooted(i.Name) ? null : FullNorm(Path.Combine(liveCtx.GameRoot, i.Name)))
+            .Where(p => p is not null).Select(p => p!).ToList();
+        if (missingPaths.Count > 0)
+            foreach (var cm in wanted.ToList())
+            {
+                if (FindRow(rows, cm) is not { } r || BaseDirFor(liveCtx, r) is not { } bd) continue;
+                // A held row may list no files; its name is then the folder or stem it is held under.
+                var mine = (r.Files.Count > 0 ? r.Files : new List<string> { r.Name })
+                    .Select(f => FullNorm(Path.Combine(bd, f))).Where(p => p is not null).Select(p => p!).ToList();
+                if (missingPaths.Any(mp => mine.Any(p => string.Equals(p, mp, StringComparison.OrdinalIgnoreCase) || IsUnder(mp, p))))
+                {
+                    notBack.Add(new ClearSkip(cm.Name, "some of its files didn't come back from the restore point, so 626 left it off"));
+                    wanted.Remove(cm);
+                }
+            }
 
         // One scope for every turn-on, so the scanner's lane lists the game once, not once per mod.
         var scope = new Scanner.BulkScope(liveCtx);

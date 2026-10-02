@@ -83,7 +83,7 @@ public class SafeClearReviewRegressionTests : IDisposable
         Put(Path.Combine(root, "mods", "beta.pak"), "BETA");
         return new GameEntry
         {
-            Id = "pak", GameName = "Pak Game", GameRoot = root, DataDir = DataDir("pak"),
+            Id = "pak", GameName = "Pak Game", Engine = "minecraft", GameRoot = root, DataDir = DataDir("pak"),
             FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
             ModLocations = new[] { new ModLocation("mods", "Mods", "mods") },
         };
@@ -97,7 +97,7 @@ public class SafeClearReviewRegressionTests : IDisposable
         Put(Path.Combine(root, "r6", "tweaks", "CoolMod.yaml"), "TWEAK-v1");
         return new GameEntry
         {
-            Id = "tree", GameName = "Tree Game", Engine = "custom", GameRoot = root, DataDir = DataDir("tree"),
+            Id = "tree", GameName = "Tree Game", Engine = "custom", SteamAppId = "1091500", GameRoot = root, DataDir = DataDir("tree"),
             FileExtensions = new[] { "archive" },
             ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
         };
@@ -429,7 +429,7 @@ public class SafeClearReviewRegressionTests : IDisposable
         File.WriteAllText(@"\\?\" + Path.Combine(mods, "Cool", "readme."), "DOT");   // only reachable by its exact name
         var g = new GameEntry
         {
-            Id = "dot", GameName = "Dot Game", GameRoot = root, DataDir = DataDir("dot"),
+            Id = "dot", GameName = "Dot Game", Engine = "minecraft", GameRoot = root, DataDir = DataDir("dot"),
             FileExtensions = new[] { "bin" },
             ModLocations = new[] { new ModLocation("mods", "Mods", "mods") { Form = "folders" } },
         };

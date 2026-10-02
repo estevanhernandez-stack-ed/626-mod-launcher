@@ -36,7 +36,7 @@ public class SafeClearBulkCostTests : IDisposable
         }
         var game = new GameEntry
         {
-            Id = "g" + mods, GameName = "G", Engine = "custom", GameRoot = root,
+            Id = "g" + mods, GameName = "G", Engine = "custom", SteamAppId = "1091500", GameRoot = root,
             DataDir = Path.Combine(_root, "_626mods", "g" + mods),
             FileExtensions = new[] { "archive" },
             ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },

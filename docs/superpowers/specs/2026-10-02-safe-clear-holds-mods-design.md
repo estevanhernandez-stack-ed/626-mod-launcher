@@ -256,3 +256,65 @@ from.
   "already on (a different copy)" and is neither put back nor turned on.
 - The put-back rollback deletes a final file only if this call's own move placed it.
 - One held mod reads "A copy of it".
+
+## Round 4: sweep only folders known to hold nothing but mods (review r3, C1)
+
+The round-3 sweep was a denylist: everything except the game root, play folders, `paks-root` and other
+tools' folders. Against the feed's real modPaths it planned to move base-game content: Skyrim's `Data`
+(Skyrim.esm, the base .bsa), Total War's `data.pack`, Bannerlord's `Modules\Native`, KSP's `GameData\Squad`,
+DS PTDE's `DATA\DARKSOULS.exe`, Bloodlines' `pack000.vpk`, JWE2's `Main.ovl`, Helldivers 2's `data`,
+DD:DA's `nativePC\rom`, a files-form `Content/Paks`, and any user's own path. It is now an **allowlist**,
+held in one Core table, `ModOnlyFolders`. Only these are swept:
+
+1. The declared extra trees.
+2. Locations whose path relative to the game root matches the engine's mod-only shape:
+   - ue-pak: `<P>/Content/Paks/~mods`, `LogicMods` or `Mods`
+   - bepinex: `BepInEx/plugins`
+   - smapi and melonloader: `Mods`
+   - minecraft: `mods`
+   - fromsoft: Mod Engine 2's `.../mod`
+   - the launcher's own UE4SS location
+3. The game's primary location, at exactly the manifest's `modPath`, when the game's definition marks it
+   with the new descriptive field `modPathModOnly: true` and the user didn't set the locations by hand.
+   The embedded snapshot marks Cyberpunk 2077's `archive/pc/mod`. The field says only "this folder holds
+   nothing but mods", never how to toggle anything. It is carried like `extraModTrees`:
+   - camelCase;
+   - merged remote-wins;
+   - curated through the miner's overrides, which refuse it without a `modPath`.
+
+Every other location, wherever it is (inside the game, outside it, the root itself), is never swept. It
+is named instead: "626 can't tell the game's own files from mods in <folder>; N files no mod claims are
+still in place". Each row there that is still on is listed as "still active". The play folder of a
+direct-inject or loose-root game is named too. Any such note makes `FullyVanilla` false.
+
+**The turn-offs follow the same rule (I5).** Vanilla turns off a row only on a lane with its own
+mechanism (direct-inject, loose-root, Mod Engine 2's config, a proxy step-aside) or in a location the
+table vouches for. A scanner row anywhere else (Skyrim.esm is a row) stays on and is listed as still
+active. Ordinary Disable All is unchanged by this PR. It has the same risk: the files-form listing makes
+Skyrim.esm a switchable row, and `SetAllMods(false)` turns off every switchable row.
+
+**Links (I1).** The sweep walks folders itself and never follows a reparse point. A junction or symlink
+inside a mod folder is named and left alone, and a mod folder that is itself a link is not swept.
+
+**Where a file really is (I2).** If a later step fails after a file has been moved (the checksum read, the
+move-back), the file is in the archive, so it keeps its record. Only a file that is still live counts as
+"stayed".
+
+**Ban risk (I3).** Restore decides the ban-risk gate before putting the remainder back. On a high-risk
+game without the acknowledgment, the remainder stays in the restore point. Restore reports "kept in your
+restore point because of ban risk; restore it after turning mods on with the acknowledgment".
+
+**Minors.**
+
+- M1: the pre-flight counts every byte in the mod-only folders, plus the direct-inject and loose-root
+  holds, which come from elsewhere.
+- M2: the framework exclusion reads the sealed `ga.Frameworks`, because the uninstall has already
+  emptied the registry.
+- M3: a Mod Engine 2 mod's folder is left to its config. A mod with remainder files that didn't come back
+  is not turned on.
+- M4: Restore puts a remainder file back only under a folder the table vouches for at that moment.
+- M5: the workshop and other tools' folders are covered by the allowlist.
+
+**Feed candidates for `modPathModOnly`.** These are for the feed repo's owner; that repo is not edited
+here. MHW `NativePC`, `reframework/autorun`, `XComGame/Mods`, `FactoryGame/Mods`, `GAMEDATA/PCBANKS/MODS`,
+`Data/Mods`, `client_pc/root/mods`, `hollow_knight_Data/Managed/Mods`.

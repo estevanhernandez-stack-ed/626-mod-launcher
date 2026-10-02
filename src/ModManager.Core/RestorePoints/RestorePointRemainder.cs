@@ -7,67 +7,71 @@ namespace ModManager.Core.RestorePoints;
 public sealed record RemainderPlan(IReadOnlyList<MovedFile> Files, IReadOnlyList<InPlaceNote> LeftInPlace);
 
 /// <summary>
-/// "Return to vanilla" means vanilla (2026-10-02 round 3). After the per-mod turn-offs, whatever is still in
-/// the game's MOD-ONLY folders is something no mod row claims: loose redscript files, CET mods, red4ext
-/// plugins, ArchiveXL sidecars. It goes into the restore point too, which is what the phase-1 spec's honesty
-/// section already promised for unclaimed loose files.
+/// "Return to vanilla" means vanilla (round 3), but only where the launcher KNOWS a folder holds nothing but
+/// mods (round 4). After the per-mod turn-offs, what is still in such a folder is something no mod row claims
+/// (loose redscript, CET mods, red4ext plugins, ArchiveXL sidecars) and it goes into the restore point.
+/// Every other folder is left exactly as it is and named on the sheet, because there the launcher can't tell
+/// the game's own files from mods: sweeping Skyrim's Data would move Skyrim.esm.
 /// </summary>
 public static partial class RestorePointEngine
 {
     /// <summary>The archive sub-folder holding the vanilla remainder.</summary>
     public const string RemainderDirName = "vanilla-remainder";
 
+    /// <summary>The words for a folder the launcher can't sweep. {0} is the folder, {1} the file count.</summary>
+    public const string CantTellNote = "626 can't tell the game's own files from mods in {0}; {1} files no mod claims are still in place";
+
     /// <summary>Tests only: called with each game-folder file the remainder sweep is about to move.
     /// Thread-static like the scanner's hooks: the sweep runs synchronously on the caller's thread.</summary>
     [ThreadStatic] internal static Action<string>? BeforeRemainderMoveForTests;
 
+    /// <summary>Tests only: called with each archived file right after its move, before it is checked.</summary>
+    [ThreadStatic] internal static Action<string>? AfterRemainderMoveForTests;
+
     /// <summary>
     /// Plan (do NOT execute) the vanilla remainder: every file still in the game's mod-only folders.
     ///
-    /// <para><b>Mod-only folders</b> are the declared extra trees, and the mod locations that are not the game
-    /// root, not the direct-inject / loose-root play folder, and not a base-content folder (a UE <c>Paks</c>
-    /// root the loader-less pak lane uses). A folder another tool owns or claims is left whole and named.</para>
+    /// <para><b>Mod-only folders</b> (an allowlist): the declared extra trees, and the locations
+    /// <see cref="ModOnlyFolders"/> vouches for (an engine's mod-only shape, the launcher's UE4SS folder, or a
+    /// modPath the game's definition marks <c>modPathModOnly</c>). Never another tool's folder, never one that
+    /// is itself a link. Every other location is left whole and named, and so is the play folder of a
+    /// direct-inject or loose-root game.</para>
     ///
-    /// <para><b>Left alone inside them:</b> the launcher's own bookkeeping (any <c>_626</c> folder); a
-    /// registered framework's installed files (its uninstall and captured state own them); the files of a mod
-    /// whose turn-off refused (that mod is reported as still active, not swept by a second mechanism); a pak
-    /// <see cref="PakClassifier.IsBaseGamePak"/> would protect; and a file only reachable by its exact name
-    /// (it can't be moved safely). Each is named in <see cref="RemainderPlan.LeftInPlace"/>.</para>
+    /// <para><b>Left alone inside them:</b> the launcher's own bookkeeping (any <c>_626</c> folder); the
+    /// installed files of the frameworks the clear captured (their uninstall and captured state own them);
+    /// the files of a mod whose turn-off refused (it is reported as still active, not swept by a second
+    /// mechanism); a Mod Engine 2 mod's folder (its config flip owns it); and, named, a link, a pak
+    /// <see cref="PakClassifier.IsBaseGamePak"/> would protect, or a file only reachable by its exact name.</para>
     ///
     /// <para>Read-only: hashes every planned file so the record can be sealed before anything moves.</para>
     /// </summary>
-    public static RemainderPlan PlanVanillaRemainder(GameContext c, IReadOnlyList<ClearSkip> refusedTurnOffs)
+    /// <param name="frameworks">The frameworks the clear captured (the sealed <c>ga.Frameworks</c>). The live
+    /// registry is empty by now (the uninstall ran), so it is only the fallback when this is null.</param>
+    public static RemainderPlan PlanVanillaRemainder(GameContext c, IReadOnlyList<ClearSkip> refusedTurnOffs,
+        IReadOnlyList<FrameworkArchive>? frameworks = null)
     {
         var left = new List<InPlaceNote>();
         var gameRoot = FullNorm(c.GameRoot);
         if (gameRoot is null || !Directory.Exists(gameRoot)) return new RemainderPlan(Array.Empty<MovedFile>(), left);
 
-        var roots = ModOnlyRoots(c, gameRoot, left);
+        var rows = ModListing.Resolve(c.Game);
+        var roots = ModOnlyRoots(c, gameRoot, left, rows);
 
-        // What stays inside the roots.
-        var frameworkFiles = FrameworkRegistry.List(c.DataDir)
-            .SelectMany(fw => fw.InstalledFiles.Select(f => FullNorm(Path.Combine(fw.InstallPath, f))))
-            .Where(p => p is not null).Select(p => p!).ToList();
-        var refusedPaths = RefusedModPaths(c, refusedTurnOffs);
+        var frameworkFiles = (frameworks is not null
+                ? frameworks.SelectMany(fw => fw.InstalledFiles.Select(f => Path.Combine(fw.InstallPath, f)))
+                : FrameworkRegistry.List(c.DataDir).SelectMany(fw => fw.InstalledFiles.Select(f => Path.Combine(fw.InstallPath, f))))
+            .Select(FullNorm).Where(p => p is not null).Select(p => p!).ToList();
+        var ownedElsewhere = RefusedModPaths(c, refusedTurnOffs).Concat(ModEngine2Paths(c, rows)).ToList();
 
         var files = new List<MovedFile>();
         foreach (var root in roots)
         {
-            IEnumerable<string> found;
-            try { found = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList(); }
-            catch (Exception e)
+            foreach (var full in FilesNoLinks(root, gameRoot, left))
             {
-                left.Add(new InPlaceNote(Rel(gameRoot, root), $"couldn't be read ({e.Message})"));
-                continue;
-            }
-            foreach (var f in found)
-            {
-                var full = FullNorm(f);
-                if (full is null) continue;
                 var rel = Rel(gameRoot, full);
                 if (rel.Split('\\', '/').Any(s => string.Equals(s, "_626", StringComparison.OrdinalIgnoreCase))) continue;
                 if (frameworkFiles.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase))) continue;
-                if (refusedPaths.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase) || IsUnder(full, p))) continue;
+                if (ownedElsewhere.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase) || IsUnder(full, p))) continue;
                 if (HasUncopyableSegment(rel))
                 {
                     left.Add(new InPlaceNote(rel, "its name can only be reached exactly, so 626 can't move it safely"));
@@ -91,78 +95,158 @@ public static partial class RestorePointEngine
         return new RemainderPlan(files, left);
     }
 
-    // The game's mod-only folders, de-duplicated (a tree inside a location is the location's). What is
-    // knowingly not swept (another tool's folder, base content) is added to <paramref name="left"/>.
-    private static List<string> ModOnlyRoots(GameContext c, string gameRoot, List<InPlaceNote> left)
+    /// <summary>
+    /// The game's sweepable roots: the extra trees, and the locations <see cref="ModOnlyFolders"/> vouches
+    /// for, each inside the game root, present, not another tool's and not a link. De-duplicated (a tree
+    /// inside a location is the location's). When <paramref name="left"/> is given, every location NOT swept
+    /// is named in it, with its rows still active and its unclaimed file count, so the sheet never claims a
+    /// vanilla game over a folder nobody looked in.
+    /// </summary>
+    private static List<string> ModOnlyRoots(GameContext c, string gameRoot, List<InPlaceNote>? left, IReadOnlyList<Mod>? rows)
     {
-        var playFolders = new[] { DirectInjectListing.PlayFolder(c.GameRoot), LooseMods.LooseRootListing.PlayFolder(c.GameRoot) }
-            .Where(p => p is not null).Select(p => FullNorm(p!)).Where(p => p is not null).Select(p => p!).ToList();
-
-        // The roots to sweep, de-duplicated (a tree inside a location is the location's).
         var roots = new List<string>();
-        void AddRoot(string? dir, string label)
+        bool TryAdd(string full)
         {
-            var full = dir is null ? null : FullNorm(dir);
-            if (full is null || !Directory.Exists(full)) return;
-            if (string.Equals(full, gameRoot, StringComparison.OrdinalIgnoreCase)
-                || !full.StartsWith(gameRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                || playFolders.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase)))
-                return;   // the game root, a play folder, or outside the game: never mod-only
             var own = ToolOwnership.Resolve(full, c.TakenOver);
             if (own.State != OwnershipState.NotOwned)
             {
-                left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {own.Owner} — clean it up there"));
-                return;
+                left?.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {own.Owner} — clean it up there"));
+                return false;
             }
-            if (roots.Any(r => string.Equals(r, full, StringComparison.OrdinalIgnoreCase) || IsUnder(full, r))) return;
+            if (IsLink(full))
+            {
+                left?.Add(new InPlaceNote(Rel(gameRoot, full), "it is a link to somewhere else, so 626 doesn't sweep it"));
+                return false;
+            }
+            if (roots.Any(r => string.Equals(r, full, StringComparison.OrdinalIgnoreCase) || IsUnder(full, r))) return true;
             roots.RemoveAll(r => IsUnder(r, full));
             roots.Add(full);
+            return true;
         }
 
         foreach (var loc in c.Locations)
         {
-            if (loc.Form == "paks-root")
+            var full = FullNorm(loc.Abs);
+            if (full is null || !Directory.Exists(full)) continue;   // nothing there to sweep or to name
+            var inside = ModOnlyFolders.RelativeToRoot(gameRoot, full) is not null;
+            if (inside && string.IsNullOrEmpty(loc.Managed) && ModOnlyFolders.WhyModOnly(c, loc) is not null)
             {
-                var full = FullNorm(loc.Abs);
-                if (full is not null && Directory.Exists(full))
-                    left.Add(new InPlaceNote(Rel(gameRoot, full), "the base game's own content folder — 626 doesn't sweep it"));
+                TryAdd(full);
                 continue;
             }
-            if (loc.Form == "loose-root") continue;   // the game root itself
+            if (left is null) continue;
             if (!string.IsNullOrEmpty(loc.Managed))
             {
-                var full = FullNorm(loc.Abs);
-                if (full is not null && Directory.Exists(full))
-                    left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {loc.Managed} — clean it up there"));
+                left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {loc.Managed} — clean it up there"));
                 continue;
             }
-            AddRoot(loc.Abs, loc.Name);
+            if (inside && ToolOwnership.Resolve(full, c.TakenOver) is { State: not OwnershipState.NotOwned } owned)
+            {
+                left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {owned.Owner} — clean it up there"));
+                continue;
+            }
+            // Not a folder the launcher knows holds only mods: the game root, a base-content folder (Data,
+            // data, Content/Paks), a user's own path, a folder outside the game. Named, never swept.
+            var where = !inside ? (string.Equals(full, gameRoot, StringComparison.OrdinalIgnoreCase) ? "the game folder itself" : full)
+                                : Rel(gameRoot, full);
+            var active = (rows ?? Array.Empty<Mod>())
+                .Where(m => m.Enabled && string.Equals(m.Location, loc.Name, StringComparison.Ordinal))
+                .ToList();
+            foreach (var m in active)
+                left.Add(new InPlaceNote(m.Name, $"still active: it sits in {where}, where 626 can't tell the game's own files from mods"));
+            left.Add(new InPlaceNote(where, string.Format(CantTellNote, where, inside ? UnclaimedCount(c, full, rows) : "any")));
         }
         foreach (var tree in c.ExtraModTrees ?? Array.Empty<string>())
-            if (!string.IsNullOrWhiteSpace(tree))
-                AddRoot(Path.Combine(c.GameRoot, Path.Combine(tree.Replace('\\', '/').Trim('/').Split('/'))), tree);
+        {
+            if (string.IsNullOrWhiteSpace(tree)) continue;
+            var full = FullNorm(Path.Combine(c.GameRoot, Path.Combine(tree.Replace('\\', '/').Trim('/').Split('/'))));
+            if (full is null || !Directory.Exists(full) || ModOnlyFolders.RelativeToRoot(gameRoot, full) is null) continue;
+            TryAdd(full);
+        }
 
+        // A direct-inject or loose-root game's mods sit in its play folder beside the game's own files. The
+        // lane moved what it recognises; anything else there stays, and the sheet says so.
+        if (left is not null && ModListing.MechanismFor(c.Game, c) is ListingMechanism.DirectInject or ListingMechanism.LooseRoot)
+        {
+            var play = DirectInjectListing.PlayFolder(c.GameRoot) ?? c.GameRoot;
+            var where = string.Equals(FullNorm(play), gameRoot, StringComparison.OrdinalIgnoreCase) ? "the game folder itself" : Rel(gameRoot, FullNorm(play)!);
+            if (!left.Any(n => n.Path == where))
+                left.Add(new InPlaceNote(where, "626 moved the mods it recognises there; it can't tell any other file there from the game's own, so it left them"));
+        }
         return roots;
     }
 
-    /// <summary>Pre-flight only: the bytes in the game's mod-only folders right now, read-only and without
-    /// hashing. Everything vanilla copies or moves out of them into the restore point (held copies of the
-    /// scanner's mods, and the remainder) is at most this.</summary>
+    // How many files under a not-swept folder no listed row owns. Counted (never hashed), links not followed.
+    private static string UnclaimedCount(GameContext c, string folder, IReadOnlyList<Mod>? rows)
+    {
+        var claimed = new List<string>();
+        foreach (var m in rows ?? Array.Empty<Mod>())
+            if (BaseDirFor(c, m) is { } baseDir)
+                foreach (var f in m.Files)
+                    if (FullNorm(Path.Combine(baseDir, f)) is { } p) claimed.Add(p);
+        var n = 0;
+        foreach (var f in FilesNoLinks(folder, folder, null))
+            if (!claimed.Any(p => string.Equals(p, f, StringComparison.OrdinalIgnoreCase) || IsUnder(f, p))) n++;
+        return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // Every file under root, never following a link (junction or symlink): a link is named and skipped, so
+    // the sweep can't reach through one into a folder that was never the game's.
+    private static IEnumerable<string> FilesNoLinks(string root, string gameRoot, List<InPlaceNote>? left)
+    {
+        var pending = new Stack<DirectoryInfo>();
+        pending.Push(new DirectoryInfo(root));
+        while (pending.Count > 0)
+        {
+            var dir = pending.Pop();
+            List<FileSystemInfo> entries;
+            try { entries = dir.EnumerateFileSystemInfos().ToList(); }
+            catch (Exception e)
+            {
+                left?.Add(new InPlaceNote(Rel(gameRoot, dir.FullName), $"couldn't be read ({e.Message})"));
+                continue;
+            }
+            foreach (var entry in entries)
+            {
+                if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    left?.Add(new InPlaceNote(Rel(gameRoot, entry.FullName), "it is a link to somewhere else, so 626 doesn't follow or move it"));
+                    continue;
+                }
+                if (entry is DirectoryInfo d) pending.Push(d);
+                else if (FullNorm(entry.FullName) is { } f) yield return f;
+            }
+        }
+    }
+
+    private static bool IsLink(string dir)
+    {
+        try { return new DirectoryInfo(dir).Attributes.HasFlag(FileAttributes.ReparsePoint); }
+        catch { return true; }   // unreadable: not known to be safe to walk
+    }
+
+    // The folders Mod Engine 2 rows point at: the config flip owns them, so the sweep leaves them (M3).
+    private static IEnumerable<string> ModEngine2Paths(GameContext c, IReadOnlyList<Mod> rows)
+    {
+        var configDir = string.IsNullOrEmpty(c.Game.ModEngineConfig) ? null : Path.GetDirectoryName(c.Game.ModEngineConfig);
+        if (configDir is null) yield break;
+        foreach (var m in rows.Where(r => r.Location == "mod engine 2"))
+            foreach (var f in m.Files)
+                if (FullNorm(Path.Combine(configDir, f)) is { } p) yield return p;
+    }
+
+    /// <summary>Pre-flight only: the bytes in the game's mod-only folders right now, read-only, unhashed, links
+    /// not followed. Everything the clear moves or copies out of them into the restore point is at most this.</summary>
     public static long EstimateModOnlyBytes(GameContext c)
     {
         var gameRoot = FullNorm(c.GameRoot);
         if (gameRoot is null || !Directory.Exists(gameRoot)) return 0;
         long total = 0;
-        foreach (var root in ModOnlyRoots(c, gameRoot, new List<InPlaceNote>()))
-        {
-            IEnumerable<string> files;
-            try { files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList(); }
-            catch { continue; }   // unreadable: an estimate
-            // Per file and tolerant: a name only reachable exactly can't be sized by its plain path, and an
-            // estimate must never be what stops a clear.
-            foreach (var f in files)
+        foreach (var root in ModOnlyRoots(c, gameRoot, null, null))
+            foreach (var f in FilesNoLinks(root, gameRoot, null))
+                // Per file and tolerant: a name only reachable exactly can't be sized by its plain path, and an
+                // estimate must never be what stops a clear.
                 try { total += new FileInfo(f).Length; } catch { }
-        }
         return total;
     }
 
@@ -195,8 +279,8 @@ public static partial class RestorePointEngine
     /// Move the planned remainder into <c>&lt;gameArchiveDir&gt;/vanilla-remainder/</c>. Call only AFTER the
     /// plan is recorded in the manifest. Each file goes by <see cref="SafeMove.Move"/>: a rename on one volume,
     /// copy-verify-delete across volumes, so at every instant it is live or archived. The archived file is
-    /// checked against the record; on a mismatch it goes back. A file that can't be moved (locked, read-only)
-    /// stays live and is returned, and the rest carry on.
+    /// checked against the record; on a mismatch it goes back. Returns the files that are still LIVE (and
+    /// only those): a file that reached the archive keeps its record even if a later step failed (I2).
     /// </summary>
     public static IReadOnlyList<InPlaceNote> SweepRemainder(GameContext c, IReadOnlyList<MovedFile> plan, string gameArchiveDir)
     {
@@ -212,6 +296,7 @@ public static partial class RestorePointEngine
                 if (!File.Exists(src)) { stayed.Add(new InPlaceNote(f.Rel, "it was gone before 626 could move it")); continue; }
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 SafeMove.Move(src, dest);
+                AfterRemainderMoveForTests?.Invoke(dest);
                 if (f.Sha256 is not null && !string.Equals(FileTally.Sha256(dest), f.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     SafeMove.Move(dest, src);   // not what was recorded: back where it was
@@ -220,21 +305,30 @@ public static partial class RestorePointEngine
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
+                // Record where the file REALLY is. Archived (moved, then a check or a move-back failed): it
+                // keeps its record, so Restore brings it back. Only a file that is still live "stayed".
+                if (!File.Exists(src) && File.Exists(dest)) continue;
                 stayed.Add(new InPlaceNote(f.Rel, $"couldn't be moved ({e.Message})"));
             }
         }
         return stayed;
     }
 
-    // Put the vanilla remainder back into the game folder, verified: every path refused if rooted or
-    // escaping; a file already live with the recorded content is left (a sweep that died partway, or one that
-    // never moved); a DIFFERENT live file is never overwritten and is reported; the archived copy is
-    // SHA-checked before the write, written to a temp sibling, checked again, then moved into place.
+    /// <summary>Why Restore kept the remainder in the restore point on a ban-risk game.</summary>
+    public const string RemainderKeptForBanRisk =
+        "kept in your restore point because of ban risk; restore it after turning mods on with the acknowledgment";
+
+    // Put the vanilla remainder back into the game folder, verified: every path refused if rooted, escaping,
+    // or not under a folder the launcher knows holds only mods (M4); a file already live with the recorded
+    // content is left (a sweep that died partway); a DIFFERENT live file is never overwritten and is reported;
+    // the archived copy is SHA-checked before the write, written to a temp sibling, checked again, then moved.
     private static IReadOnlyList<ClearSkip> RestoreRemainder(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
     {
         if (ga.VanillaRemainder is not { Count: > 0 } files) return Array.Empty<ClearSkip>();
         var issues = new List<ClearSkip>();
         var gameRootFull = Path.GetFullPath(liveCtx.GameRoot);
+        var gameRootNorm = FullNorm(liveCtx.GameRoot) ?? gameRootFull;
+        var roots = ModOnlyRoots(liveCtx, gameRootNorm, null, null);
         foreach (var f in files)
         {
             if (IsRooted(f.Rel) || !PathGate.IsContained(f.Rel, gameRootFull))
@@ -243,6 +337,12 @@ public static partial class RestorePointEngine
                 continue;
             }
             var dest = Path.Combine(liveCtx.GameRoot, f.Rel);
+            var destFull = FullNorm(dest);
+            if (destFull is null || !roots.Any(r => IsUnder(destFull, r)))
+            {
+                issues.Add(new ClearSkip(f.Rel, "it isn't in a folder 626 knows holds only mods, so it was refused"));
+                continue;
+            }
             var src = Path.Combine(gameArchiveDir, RemainderDirName, f.Rel);
             try
             {

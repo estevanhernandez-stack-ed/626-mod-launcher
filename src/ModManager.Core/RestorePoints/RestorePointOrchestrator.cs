@@ -75,10 +75,10 @@ public sealed class RestorePointOrchestrator
                     payload += FileTally.ByteSize(ctx.DataDir);
                     // Vanilla copies every mod it turns off into the restore point: count them up front.
                     if (string.Equals(EndStateFor(g.Id, opts), "vanilla", StringComparison.OrdinalIgnoreCase))
-                        // Held copies plus the swept remainder: both come out of the mod-only folders (except
-                        // direct-inject / loose-root holds, which the turn-off estimate covers), so the larger
-                        // of the two bounds what lands in the restore point.
-                        payload += Math.Max(RestorePointEngine.EstimateTurnOffBytes(ctx), RestorePointEngine.EstimateModOnlyBytes(ctx));
+                        // Held copies plus the swept remainder: both come out of the mod-only folders, except
+                        // direct-inject / loose-root holds, which are added on top (M1).
+                        payload += RestorePointEngine.EstimateModOnlyBytes(ctx)
+                                   + RestorePointEngine.EstimateTurnOffBytes(ctx, outsideModOnlyOnly: true);
                 }
                 var space = SpaceCheck.Require(_restorePointsRoot, payload);
                 if (!space.Ok)
@@ -225,7 +225,10 @@ public sealed class RestorePointOrchestrator
                 if (current is not null && turnOffsByGame.ContainsKey(g.Id))
                 {
                     RemainderPlan? plan = null;
-                    try { plan = RestorePointEngine.PlanVanillaRemainder(ctx, end.TurnOffSkips); }
+                    // The framework exclusion comes from the SEALED capture: the uninstall has already
+                    // emptied the live registry (M2).
+                    var sealedFrameworks = current.Games.FirstOrDefault(a => a.Id == g.Id)?.Frameworks;
+                    try { plan = RestorePointEngine.PlanVanillaRemainder(ctx, end.TurnOffSkips, sealedFrameworks); }
                     catch (Exception e)
                     {
                         warnings.Add($"{g.GameName}: 626 couldn't read the mod folders to clear what's left in them ({e.Message}). Nothing more was moved.");

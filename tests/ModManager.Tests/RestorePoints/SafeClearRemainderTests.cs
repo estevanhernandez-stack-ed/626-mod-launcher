@@ -167,7 +167,7 @@ public class SafeClearRemainderTests : IDisposable
         Assert.Equal("NOT A PAK", File.ReadAllText(Path.Combine(paks, "notes.txt")));
         var ga = RestorePointManifestStore.Read(RpDir)!.Games[0];
         Assert.Empty(ga.VanillaRemainder!);
-        Assert.Contains(ga.LeftInPlace!, n => n.Reason.Contains("base game", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(ga.LeftInPlace!, n => n.Reason.Contains("can't tell the game's own files from mods"));
         Assert.DoesNotContain("returned to vanilla", OffBoardingSheet.Render(OffBoardingHydrator.Hydrate(ga, RpDir)));
     }
 
@@ -298,7 +298,7 @@ public class SafeClearRemainderTests : IDisposable
         Directory.CreateDirectory(Path.Combine(root, "mods2"));
         var g = new GameEntry
         {
-            Id = "two", GameName = "Two", GameRoot = root, DataDir = DataDir("two"),
+            Id = "two", GameName = "Two", Engine = "minecraft", GameRoot = root, DataDir = DataDir("two"),
             FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
             ModLocations = new[] { new ModLocation("mods", "Mods", "mods"), new ModLocation("mods2", "Mods 2", "mods2") },
         };
@@ -323,7 +323,7 @@ public class SafeClearRemainderTests : IDisposable
         Put(Path.Combine(root, "mods", "alpha.pak"), "ALPHA");
         var g = new GameEntry
         {
-            Id = "pak", GameName = "Pak", GameRoot = root, DataDir = DataDir("pak"),
+            Id = "pak", GameName = "Pak", Engine = "minecraft", GameRoot = root, DataDir = DataDir("pak"),
             FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
             ModLocations = new[] { new ModLocation("mods", "Mods", "mods") },
         };
