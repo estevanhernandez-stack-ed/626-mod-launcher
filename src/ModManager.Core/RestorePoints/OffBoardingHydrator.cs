@@ -70,8 +70,7 @@ public static class OffBoardingHydrator
             if (FullyVanilla(ga))
                 lines.Add("Your game has been returned to vanilla — launch it the way you normally would (e.g. from Steam).");
             else if (ga.VanillaRemainder is not null)
-                lines.Add("626 turned off its mods and cleared its mod folders, but some files are still in place (listed under "
-                    + "STILL IN PLACE), so the game may not be fully vanilla. Launch it the way you normally would (e.g. from Steam).");
+                lines.Add(WhatHappened(ga));
             else
                 lines.Add("626 turned off the mods it manages. Files it doesn't manage may still be in the game's mod folders, "
                     + "so the game may not be fully vanilla. Launch it the way you normally would (e.g. from Steam).");
@@ -86,6 +85,30 @@ public static class OffBoardingHydrator
         if (!string.IsNullOrEmpty(ga.RequiredLauncher))
             lines.Add($"This game needs its mod launcher ({ga.RequiredLauncher}) while mods are installed — don't launch vanilla from Steam.");
         return lines;
+    }
+
+    /// <summary>
+    /// The vanilla launch line when the game isn't fully vanilla, in counts: how many mods went off, how many
+    /// are still active, how many leftover files went into the restore point. Never "turned off its mods"
+    /// when it turned off none, or only some (round 5).
+    /// </summary>
+    public static string WhatHappened(GameArchive ga)
+    {
+        var off = TurnedOff(ga).Count;
+        var active = (ga.LeftInPlace ?? Array.Empty<InPlaceNote>()).Count(n => n.Reason.StartsWith("still active", StringComparison.Ordinal))
+                     + (ga.TurnOffSkipped?.Count ?? 0);
+        var moved = ga.VanillaRemainder?.Count ?? 0;
+        static string Mods(int n) => n == 1 ? "1 mod" : $"{n} mods";
+        static string IsAre(int n) => n == 1 ? "is" : "are";
+
+        var head = off == 0
+            ? (active == 0 ? "626 didn't turn off any mods here" : $"626 didn't turn off any mods here: {Mods(active)} {IsAre(active)} still active")
+            : active == 0
+                ? $"626 turned off all {Mods(off)} it found"
+                : $"626 turned off {off} of {off + active} mods; {active} {IsAre(active)} still active";
+        var sweep = moved > 0 ? $", and moved {moved} other file{(moved == 1 ? "" : "s")} from the mod folders into your restore point" : "";
+        return head + sweep + ". Some files are still in place (listed under STILL IN PLACE), so the game may not be fully vanilla. "
+            + "Launch it the way you normally would (e.g. from Steam).";
     }
 
     private static string? FormatDate(string? iso)

@@ -318,3 +318,46 @@ restore point because of ban risk; restore it after turning mods on with the ack
 **Feed candidates for `modPathModOnly`.** These are for the feed repo's owner; that repo is not edited
 here. MHW `NativePC`, `reframework/autorun`, `XComGame/Mods`, `FactoryGame/Mods`, `GAMEDATA/PCBANKS/MODS`,
 `Data/Mods`, `client_pc/root/mods`, `hollow_knight_Data/Managed/Mods`.
+
+## Round 5: the flag's trust, the turn-off scope, ownership (review r4)
+
+**`modPathModOnly` is bound to its path and gated (I-1).** The flag is a second trust-sensitive field: it
+lets vanilla move every file in modPath.
+
+- The merge takes the flag from the side that supplies `ModPath`. A feed that corrects the path without
+  restating the flag drops it, and a flag-only feed can't attach it to the snapshot's path.
+- `ManifestValidator` drops the flag (keeping the rest of the entry, and reporting it in
+  `DroppedModOnlyFlags`) when there is no modPath, when the path is the game root, or when it is a known
+  base-content folder: `Data`, `Data Files`, `data`, `Modules`, `GameData`, `ovldata`, `nativePC`,
+  `natives`, `Vampire`, `CookedPC`, `Resources`, `flatlist`, `Content`, or any `.../Content/Paks`.
+- The rule is `ModOnlyFolders.ModOnlyFlagProblem`, shared by the launcher's gate, the miner's overrides
+  gate and a runtime belt in `WhyModOnly`.
+
+**Turn-off scope (I-2, and Este's ownership ruling).** Vanilla turns a row off when it is on a lane with
+its own mechanism, or in a vouched-for folder, as before. It now also does so when:
+
+- the row is in a `paks-root` location, where base paks are refused by `GuardNoBasePakMove` and skipped
+  up front;
+- the row is in a location outside the game folder;
+- anywhere else, every one of the row's files is recorded by a `ModInstallRegistry` install, so 626
+  placed it.
+
+A row with no record in an unvouched folder stays on and is named. Skyrim.esm never has a record. So
+"Return to vanilla" stays useful when the locations were set by hand, and those folders are still never
+swept.
+
+**Sheet, in counts.** When the game isn't fully vanilla, the launch line says what happened. Examples:
+"626 didn't turn off any mods here: 3 mods are still active", "626 turned off 2 of 3 mods; 1 is still
+active, and moved 5 other files…", "626 turned off all 4 mods it found". It never says "turned off its
+mods and cleared its mod folders" when it didn't.
+
+**Minors.**
+
+- m1: the fromsoft shape is `mod` or `<one>/mod`. With a Mod Engine 2 config registered, only the `mod`
+  folder beside that config is vouched for.
+- m2: a row with a base pak (`IsBaseGamePak`, or a UE5 `global.ucas` / `global.utoc`) is never turned off
+  in any form and is named. Its files and same-stem companions are never swept.
+- m3: Restore re-checks every existing folder between the game root and a remainder file's destination,
+  and refuses a write through a junction planted after the clear.
+- m4: a remainder file Restore won't place says where it is in the restore point.
+- m5: the pre-flight adds every hold that comes from outside a swept folder, proxy loaders included.

@@ -61,7 +61,29 @@ public static partial class RestorePointEngine
                 ? frameworks.SelectMany(fw => fw.InstalledFiles.Select(f => Path.Combine(fw.InstallPath, f)))
                 : FrameworkRegistry.List(c.DataDir).SelectMany(fw => fw.InstalledFiles.Select(f => Path.Combine(fw.InstallPath, f))))
             .Select(FullNorm).Where(p => p is not null).Select(p => p!).ToList();
-        var ownedElsewhere = RefusedModPaths(c, refusedTurnOffs).Concat(ModEngine2Paths(c, rows)).ToList();
+        // A row vanilla left ON because it holds a base-game pak (any form): its files, sidecars included,
+        // stay with it, and it is named as still active.
+        var basePakRows = rows.Where(m => m.Enabled && HasBaseGamePak(c, m)).ToList();
+        foreach (var m in basePakRows)
+            left.Add(new InPlaceNote(m.Name, "still active: it looks like the base game's own pak, so 626 left it on"));
+        var basePakPaths = basePakRows.SelectMany(m => BaseDirFor(c, m) is { } bd
+                ? m.Files.Select(f => FullNorm(Path.Combine(bd, f))) : Enumerable.Empty<string?>())
+            .Where(p => p is not null).Select(p => p!).ToList();
+        // A base pak's same-stem companions (its .sig, .ucas, .utoc) are the game's too, listed or not.
+        foreach (var p in basePakPaths.ToList())
+        {
+            var dir = Path.GetDirectoryName(p);
+            var stem = Path.GetFileNameWithoutExtension(p);
+            if (dir is null || !Directory.Exists(dir)) continue;
+            try
+            {
+                foreach (var sib in Directory.EnumerateFiles(dir, stem + ".*"))
+                    if (FullNorm(sib) is { } fs && string.Equals(Path.GetFileNameWithoutExtension(fs), stem, StringComparison.OrdinalIgnoreCase))
+                        basePakPaths.Add(fs);
+            }
+            catch { /* unreadable: the files themselves are still excluded */ }
+        }
+        var ownedElsewhere = RefusedModPaths(c, refusedTurnOffs).Concat(ModEngine2Paths(c, rows)).Concat(basePakPaths).ToList();
 
         var files = new List<MovedFile>();
         foreach (var root in roots)
@@ -80,10 +102,7 @@ public static partial class RestorePointEngine
                 long size;
                 try { size = new FileInfo(full).Length; }
                 catch (Exception e) { left.Add(new InPlaceNote(rel, $"couldn't be read ({e.Message})")); continue; }
-                var ext = Path.GetExtension(full);
-                if ((ext.Equals(".pak", StringComparison.OrdinalIgnoreCase) || ext.Equals(".ucas", StringComparison.OrdinalIgnoreCase)
-                        || ext.Equals(".utoc", StringComparison.OrdinalIgnoreCase))
-                    && PakClassifier.IsBaseGamePak(Path.GetFileName(full), size))
+                if (IsBaseGameArchiveName(Path.GetFileName(full), size))
                 {
                     left.Add(new InPlaceNote(rel, "looks like the base game's own pak — 626 doesn't move it"));
                     continue;
@@ -340,7 +359,15 @@ public static partial class RestorePointEngine
             var destFull = FullNorm(dest);
             if (destFull is null || !roots.Any(r => IsUnder(destFull, r)))
             {
-                issues.Add(new ClearSkip(f.Rel, "it isn't in a folder 626 knows holds only mods, so it was refused"));
+                issues.Add(new ClearSkip(f.Rel, "it isn't in a folder 626 knows holds only mods now, so it was left in your restore point at "
+                    + Path.Combine(gameArchiveDir, RemainderDirName, f.Rel)));
+                continue;
+            }
+            // Re-checked at restore time: a junction planted after the clear (mods\lnk -> bin\) would carry the
+            // write out of the mod folder. Any existing folder on the way down that is a link refuses (r4, m3).
+            if (LinkOnTheWay(gameRootNorm, destFull) is { } link)
+            {
+                issues.Add(new ClearSkip(f.Rel, $"\"{Rel(gameRootNorm, link)}\" is now a link to somewhere else, so 626 won't write through it"));
                 continue;
             }
             var src = Path.Combine(gameArchiveDir, RemainderDirName, f.Rel);
@@ -374,6 +401,21 @@ public static partial class RestorePointEngine
             catch (Exception e) { issues.Add(new ClearSkip(f.Rel, $"couldn't be put back ({e.Message})")); }
         }
         return issues;
+    }
+
+    // The first existing folder between the game root (exclusive) and dest's parent that is a reparse point.
+    private static string? LinkOnTheWay(string gameRoot, string destFull)
+    {
+        var parent = Path.GetDirectoryName(destFull);
+        var chain = new List<string>();
+        for (var d = parent; d is not null && IsUnder(d, gameRoot); d = Path.GetDirectoryName(d)) chain.Add(d);
+        chain.Reverse();
+        foreach (var d in chain)
+        {
+            if (!Directory.Exists(d)) break;   // nothing below a missing folder exists yet
+            if (IsLink(d)) return d;
+        }
+        return null;
     }
 
     private static string Rel(string gameRoot, string full) => Path.GetRelativePath(gameRoot, full);

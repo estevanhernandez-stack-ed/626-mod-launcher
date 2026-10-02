@@ -366,23 +366,36 @@ public class SafeClearAllowlistTests : IDisposable
     }
 
     [Fact]
-    public async Task A_mod_folder_outside_the_game_is_named_and_never_swept()
+    public async Task A_mod_folder_outside_the_game_is_never_swept_but_its_mods_turn_off_and_come_back()
     {
+        // Round 5 (review r4, I-2): base content can't plausibly live outside the game folder, so its rows are
+        // turned off like any mod. The folder itself is still never swept: the loose file there stays, named.
         var root = Path.Combine(_root, "sims");
         var docs = Path.Combine(_root, "Documents", "Electronic Arts", "The Sims 4", "Mods");
         Put(Path.Combine(root, "game.exe"), "EXE");
         Put(Path.Combine(docs, "cc.package"), "CC");
+        Put(Path.Combine(docs, "Resource.cfg"), "CFG");
         var g = new GameEntry
         {
             Id = "sims", GameName = "Sims", Engine = "custom", GameRoot = root, DataDir = DataDir("sims"),
             FileExtensions = new[] { "package" }, ModLocations = new[] { new ModLocation("mods", "Mods", docs) },
         };
-        Assert.True((await Make(g).SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+        var before = Snapshot(docs);
+        var orch = Make(g);
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
 
-        Assert.Equal("CC", File.ReadAllText(Path.Combine(docs, "cc.package")));
+        Assert.False(File.Exists(Path.Combine(docs, "cc.package")));       // the mod is held
+        Assert.Equal("CFG", File.ReadAllText(Path.Combine(docs, "Resource.cfg")));   // the folder is not swept
         var ga = RestorePointManifestStore.Read(RpDir)!.Games[0];
+        Assert.Contains(ga.TurnedOffByClear!, m => m.Name == "cc");
+        Assert.Empty(ga.VanillaRemainder!);
         Assert.Contains(ga.LeftInPlace!, n => n.Reason.Contains("can't tell the game's own files from mods"));
         Assert.False(OffBoardingHydrator.FullyVanilla(ga));
+
+        var restore = await orch.RestoreAsync(Ts, default);
+        Assert.True(restore.Ok);
+        Assert.True(restore.Warnings.Count == 0, string.Join(" | ", restore.Warnings));
+        AssertSameTree(before, docs);
     }
 
     // ---- M1: the pre-flight adds only holds that come from outside the mod-only folders ----

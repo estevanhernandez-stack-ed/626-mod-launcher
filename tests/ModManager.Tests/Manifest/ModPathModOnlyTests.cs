@@ -56,8 +56,9 @@ public class ModPathModOnlyTests
     public void A_remote_value_wins_the_merge_and_an_absent_one_keeps_the_embedded()
     {
         var embedded = new GameManifest { Games = new[] { new GameManifestEntry { Id = "g", ModPath = "m", ModPathModOnly = true } } };
+        // The flag travels with the path: a remote that names a path brings its own flag.
         Assert.False(EffectiveManifest.Merge(embedded,
-            new GameManifest { Games = new[] { new GameManifestEntry { Id = "g", ModPathModOnly = false } } }).Games.Single().ModPathModOnly);
+            new GameManifest { Games = new[] { new GameManifestEntry { Id = "g", ModPath = "m", ModPathModOnly = false } } }).Games.Single().ModPathModOnly);
         Assert.True(EffectiveManifest.Merge(embedded,
             new GameManifest { Games = new[] { new GameManifestEntry { Id = "g" } } }).Games.Single().ModPathModOnly);
     }

@@ -93,6 +93,11 @@ public static partial class OverridesValidate
         foreach (var e in overrides.Where(e => e.ModPathModOnly == true && string.IsNullOrWhiteSpace(e.ModPath)))
             problems.Add(new OverrideProblem(
                 $"{FileOf(e)} sets modPathModOnly without a modPath. Name the folder it describes."));
+        // The launcher drops the flag on these too; refusing here keeps a curator from shipping one that
+        // silently does nothing (one shared rule: ModOnlyFolders.ModOnlyFlagProblem).
+        foreach (var e in overrides.Where(e => e.ModPathModOnly == true && !string.IsNullOrWhiteSpace(e.ModPath)))
+            if (ModManager.Core.ModOnlyFolders.ModOnlyFlagProblem(e.ModPath) is { } why)
+                problems.Add(new OverrideProblem($"{FileOf(e)} sets modPathModOnly, but {why}. The launcher would drop it."));
 
         return problems;
     }

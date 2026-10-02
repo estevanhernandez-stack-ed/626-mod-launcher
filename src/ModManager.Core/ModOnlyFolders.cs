@@ -32,8 +32,9 @@ public static class ModOnlyFolders
         ["smapi"] = Shape(@"Mods"),
         ["melonloader"] = Shape(@"Mods"),
         ["minecraft"] = Shape(@"mods"),
-        // Mod Engine 2's own mod folder; never DS PTDE's DATA or the Game\ play folder.
-        ["fromsoft"] = Shape(@"(?:[^/]+/)*mod"),
+        // Mod Engine 2's own mod folder, at most one level down; never DS PTDE's DATA or the Game\ play
+        // folder. With a Mod Engine 2 config registered, WhyModOnly narrows it to that config's mod folder.
+        ["fromsoft"] = Shape(@"(?:[^/]+/)?mod"),
     };
 
     private static Regex Shape(string pattern) => new("^" + pattern + "$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -52,11 +53,59 @@ public static class ModOnlyFolders
         var rel = RelativeToRoot(c.GameRoot, loc.Abs);
         if (rel is null) return null;                                           // the root itself, or outside it
         if (string.Equals(loc.Name, Ue4ssAutoLocationName, StringComparison.Ordinal)) return "the launcher's UE4SS mods folder";
-        if (IsShape(c.Game.Engine, rel)) return $"the {c.Game.Engine} mod folder";
+        if (IsShape(c.Game.Engine, rel) && FromSoftAgrees(c, rel)) return $"the {c.Game.Engine} mod folder";
         var userSet = c.Game.UserSet?.Contains(GameEntry.UserSetModLocations, StringComparer.OrdinalIgnoreCase) == true;
         if (!userSet && loc.Primary && ManifestIdLookup.ConfirmedEntryFor(c.Game) is { ModPathModOnly: true, ModPath: { } mp }
-            && string.Equals(Normalise(mp), rel, StringComparison.OrdinalIgnoreCase))
+            && string.Equals(Normalise(mp), rel, StringComparison.OrdinalIgnoreCase)
+            // A belt over the validator's gate: a flag on a base-content shape is never honoured here either.
+            && ModOnlyFlagProblem(mp) is null)
             return "marked mod-only by the game's definition";
+        return null;
+    }
+
+    // A fromsoft game with a Mod Engine 2 config: its mod folder is the one beside the config, nothing else.
+    private static bool FromSoftAgrees(GameContext c, string rel)
+    {
+        if (!string.Equals(c.Game.Engine, "fromsoft", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrEmpty(c.Game.ModEngineConfig)) return true;
+        var configDir = Path.GetDirectoryName(Path.IsPathRooted(c.Game.ModEngineConfig)
+            ? c.Game.ModEngineConfig : Path.Combine(c.GameRoot, c.Game.ModEngineConfig));
+        if (configDir is null) return false;
+        var dirRel = RelativeToRoot(c.GameRoot, configDir);
+        var expected = dirRel is null ? "mod" : dirRel + "/mod";
+        return string.Equals(expected, rel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Folder names that hold the GAME's own content in some game, so a modPath ending in one (or equal to
+    /// one) is never mod-only, whatever a definition says: Bethesda's <c>Data</c> / <c>Data Files</c>, Total
+    /// War's and Helldivers 2's <c>data</c>, Bannerlord's <c>Modules</c>, KSP's and Trackmania's
+    /// <c>GameData</c>, JWE2's <c>ovldata</c>, DD:DA's <c>nativePC</c>, RE Engine's <c>natives</c>,
+    /// Bloodlines' <c>Vampire</c>, Witcher 2's <c>CookedPC</c>, Dungeon Siege's <c>Resources</c>, MGS's
+    /// <c>flatlist</c>, a bare <c>Content</c>. Case-insensitive.
+    /// </summary>
+    public static readonly IReadOnlySet<string> BaseContentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Data", "Data Files", "Modules", "GameData", "ovldata", "nativePC", "natives", "Vampire",
+        "CookedPC", "Resources", "flatlist", "Content",
+    };
+
+    /// <summary>
+    /// Why a definition's <c>modPathModOnly</c> may not be honoured for <paramref name="modPath"/>, or null when
+    /// it may. Shared by the launcher's manifest gate and the miner's overrides gate, so both refuse the same
+    /// paths: no path, the game root, a base-content folder (<see cref="BaseContentNames"/>), or a UE
+    /// <c>Content/Paks</c> folder itself (base paks live there).
+    /// </summary>
+    public static string? ModOnlyFlagProblem(string? modPath)
+    {
+        if (string.IsNullOrWhiteSpace(modPath)) return "it names no modPath";
+        var rel = string.Join('/', Normalise(modPath).Split('/').Where(s => s.Length > 0 && s != "."));
+        if (rel.Length == 0) return "its modPath is the game root";
+        var last = rel.Split('/')[^1];
+        if (BaseContentNames.Contains(last) || BaseContentNames.Contains(rel))
+            return $"its modPath '{modPath}' is a folder where games keep their own content";
+        if (rel.EndsWith("Content/Paks", StringComparison.OrdinalIgnoreCase))
+            return $"its modPath '{modPath}' is a Content/Paks folder, where the base paks live";
         return null;
     }
 

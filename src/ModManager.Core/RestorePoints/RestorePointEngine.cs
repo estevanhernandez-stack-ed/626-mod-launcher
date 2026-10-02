@@ -87,9 +87,11 @@ public static partial class RestorePointEngine
             .SelectMany(fw => fw.InstalledFiles.Select(f => FullNorm(Path.Combine(fw.InstallPath, f))))
             .Where(p => p is not null).Select(p => p!).ToList();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var installed = ModInstallRegistry.List(c.DataDir);
         return ModListing.Resolve(c.Game)
             .Where(m => m.Enabled && !m.ReadOnly && m.Loader is not ("ue4ss" or "bepinex"))
-            .Where(m => InTurnOffScope(c, m))
+            .Where(m => InTurnOffScope(c, m, installed))
+            .Where(m => !HasBaseGamePak(c, m))
             .Where(m => !CoveredByMoves(c, m, moved))
             .Where(m => !CoveredByMoves(c, m, frameworkOwned))
             .Where(m => seen.Add(m.Location + "\u0000" + m.Name))
@@ -119,7 +121,10 @@ public static partial class RestorePointEngine
             var row = FindRow(rows, cm);
             var baseDir = row is null ? null : BaseDirFor(c, row);
             if (row is null || baseDir is null) continue;
-            if (outsideModOnlyOnly && row.Location is not ("direct-inject" or LooseMods.LooseRootListing.LooseRootLocation)) continue;
+            // Rows in a swept (vouched) folder are counted by EstimateModOnlyBytes; everything else here
+            // (direct-inject, loose-root, proxy-loader, paks-root, outside-root, 626-installed) is added.
+            if (outsideModOnlyOnly && c.Locations.FirstOrDefault(l => l.Name == row.Location) is { } vl
+                && string.IsNullOrEmpty(vl.Managed) && ModOnlyFolders.WhyModOnly(c, vl) is not null) continue;
             try
             {
                 foreach (var x in extraRows.MovesFor(row).Movable)
@@ -153,13 +158,66 @@ public static partial class RestorePointEngine
     // loose-root, Mod Engine 2's config, a proxy step-aside), or one whose location the launcher KNOWS holds
     // only mods. A scanner row anywhere else (Skyrim.esm in Data, a base pak in a files-form Content/Paks)
     // could be the game itself: it is left on, and the sheet lists it as still active.
-    private static bool InTurnOffScope(GameContext c, Mod m)
+    //
+    // Round 5 widens it where the review showed it was safe, and where Este ruled it must stay useful:
+    //  - a paks-root location (Scanner.GuardNoBasePakMove refuses a base pak there, and base-pak rows are
+    //    skipped up front by HasBaseGamePak anyway);
+    //  - a location outside the game folder (Documents\...\Mods): base content can't plausibly live there;
+    //  - anywhere else, a row whose every file an install record says 626 placed (ModInstallRegistry):
+    //    the launcher wrote those bytes, so they are a mod by evidence. Skyrim.esm never has a record.
+    private static bool InTurnOffScope(GameContext c, Mod m, IReadOnlyList<ModInstallManifest> installed)
     {
         if (m.Location is "direct-inject" or "mod engine 2" or ProxyLoaderRows.LocationTag
             || m.Location == LooseMods.LooseRootListing.LooseRootLocation)
             return true;
         var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
-        return loc is not null && string.IsNullOrEmpty(loc.Managed) && ModOnlyFolders.WhyModOnly(c, loc) is not null;
+        if (loc is null || !string.IsNullOrEmpty(loc.Managed)) return false;
+        if (ModOnlyFolders.WhyModOnly(c, loc) is not null) return true;
+        if (loc.Form == "paks-root") return true;
+        var full = FullNorm(loc.Abs);
+        var root = FullNorm(c.GameRoot);
+        if (full is not null && root is not null && !string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
+            && ModOnlyFolders.RelativeToRoot(c.GameRoot, loc.Abs) is null)
+            return true;   // outside the game folder
+        return PlacedBy626(m, installed);
+    }
+
+    // Every one of the row's files is in an install record for its location: 626 wrote them.
+    private static bool PlacedBy626(Mod m, IReadOnlyList<ModInstallManifest> installed)
+    {
+        if (m.Files.Count == 0) return false;
+        var recorded = new HashSet<string>(
+            installed.Where(i => string.Equals(i.Location, m.Location, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(i => i.Files).Select(f => f.Replace(Path.DirectorySeparatorChar, '/').Trim('/')),
+            StringComparer.OrdinalIgnoreCase);
+        return m.Files.All(f => recorded.Contains(f.Replace(Path.DirectorySeparatorChar, '/').Trim('/')));
+    }
+
+    // A row with a file that looks like the base game's own pak is never turned off by vanilla, in any form
+    // (GuardNoBasePakMove only guards paks-root). Named on the sheet as still active (review r4, m2).
+    private static bool HasBaseGamePak(GameContext c, Mod m)
+    {
+        if (BaseDirFor(c, m) is not { } baseDir) return false;
+        foreach (var f in m.Files)
+        {
+            var name = Path.GetFileName(f);
+            long size = 0;
+            try { var fi = new FileInfo(Path.Combine(baseDir, f)); if (fi.Exists) size = fi.Length; } catch { }
+            if (IsBaseGameArchiveName(name, size)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>A pak/ucas/utoc file that is the base game's own: <see cref="PakClassifier.IsBaseGamePak"/>, or
+    /// a UE5 <c>global.ucas</c> / <c>global.utoc</c> (which its regex never matched).</summary>
+    internal static bool IsBaseGameArchiveName(string fileName, long size)
+    {
+        var ext = Path.GetExtension(fileName);
+        if (!(ext.Equals(".pak", StringComparison.OrdinalIgnoreCase) || ext.Equals(".ucas", StringComparison.OrdinalIgnoreCase)
+              || ext.Equals(".utoc", StringComparison.OrdinalIgnoreCase)))
+            return false;
+        if (Path.GetFileNameWithoutExtension(fileName).Equals("global", StringComparison.OrdinalIgnoreCase)) return true;
+        return PakClassifier.IsBaseGamePak(Path.ChangeExtension(fileName, ".pak"), size);
     }
 
     // A loader row: what other mods load through. Turned off last, turned back on first.

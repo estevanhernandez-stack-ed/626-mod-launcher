@@ -142,7 +142,10 @@ public static class EffectiveManifest
             CurseforgeGameId = remote.CurseforgeGameId ?? embedded.CurseforgeGameId,
             ModPath = remote.ModPath ?? embedded.ModPath,
             ExtraModTrees = remote.ExtraModTrees ?? embedded.ExtraModTrees,
-            ModPathModOnly = remote.ModPathModOnly ?? embedded.ModPathModOnly,
+            // Bound to the path it describes: the flag comes from whichever side supplies ModPath. A feed
+            // that corrects the path without restating the flag drops it, and a feed that sends only the
+            // flag can't attach it to the snapshot's path (review r4, I-1).
+            ModPathModOnly = remote.ModPath is not null ? remote.ModPathModOnly : embedded.ModPathModOnly,
             SaveDirHint = remote.SaveDirHint ?? embedded.SaveDirHint,
             FileExtensions = remote.FileExtensions ?? embedded.FileExtensions,
             GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,
