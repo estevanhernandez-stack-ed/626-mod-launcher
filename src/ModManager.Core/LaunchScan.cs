@@ -1,7 +1,6 @@
 using System.IO;
-using ModManager.Core;
 
-namespace ModManager.App.Services;
+namespace ModManager.Core;
 
 /// <summary>What a folder scan found: the ways to launch, plus the ME2 config path (for Phase B).</summary>
 public sealed record LaunchDetection(IReadOnlyList<LaunchTarget> Targets, string? ModEngineConfig);
@@ -10,7 +9,7 @@ public sealed record LaunchDetection(IReadOnlyList<LaunchTarget> Targets, string
 /// Finds how a game should be launched by scanning the game folder for mod launchers — Mod
 /// Engine 2 (FromSoft) and Seamless Co-op — and pairing them with the vanilla Steam launch.
 /// The IO lives here; the game-specific ME2 facts (target codes, args) stay pure in
-/// <see cref="ModEngine2"/>.
+/// <see cref="ModEngine2"/>. In Core so the app and the agent detect launchers the same way.
 /// </summary>
 public static class LaunchScan
 {

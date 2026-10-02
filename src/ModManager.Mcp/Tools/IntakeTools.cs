@@ -122,7 +122,7 @@ public static class IntakeTools
 
         IntakeResult? intakeResult = null;
         IReadOnlyList<IntakeCollision> keptCollisions = Array.Empty<IntakeCollision>();
-        var rescanNeeded = false;
+        GameEntry? redetected = null;
         if (plan.Lane == DropLane.DirectInject)
         {
             var play = DirectInjectListing.PlayFolder(ctx.GameRoot);
@@ -133,11 +133,16 @@ public static class IntakeTools
                     var diPlan = DirectInject.Plan(play, remaining);
                     intakeResult = DirectInject.Execute(play, DirectInject.ReplacedRoot(play), diPlan, replaceSet);
                     keptCollisions = KeptCollisions(diPlan, replaceSet);
-                    // The app re-detects after a direct-inject drop (a new Seamless or Mod Engine 2 shows its
-                    // launcher); that detection lives in the app, so say it is needed instead.
-                    rescanNeeded = intakeResult.Added.Count > 0 || intakeResult.Updated.Count > 0;
                 }
                 catch (Exception e) { failed.Add(new { route = "mod", reason = ErrorRemedy.Describe(e) }); }
+
+                // Re-detect, as the app's drop does, so a new Seamless or Mod Engine 2 shows its launcher. Its
+                // own try: the files have landed, and a failed re-scan must not read as a failed install.
+                if (intakeResult is { } placed && (placed.Added.Count > 0 || placed.Updated.Count > 0))
+                {
+                    try { redetected = GameRegistration.Redetect(McpConfig.DataRoot, game.Id); }
+                    catch (Exception e) { skipped.Add(new { route = "rescan", reason = "Installed, but re-detecting the game failed: " + ErrorRemedy.Describe(e) + " Run Re-scan in the app." }); }
+                }
             }
         }
         else
@@ -237,13 +242,11 @@ public static class IntakeTools
                     reason = "An existing file has this name; pass its relPath in replace to replace it (the old one is kept)." }).ToArray(),
                 refused,
             },
-            rescanNeeded,
+            launchTargets = redetected?.LaunchTargets.Select(t => new { label = t.Label, kind = t.Kind }).ToArray(),
             skipped,
             failed,
             detail = summary,
-            hint = (rescanNeeded ? "New files landed in the game's play folder: run Re-scan in the app so a new launcher "
-                    + "(Seamless Co-op, Mod Engine 2) shows up. " : "")
-                   + "Updated files keep their old version and can be reverted in the app. The app identifies new "
+            hint = "Updated files keep their old version and can be reverted in the app. The app identifies new "
                    + "mods on Nexus/CurseForge after its own drops; an agent's intake does not, so new rows may show "
                    + "no title until the user runs Identify my mods. Call list_mods to see the result.",
         };

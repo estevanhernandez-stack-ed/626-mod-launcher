@@ -23,20 +23,5 @@ public sealed class ModEngineService
 
     /// <summary>Uninstall: delete the mod's folder, then drop its config entry. Folder-first so a
     /// locked file (game running) leaves the config — and thus the mod — intact, error surfaced.</summary>
-    public void Remove(GameEntry game, string name)
-    {
-        var path = game.ModEngineConfig;
-        var toml = ModEngine2Listing.ReadConfig(game);
-        if (path is null || toml is null) return;
-        var mods = ModEngine2Config.ParseMods(toml);
-        var target = mods.FirstOrDefault(m => m.Name == name);
-        if (target is not null && !string.IsNullOrEmpty(target.Path))
-        {
-            var me2Dir = System.IO.Path.GetDirectoryName(path)!;
-            var folder = System.IO.Path.IsPathRooted(target.Path) ? target.Path : System.IO.Path.Combine(me2Dir, target.Path);
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); // may throw -> surfaced
-        }
-        ModEngine2Writer.BackupOnce(path);
-        AtomicJson.WriteTextAtomic(path, ModEngine2Config.WriteMods(toml, mods.Where(m => m.Name != name).ToList()));
-    }
+    public void Remove(GameEntry game, string name) => ModEngine2Writer.RemoveMod(game, name);
 }

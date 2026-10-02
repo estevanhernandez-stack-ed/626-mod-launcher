@@ -1,7 +1,6 @@
 using System.IO;
-using ModManager.Core;
 
-namespace ModManager.App.Services;
+namespace ModManager.Core;
 
 /// <summary>
 /// Finds where a freshly-added game's mods actually live by checking the engine's candidate
@@ -9,8 +8,9 @@ namespace ModManager.App.Services;
 /// exist become the game's mod locations, so mods installed earlier — by the user or another
 /// manager (sideloaded) — show up the moment the game is added.
 ///
-/// The pure candidate logic stays in Core and is unit-tested; only the existence check and the
-/// Unreal project-folder discovery (both IO) live here.
+/// The pure candidate logic is <see cref="ModLocations"/>; this adds the existence check and the
+/// Unreal project-folder discovery (both IO). In Core so the app and the agent's register_game and
+/// intake detect a game the same way (E1, fifth slice).
 /// </summary>
 public static class ModLocator
 {
