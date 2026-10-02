@@ -169,4 +169,14 @@ public class BanRiskCatalogTests : IDisposable
 
         Assert.Equal(GameBanRisk.None, BanRiskCatalog.Effective(EaGame("some-game-2", "ea.content.unknown")));
     }
+
+    // K19 is open: a title might ship under a second content id. When the feed names one for a floor
+    // game, the floor follows it through the feed's mapping even if that entry carries no risk itself.
+    [Fact]
+    public void A_content_id_the_feed_names_for_a_floor_game_carries_the_floor()
+    {
+        EffectiveManifest.SetRemote(new GameManifest { Games = new[] { EaEntry("madden-nfl-27", null, "alt.content.id", null) } });
+
+        Assert.Equal(GameBanRisk.High, BanRiskCatalog.Effective(EaGame("madden-nfl-27-2", "alt.content.id")));
+    }
 }

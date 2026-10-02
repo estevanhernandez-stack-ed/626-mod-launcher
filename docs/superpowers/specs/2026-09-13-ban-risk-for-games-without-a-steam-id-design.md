@@ -270,9 +270,12 @@ directory.
   and will miss an EA game too. Those are lookups that make a game less helpful, not less safe, so
   they belong to that sub-project rather than to this fix.
 - **The roster writer.** It inherits the save gate as a contract, and gets its own spec.
-- **Legacy duplicate ids** such as a `-2` suffix from before duplicate registration was refused. A
+- ~~**Legacy duplicate ids** such as a `-2` suffix from before duplicate registration was refused. A
   duplicate with no Steam id still misses the id lookup. New duplicates are already refused
-  (`Registry.cs:39`, `LauncherService.cs:76`), and none of the high-risk games are affected today.
+  (`Registry.cs:39`, `LauncherService.cs:76`), and none of the high-risk games are affected today.~~
+  **Wrong, and the reason the addendum below exists.** Refusing duplicates refuses the same install
+  twice. `EnginePresets.UniqueId` still gives a second store copy of the same game a `-2` id, and the
+  high-risk EA titles were exactly the games affected. Fixed 2026-10-02.
 
 ## Addendum 2026-10-02: the second store copy
 
@@ -284,9 +287,11 @@ feed, the same was true of the two EA titles the compiled floor exists for.
 
 The fix has two parts:
 
-- **Resolve, don't compare.** The feed's per-id risk and the id floor are checked against every
-  manifest id the registration resolves to (`ManifestIdLookup.IdsFor`): its own id, the entry claiming
-  its Steam app id, and the entry claiming its EA content id.
+- **Resolve, don't compare.** The feed's per-id risk and the id floor are checked against the
+  registration's own id and the manifest entry its EA content id names. The EA mapping is built into
+  `BanRiskCatalog`'s own generation-cached maps, so one snapshot answers a whole call and a feed
+  update mid-call can't pair two generations. A Steam id needs no such step: the Steam-id risk map and
+  the Steam floor already answer for the entry that claims it.
 - **A floor by EA content id.** `FloorByEaContentId` holds College Football 27 (`16425899`) and Madden
   NFL 27 (`16425895`), as read from both installs (grand plan K3), so the floor holds for an EA install
   with no feed whatever its registration id.
