@@ -232,6 +232,11 @@ of held mods are part of it), each remainder file goes back:
 - a **different** live file is never overwritten and is reported;
 - the archived copy is SHA-checked, written to a temp sibling, checked again and moved into place.
 
+**Pre-flight.** The free-space check counts the larger of the turn-off estimate and every byte in the
+mod-only folders, read per file without hashing. Both the held copies and the remainder come out of those
+folders, so this bounds what lands in the restore point, apart from direct-inject and loose-root holds,
+which the turn-off estimate covers.
+
 **Skip-archive** (no restore point) does not sweep: with no record there would be nothing to restore
 from.
 

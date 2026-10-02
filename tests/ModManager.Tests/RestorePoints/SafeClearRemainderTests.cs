@@ -99,6 +99,15 @@ public class SafeClearRemainderTests : IDisposable
             .SelectMany(d => Directory.GetFiles(d, "*", SearchOption.AllDirectories));
 
     [Fact]
+    public void The_pre_flight_counts_every_byte_in_the_mod_only_folders_and_nothing_else()
+    {
+        var g = Cyberpunk();
+        var expected = LiveInModFolders(g).Sum(f => new FileInfo(f).Length);
+
+        Assert.Equal(expected, RestorePointEngine.EstimateModOnlyBytes(Scanner.GameContext(g)));
+    }
+
+    [Fact]
     public void Fixture_resolves_the_manifests_five_extra_trees_by_store_id()
         => Assert.Equal(5, Scanner.GameContext(Cyberpunk()).ExtraModTrees!.Count);
 

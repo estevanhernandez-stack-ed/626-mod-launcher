@@ -42,6 +42,59 @@ public static partial class RestorePointEngine
         var gameRoot = FullNorm(c.GameRoot);
         if (gameRoot is null || !Directory.Exists(gameRoot)) return new RemainderPlan(Array.Empty<MovedFile>(), left);
 
+        var roots = ModOnlyRoots(c, gameRoot, left);
+
+        // What stays inside the roots.
+        var frameworkFiles = FrameworkRegistry.List(c.DataDir)
+            .SelectMany(fw => fw.InstalledFiles.Select(f => FullNorm(Path.Combine(fw.InstallPath, f))))
+            .Where(p => p is not null).Select(p => p!).ToList();
+        var refusedPaths = RefusedModPaths(c, refusedTurnOffs);
+
+        var files = new List<MovedFile>();
+        foreach (var root in roots)
+        {
+            IEnumerable<string> found;
+            try { found = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList(); }
+            catch (Exception e)
+            {
+                left.Add(new InPlaceNote(Rel(gameRoot, root), $"couldn't be read ({e.Message})"));
+                continue;
+            }
+            foreach (var f in found)
+            {
+                var full = FullNorm(f);
+                if (full is null) continue;
+                var rel = Rel(gameRoot, full);
+                if (rel.Split('\\', '/').Any(s => string.Equals(s, "_626", StringComparison.OrdinalIgnoreCase))) continue;
+                if (frameworkFiles.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase))) continue;
+                if (refusedPaths.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase) || IsUnder(full, p))) continue;
+                if (HasUncopyableSegment(rel))
+                {
+                    left.Add(new InPlaceNote(rel, "its name can only be reached exactly, so 626 can't move it safely"));
+                    continue;
+                }
+                long size;
+                try { size = new FileInfo(full).Length; }
+                catch (Exception e) { left.Add(new InPlaceNote(rel, $"couldn't be read ({e.Message})")); continue; }
+                var ext = Path.GetExtension(full);
+                if ((ext.Equals(".pak", StringComparison.OrdinalIgnoreCase) || ext.Equals(".ucas", StringComparison.OrdinalIgnoreCase)
+                        || ext.Equals(".utoc", StringComparison.OrdinalIgnoreCase))
+                    && PakClassifier.IsBaseGamePak(Path.GetFileName(full), size))
+                {
+                    left.Add(new InPlaceNote(rel, "looks like the base game's own pak — 626 doesn't move it"));
+                    continue;
+                }
+                try { files.Add(new MovedFile(rel, size, FileTally.Sha256(full))); }
+                catch (Exception e) { left.Add(new InPlaceNote(rel, $"couldn't be read ({e.Message})")); }
+            }
+        }
+        return new RemainderPlan(files, left);
+    }
+
+    // The game's mod-only folders, de-duplicated (a tree inside a location is the location's). What is
+    // knowingly not swept (another tool's folder, base content) is added to <paramref name="left"/>.
+    private static List<string> ModOnlyRoots(GameContext c, string gameRoot, List<InPlaceNote> left)
+    {
         var playFolders = new[] { DirectInjectListing.PlayFolder(c.GameRoot), LooseMods.LooseRootListing.PlayFolder(c.GameRoot) }
             .Where(p => p is not null).Select(p => FullNorm(p!)).Where(p => p is not null).Select(p => p!).ToList();
 
@@ -89,51 +142,28 @@ public static partial class RestorePointEngine
             if (!string.IsNullOrWhiteSpace(tree))
                 AddRoot(Path.Combine(c.GameRoot, Path.Combine(tree.Replace('\\', '/').Trim('/').Split('/'))), tree);
 
-        // What stays inside the roots.
-        var frameworkFiles = FrameworkRegistry.List(c.DataDir)
-            .SelectMany(fw => fw.InstalledFiles.Select(f => FullNorm(Path.Combine(fw.InstallPath, f))))
-            .Where(p => p is not null).Select(p => p!).ToList();
-        var refusedPaths = RefusedModPaths(c, refusedTurnOffs);
+        return roots;
+    }
 
-        var files = new List<MovedFile>();
-        foreach (var root in roots)
+    /// <summary>Pre-flight only: the bytes in the game's mod-only folders right now, read-only and without
+    /// hashing. Everything vanilla copies or moves out of them into the restore point (held copies of the
+    /// scanner's mods, and the remainder) is at most this.</summary>
+    public static long EstimateModOnlyBytes(GameContext c)
+    {
+        var gameRoot = FullNorm(c.GameRoot);
+        if (gameRoot is null || !Directory.Exists(gameRoot)) return 0;
+        long total = 0;
+        foreach (var root in ModOnlyRoots(c, gameRoot, new List<InPlaceNote>()))
         {
-            IEnumerable<string> found;
-            try { found = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList(); }
-            catch (Exception e)
-            {
-                left.Add(new InPlaceNote(Rel(gameRoot, root), $"couldn't be read ({e.Message})"));
-                continue;
-            }
-            foreach (var f in found)
-            {
-                var full = FullNorm(f);
-                if (full is null) continue;
-                var rel = Rel(gameRoot, full);
-                if (rel.Split('\\', '/').Any(s => string.Equals(s, "_626", StringComparison.OrdinalIgnoreCase))) continue;
-                if (frameworkFiles.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase))) continue;
-                if (refusedPaths.Any(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase) || IsUnder(full, p))) continue;
-                if (HasUncopyableSegment(rel))
-                {
-                    left.Add(new InPlaceNote(rel, "its name can only be reached exactly, so 626 can't move it safely"));
-                    continue;
-                }
-                long size;
-                try { size = new FileInfo(full).Length; }
-                catch (Exception e) { left.Add(new InPlaceNote(rel, $"couldn't be read ({e.Message})")); continue; }
-                var ext = Path.GetExtension(full);
-                if ((ext.Equals(".pak", StringComparison.OrdinalIgnoreCase) || ext.Equals(".ucas", StringComparison.OrdinalIgnoreCase)
-                        || ext.Equals(".utoc", StringComparison.OrdinalIgnoreCase))
-                    && PakClassifier.IsBaseGamePak(Path.GetFileName(full), size))
-                {
-                    left.Add(new InPlaceNote(rel, "looks like the base game's own pak — 626 doesn't move it"));
-                    continue;
-                }
-                try { files.Add(new MovedFile(rel, size, FileTally.Sha256(full))); }
-                catch (Exception e) { left.Add(new InPlaceNote(rel, $"couldn't be read ({e.Message})")); }
-            }
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList(); }
+            catch { continue; }   // unreadable: an estimate
+            // Per file and tolerant: a name only reachable exactly can't be sized by its plain path, and an
+            // estimate must never be what stops a clear.
+            foreach (var f in files)
+                try { total += new FileInfo(f).Length; } catch { }
         }
-        return new RemainderPlan(files, left);
+        return total;
     }
 
     // The paths a refused turn-off's row owns (its files and the extra-tree entries its turn-off would have

@@ -75,7 +75,10 @@ public sealed class RestorePointOrchestrator
                     payload += FileTally.ByteSize(ctx.DataDir);
                     // Vanilla copies every mod it turns off into the restore point: count them up front.
                     if (string.Equals(EndStateFor(g.Id, opts), "vanilla", StringComparison.OrdinalIgnoreCase))
-                        payload += RestorePointEngine.EstimateTurnOffBytes(ctx);
+                        // Held copies plus the swept remainder: both come out of the mod-only folders (except
+                        // direct-inject / loose-root holds, which the turn-off estimate covers), so the larger
+                        // of the two bounds what lands in the restore point.
+                        payload += Math.Max(RestorePointEngine.EstimateTurnOffBytes(ctx), RestorePointEngine.EstimateModOnlyBytes(ctx));
                 }
                 var space = SpaceCheck.Require(_restorePointsRoot, payload);
                 if (!space.Ok)
