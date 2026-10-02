@@ -44,6 +44,29 @@ public static class NexusTokenStore
         return JsonSerializer.Serialize(new StoreEnvelope(protectedBlob, user), JsonOpts);
     }
 
+    /// <summary>What the token store says WITHOUT opening it: whether a token blob is stored, the display
+    /// name, and whether the file is the discarded legacy api-key shape. For the agent surface, which
+    /// must never decrypt or relay a token (agent-access law 4). "Stored" is not "valid": a stored token
+    /// may have expired or been revoked, and only the app's next refresh finds that out.</summary>
+    public sealed record StoreSummary(bool TokensStored, string? ConnectedUser, bool LegacyKey, bool Unreadable);
+
+    public static StoreSummary Describe(string rawJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return new StoreSummary(false, null, false, true);
+            if (root.TryGetProperty("apiKey", out _) || root.TryGetProperty("apiKeyProtected", out _))
+                return new StoreSummary(false, null, true, false);
+            var stored = root.TryGetProperty("tokensProtected", out var t) && t.ValueKind == JsonValueKind.String
+                         && !string.IsNullOrEmpty(t.GetString());
+            var user = root.TryGetProperty("connectedUser", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
+            return new StoreSummary(stored, user, false, false);
+        }
+        catch { return new StoreSummary(false, null, false, true); }
+    }
+
     /// <summary>Parse the token store from raw JSON, never throwing. Order matters:
     /// (1) legacy detection FIRST — a top-level <c>apiKey</c>/<c>apiKeyProtected</c> is the old shape, so
     ///     discard it (keys are non-compliant) and report <c>LegacyKeyDiscarded</c>;

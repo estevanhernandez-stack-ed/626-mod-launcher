@@ -215,6 +215,40 @@ public static class Themes
         return warnings;
     }
 
+    /// <summary>The theme a first run opens on, a cleared setting falls back to, and a deleted user
+    /// theme falls back to. The app's ThemeService and the agent's list_themes both resolve through
+    /// <see cref="PickActive"/>, so the two never disagree about which theme is showing.</summary>
+    public const string DefaultThemeId = "626-labs";
+
+    /// <summary>What <see cref="LoadUserThemes"/> read: the parsed themes by id (the file name,
+    /// lowercased) and the files it could not parse, which the list silently leaves out.</summary>
+    public sealed record UserThemeLoad(IReadOnlyList<(string Id, RawTheme Data)> Themes, IReadOnlyList<string> Unreadable);
+
+    /// <summary>Every <c>*.json</c> in the user-theme folder, parsed. A missing folder is no themes; a
+    /// file that is not theme JSON is skipped and named in <see cref="UserThemeLoad.Unreadable"/>.</summary>
+    public static UserThemeLoad LoadUserThemes(string dir)
+    {
+        var themes = new List<(string, RawTheme)>();
+        var unreadable = new List<string>();
+        if (!Directory.Exists(dir)) return new UserThemeLoad(themes, unreadable);
+        foreach (var f in Directory.GetFiles(dir, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            try { themes.Add((Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), ParseRawTheme(File.ReadAllText(f)))); }
+            catch { unreadable.Add(Path.GetFileName(f)); }
+        }
+        return new UserThemeLoad(themes, unreadable);
+    }
+
+    /// <summary>The theme showing for a saved pick: the saved id when it is in the list, else
+    /// <see cref="DefaultThemeId"/>, else the first theme. <c>SavedMissing</c> says a saved pick was
+    /// not found (a deleted or broken user theme), which is why the default is showing instead.</summary>
+    public static (Theme Active, bool SavedMissing) PickActive(IReadOnlyList<Theme> themes, string? savedId)
+    {
+        var saved = string.IsNullOrWhiteSpace(savedId) ? null : themes.FirstOrDefault(t => t.Id == savedId);
+        var active = saved ?? themes.FirstOrDefault(t => t.Id == DefaultThemeId) ?? themes[0];
+        return (active, !string.IsNullOrWhiteSpace(savedId) && saved is null);
+    }
+
     /// <summary>Built-ins merged with user/agent themes; user wins on id collision.</summary>
     public static IReadOnlyList<Theme> BuildThemeList(
         IReadOnlyDictionary<string, RawTheme> builtins,
