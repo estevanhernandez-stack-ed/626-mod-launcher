@@ -253,4 +253,24 @@ public class GameWriteToolsTests : IDisposable
         Assert.Equal(new[] { heldDir }, r.GetProperty("deletedHeld").EnumerateArray().Select(e => e.GetString()));
         Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == "CoolMod");
     }
+
+    // The mod is removed but a held file is locked: not ok, and truthful about both halves.
+    [Fact]
+    public async Task A_held_folder_that_cant_be_deleted_is_not_ok_but_says_the_mod_was_removed()
+    {
+        var (g, heldDir) = await CyberpunkWithCoolModOff();
+        var locked = Path.Combine(heldDir, "r6", "scripts", "CoolMod", "main.reds");
+
+        JsonElement r;
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+            r = Json(GameWriteTools.UninstallMod("cyberpunk-2077", "CoolMod", confirm: true));
+
+        Assert.False(r.GetProperty("ok").GetBoolean(), r.GetRawText());
+        Assert.True(r.GetProperty("modRemoved").GetBoolean());
+        Assert.Equal(new[] { heldDir }, r.GetProperty("heldLeft").EnumerateArray().Select(e => e.GetString()));
+        Assert.Contains($"CoolMod was uninstalled, but 626 couldn't delete everything it was holding for it in {heldDir}.",
+            r.GetProperty("detail").GetString());
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == "CoolMod");
+        Assert.Equal("error", AgentAudit.Read(g.DataDir!).Last().Result);
+    }
 }

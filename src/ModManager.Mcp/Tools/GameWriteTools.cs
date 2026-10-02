@@ -174,6 +174,19 @@ public static class GameWriteTools
 
         IReadOnlyList<string> deletedHeld;
         try { deletedHeld = ModUninstall.Run(ctx, mod); }
+        catch (HeldFolderLeftException left)
+        {
+            // The mod's own uninstall ran; a held folder could not be fully deleted. Not ok, but say truthfully
+            // which half happened: whether the listing still shows the mod is checked, not assumed.
+            var removed = !ModListing.Resolve(game).Any(m => string.Equals(m.Name, mod.Name, StringComparison.OrdinalIgnoreCase));
+            var detail = removed ? left.Message : left.Message + $" The mod list still shows {mod.Name}, though.";
+            AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "error", detail));
+            return new
+            {
+                ok = false, refusal = "error", gameId, modName = mod.Name, modRemoved = removed,
+                deleted = removed ? mod.Files : new List<string>(), deletedHeld = left.Deleted, heldLeft = left.Left, detail,
+            };
+        }
         catch (Exception e)
         {
             var detail = ErrorRemedy.Describe(e);
