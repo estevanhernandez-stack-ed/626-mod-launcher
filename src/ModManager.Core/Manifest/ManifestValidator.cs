@@ -43,6 +43,13 @@ public static class ManifestValidator
                 rejected.Add(g.Id);
                 continue;
             }
+            // The same gate for every extra tree (B4). One unsafe tree rejects the entry, as an unsafe
+            // modPath does: a feed that names an absolute or escaping folder is not trusted for the rest.
+            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeRelativePath(t)))
+            {
+                rejected.Add(g.Id);
+                continue;
+            }
             kept.Add(g);
         }
 

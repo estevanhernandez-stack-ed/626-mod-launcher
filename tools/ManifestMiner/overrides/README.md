@@ -23,6 +23,13 @@ MO2 enrichment. Curated data wins over everything the miner produced.
 `melonloader`, `fromsoft`, `custom`). An override whose `steamAppId` isn't in the backbone ADDS a new
 entry; one that matches OVERRIDES the mined fields. Unspecified fields are left as the miner set them.
 
+`extraModTrees` (optional) lists the OTHER folders, relative to the game root, where this game's mods
+also put files, beside `modPath`. For example, Cyberpunk 2077:
+`"extraModTrees": ["r6/scripts", "r6/tweaks", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods"]`.
+The launcher only SHOWS which of these trees a mod has files in. It still turns mods on and off in
+`modPath` alone (B4, `docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`). Each path is
+gated like `modPath`: relative, no drive letter, no `..`, and one bad path rejects the whole entry.
+
 To add a game: drop a `<game>.json` here, run `dotnet run --project tools/ManifestMiner -- --with-mo2
 --with-overrides`, and check the coverage summary + the diff. Verify the Steam id (a wrong id just
 won't match — it's reported as not-applied, never corrupts).

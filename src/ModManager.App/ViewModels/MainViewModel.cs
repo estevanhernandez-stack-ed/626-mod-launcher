@@ -868,6 +868,10 @@ public sealed partial class MainViewModel : ObservableObject
             // written key in lockstep.
             var metaByKey = Scanner.LoadMetadata(_ctx);
             var rows = new List<ModRowViewModel>();
+            // B4, see first: the other folders this game's mods also write to (from the manifest), read
+            // once per reload. Each row then says which of them hold files with its name; toggling still
+            // moves only the primary folder.
+            var modTrees = ModTrees.Build(_ctx.GameRoot, ManifestIdLookup.EntryFor(_ctx.Game)?.ExtraModTrees);
             // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
             // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
             // OrderAndStampSections then orders + sections per GroupMode.
@@ -987,6 +991,7 @@ public sealed partial class MainViewModel : ObservableObject
                         ? NexusRefresh.ResolveModId(repMeta)
                         : null,
                     NexusConnected = NexusActionsAvailable,
+                    AlsoInTrees = modTrees.For(rep.Name),
                 });
             }
             OrderAndStampSections(rows);

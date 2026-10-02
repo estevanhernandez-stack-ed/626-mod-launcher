@@ -561,6 +561,13 @@
                                 <TextBlock Text="Removed from Nexus" Foreground="{StaticResource ThemeDanger}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                            Visibility="{x:Bind RemovedFromNexusVisibility}" />
                             </StackPanel>
+                            <!-- B4, see first: the game's other mod folders that also hold this mod's files.
+                                 Toggling moves only the main folder; the tooltip says so. -->
+                            <TextBlock Text="{x:Bind AlsoInText}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource MetaFontSize}"
+                                       FontFamily="{StaticResource MonoFontFamily}" TextWrapping="Wrap"
+                                       ToolTipService.ToolTip="{x:Bind AlsoInTooltip}"
+                                       AutomationProperties.HelpText="{x:Bind AlsoInTooltip}"
+                                       Visibility="{x:Bind AlsoInVisibility}" />
                             <!-- Multi-variant family: pick which level(s) to run, inline on this one row -->
                             <ItemsControl ItemsSource="{x:Bind VariantOptions}" Margin="0,4,0,0"
                                           Visibility="{x:Bind VariantOptionsVisibility, Mode=OneWay}">
