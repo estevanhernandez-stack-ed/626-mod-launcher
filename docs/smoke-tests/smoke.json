@@ -1077,7 +1077,7 @@
     "**STORE flavor is sealed** — build/run `-p:Configuration=Store` → no plugin loads (host compiled out), no user-facing Nexus surface, core fully functional; STORE dll has no `LoadFromStream`/`PluginHost`/`AssemblyLoadContext`."
    ],
    "source": "docs/smoke-tests/pending.md#L517",
-   "note": "STORE-versus-FULL sealing checks from June, on a surface that has shipped four plugin versions since. Superseded: the check worth keeping is one current \"the Store build shows no Nexus surface at all\", not five historical ones."
+   "note": "STORE-versus-FULL sealing checks from June, on a surface that no longer exists in that form: 05002a3 compiled Nexus into every build and removed the plugin feed, so there is no Nexus-free Store build left to seal. What replaces them is build-time, not a smoke case: StoreSkuTests and scripts/check-store-seal.ps1 require the Store package to carry Nexus."
   },
   {
    "id": "plugin-slice-b2a-scan-time-identify-routes-through-the-plugi",
@@ -1098,7 +1098,7 @@
     "**Selective overlay never clobbers a manual match.** On a manually-URL-matched row (custom title), run \"Refresh Nexus stats…\". EXPECT: stats (endorsements/downloads) + UPDATE chip refresh, but the title / author / heart stay exactly as set — the selective `Overlay` doesn't touch identity or `Endorsed`."
    ],
    "source": "docs/smoke-tests/pending.md#L529",
-   "note": "STORE-versus-FULL sealing checks from June, on a surface that has shipped four plugin versions since. Superseded: the check worth keeping is one current \"the Store build shows no Nexus surface at all\", not five historical ones."
+   "note": "STORE-versus-FULL sealing checks from June, on a surface that no longer exists in that form: 05002a3 compiled Nexus into every build and removed the plugin feed, so there is no Nexus-free Store build left to seal. What replaces them is build-time, not a smoke case: StoreSkuTests and scripts/check-store-seal.ps1 require the Store package to carry Nexus."
   },
   {
    "id": "plugin-slice-b2b-2-core-is-nexus-client-free-2026-06-18",
@@ -1136,7 +1136,7 @@
     "**STORE: no plugin surface.** Build/run `-p:Configuration=Store`. EXPECT: `PluginFeedSource` is absent (compiled out by `#if FULL`); no `MaybeFetchOnConnectAsync` call; no `last-plugin-check.txt`; Settings shows \"Plugins are a desktop-only feature\" (or the status row is hidden); the STORE dll contains no `PluginFeedSource` symbol. The STORE gate already verified this at commit time (0 errors, 0 warnings on the STORE build)."
    ],
    "source": "docs/smoke-tests/pending.md#L557",
-   "note": "STORE-versus-FULL sealing checks from June, on a surface that has shipped four plugin versions since. Superseded: the check worth keeping is one current \"the Store build shows no Nexus surface at all\", not five historical ones."
+   "note": "STORE-versus-FULL sealing checks from June, on a surface that no longer exists in that form: 05002a3 compiled Nexus into every build and removed the plugin feed, so there is no Nexus-free Store build left to seal. What replaces them is build-time, not a smoke case: StoreSkuTests and scripts/check-store-seal.ps1 require the Store package to carry Nexus."
   },
   {
    "id": "plugin-delivery-ux-already-connected-users-hot-load-manual-b",
@@ -1156,7 +1156,7 @@
     "**(6) STORE stays sealed.** Build/run `-p:Configuration=Store`. EXPECT: no plugin loads; no startup fetch fires; the Settings row for \"Install / refresh Nexus plugin\" is absent or no-ops (compiled out); no `last-plugin-check.txt`; STORE dll has no `PluginFeedSource`/`PluginHost` symbols. Core fully functional (toggle/intake/save unaffected)."
    ],
    "source": "docs/smoke-tests/pending.md#L578",
-   "note": "STORE-versus-FULL sealing checks from June, on a surface that has shipped four plugin versions since. Superseded: the check worth keeping is one current \"the Store build shows no Nexus surface at all\", not five historical ones."
+   "note": "STORE-versus-FULL sealing checks from June, on a surface that no longer exists in that form: 05002a3 compiled Nexus into every build and removed the plugin feed, so there is no Nexus-free Store build left to seal. What replaces them is build-time, not a smoke case: StoreSkuTests and scripts/check-store-seal.ps1 require the Store package to carry Nexus."
   },
   {
    "id": "request-this-game-affordance-in-addgamedialog-feat-request-a",
@@ -2429,23 +2429,6 @@
    "action": "Add a game the feed learned about since the installed build shipped.",
    "expect": "The feed updates itself, the game quick-picks with the curated engine, and its mod folder resolves beside the game executable. A game whose engine markers are NOT at the top level falls to manual Set up instead - correct, but see the note.",
    "humanReason": "Needs the game actually installed from Steam, and a merged data PR whose CI regenerate has landed. An agent can drive every step, but it cannot make a machine own the game."
-  },
-  {
-   "id": "store-build-has-no-nexus-surface",
-   "title": "The Store build shows no Nexus surface at all",
-   "surface": "Store build",
-   "coverage": "agentable",
-   "status": "pending",
-   "lastVerified": null,
-   "steps": [
-    "Build and install the Store configuration (-c Store, the MSIX package release-msstore.yml produces).",
-    "Launch it with a game registered that has Nexus-identified mods.",
-    "Walk the UIA tree of the main window, the mod rows, Settings and the library home."
-   ],
-   "source": "docs/smoke-tests/smoke.json",
-   "action": "Launch the Store build and walk its UIA tree for any Nexus affordance.",
-   "expect": "No Connect Nexus button, no endorse heart, no Refresh Nexus stats, no Browse Nexus door, no plugin install row; toggling and intake still work.",
-   "note": "The one current check that replaces the five June plugin-slice sealing sections (retired). Nothing in it needs a person; it needs the harness to install and launch an MSIX build, which smoke-run.ps1 does not do yet."
   }
  ]
 }

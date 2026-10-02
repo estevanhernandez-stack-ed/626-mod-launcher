@@ -129,6 +129,12 @@ public class SmokeCatalogueTests
 
         Assert.Contains("catalogue cases were executed", script);
         Assert.Contains("awaiting triage", script);
+
+        // The total is the cases that exist as work. Retired entries are history whose verdict another
+        // case carries; counting them would make every run look less covered than it is. And a case an
+        // agent COULD run but no harness does yet is named, never just folded into the total.
+        Assert.Contains("coverage -ne 'retired'", script);
+        Assert.Contains("have no harness case yet", script);
     }
 
     // ---------------------------------------------------------------- honesty
