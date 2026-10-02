@@ -254,32 +254,49 @@ told.
 
 **The preview.** `ModUninstall.Preview(ctx, mods)` is read-only. It returns an `UninstallPreview`: each
 mod's name and files (`mod.Files`), and `HeldFolders`, one per mod whose `disabled-trees/<Mod>` holds
-files, with its absolute path and the declared trees it holds entries under (`TreeHolding.Held`). A folder
-whose files fit no declared tree is listed anyway, with no trees. A folder that can't be read is listed
-with `Unreadable = true` rather than guessed about. The app's confirm dialog and the agent's
-`uninstall_mod` both read it.
+anything, with its absolute path and the declared trees it holds entries under (`TreeHolding.Held`). It
+reads by the delete's rule: a link counts as something held, but nothing behind it is read, so no tree is
+named from a link's target. A folder whose files fit no declared tree, or whose only content is links, is
+listed with no trees. A folder that can't be read is listed with `Unreadable = true` rather than guessed
+about. The app's confirm dialog and the agent's `uninstall_mod` both read it.
 
 - **App.** The dialog keeps its first sentence and its buttons (Uninstall, Cancel, default Cancel), and
-  adds one when something is held: `626 is also holding some of its files in r6/scripts, r6/tweaks, and
-  will delete those too.` (the folder's path in place of the trees when its files fit none), or for an
-  unreadable folder `626 couldn't read <path> to see what it's holding for it; anything there will be
-  deleted too.` A family's variants are merged into one sentence, each tree once.
+  adds sentences when something is held. Trees: `626 is also holding some of its files in r6/scripts,
+  r6/tweaks, and will delete those too.` A folder with no trees gets its own sentence, never spliced into
+  the tree list: `626 is also holding files for it in <path> and will delete those too.` An unreadable
+  folder: `626 couldn't read <path> to see what it's holding for it; anything there will be deleted too.`
+  A family's variants are merged, each tree once, and read "their" and "them".
 - **MCP.** Without `confirm: true` the message lists the main files as before, plus `and the files 626 is
   holding for it in <path> (r6/scripts, r6/tweaks)` per held folder. With it, the tool checks the held
-  folder is gone as well as the listing, and returns the paths as `deletedHeld`.
+  folder is gone as well as the listing, and returns the paths as `deletedHeld`. When a held folder can't
+  be fully deleted the result is `ok: false` with the core message, `modRemoved` from a real listing check,
+  `heldLeft` and `deletedHeld`.
 
-**The delete, and its rails.** `Run`/`RunAll` delete each mod's `disabled-trees/<Mod>` after the main
-uninstall has succeeded, so a failure there leaves the held extras intact and the mod still listed.
+**The delete, and its rails.** `Run`/`RunAll` delete each mod's `disabled-trees/<Mod>` right after that
+mod's own uninstall succeeds. A failure in the main uninstall leaves the held extras intact and the mod
+still listed; a later family member's failure leaves no orphan behind.
 
-- **Containment.** Checked for every mod before anything is deleted: the folder's full path must sit
-  strictly under `TreeHolding.Root(ctx)`, itself strictly under the data folder, with no link between the
-  root and the folder. A name such as `..\x`, `..` or `.` throws and nothing is deleted.
+- **Containment.** Checked for every mod before anything is deleted. The name must name one folder
+  directly inside `TreeHolding.Root(ctx)`, exactly as written: no separators or invalid characters, not
+  `.` or `..`, no trailing dot or space (Windows strips those, so `Bystander.` would land on `Bystander`).
+  The root must sit strictly under the data folder and must not be a link. Refused names throw and nothing
+  is deleted. The check is textual on purpose: `Path.GetFullPath` expands an existing folder's 8.3 alias,
+  so comparing the resolved name would mistake a mod named `OTHERL~1` for an escape.
+- **Real names only.** The folder is touched only when the root lists an entry with the mod's real name
+  (enumerated without a search pattern). A mod literally named `OTHERL~1` never reaches `Other Long Name
+  Mod`, although opening that path would.
 - **No following links.** `LinkSafeDelete` walks the tree without descending into a reparse point. A
-  junction or symlink is removed as the link (`Directory.Delete(path)` non-recursively, or `File.Delete`),
-  and its target is never touched; that includes a held folder that is itself a link.
+  junction or symlink is removed as the link (`Directory.Delete(path)` non-recursively, after clearing a
+  read-only flag on the link itself, or `File.Delete`), and its target is never touched; that includes a
+  held folder that is itself a link.
 - **Files, then folders.** Files are deleted one by one, then folders deepest first, each non-recursively.
   No `Directory.Delete(recursive)`.
-- **Verified.** Afterwards, a folder that still holds a file or a link throws an `IOException` naming it.
+- **Verified, and a failure doesn't stop the run.** A held folder that throws (a file in use, a
+  permission) or still holds a file or a link afterwards is recorded, and the run carries on. At the end
+  one `HeldFolderLeftException` names every folder left, with the first cause inside: `<Mod> was
+  uninstalled, but 626 couldn't delete everything it was holding for it in <path>. Close anything using
+  those files and delete the folder, or try again.` The app reloads after an uninstall whatever happened,
+  so the rows show what is really on disk.
 
 ## Follow-ups
 
