@@ -710,7 +710,6 @@ public static class Scanner
         }
 
         var destExisted = Directory.Exists(dest);
-        var treesDirExisted = Directory.Exists(treesDir);
         Directory.CreateDirectory(dest);
 
         // Phase 1: move every primary file into the holding folder, then each extra-tree entry into
@@ -735,19 +734,33 @@ public static class Scanner
         }
         catch (Exception e)
         {
-            var strandedMoves = new List<(string From, string To, string Label, bool Extra)>();
+            // Extras come back first. If one cannot, the rollback STOPS there and the main files stay held:
+            // moving them back would list the mod as on while part of it sits in disabled-trees, where no
+            // toggle looks for a live mod. Held with a record, it lists as off, and turning it on restores
+            // the main files and every held extra together.
+            var stillHeld = new List<(string From, string To, string Label, bool Extra)>();
+            string? stuckExtra = null;
             for (var i = moved.Count - 1; i >= 0; i--)
             {
-                try { MoveAny(moved[i].To, moved[i].From); }
-                catch { strandedMoves.Add(moved[i]); }
+                if (stuckExtra is not null) { stillHeld.Add(moved[i]); continue; }
+                try
+                {
+                    BeforeRollbackMoveForTests?.Invoke(moved[i].To);
+                    MoveAny(moved[i].To, moved[i].From);
+                }
+                catch
+                {
+                    stillHeld.Add(moved[i]);
+                    if (moved[i].Extra) stuckExtra = moved[i].Label;
+                }
             }
-            var stranded = strandedMoves.Where(s => !s.Extra).Select(s => s.Label).Reverse().ToList();
-            var strandedExtras = strandedMoves.Where(s => s.Extra).Select(s => s.Label).Reverse().ToList();
+            var stranded = stillHeld.Where(s => !s.Extra).Select(s => s.Label).Reverse().ToList();
+            var strandedExtras = stillHeld.Where(s => s.Extra).Select(s => s.Label).Reverse().ToList();
 
-            // A held extra that could not go back stays where it is, named in the message. Otherwise the
-            // tree folders this call created go, and only once no file is left under them: never a
-            // recursive delete over something that could be the user's.
-            if (strandedExtras.Count == 0 && !treesDirExisted) TreeHolding.RemoveIfEmpty(c, m.Name);
+            // With every extra back, the folders this attempt made under disabled-trees go, and only once
+            // no file is left under them: never a recursive delete over something that could be the
+            // user's. A held extra keeps its folders.
+            if (strandedExtras.Count == 0) TreeHolding.RemoveIfEmpty(c, m.Name);
 
             if (stranded.Count > 0)
             {
@@ -768,12 +781,16 @@ public static class Scanner
             // Only a folder this call created, and only once no file is left in it. Never a recursive
             // delete over something that could be the user's.
             else if (!destExisted) HoldingFolder.RemoveIfNoFiles(dest);
+            static string Quoted(List<string> items) => string.Join(", ", items.Select(f => $"\"{f}\""));
+            static string IsAre(List<string> items) => items.Count == 1 ? "is" : "are";
             throw new InvalidOperationException(
                 $"Couldn't disable \"{m.Name}\" ({e.Message})"
-                + (stranded.Count == 0 ? ""
-                    : $" {string.Join(", ", stranded.Select(f => $"\"{f}\""))} could not be moved back and {(stranded.Count == 1 ? "is" : "are")} held in {dest}.")
-                + (strandedExtras.Count == 0 ? ""
-                    : $" {string.Join(", ", strandedExtras.Select(f => $"\"{f}\""))} could not be moved back and {(strandedExtras.Count == 1 ? "is" : "are")} held in {treesDir}."), e);
+                + (stuckExtra is null
+                    ? (stranded.Count == 0 ? ""
+                        : $" {Quoted(stranded)} could not be moved back and {IsAre(stranded)} held in {dest}.")
+                    : $" \"{stuckExtra}\" could not be moved back, so \"{m.Name}\" stays off and can be turned on from the app."
+                      + (stranded.Count == 0 ? "" : $" {Quoted(stranded)} {IsAre(stranded)} held in {dest}.")
+                      + $" {Quoted(strandedExtras)} {IsAre(strandedExtras)} held in {treesDir}."), e);
         }
 
         // Phase 2: primary files are safely held. Snapshot-first — write meta.json BEFORE clearing any
@@ -804,6 +821,13 @@ public static class Scanner
     }
 
     /// <summary>
+    /// Tests only: called with the held path of each item <see cref="DisableEntry"/>'s rollback is about to
+    /// move back, so a test can make one fail. Thread-static because the toggle runs synchronously on the
+    /// calling thread, which keeps a test's hook out of every other test running in parallel.
+    /// </summary>
+    [ThreadStatic] internal static Action<string>? BeforeRollbackMoveForTests;
+
+    /// <summary>
     /// The extra-tree entries that move with <paramref name="m"/> (B4 stage two), decided by
     /// <see cref="ModTrees.MovableFor"/>: one claimant, nothing protected inside, tree not owned by
     /// another tool. A game that declares no extra trees pays nothing, not even the mod-list read.
@@ -815,7 +839,10 @@ public static class Scanner
             .Where(n => !string.Equals(n, m.Name, StringComparison.Ordinal)).ToList();
         return ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs))
             .MovableFor(m.Name, otherRows,
-                dir => ToolOwnership.Resolve(Path.GetFullPath(dir), c.TakenOver).State == OwnershipState.Owned)
+                // Re-deployed is owned too: the other manager put its files back into a folder the user
+                // had taken over, so what is there is that manager's again, not 626's to move.
+                dir => ToolOwnership.Resolve(Path.GetFullPath(dir), c.TakenOver).State
+                    is OwnershipState.Owned or OwnershipState.ReDeployed)
             .Movable;
     }
 
