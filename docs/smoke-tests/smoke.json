@@ -2070,7 +2070,7 @@
     "release": "v0.23.0",
     "date": "2026-10-02",
     "by": "agent on Nebuchadnezzar",
-    "note": "Green on the 2026-10-02 scoped run (-Only). Read-only: open, read, close by CloseButton, games.json hash unchanged. Later the same day the case was extended to assert the 'Set to look in' line (declared, never 'added by the launcher', no double space, names the stored path) so bug B1 cannot regress; that extension has not been run live yet."
+    "note": "Green on the 2026-10-02 scoped run (-Only). Read-only: open, read, close by CloseButton, games.json hash unchanged. Later the same day the case was extended to assert the 'Set to look in' line (declared, never 'added by the launcher', no double space, and either the stored path or '(corrected from <stored> by the game's definition)') so bug B1 cannot regress; that extension has not been run live yet."
    },
    "steps": [],
    "source": "scripts/smoke-run.ps1",

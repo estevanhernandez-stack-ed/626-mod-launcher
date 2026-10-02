@@ -109,8 +109,12 @@ public sealed record GameShape
     public static bool NeedsAttentionFor(GameContext ctx, int modCount)
         => Attention(modCount, DeclaredFor(ctx));
 
+    /// <summary>The one predicate. A location the game's DEFINITION corrected
+    /// (<see cref="DeclaredLocation.CorrectedFrom"/> set) is skipped: its path is the definition's, not
+    /// one the user chose, and a definition's folder that is not on disk means "not started", not
+    /// "broken" (Este, 2026-08-18, recorded in ModFolderSeed). It stays declared everywhere else.</summary>
     private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared)
-        => modCount == 0 && declared.Any(d => d.Declared && !d.Exists);
+        => modCount == 0 && declared.Any(d => d.Declared && d.CorrectedFrom is null && !d.Exists);
 
     /// <summary>
     /// The locations the scanner will actually look in, each tagged with whether the REGISTRATION
@@ -263,6 +267,20 @@ public sealed record GameShape
         // that is missing is a registration the user can correct; a derived one is the launcher's own
         // folder, and telling them their registration declares it would send them editing a field
         // that does not exist.
+        // m2. A correction moved the launcher off the registration's own folder; files still sitting
+        // there are no longer read, and nothing else would ever say so.
+        foreach (var d in declared.Where(d => d.Declared && d.CorrectedFrom is not null))
+        {
+            var storedAbs = Scanner.LocationAbs(gameRoot, d.CorrectedFrom!);
+            // A stored folder that CONTAINS the corrected one (the game root, say) would count the very
+            // files the launcher does read, and the whole game besides. Say nothing there.
+            if (IsInside(d.Absolute, storedAbs)) continue;
+            var leftover = FileCountUnder(storedAbs);
+            if (leftover > 0)
+                notes.Add($"The registration's own '{d.CorrectedFrom}' folder holds {leftover} "
+                          + $"file{(leftover == 1 ? "" : "s")} the launcher no longer reads.");
+        }
+
         foreach (var d in declared.Where(d => !d.Exists))
             notes.Add(d.Declared
                 ? $"Declared mod location '{d.Path}' does not exist on disk ({d.Absolute})."
@@ -352,6 +370,14 @@ public sealed record GameShape
     /// "file" IS a directory (UE4SS Lua mods, REFramework script folders) and checking only for a
     /// file would erase every one of them from the shape report. Any IO failure counts as absent:
     /// a path we cannot read is not a path we can claim content for.</summary>
+    /// <summary>Files anywhere under a folder; zero when it is absent or cannot be read.</summary>
+    private static int FileCountUnder(string? dir)
+    {
+        if (string.IsNullOrEmpty(dir)) return 0;
+        try { return Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Count() : 0; }
+        catch { return 0; }
+    }
+
     private static bool Exists(string? abs)
     {
         if (string.IsNullOrEmpty(abs)) return false;

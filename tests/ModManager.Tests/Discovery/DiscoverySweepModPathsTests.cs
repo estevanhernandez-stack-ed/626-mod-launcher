@@ -87,10 +87,11 @@ public class DiscoverySweepModPathsTests : IDisposable
         Assert.Equal(DiscoveryKind.EngineShaped, offered.Kind);
     }
 
-    // The same resolver as the listing means the same appended folders too: a launcher-owned UE4SS
-    // mods folder the scanner lists from is a folder the sweep looks in.
+    // m3. A folders-form location lists one FOLDER per mod, never a loose file by extension, so a file
+    // with the engine's extension inside it would never become a row. Engine-shaped promises a row, so
+    // such a location is not engine-shaped territory - the appended UE4SS mods folder included.
     [Fact]
-    public void A_launcher_appended_location_is_swept_like_the_listing_reads_it()
+    public void A_folders_form_location_makes_no_engine_shaped_promise()
     {
         var root = TestSupport.TempDir("sweep-ue4ss-");
         var win64 = Path.Combine(root, "Binaries", "Win64");
@@ -98,10 +99,33 @@ public class DiscoverySweepModPathsTests : IDisposable
         var ctx = CorrectedContext(root);
         GameShapeTests.WriteUe4ssManifest(ctx.DataDir, win64);
         ctx = Scanner.GameContext(ctx.Game);
+        Assert.Contains(ctx.Locations, l => l.Form == "folders");   // the appended one IS in the listing
 
         var paths = DiscoverySweep.ModPathsFor(ctx).Select(p => p.Path).ToList();
 
-        Assert.Equal(new[] { "nativePC", "Binaries/Win64/ue4ss/Mods" }, paths);
+        Assert.Equal(new[] { "nativePC" }, paths);
+    }
+
+    [Fact]
+    public void A_registration_location_set_to_folders_form_is_skipped_too()
+    {
+        var root = TestSupport.TempDir("sweep-folders-");
+        EffectiveManifest.SetRemote(null);
+        var ctx = Scanner.GameContext(new GameEntry
+        {
+            Id = "sweep-folders-test", GameRoot = root, Engine = "custom",
+            FileExtensions = new[] { "pak" },
+            ModLocations = new[]
+            {
+                new ModLocation("mods", "Mods", "mods"),
+                new ModLocation("lua", "Lua", "lua") { Form = "folders" },
+            },
+            DataDir = Path.Combine(root, "_data"),
+        });
+
+        var paths = DiscoverySweep.ModPathsFor(ctx).Select(p => p.Path).ToList();
+
+        Assert.Equal(new[] { "mods" }, paths);
     }
 
     // A location that resolves outside the game folder cannot be matched against a path relative to

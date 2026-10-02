@@ -100,6 +100,22 @@ Write-Host ''
 
 Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 Start-Sleep -Seconds 2
+
+# The fixture cases register a throwaway game in the REAL games.json. Each removes its own fixture in
+# a finally, but a run can still die between the register and that finally. So whenever one of them
+# is selected, the whole file is snapshotted here, with the app closed, and written back byte for byte
+# in the finally at the end of the run - activeGameId included, as the user had it before the run.
+$gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
+$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating')
+$script:GamesSnapshot = $null
+if ((-not $Only -or @($Only | Where-Object { $fixtureCases -contains $_ }).Count -gt 0) -and (Test-Path -LiteralPath $gamesJson)) {
+    $script:GamesSnapshot = [System.IO.File]::ReadAllBytes($gamesJson)
+    Write-Host "  games.json snapshotted ($($script:GamesSnapshot.Length) bytes); restored at the end of the run" -ForegroundColor DarkGray
+}
+
+# Closed by the finally just before the report. A try block is not a new scope in PowerShell, so the
+# functions and variables defined below stay visible to the report.
+try {
 if (-not (Test-Path $Exe)) { throw "launcher not found: $Exe" }
 Start-Process $Exe
 Start-Sleep -Seconds 4
@@ -1038,7 +1054,12 @@ Case 'repair-elden-ring-reads-healthy' 'PR (feat/registration-repair-ui) step 1'
         # (stored 'mod', effective 'mods'), is declared - never "added by the launcher".
         Assert-True ($look -and $look -notlike '*added by the launcher*') "Set to look in attributes Elden Ring's own folder to the launcher: '$look'"
         Assert-True (-not $look.Contains('  ')) "Set to look in has a double space: '$look'"
-        Assert-True ((-not $stored) -or $look.Contains([string]$stored)) "Set to look in never names the stored path '$stored': '$look'"
+        # Either the line IS the stored path (nothing corrected), or it names the stored path as what the
+        # definition corrected. A bare Contains was vacuous: "mods" contains "mod".
+        $s = [string]$stored
+        $asStored = $look -eq $s -or $look.StartsWith("$s (")
+        $asCorrected = $look.Contains("(corrected from $s by the game's definition)")
+        Assert-True ((-not $s) -or $asStored -or $asCorrected) "Set to look in neither is nor names as corrected the stored path '$s': '$look'"
         Assert-True (-not (Test-SaveEnabled)) "Save is enabled with nothing changed"
         "'$mods' loaded by '$loaded'; look-in '$look'; verdict says drift, not damage; no SETUP chip"
     }
@@ -1077,8 +1098,10 @@ Case 'repair-windrose-location-count-readonly' 'PR (feat/registration-repair-ui)
 Case 'repair-cancel-is-inert' 'PR (feat/registration-repair-ui) step 7' {
     # Planning reads the filesystem on every pause in typing and must never write. Type into several
     # fields - the folder one included, so a data-dir move gets planned - then Close.
-    New-RepairFixture
+    # Inside the try: a fixture that fails half-way (registered, then a failed Open) must still be
+    # removed. Remove-RepairFixture copes with a row that never appeared.
     try {
+        New-RepairFixture
         $h0 = Get-GamesHash
         $files0 = @(Get-ChildItem -LiteralPath $fixtureRoot -Recurse -Force -File | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" })
         Open-CheckSetup
@@ -1101,8 +1124,10 @@ Case 'repair-cancel-is-inert' 'PR (feat/registration-repair-ui) step 7' {
 Case 'repair-save-gating' 'PR (feat/registration-repair-ui) step 3' {
     # Nothing changed: Save off. A blank game folder or a blank mod folder: Save off AND the reason
     # on screen. Put the value back: Save off again, because there is nothing to save.
-    New-RepairFixture
+    # Inside the try: a fixture that fails half-way (registered, then a failed Open) must still be
+    # removed. Remove-RepairFixture copes with a row that never appeared.
     try {
+        New-RepairFixture
         $h0 = Get-GamesHash
         Open-CheckSetup
         Open-SetupEditor
@@ -1138,8 +1163,25 @@ foreach ($c in $catalog.cases | Where-Object { $_.coverage -eq 'human' }) {
     HumanOnly $c.id $c.surface $c.humanReason
 }
 
+}
+finally {
+    Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
+    if ($null -ne $script:GamesSnapshot) {
+        Start-Sleep -Seconds 2   # let the app's last write land before it is overwritten
+        $want = [System.BitConverter]::ToString(
+            [System.Security.Cryptography.SHA256]::HashData($script:GamesSnapshot))
+        try {
+            [System.IO.File]::WriteAllBytes($gamesJson, $script:GamesSnapshot)
+            $got = [System.BitConverter]::ToString(
+                [System.Security.Cryptography.SHA256]::HashData([System.IO.File]::ReadAllBytes($gamesJson)))
+            if ($got -eq $want) { Write-Host '  games.json restored byte-identical to the run-start snapshot' -ForegroundColor Green }
+            else { Write-Host '  !! games.json restore did NOT match the snapshot - check it by hand' -ForegroundColor Red }
+        }
+        catch { Write-Host "  !! games.json could not be restored: $($_.Exception.Message)" -ForegroundColor Red }
+    }
+}
+
 # ---------------------------------------------------------------- report
-Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 
 $pass  = @($script:Results | Where-Object Status -eq 'PASS').Count
 $fail  = @($script:Results | Where-Object Status -eq 'FAIL').Count

@@ -314,6 +314,26 @@ public class DataDirMoveExecuteTests
         Assert.Equal(2, Directory.GetFiles(from).Length);
     }
 
+    // m4: the same rollback on the RENAME path. Execute creates the target's parents before the
+    // Directory.Move; a move that then fails (here the source vanished after it was planned) must not
+    // leave those parents behind.
+    [Fact]
+    public void A_failed_rename_removes_the_empty_parent_folders_it_created()
+    {
+        var from = Src("a.txt");
+        var drive = TestSupport.TempDir("ddm-drive-");
+        var to = Path.Combine(drive, "_626mods", "deeper", "game");
+        var plan = DataDirMove.Plan(from, to);
+        Assert.Equal(DataDirMoveKind.Rename, plan.Kind);
+        Directory.Delete(from, recursive: true);                       // gone between plan and execute
+
+        var result = DataDirMove.Execute(plan);
+
+        Assert.False(result.Moved);
+        Assert.False(Directory.Exists(Path.Combine(drive, "_626mods")));
+        Assert.True(Directory.Exists(drive));
+    }
+
     // The other half of "only those": a parent that existed before the move is never the move's to
     // remove, even when it is empty, and one holding another game's data is never touched at all.
     [Fact]

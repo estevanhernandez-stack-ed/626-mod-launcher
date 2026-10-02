@@ -148,8 +148,9 @@ public static class DiscoverySweep
     /// registration. Once the game definition corrected a stale path the two halves described
     /// different games: the sweep looked in a folder the launcher never lists from, and never called a
     /// file in the folder it does list engine-shaped. <c>ctx.Locations</c> is the list the scanner
-    /// walks, appended UE4SS folder included, so a folder the sweep calls a mod folder is one the
-    /// launcher will actually list from after adoption.</para>
+    /// walks, so a folder the sweep calls a mod folder is one the launcher will actually list from
+    /// after adoption. Folders-form locations (one folder per mod, like the appended UE4SS mods
+    /// folder) are skipped: the scanner never lists a loose file there, so no row would follow.</para>
     ///
     /// <para>The stale raw folder is deliberately NOT swept as well. Engine-shaped is a promise that
     /// adopting the file gives it a row; a file under a folder the scanner does not read would be
@@ -165,7 +166,10 @@ public static class DiscoverySweep
     {
         var modPaths = new List<DiscoverySweepModPath>();
         foreach (var loc in ctx.Locations)
-            if (RelativeToRoot(loc.Abs, ctx.GameRoot) is { } rel)
+            // A folders-form location lists one FOLDER per mod, never a loose file by extension, so an
+            // engine-extension file inside one would not become a row - and engine-shaped promises a
+            // row. The appended UE4SS mods folder is exactly this shape (m3).
+            if (loc.Form != "folders" && RelativeToRoot(loc.Abs, ctx.GameRoot) is { } rel)
                 modPaths.Add(new DiscoverySweepModPath(rel, loc.Form == "paks-root"));
         return modPaths;
     }

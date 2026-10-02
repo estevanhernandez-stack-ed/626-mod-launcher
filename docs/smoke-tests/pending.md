@@ -1390,7 +1390,8 @@ those, and for any manual re-run; it always reports back, even on nothing-found.
 
    **Fixed 2026-10-02 (B2), not yet re-run live.** The sweep's mod folders now come from
    `DiscoverySweep.ModPathsFor(ctx)` in Core, which reads `ctx.Locations` - the same resolved list the
-   scanner lists from, appended UE4SS folder included - instead of the raw `ctx.Game.ModLocations`.
+   scanner lists from - instead of the raw `ctx.Game.ModLocations`. Folders-form locations (one folder
+   per mod, like the appended UE4SS folder) are skipped, since no loose file there ever becomes a row.
    `BuildDiscoveryProposalsAsync` calls it, so folders and extensions both come from the resolved
    context. The stale raw folder is deliberately not swept as well: engine-shaped promises a row after
    adoption, and the scanner never reads that folder. Covered by `DiscoverySweepModPathsTests` (the
@@ -1699,9 +1700,14 @@ removed afterwards; real games opened read-only; games.json restored byte-identi
    before each parenthesis. `DeclaredLocation.CorrectedFrom` carries the stored path; the
    missing-folder note adds "The game's definition corrected it from 'mod'." `get_game_shape` now
    reports `declared:true` and `path: "mods"` with no MCP change (it projects `GameShape`; it does not
-   project `CorrectedFrom`). The SETUP chip can now fire for a missing corrected location, and stays
-   quiet here because Elden Ring has 11 mods. Covered by `GameShapeCorrectedPathTests`; the
-   `repair-elden-ring-reads-healthy` case now asserts the line.
+   project `CorrectedFrom` yet). The SETUP chip does NOT fire for a missing corrected location: its
+   path is the definition's, and a definition's folder that is not there means "not started" (Este,
+   2026-08-18, ModFolderSeed); a missing path the registration itself chose still raises it. When the
+   registration's own pre-correction folder still holds files, a note says "The registration's own
+   '<stored>' folder holds N files the launcher no longer reads." `get_game_shape` also returns
+   `correctedFrom`. Covered by `GameShapeCorrectedPathTests` and `GameShapeToolTests`; the
+   `repair-elden-ring-reads-healthy` case asserts the line is either the stored path or names it as
+   `(corrected from <stored> by the game's definition)`.
 2. PASS. Test game with its folder present and 0 mods: no chip. Mod folder set to a missing path and
    saved: `StateChip.setup-drift` appears; Dismiss removes it; switching away and back re-shows it.
 3. PASS (current behaviour, see above). Off with no change; off + "A game folder is required..." for
@@ -1736,8 +1742,11 @@ removed afterwards; real games opened read-only; games.json restored byte-identi
 Harness: steps 1, 3, 7 and 8 are `repair-elden-ring-reads-healthy`, `repair-save-gating`,
 `repair-cancel-is-inert` and `repair-windrose-location-count-readonly` in `scripts/smoke-run.ps1`
 (run them alone with `-Only`; 3 and 7 register and remove their own fixture game). Step 1's case
-now also asserts the "Set to look in" line (no "added by the launcher", no double space, names the
-stored path), so B1 cannot come back unnoticed.
+now also asserts the "Set to look in" line (no "added by the launcher", no double space, and either
+the stored path itself or "(corrected from <stored> by the game's definition)"), so B1 cannot come back
+unnoticed. The two fixture cases now register their fixture inside the try, and whenever either is
+selected the harness snapshots games.json at run start and writes it back byte-identical in a finally
+at the end of the run, printing whether the restore matched.
 
 Minor findings, also fixed 2026-10-02: a failed move now removes the parent folders it created
 (the empty `_626mods` on the target drive in step 12), only while they are empty

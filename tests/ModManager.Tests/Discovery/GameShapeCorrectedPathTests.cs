@@ -86,10 +86,12 @@ public class GameShapeCorrectedPathTests : IDisposable
         Assert.Null(loc.CorrectedFrom);
     }
 
-    // The consequence that made B1 more than a label: the chip can now fire for a corrected location
-    // that is missing, because it counts as declared.
+    // Este's 2026-08-18 ruling (recorded in ModFolderSeed): a folder the game DEFINITION names that is
+    // not on disk means "not started", not "broken". A corrected location's path is the definition's,
+    // so its absence on a game with no mods yet must not raise the SETUP chip. It stays declared, and
+    // the note still says the folder is missing.
     [Fact]
-    public void A_missing_corrected_location_with_no_mods_needs_attention()
+    public void A_missing_corrected_location_with_no_mods_stays_quiet()
     {
         FeedSays("nativePC");
         var root = TestSupport.TempDir("shape-corrected-missing-");
@@ -98,10 +100,55 @@ public class GameShapeCorrectedPathTests : IDisposable
         var shape = GameShape.Of(game);
 
         Assert.Equal(0, shape.ModCount);
-        Assert.True(shape.NeedsAttention);
-        Assert.True(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
+        Assert.True(Assert.Single(shape.DeclaredLocations).Declared);
+        Assert.False(shape.NeedsAttention);
+        Assert.False(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
         Assert.Contains(shape.Notes, n => n.Contains("Declared mod location 'nativePC'", StringComparison.Ordinal)
                                           && n.Contains("corrected it from 'mods'", StringComparison.Ordinal));
+    }
+
+    // The other half of the ruling: a declared path the REGISTRATION chose (nothing corrected it) that
+    // is missing, with nothing found, is still the shape the chip exists for.
+    [Fact]
+    public void A_missing_uncorrected_declared_location_with_no_mods_still_needs_attention()
+    {
+        FeedSays("mods");
+        var root = TestSupport.TempDir("shape-uncorrected-missing-");
+        var game = Game(root);
+
+        var shape = GameShape.Of(game);
+
+        Assert.Null(Assert.Single(shape.DeclaredLocations).CorrectedFrom);
+        Assert.True(shape.NeedsAttention);
+        Assert.True(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
+    }
+
+    // m2: the registration's OWN folder still holding files after a correction moved the launcher away
+    // from it is worth saying - those files are no longer read.
+    [Fact]
+    public void Files_left_in_the_stored_folder_after_a_correction_are_named()
+    {
+        FeedSays("nativePC");
+        var root = TestSupport.TempDir("shape-corrected-leftover-");
+        TestSupport.Write(Path.Combine(root, "mods", "Old.pak"), "x");
+        TestSupport.Write(Path.Combine(root, "mods", "sub", "Older.pak"), "x");
+
+        var shape = GameShape.Of(Game(root));
+
+        Assert.Contains("The registration's own 'mods' folder holds 2 files the launcher no longer reads.", shape.Notes);
+    }
+
+    [Fact]
+    public void An_empty_or_absent_stored_folder_adds_no_leftover_note()
+    {
+        FeedSays("nativePC");
+        var absent = GameShape.Of(Game(TestSupport.TempDir("shape-corrected-noleft-")));
+        var emptyRoot = TestSupport.TempDir("shape-corrected-emptyleft-");
+        Directory.CreateDirectory(Path.Combine(emptyRoot, "mods"));
+        var empty = GameShape.Of(Game(emptyRoot));
+
+        Assert.DoesNotContain(absent.Notes, n => n.Contains("no longer reads", StringComparison.Ordinal));
+        Assert.DoesNotContain(empty.Notes, n => n.Contains("no longer reads", StringComparison.Ordinal));
     }
 
     // And stays quiet on a working install: the corrected folder exists and holds a mod.
