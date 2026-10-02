@@ -8,7 +8,7 @@ namespace ModManager.Tests;
 public class SaveCloneTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "mmb-sc-" + Guid.NewGuid().ToString("N"));
-    private static IReadOnlyList<SaveType> FromSoft => GameSaveTypesCatalog.Resolve("fromsoft", null).SaveTypes;
+    private static IReadOnlyList<SaveType> FromSoft => GameSaveTypesCatalog.Resolve(SaveTestGames.Steam(null, "fromsoft")).SaveTypes;
 
     public SaveCloneTests()
     {

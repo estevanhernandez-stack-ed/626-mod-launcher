@@ -1,4 +1,5 @@
 using ModManager.Core;
+using ModManager.Core.Characters;
 using ModManager.Core.Manifest;
 
 namespace ModManager.Tests;
@@ -77,28 +78,55 @@ public class SaveLookupsByGameTests : IDisposable
     public void Asking_by_steam_id_alone_still_finds_nothing_for_an_ea_game()
     {
         FeedWithEaGame();
-        var game = Game("ea-save-game", eaContentId: "99000011");
 
-        Assert.Null(SaveDirHints.ByAppId(game.SteamAppId));
-        Assert.Equal(SaveLayout.TypedFiles, GameSaveTypesCatalog.Resolve(game.Engine, game.SteamAppId).Layout);
-        Assert.False(SaveSeamCatalog.CanShare(game.SteamAppId));
+        Assert.Null(SaveDirHints.ByAppId(Game("ea-save-game", eaContentId: "99000011").SteamAppId));
     }
 
-    // A Steam game must see no change: the by-game answer is the by-app-id answer for every entry.
+    // A Steam game sees no change. Expectations read straight off the manifest data, not through the
+    // lookup under test, so this holds the by-game forms to what the by-app-id maps used to return.
     [Fact]
-    public void A_steam_game_gets_the_same_answer_by_game_as_by_app_id()
+    public void A_steam_game_gets_its_own_entrys_save_facts()
     {
         foreach (var e in EffectiveManifest.Current.Games.Where(e => e.Stores.SteamAppId is not null))
         {
-            var appId = e.Stores.SteamAppId!;
-            var game = Game("registered-" + appId, appId, engine: e.Engine);
+            var game = Game("registered-" + e.Stores.SteamAppId, e.Stores.SteamAppId, engine: e.Engine);
 
-            Assert.Equal(SaveDirHints.ByAppId(appId), SaveDirHints.For(game));
-            Assert.Equal(SaveLayoutCatalog.ByAppId(appId), SaveLayoutCatalog.For(game));
-            Assert.Equal(SaveSeamCatalog.ByAppId(appId), SaveSeamCatalog.For(game));
-            Assert.Equal(GameSaveTypesCatalog.Resolve(e.Engine, appId).Layout, GameSaveTypesCatalog.Resolve(game).Layout);
-            Assert.Equal(GameSaveTypesCatalog.Resolve(e.Engine, appId).SaveTypes, GameSaveTypesCatalog.Resolve(game).SaveTypes);
+            Assert.Equal(string.IsNullOrWhiteSpace(e.SaveDirHint) ? null : e.SaveDirHint, SaveDirHints.For(game));
+            Assert.Equal(SaveLayoutCatalog.Parse(e.SaveLayout), SaveLayoutCatalog.For(game));
+            Assert.Equal(e.SavePlayerPaths ?? Array.Empty<string>(), SaveSeamCatalog.For(game));
         }
+        // And the one entry the snapshot curates, named, so the loop above cannot pass by being empty.
+        Assert.Equal(SaveLayout.Worlds, SaveLayoutCatalog.For(Game("x", PalworldAppId, engine: "ue-pak")));
+    }
+
+    // Review on #359: a save fact points at the user's own data. A slug naming another game's entry
+    // ("doom" on Doom Eternal) must not hand this game that entry's save folder, layout or seam when
+    // the store id it carries says otherwise. The mod-path join (EntryFor) accepts that case; this one
+    // fails closed.
+    [Fact]
+    public void An_own_id_whose_entry_claims_another_steam_id_gets_no_save_facts()
+    {
+        var game = Game("palworld", "4242424", engine: "ue-pak");
+
+        Assert.Equal("palworld", ManifestIdLookup.EntryFor(game)?.Id);   // the lenient join still matches
+        Assert.Null(ManifestIdLookup.ConfirmedEntryFor(game));
+        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.For(game));
+        Assert.False(SaveSeamCatalog.CanShareFor(game));
+    }
+
+    [Fact]
+    public void An_own_id_with_no_contradicting_store_id_still_gets_its_save_facts()
+    {
+        // A GOG or hand-added copy: no store id to contradict the own id.
+        Assert.Equal(SaveLayout.Worlds, SaveLayoutCatalog.For(Game("palworld", engine: "ue-pak")));
+    }
+
+    [Fact]
+    public void An_own_id_whose_entry_claims_another_ea_id_gets_no_save_facts()
+    {
+        FeedWithEaGame();
+
+        Assert.Null(SaveDirHints.For(Game("ea-save-game", eaContentId: "99000099")));
     }
 
     [Fact]
@@ -123,13 +151,49 @@ public class SaveLookupsByGameTests : IDisposable
         Assert.Equal(SaveLayout.Worlds, GameSaveTypesCatalog.Resolve(game).Layout);
     }
 
-    // The Cyberpunk character reader dispatches on the manifest id. Pinned here, where it can run:
-    // every store's copy of the game resolves to that id.
+    // Review on #359: the Cyberpunk reader is keyed on the Steam app id, carried by the registration
+    // or by the entry it resolves to, never on a manifest id the feed can rename.
     [Fact]
-    public void Every_copy_of_cyberpunk_resolves_to_the_id_the_character_reader_dispatches_on()
+    public void The_cyberpunk_reader_applies_to_every_copy_that_names_the_game()
     {
-        Assert.Equal("cyberpunk-2077", ManifestIdLookup.EntryFor(Game("cyberpunk-2077", "1091500", engine: "custom"))?.Id);
-        Assert.Equal("cyberpunk-2077", ManifestIdLookup.EntryFor(Game("cyberpunk-2077-2", "1091500", engine: "custom"))?.Id);
-        Assert.Equal("cyberpunk-2077", ManifestIdLookup.EntryFor(Game("cyberpunk-2077", engine: "custom"))?.Id);   // GOG: no Steam id
+        Assert.True(CyberpunkCharacters.AppliesTo(Game("cyberpunk-2077", "1091500", engine: "custom")));
+        Assert.True(CyberpunkCharacters.AppliesTo(Game("cyberpunk-2077-2", "1091500", engine: "custom")));
+        Assert.True(CyberpunkCharacters.AppliesTo(Game("cyberpunk-2077", engine: "custom")));      // GOG: no Steam id
+        Assert.False(CyberpunkCharacters.AppliesTo(Game("elden-ring", "1245620", engine: "fromsoft")));
+        Assert.False(CyberpunkCharacters.AppliesTo(null));
+    }
+
+    [Fact]
+    public void The_cyberpunk_reader_survives_a_feed_that_renames_the_entry()
+    {
+        // The feed's id wins a Steam-id collision (EffectiveManifest.Merge), as skyrim-se did.
+        EffectiveManifest.SetRemote(new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "cyberpunk-2077-ultimate", Name = "Cyberpunk", Engine = "custom", Stores = new StoreIds { SteamAppId = "1091500" } } },
+        });
+
+        Assert.DoesNotContain(EffectiveManifest.Current.Games, g => g.Id == "cyberpunk-2077");
+        Assert.True(CyberpunkCharacters.AppliesTo(Game("cyberpunk-2077-2", "1091500", engine: "custom")));
+    }
+
+    // Review on #359: Merge folded a feed rename by Steam id only. An EA-only game renamed by the feed
+    // left two entries on one content id, and every by-store lookup took the snapshot's stale one.
+    [Fact]
+    public void A_feed_rename_of_an_ea_game_folds_into_one_entry_carrying_the_feeds_facts()
+    {
+        var embedded = new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "cfb-27", Name = "Old", Engine = "frostbite", Stores = new StoreIds { EaContentId = "99000021" } } },
+        };
+        var remote = new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "college-football-27", Name = "New", Engine = "frostbite", Stores = new StoreIds { EaContentId = "99000021" }, SaveLayout = "worlds" } },
+        };
+
+        var merged = EffectiveManifest.Merge(embedded, remote);
+
+        var only = Assert.Single(merged.Games);
+        Assert.Equal("college-football-27", only.Id);
+        Assert.Equal("worlds", only.SaveLayout);
     }
 }

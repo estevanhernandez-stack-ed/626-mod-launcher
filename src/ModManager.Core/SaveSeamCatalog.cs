@@ -16,22 +16,15 @@ namespace ModManager.Core;
 /// </summary>
 public static class SaveSeamCatalog
 {
-    /// <summary>The curated seam, or empty when there is none to use.</summary>
-    public static IReadOnlyList<string> ByAppId(string? steamAppId)
-        => Seam(ManifestIdLookup.EntryBySteamAppId(steamAppId));
-
     /// <summary>The curated seam for a registered game, resolved through every identity it carries
-    /// (<see cref="ManifestIdLookup.EntryFor"/>), so a game with no Steam id is not shut out.</summary>
+    /// (<see cref="ManifestIdLookup.ConfirmedEntryFor"/>), or empty when there is none to use. There is
+    /// no by-app-id form: a game with no Steam id would be shut out by it.</summary>
     public static IReadOnlyList<string> For(GameEntry? game)
-        => Seam(ManifestIdLookup.EntryFor(game));
+        => ManifestIdLookup.ConfirmedEntryFor(game)?.SavePlayerPaths is { Count: > 0 } paths
+            ? paths
+            : Array.Empty<string>();
 
     /// <summary>Whether a world from this game can be shared without its player. The one question the
     /// panel asks before deciding whether the control exists at all.</summary>
-    public static bool CanShare(string? steamAppId) => ByAppId(steamAppId).Count > 0;
-
-    /// <inheritdoc cref="CanShare(string?)"/>
     public static bool CanShareFor(GameEntry? game) => For(game).Count > 0;
-
-    private static IReadOnlyList<string> Seam(GameManifestEntry? entry)
-        => entry?.SavePlayerPaths is { Count: > 0 } paths ? paths : Array.Empty<string>();
 }

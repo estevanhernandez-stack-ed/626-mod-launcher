@@ -24,7 +24,7 @@ public static class SaveLocator
             string.IsNullOrEmpty(game.SteamAppId) ? null : steamUserId,
             // An EA app install lives under Program Files\EA Games, which gets no read beyond
             // installerdata.xml (EA slice one). The heuristic's project-name discovery lists the install
-            // folder, so an EA game skips it and keeps the name and engine guesses only.
+            // folder and <base> resolves into it, so an EA game gets neither.
             listInstallFolder: string.IsNullOrEmpty(game.EaContentId));
 
     /// <summary>
@@ -42,7 +42,9 @@ public static class SaveLocator
     private static async Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine,
         string? gameRoot, string? steamAppId, string? curatedHint, string? steamUserId, bool listInstallFolder)
     {
-        var tokens = WindowsTokens(gameRoot, steamUserId);
+        // <base> is the install folder. An EA install gets no read beyond installerdata.xml, so for one
+        // the token is left unset and a <base> hint fails to resolve rather than probing inside it.
+        var tokens = WindowsTokens(listInstallFolder ? gameRoot : null, steamUserId);
 
         // The CURATED hint first. Ludusavi lists every path a game touches and we take the first
         // that exists, which is usually right and occasionally precisely wrong - Stellaris resolves
@@ -73,7 +75,6 @@ public static class SaveLocator
     {
         var tokens = new Dictionary<string, string>
         {
-            ["base"] = gameRoot ?? "",
             ["home"] = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ["winLocalAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             ["winAppData"] = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -87,6 +88,9 @@ public static class SaveLocator
         // template-resolver's "unknown token = fail" guard reject ER's template cleanly and fall
         // through to the heuristic for users not signed into Steam.
         if (!string.IsNullOrEmpty(steamUserId)) tokens["storeUserId"] = steamUserId;
+        // Likewise <base>: with no game root, an empty value would turn "<base>/saves" into a path
+        // relative to wherever the launcher happens to be running. Absent, the template fails cleanly.
+        if (!string.IsNullOrEmpty(gameRoot)) tokens["base"] = gameRoot;
         return tokens;
     }
 

@@ -29,13 +29,9 @@ public static class SaveLayoutCatalog
             ? SaveLayout.Worlds
             : SaveLayout.TypedFiles;
 
-    /// <summary>The declared layout for a Steam app id, or <see cref="SaveLayout.TypedFiles"/> when
-    /// the feed says nothing.</summary>
-    public static SaveLayout ByAppId(string? steamAppId)
-        => Parse(ManifestIdLookup.EntryBySteamAppId(steamAppId)?.SaveLayout);
-
     /// <summary>The declared layout for a registered game, resolved through every identity it carries
-    /// (<see cref="ManifestIdLookup.EntryFor"/>), or <see cref="SaveLayout.TypedFiles"/>.</summary>
+    /// (<see cref="ManifestIdLookup.ConfirmedEntryFor"/>), or <see cref="SaveLayout.TypedFiles"/>. There
+    /// is no by-app-id form: a game with no Steam id would be shut out by it.</summary>
     public static SaveLayout For(GameEntry? game)
-        => Parse(ManifestIdLookup.EntryFor(game)?.SaveLayout);
+        => Parse(ManifestIdLookup.ConfirmedEntryFor(game)?.SaveLayout);
 }

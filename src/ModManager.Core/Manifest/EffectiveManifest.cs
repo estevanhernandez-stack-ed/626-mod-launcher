@@ -54,14 +54,25 @@ public static class EffectiveManifest
         // later feed correction for that game -- ban risk, save layout, nexus domain -- attached to
         // an id they did not have, silently and permanently. So: where the feed names a game the
         // snapshot also names, the feed's id wins, and what only the snapshot knew folds into it.
+        //
+        // An EA app content id names the game the same way, and a game sold only there has no Steam id
+        // to collide on. Left unfolded, a feed rename of an EA game would leave two entries claiming one
+        // content id, and every by-store lookup (ban risk, the manifest join, the save facts) takes the
+        // first: the snapshot's stale one, never the feed's correction.
         var remoteIdByApp = new Dictionary<string, string>(StringComparer.Ordinal);
+        var remoteIdByEa = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var g in remote.Games)
+        {
             if (g.Stores.SteamAppId is { Length: > 0 } appId) remoteIdByApp.TryAdd(appId, g.Id);
+            if (g.Stores.EaContentId is { Length: > 0 } eaId) remoteIdByEa.TryAdd(eaId, g.Id);
+        }
 
         foreach (var g in embedded.Games)
         {
-            if (g.Stores.SteamAppId is not { Length: > 0 } app) continue;      // nothing to collide on
-            if (!remoteIdByApp.TryGetValue(app, out var winner)) continue;     // the feed never names it
+            string? winner = null;
+            if (g.Stores.SteamAppId is { Length: > 0 } app) remoteIdByApp.TryGetValue(app, out winner);
+            if (winner is null && g.Stores.EaContentId is { Length: > 0 } ea) remoteIdByEa.TryGetValue(ea, out winner);
+            if (winner is null) continue;                                      // the feed never names it
             if (winner == g.Id || !byId.ContainsKey(g.Id)) continue;           // same entry, or already folded
 
             // Folded, not dropped. MergeEntry keeps the FIRST argument's id, so the remote id is

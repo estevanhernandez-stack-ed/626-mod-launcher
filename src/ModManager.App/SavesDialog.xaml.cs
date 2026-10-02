@@ -191,7 +191,7 @@ public sealed partial class SavesDialog : ContentDialog
     // fixed for.
     private void RefreshWorlds()
     {
-        var isWorlds = GameSaveTypesCatalog.Resolve(_game).Layout == SaveLayout.Worlds;
+        var isWorlds = SaveLayoutCatalog.For(_game) == SaveLayout.Worlds;
         if (!isWorlds || string.IsNullOrEmpty(_saveDir))
         {
             WorldsHeading.Visibility = Visibility.Collapsed;
@@ -202,6 +202,7 @@ public sealed partial class SavesDialog : ContentDialog
         }
 
         var labels = WorldLabels.Load(_dataDir);
+        var canShare = SaveSeamCatalog.CanShareFor(_game);   // one answer for the game, not per row
         var rows = SaveManager.ListWorlds(_saveDir).Select((w, i) => new SaveWorldRow(
             w.Name,
             labels.Display(w.Name, i + 1, w.GameName),
@@ -212,7 +213,7 @@ public sealed partial class SavesDialog : ContentDialog
             SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
             w.NameBudgetBytes,
             w.HasOwnSave,
-            SaveSeamCatalog.CanShareFor(_game))).ToList();
+            canShare)).ToList();
 
         WorldList.ItemsSource = rows;
         WorldsHeading.Visibility = Visibility.Visible;
@@ -282,14 +283,6 @@ public sealed partial class SavesDialog : ContentDialog
         SaveModEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>
-    /// Cyberpunk 2077. Dispatching on the manifest id rather than the engine, because a READER is
-    /// compiled code and cannot live in the manifest - and because engine predicts nothing about save
-    /// format: four ue-pak games on one machine have four unrelated shapes. The manifest id, not the
-    /// Steam app id, so a copy from another store (no Steam id) or a second copy (<c>-2</c>) reads too.
-    /// </summary>
-    private const string Cyberpunk2077Id = "cyberpunk-2077";
-
     private void RefreshCharacters()
     {
         var rows = new List<CharacterRow>();
@@ -299,8 +292,9 @@ public sealed partial class SavesDialog : ContentDialog
         // Games we can describe but would never write. Listing is not editing, and treating them as
         // the same job is why this section used to tell Cyberpunk players their 93 saves "aren't
         // itemized yet".
-        if (!string.IsNullOrEmpty(_saveDir)
-            && string.Equals(ManifestIdLookup.EntryFor(_game)?.Id, Cyberpunk2077Id, StringComparison.Ordinal))
+        // A READER is compiled code and cannot live in the manifest; CyberpunkCharacters.AppliesTo says
+        // which games it reads, by store identity rather than engine.
+        if (!string.IsNullOrEmpty(_saveDir) && ModManager.Core.Characters.CyberpunkCharacters.AppliesTo(_game))
         {
             foreach (var c in ModManager.Core.Characters.CyberpunkCharacters.ReadCharacters(_saveDir!))
                 rows.Add(new CharacterRow(c.Id, c.Headline, c.Detail, MadeWithMods: c.MadeWithMods));

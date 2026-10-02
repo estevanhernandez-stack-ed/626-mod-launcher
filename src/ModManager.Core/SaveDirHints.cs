@@ -23,10 +23,10 @@ public static class SaveDirHints
         => Hint(ManifestIdLookup.EntryBySteamAppId(steamAppId));
 
     /// <summary>The curated hint for a registered game, resolved through every identity it carries
-    /// (<see cref="ManifestIdLookup.EntryFor"/>). An EA app game has no Steam id at all, and a second
-    /// store copy has an <c>&lt;id&gt;-2</c> id; both still name their manifest entry.</summary>
+    /// (<see cref="ManifestIdLookup.ConfirmedEntryFor"/>). An EA app game has no Steam id at all, and a
+    /// second store copy has an <c>&lt;id&gt;-2</c> id; both still name their manifest entry.</summary>
     public static string? For(GameEntry? game)
-        => Hint(ManifestIdLookup.EntryFor(game));
+        => Hint(ManifestIdLookup.ConfirmedEntryFor(game));
 
     private static string? Hint(GameManifestEntry? entry)
         => string.IsNullOrWhiteSpace(entry?.SaveDirHint) ? null : entry!.SaveDirHint;
