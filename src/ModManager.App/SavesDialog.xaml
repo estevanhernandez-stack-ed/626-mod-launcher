@@ -44,6 +44,12 @@
             <Button AutomationProperties.AutomationId="ChangeSaveFolderButton" Grid.Column="2" Content="Change…" VerticalAlignment="Bottom" Click="OnChangeFolder" />
         </Grid>
 
+        <!-- Backups only (SaveWritePolicy): stated once, where the folder is, and never overwritten by
+             the status line, because it is a standing fact about this game rather than news. -->
+        <TextBlock x:Name="ReadOnlyNotice" AutomationProperties.AutomationId="SavesReadOnlyNotice"
+                   Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                   TextWrapping="Wrap" Visibility="Collapsed" />
+
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -89,6 +95,7 @@
                             <TextBlock Text="{x:Bind TypeLabel}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
                         </StackPanel>
                         <DropDownButton Grid.Column="1" Content="Clone to…" VerticalAlignment="Center"
+                                        Visibility="{x:Bind CloneVisibility}"
                                         AutomationProperties.Name="{x:Bind CloneAutomationName}"
                                         ToolTipService.ToolTip="Copy this save to another type — safe, never overwrites">
                             <DropDownButton.Flyout>
@@ -236,12 +243,14 @@
                             <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" />
                         </StackPanel>
                         <DropDownButton Grid.Column="1" Content="Restore one type" MinWidth="84" VerticalAlignment="Center"
+                                        Visibility="{x:Bind RestoreVisibility}"
                                         ToolTipService.ToolTip="Restore just one save type from this snapshot">
                             <DropDownButton.Flyout>
                                 <MenuFlyout Opening="OnRestoreTypeOpening" />
                             </DropDownButton.Flyout>
                         </DropDownButton>
-                        <Button Grid.Column="2" Content="Restore" Click="OnRestore" VerticalAlignment="Center" />
+                        <Button Grid.Column="2" Content="Restore" Click="OnRestore" VerticalAlignment="Center"
+                                Visibility="{x:Bind RestoreVisibility}" />
                         <Button Grid.Column="3" AutomationProperties.Name="Delete snapshot" Click="OnDelete" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Delete snapshot">
                             <FontIcon Glyph="&#xE74D;" FontSize="{StaticResource RowTitleFontSize}" Foreground="{StaticResource ThemeDanger}" />

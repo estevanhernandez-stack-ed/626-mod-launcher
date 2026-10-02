@@ -1640,10 +1640,23 @@ public sealed partial class MainWindow : Window
         if (held is null || ctx is null) return;
         var game = ctx.Game;
 
+        // A game whose saves are not the launcher's to write (EA cloud sync, SaveWritePolicy) gets its
+        // mods and settings back and keeps its saves HELD. Saying so before the press, not after.
+        var all = ModManager.Core.Transport.RestoreParts.Saves
+                | ModManager.Core.Transport.RestoreParts.Mods
+                | ModManager.Core.Transport.RestoreParts.Settings;
+        var parts = ModManager.Core.SaveWritePolicy.Permitted(game, all);
+        var savesStayHeld = parts != all;
+
         var d = new ContentDialog
         {
             Title = $"Put back {held.GameName}?",
-            Content = ModManager.Core.Transport.PendingRestore.Describe(held)
+            Content = savesStayHeld
+                ? ModManager.Core.Transport.PendingRestore.Describe(held)
+                    + " is held for this game. Its mods and settings will be put back, added over what is "
+                    + "there rather than clearing it. Its saves stay held: this game's saves sync to EA's "
+                    + "cloud, so the launcher doesn't write into them yet."
+                : ModManager.Core.Transport.PendingRestore.Describe(held)
                     + " will be put back into this install. Your saves are snapshotted first, and "
                     + "mods are added over what is there rather than clearing it — nothing is deleted.",
             PrimaryButtonText = "Put it back",
@@ -1658,9 +1671,7 @@ public sealed partial class MainWindow : Window
         {
             var request = new ModManager.Core.Transport.RestoreRequest(
                 game.Id,
-                ModManager.Core.Transport.RestoreParts.Saves
-                    | ModManager.Core.Transport.RestoreParts.Mods
-                    | ModManager.Core.Transport.RestoreParts.Settings,
+                parts,
                 SaveDir: string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
                 ModDir: ctx.Locations.Count > 0 ? ctx.Locations[0].Abs : null,
                 DataDir: ctx.DataDir,
@@ -1677,9 +1688,12 @@ public sealed partial class MainWindow : Window
             // Only let go of the held copy once something actually landed. A refusal - the game was
             // running, say - must leave it exactly where it was, or the one press that failed is also
             // the press that threw the backup away.
+            //
+            // And never while its saves were left out: the held archive is the only copy of them, so
+            // discarding it because the settings landed would delete the saves outright.
             if (result.TotalFiles > 0)
             {
-                svc.Discard(game.Id);
+                if (!savesStayHeld) svc.Discard(game.Id);
                 await ViewModel.RefreshAsync();
             }
 
@@ -1687,7 +1701,9 @@ public sealed partial class MainWindow : Window
             // setting this first meant the one press that puts a whole game back reported the mod
             // count instead - the confirmation replaced by a fact nobody asked for. Caught by the
             // smoke run, which read the status line the user would have read.
-            ViewModel.StatusText = result.Summary;
+            ViewModel.StatusText = savesStayHeld
+                ? result.Summary + " Its saves are still held: this game's saves sync to EA's cloud, so the launcher doesn't write into them yet."
+                : result.Summary;
         }
         catch (Exception ex) { ViewModel.StatusText = ModManager.Core.ErrorRemedy.Describe(ex); }
     }

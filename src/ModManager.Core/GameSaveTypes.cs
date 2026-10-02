@@ -32,6 +32,70 @@ public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTy
     SaveLayout Layout = SaveLayout.TypedFiles);
 
 /// <summary>
+/// One kind of save a game names rather than types: every file whose name starts with
+/// <see cref="Prefix"/>. EA's football saves carry no extension at all (<c>RTG-E</c>,
+/// <c>ROSTER-Official</c>, <c>PROFILE-COLLEGE</c>), so an extension-keyed <see cref="SaveType"/> can
+/// never see them.
+///
+/// <para><b>For listing only.</b> A <see cref="SaveType"/> also switches on clone, per-type restore and
+/// the FromSoft character reader, all of which assume one save in several formats. A named kind is a
+/// label on a file, nothing more.</para>
+/// </summary>
+public sealed record SaveFileKind(string Prefix, string Label)
+{
+    public bool Matches(string fileName) => fileName.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// Which named save kinds a game declares. Per GAME, not per engine: every EA app import is stamped
+/// <c>frostbite</c>, and a Battlefield whose folder holds none of these would be told its correct save
+/// folder looks wrong (<see cref="SaveListingEmptyState"/>). Resolved by manifest id or EA content id,
+/// so a second copy (<c>-2</c>) and a copy added by hand both find their game.
+/// </summary>
+public static class SaveFileKindsCatalog
+{
+    // As each game writes them, directly in Documents\<title>\saves, with no extension (VERIFIED on the
+    // owner's machine 2026-10-02). Careers first, then the league, then the profile that indexes them.
+    private static readonly SaveFileKind[] CollegeFootball27 =
+    {
+        new("RTG-", "Road to Glory career"),
+        new("ROSTER-", "Roster"),
+        new("PROFILE-", "Profile"),
+    };
+
+    private static readonly SaveFileKind[] Madden27 =
+    {
+        new("CAREER-", "Franchise career"),
+        new("ROSTER-", "Roster"),
+        new("PROFILE-", "Profile"),
+    };
+
+    private static readonly IReadOnlyDictionary<string, SaveFileKind[]> ById =
+        new Dictionary<string, SaveFileKind[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ea-sports-college-football-27"] = CollegeFootball27,
+            ["madden-nfl-27"] = Madden27,
+        };
+
+    private static readonly IReadOnlyDictionary<string, SaveFileKind[]> ByEaContentId =
+        new Dictionary<string, SaveFileKind[]>(StringComparer.Ordinal)
+        {
+            ["16425899"] = CollegeFootball27,   // same ids as BanRiskCatalog's floors
+            ["16425895"] = Madden27,
+        };
+
+    public static IReadOnlyList<SaveFileKind> For(GameEntry game)
+    {
+        var entry = ManifestIdLookup.ConfirmedEntryFor(game);
+        foreach (var id in new[] { entry?.Id, game.Id })
+            if (!string.IsNullOrEmpty(id) && ById.TryGetValue(id, out var byId)) return byId;
+        foreach (var ea in new[] { game.EaContentId, entry?.Stores.EaContentId })
+            if (!string.IsNullOrEmpty(ea) && ByEaContentId.TryGetValue(ea, out var byEa)) return byEa;
+        return Array.Empty<SaveFileKind>();
+    }
+}
+
+/// <summary>
 /// Resolves a <see cref="GameSaveTypes"/> for a game — engine-level defaults, with a per-App-ID
 /// override hook for future game-specifics. Repeatable: adding a game/engine's save types is a
 /// one-line catalog entry. Unknown games resolve to no declared save types — the save manager's

@@ -3828,6 +3828,10 @@ public sealed partial class MainViewModel : ObservableObject
             var saveSkipReasons = new List<string>();
             if (!string.IsNullOrEmpty(_ctx.SaveDir))
             {
+                // A save mod writes into the save folder. For a game whose saves are not the launcher's
+                // to write (EA cloud sync), Core still recognises the drop, so regular intake never
+                // classifies it, and turns it away with the reason.
+                var saveWriteRefusal = SaveWritePolicy.Refusal(_ctx.Game);
                 var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game)
                     .SaveTypes.Select(t => t.Extension).ToList();
                 var saveRisk = BanRiskCatalog.Effective(_ctx.Game);
@@ -3839,7 +3843,8 @@ public sealed partial class MainViewModel : ObservableObject
                     dataDir: _ctx.DataDir,
                     saveModPath: _ctx.Game.SaveModPath,
                     forbidden: _ctx.Game.SaveModForbidden,
-                    writeAllowed: !BanRiskRules.ShouldGateSaveWrite(saveRisk, saveWritesAcked));
+                    writeAllowed: !BanRiskRules.ShouldGateSaveWrite(saveRisk, saveWritesAcked),
+                    writeRefusal: saveWriteRefusal);
 
                 var needAck = verdicts.Where(v => v.Outcome == SaveModDropOutcome.NeedsAcknowledgment).ToList();
                 if (needAck.Count > 0)
@@ -3853,7 +3858,8 @@ public sealed partial class MainViewModel : ObservableObject
                             dataDir: _ctx.DataDir,
                             saveModPath: _ctx.Game.SaveModPath,
                             forbidden: _ctx.Game.SaveModForbidden,
-                            writeAllowed: true);
+                            writeAllowed: true,
+                            writeRefusal: saveWriteRefusal);
                         verdicts = verdicts.Where(v => v.Outcome != SaveModDropOutcome.NeedsAcknowledgment).Concat(rerun).ToList();
                     }
                     else

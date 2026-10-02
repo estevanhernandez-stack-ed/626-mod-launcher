@@ -287,3 +287,30 @@ Two boundary fixes rode along in `SaveLocator`, on the path an EA add already to
 
 Still out of scope: name-pattern save types, which need the save listing to match names as well as
 extensions.
+
+## Addendum, 2026-10-02: EA saves are listed and backed up, never written
+
+The save-snapshot slice, read side only.
+
+- **Listed by name.** Both games write extension-less saves directly in `Documents\<title>\saves`
+  (VERIFIED on the owner's machine 2026-10-02): `RTG-*`, `ROSTER-*` and `PROFILE-*` for College
+  Football 27; `CAREER-*`, `ROSTER-*` and `PROFILE-*` for Madden NFL 27. `SaveFileKindsCatalog` gives each
+  game its own prefixes, labelled, keyed by manifest id or EA content id (per game, not per engine: every
+  EA import is `frostbite`, and a Battlefield must not be told its correct folder looks wrong), and
+  `SaveManager.ListNamedSaveFiles` lists them. A
+  named kind is not a `SaveType`, because a save type also switches on clone, per-type restore and the
+  FromSoft character reader.
+- **Backed up.** Unchanged: a snapshot reads the save folder and writes into the launcher's own data
+  folder, outside what the EA app syncs.
+- **Never written, for now.** `SaveWritePolicy` refuses every write into an EA app game's save folder:
+  restore, per-type restore, clone, bundle import, character edit, save mods, world edits, and the saves
+  part of the machine-transport restore. The EA app syncs these folders to EA's cloud, and the owner's
+  recorded decision allows roster writes only, through a gate that also checks the EA app is closed;
+  none of that exists yet. The panel says "Backups only" up front and hides Restore and Clone, and a
+  refused write says nothing was changed. The refusal fails closed: any identity that names an EA game
+  refuses, even one the save-fact join would reject. A held backup for such a game puts back its mods and
+  settings and keeps the saves held (never discarded), and the Settings restore offers no Saves box for it.
+  `SaveWriteCallSiteTests` holds every App method that calls a save-write primitive to this policy.
+
+So the `saveDirHint` data PR can merge after this one: the hint then lights up listing and backups, and
+nothing else.

@@ -234,6 +234,12 @@ public sealed partial class SettingsDialog : ContentDialog
         // nowhere to put a game's files until the game itself is registered here.
         var picks = new List<(string GameId, RestoreParts Part, CheckBox Box)>();
 
+        // Games whose saves the launcher may not write (EA cloud sync, SaveWritePolicy) are offered no
+        // Saves box: a ticked box would read as a promise the restore then quietly breaks.
+        var registered = App.AppHost.Services.GetRequiredService<LauncherService>().LoadRegistry().Games
+            .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
         // Games this machine does not have yet. Nothing can be restored for them - but their contents
         // can be KEPT, so the backup file itself does not have to stay findable for a week while Steam
         // downloads. Nothing is resolved now; a game can come back on a different drive.
@@ -301,11 +307,26 @@ public sealed partial class SettingsDialog : ContentDialog
                         picks.Add((g.Game.Game.Id, part, box));
                     }
 
-                    Part("Saves", RestoreParts.Saves, g.Game.SaveIncluded);
+                    var savesRefused = g.Game.SaveIncluded
+                        && registered.TryGetValue(g.Game.Game.Id, out var local)
+                        && SaveWritePolicy.Refusal(local) is not null;
+                    Part("Saves", RestoreParts.Saves, g.Game.SaveIncluded && !savesRefused);
                     Part("Mods", RestoreParts.Mods, g.Game.ModFileCount > 0);
                     Part("Settings", RestoreParts.Settings, g.Game.DataFileCount > 0);
 
                     if (parts.Children.Count > 0) row.Children.Add(parts);
+                    if (savesRefused)
+                    {
+                        var kept = new TextBlock
+                        {
+                            Text = "Saves stay in the backup: this game's saves sync to EA's cloud, so the launcher doesn't write into them yet.",
+                            TextWrapping = TextWrapping.Wrap,
+                            Foreground = (Microsoft.UI.Xaml.Media.Brush)res["ThemeInkDim"],
+                            FontSize = 12,
+                        };
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(kept, $"ArchiveSavesKept.{g.Game.Game.Id}");
+                        row.Children.Add(kept);
+                    }
                 }
                 else if (offerHold)
                 {
@@ -568,7 +589,7 @@ public sealed partial class SettingsDialog : ContentDialog
 
             requests.Add(new RestoreRequest(
                 id,
-                parts,
+                SaveWritePolicy.Permitted(game, parts),   // never saves the launcher may not write (EA cloud sync)
                 SaveDir: string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
                 ModDir: ctx.Locations.Count > 0 ? ctx.Locations[0].Abs : null,
                 DataDir: ctx.DataDir,
