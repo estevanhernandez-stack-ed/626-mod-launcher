@@ -10,6 +10,9 @@ public enum UninstallBlock
     /// <summary>A row the listing appends that is not an installed mod (a proxy loader DLL, a shared
     /// library): there is nothing of its own to delete by name. Turn it off instead.</summary>
     NotAnInstalledMod,
+    /// <summary>A turned-off mod with files held in <c>disabled-trees/&lt;Mod&gt;</c> (B4 stage two): uninstall
+    /// would orphan them. Turn it on first.</summary>
+    HeldInOtherFolders,
 }
 
 public sealed record UninstallRefusal(UninstallBlock Kind, string Message);
@@ -22,9 +25,34 @@ public sealed record UninstallRefusal(UninstallBlock Kind, string Message);
 public static class ModUninstall
 {
     /// <summary>Why this mod can't be uninstalled, or null when it can.</summary>
-    public static UninstallRefusal? Refusal(GameContext ctx, Mod mod) => Refusal(ModListing.MechanismFor(ctx.Game, ctx), mod);
+    public static UninstallRefusal? Refusal(GameContext ctx, Mod mod) => Refusal(ctx, ModListing.MechanismFor(ctx.Game, ctx), mod);
 
-    /// <inheritdoc cref="Refusal(GameContext, Mod)"/>
+    // The lane's rules, then the one rule that needs the game's data folder. The lane-only overload below
+    // answers for the row (whether it offers Uninstall) without touching disk per row; running an uninstall
+    // always comes through here, so a held-extras mod is refused in words rather than leaving orphans.
+    private static UninstallRefusal? Refusal(GameContext ctx, ListingMechanism lane, Mod mod)
+        => Refusal(lane, mod) ?? HeldExtrasRefusal(ctx, mod);
+
+    // B4 stage two: a turned-off mod can hold its extra-tree entries in disabled-trees/<Mod>. The delete
+    // below knows only the main files and disabled/<Mod>, so it would orphan them there, and a later copy of
+    // the same mod would then refuse to turn off on them. Refused rather than deleted: those entries were
+    // matched to the mod by name, and whether uninstall may delete them is Este's call, not yet made. A
+    // folder that can't be read is not reported as holding files (the row-text rule), so it doesn't refuse.
+    private static UninstallRefusal? HeldExtrasRefusal(GameContext ctx, Mod mod)
+    {
+        if (string.IsNullOrEmpty(mod.Name)) return null;
+        bool holds;
+        try { holds = TreeHolding.HoldsFiles(ctx, mod.Name); }
+        catch { holds = false; }
+        return holds
+            ? new(UninstallBlock.HeldInOtherFolders,
+                $"Turn \"{mod.Name}\" on first: some of its files are held in other folders.")
+            : null;
+    }
+
+    /// <summary>The lane's rules only, for the row deciding whether to offer Uninstall. It does not look for
+    /// held extra-tree files (<see cref="UninstallBlock.HeldInOtherFolders"/>): the row still offers Uninstall,
+    /// and running it refuses with the reason, which is how the user learns to turn the mod on first.</summary>
     /// <param name="lane">The game's lane, worked out once by a caller asking about many mods.</param>
     public static UninstallRefusal? Refusal(ListingMechanism lane, Mod mod)
     {
@@ -54,7 +82,7 @@ public static class ModUninstall
     {
         var lane = ModListing.MechanismFor(ctx.Game, ctx);
         foreach (var m in mods)
-            if (Refusal(lane, m) is { } why) throw new InvalidOperationException(why.Message);
+            if (Refusal(ctx, lane, m) is { } why) throw new InvalidOperationException(why.Message);
         foreach (var m in mods)
         {
             if (lane == ListingMechanism.ModEngine2) ModEngine2Writer.RemoveMod(ctx.Game, m.Name);

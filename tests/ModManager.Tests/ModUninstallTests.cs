@@ -79,4 +79,57 @@ mods = [
         Assert.Equal(UninstallBlock.ManagedByAnotherTool, ModUninstall.Refusal(ctx, managed)!.Kind);
         Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, managed));
     }
+    // B4 stage two: a turned-off mod can hold its extra-tree entries in disabled-trees/<Mod>. Uninstall knows
+    // only the main files and disabled/<Mod>, so it would leave those orphaned, and a later install of the same
+    // mod would refuse to turn off on them. Refused until Este rules on whether uninstall deletes them.
+    private (GameEntry Game, GameContext Ctx) TreeGame()
+    {
+        var gameRoot = Path.Combine(_root, "cp");
+        Directory.CreateDirectory(Path.Combine(gameRoot, "archive", "pc", "mod"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "r6", "scripts", "CoolMod"));
+        File.WriteAllText(Path.Combine(gameRoot, "archive", "pc", "mod", "CoolMod.archive"), "MAIN");
+        File.WriteAllText(Path.Combine(gameRoot, "r6", "scripts", "CoolMod", "main.reds"), "SCRIPTS");
+        File.WriteAllText(Path.Combine(gameRoot, "archive", "pc", "mod", "Plain.archive"), "PLAIN");
+        var g = new GameEntry
+        {
+            Id = "cp", GameName = "CP", Engine = "custom", GameRoot = gameRoot, DataDir = Path.Combine(_root, "cp-data"),
+            FileExtensions = new[] { "archive" },
+            ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
+        };
+        return (g, Scanner.GameContext(g, extraModTrees: new[] { "r6/scripts" }));
+    }
+
+    [Fact]
+    public async Task A_turned_off_mod_with_held_extra_tree_files_is_refused_and_nothing_is_deleted()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var held = Path.Combine(ctx.DataDir, "disabled-trees", "CoolMod", "r6", "scripts", "CoolMod", "main.reds");
+        Assert.True(File.Exists(held)); // pre-condition
+        var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
+
+        var why = ModUninstall.Refusal(ctx, row);
+
+        Assert.NotNull(why);
+        Assert.Equal(UninstallBlock.HeldInOtherFolders, why!.Kind);
+        Assert.Equal("Turn \"CoolMod\" on first: some of its files are held in other folders.", why.Message);
+        var e = Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
+        Assert.Equal(why.Message, e.Message);
+        Assert.Equal("SCRIPTS", File.ReadAllText(held));
+        Assert.True(File.Exists(Path.Combine(ctx.DisabledRoot, "CoolMod", "CoolMod.archive")));
+    }
+
+    [Fact]
+    public async Task A_turned_off_mod_with_no_held_extras_uninstalls_as_before()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("Plain", ctx);
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+
+        Assert.Null(ModUninstall.Refusal(ctx, row));
+        ModUninstall.Run(ctx, row);
+
+        Assert.False(Directory.Exists(Path.Combine(ctx.DisabledRoot, "Plain")));
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(ctx.GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+    }
 }
