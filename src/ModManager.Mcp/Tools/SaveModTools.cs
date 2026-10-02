@@ -50,16 +50,17 @@ public static class SaveModTools
             installNeedsAcknowledgment = installBlocked is null && SaveWritePolicy.NeedsAcknowledgment(game, ctx.DataDir),
             saveMods = SaveModStore.Load(ctx.DataDir)
                 .OrderByDescending(e => e.InstalledUtc)
-                .Select(e => new
+                .Select(e => (Entry: e, Kept: SaveModStore.KeptZip(ctx.DataDir, e)))
+                .Select(x => new
                 {
-                    worldId = e.Guid,
-                    name = e.Name,
-                    sourceZip = e.SourceZip,
+                    worldId = x.Entry.Guid,
+                    name = x.Entry.Name,
+                    sourceZip = x.Entry.SourceZip,
                     // The zip a reset reads, the way the app's reset finds it (an older build's copy counts
                     // when it still holds this world).
-                    keptZip = SaveModStore.KeptZip(ctx.DataDir, e),
-                    sourceZipKept = SaveModStore.KeptZip(ctx.DataDir, e) is not null,
-                    installedUtc = e.InstalledUtc,
+                    keptZip = x.Kept,
+                    sourceZipKept = x.Kept is not null,
+                    installedUtc = x.Entry.InstalledUtc,
                 })
                 .ToArray(),
             hint = "Resetting a world reinstalls it from its kept zip; when sourceZipKept is false the world "
@@ -99,25 +100,23 @@ public static class SaveModTools
                 verdict.Reason ?? "626 couldn't tell which world this zip installs.");
         args["worldId"] = verdict.WorldGuid;
 
-        string worldDir;
-        try { worldDir = SaveModInstaller.WorldDirFor(ctx.SaveDir!, game.SaveModPath, game.SaveModForbidden, verdict.WorldGuid); }
-        catch (InvalidOperationException e) { return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, e.Message); }
-        if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
-            return Refused(tool, ctx, gameId, args, "already_installed",
-                $"World {verdict.WorldGuid} is already installed ({worldDir}). Nothing was changed. To start it over "
-                + "from its kept zip, use reset_save_mod; to replace it with this zip, remove_save_mod first.");
+        if (WorldDir(tool, ctx, game, gameId, args, verdict.WorldGuid, out var worldDir) is { } noFolder) return noFolder;
 
+        // Core refuses a world that is already there, before it writes anything, and says whether 626 installed it.
         var v = SaveModFlow.TryHandleDrops(new[] { zip }, exts,
             saveProfilesDir: ctx.SaveDir!, snapshotsDir: ctx.SavesDir, dataDir: ctx.DataDir,
             saveModPath: game.SaveModPath, forbidden: game.SaveModForbidden,
             writeAllowed: true, writeRefusal: null).Single();
+        if (v.Outcome == SaveModDropOutcome.AlreadyInstalled)
+            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, "already_installed",
+                (v.Reason ?? "") + " (Agent tools: reset_save_mod, remove_save_mod.)");
         if (v.Outcome != SaveModDropOutcome.Installed)
             return Error(tool, ctx, gameId, args, v.Reason ?? v.Outcome.ToString());
 
         // Check, don't assume: the world is in the save folder, recorded, and resettable.
         var entry = SaveModStore.Load(ctx.DataDir).FirstOrDefault(e => string.Equals(e.Guid, v.WorldGuid, StringComparison.OrdinalIgnoreCase));
         var kept = entry is null ? null : SaveModStore.KeptZip(ctx.DataDir, entry);
-        if (entry is null || kept is null || !Directory.Exists(worldDir) || !Directory.EnumerateFileSystemEntries(worldDir).Any())
+        if (entry is null || kept is null || !HoldsFiles(worldDir))
             return Error(tool, ctx, gameId, args,
                 $"Installed {v.WorldGuid}, but 626 can't confirm it: world folder present {Directory.Exists(worldDir)}, "
                 + $"recorded {entry is not null}, kept zip {kept is not null}. Open Saves in the app to check.");
@@ -152,9 +151,7 @@ public static class SaveModTools
         if (SaveModStore.KeptZip(ctx.DataDir, entry) is not { } kept)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None,
                 $"{entry.Name} can't be reset: the zip it was installed from is gone. Nothing was changed.");
-        string worldDir;
-        try { worldDir = SaveModInstaller.WorldDirFor(ctx.SaveDir!, game.SaveModPath, game.SaveModForbidden, entry.Guid); }
-        catch (InvalidOperationException e) { return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, e.Message); }
+        if (WorldDir(tool, ctx, game, gameId, args, entry.Guid, out var worldDir) is { } noFolder) return noFolder;
 
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
@@ -165,7 +162,7 @@ public static class SaveModTools
         try { SaveModInstaller.ResetWorld(ctx.SaveDir!, ctx.SavesDir, kept, entry.Guid, game.SaveModPath, game.SaveModForbidden); }
         catch (Exception e) { return Error(tool, ctx, gameId, args, ErrorRemedy.Describe(e)); }
 
-        if (!Directory.Exists(worldDir) || !Directory.EnumerateFileSystemEntries(worldDir).Any())
+        if (!HoldsFiles(worldDir))
             return Error(tool, ctx, gameId, args, $"Reset {entry.Name}, but its world folder {worldDir} is empty afterwards. "
                                                  + "Restore the snapshot from Saves in the app.");
 
@@ -177,8 +174,9 @@ public static class SaveModTools
     [McpServerTool(Name = "remove_save_mod")]
     [Description("Remove an installed save/world mod: its world folder is deleted from the save folder and 626 stops "
                  + "listing it, as the Saves dialog's Remove does. Refuses without confirm: true (then it says what it "
-                 + "would delete). The save folder is snapshotted first, so the user can restore it from Saves; the kept "
-                 + "zip stays on disk. Refuses where install_save_mod would. Audited.")]
+                 + "would delete). The save folder is snapshotted first, so the user can restore it from Saves; the zip "
+                 + "kept for resetting it is deleted. Refuses an EA game or no save folder, but not for ban risk: removing "
+                 + "a mod is the safe direction. Audited.")]
     public static object RemoveSaveMod(
         [Description("The game id, from list_games.")] string gameId,
         [Description("The world id, from list_save_mods.")] string worldId,
@@ -186,12 +184,12 @@ public static class SaveModTools
     {
         const string tool = "remove_save_mod";
         var args = new Dictionary<string, string> { ["worldId"] = worldId ?? "", ["confirm"] = confirm.ToString() };
-        if (Prelude(tool, gameId, args, out var game, out var ctx) is { } refused) return refused;
+        // No ban-risk gate: removing a world mod moves the game back toward vanilla, and getting safer needs no
+        // friction (WriteTools). The EA refusal and the save folder still apply.
+        if (Prelude(tool, gameId, args, out var game, out var ctx, gateBanRisk: false) is { } refused) return refused;
         if (FindEntry(tool, ctx, gameId, args, worldId, out var entry) is { } missing) return missing;
 
-        string worldDir;
-        try { worldDir = SaveModInstaller.WorldDirFor(ctx.SaveDir!, game.SaveModPath, game.SaveModForbidden, entry.Guid); }
-        catch (InvalidOperationException e) { return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, e.Message); }
+        if (WorldDir(tool, ctx, game, gameId, args, entry.Guid, out var worldDir) is { } noFolder) return noFolder;
 
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
@@ -201,7 +199,7 @@ public static class SaveModTools
         try
         {
             SaveModInstaller.RemoveWorld(ctx.SaveDir!, ctx.SavesDir, entry.Guid, game.SaveModPath, game.SaveModForbidden);
-            SaveModStore.Remove(ctx.DataDir, entry.Guid);
+            SaveModStore.Forget(ctx.DataDir, entry.Guid);   // unlisted, and its kept zip with it, as the Saves dialog does
         }
         catch (Exception e) { return Error(tool, ctx, gameId, args, ErrorRemedy.Describe(e)); }
 
@@ -218,7 +216,8 @@ public static class SaveModTools
     // The checks every save write makes, in the order the app's would: the game exists; its saves are 626's to
     // write (EA cloud saves are not, and no acknowledgment changes that); 626 knows the save folder; and on a
     // high ban-risk game the user has acknowledged save writes. That last one only the user can give, in the app.
-    private static object? Prelude(string tool, string gameId, Dictionary<string, string> args, out GameEntry game, out GameContext ctx)
+    private static object? Prelude(string tool, string gameId, Dictionary<string, string> args, out GameEntry game, out GameContext ctx,
+                                   bool gateBanRisk = true)
     {
         game = ModTools.Find(gameId)!;
         ctx = null!;
@@ -230,7 +229,7 @@ public static class SaveModTools
         if (string.IsNullOrEmpty(ctx.SaveDir))
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None,
                 "626 doesn't know this game's save folder, so there is nowhere to write. The user can set it in Saves.");
-        if (SaveWritePolicy.NeedsAcknowledgment(game, ctx.DataDir))
+        if (gateBanRisk && SaveWritePolicy.NeedsAcknowledgment(game, ctx.DataDir))
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.BanRiskNotAcknowledged,
                 $"{game.GameName} is high ban-risk, so writing its saves asks the user first, and an agent can't answer "
                 + "for them. Ask them to do this in the app's Saves dialog.");
@@ -247,13 +246,32 @@ public static class SaveModTools
             : null;
     }
 
-    private static object Refused(string tool, GameContext ctx, string gameId, Dictionary<string, string> args, string code, string detail)
+    // The world's folder under the save tree, looked up without writing anything. A profile that can't be read,
+    // or isn't one profile, is refused here and audited like every other refusal.
+    private static object? WorldDir(string tool, GameContext ctx, GameEntry game, string gameId, Dictionary<string, string> args,
+                                    string worldGuid, out string worldDir)
     {
-        AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, code, detail));
-        return new { ok = false, refusal = code, detail };
+        try
+        {
+            worldDir = SaveModInstaller.WorldDirFor(ctx.SaveDir!, game.SaveModPath, game.SaveModForbidden, worldGuid);
+            return null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            worldDir = "";
+            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, ErrorRemedy.Describe(e));
+        }
+    }
+
+    // Whether the world folder has anything in it, for the checks after a write. Unreadable counts as no: the
+    // write can't be confirmed, and the result says so.
+    private static bool HoldsFiles(string dir)
+    {
+        try { return Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     private static object Error(string tool, GameContext ctx, string gameId, Dictionary<string, string> args, string detail)
-        => Refused(tool, ctx, gameId, args, "error", detail);
+        => WriteTools.Refuse(tool, ctx.DataDir, gameId, args, "error", detail);
 }
 

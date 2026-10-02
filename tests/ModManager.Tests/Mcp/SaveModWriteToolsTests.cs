@@ -117,6 +117,7 @@ public class SaveModWriteToolsTests : IDisposable
         var r = Json(SaveModTools.InstallSaveMod(g.Id, Zip("Island-v2.zip", ($"Worlds/{World}/level.db", "V2"))));
 
         Assert.Equal("already_installed", r.GetProperty("refusal").GetString());
+        Assert.Contains("Reset it", r.GetProperty("detail").GetString());
         Assert.Contains("reset_save_mod", r.GetProperty("detail").GetString());
         Assert.Equal("PLAYED", File.ReadAllText(Path.Combine(WorldDir, "level.db")));
         Assert.Equal(snaps, Snapshots(g));
@@ -221,6 +222,42 @@ public class SaveModWriteToolsTests : IDisposable
         Assert.Empty(SaveModStore.Load(g.DataDir!));
         Assert.True(Snapshots(g) > snaps);
         Assert.Equal("GAME-OWNED", File.ReadAllText(Path.Combine(Profiles, "76561198000000000", "RocksDB_v2", "sacred.db")));
+    }
+
+    // Review on #379: removing is the safe direction, so the ban-risk acknowledgment doesn't stand in its way.
+    [Fact]
+    public void Remove_is_not_gated_on_ban_risk_and_deletes_the_kept_zip()
+    {
+        var g = Game("madden", steamAppId: "3940610");
+        var ctx = Scanner.GameContext(g);
+        // Installed through the app (which asked the user); the acknowledgment isn't on file now.
+        SaveModFlow.TryHandleDrops(new[] { WorldZip() }, Array.Empty<string>(), Profiles, ctx.SavesDir, g.DataDir!,
+            null, null, writeAllowed: true);
+        Assert.Equal("ban_risk_not_acknowledged", Json(SaveModTools.ResetSaveMod(g.Id, World, confirm: true)).GetProperty("refusal").GetString());
+
+        var r = Json(SaveModTools.RemoveSaveMod(g.Id, World, confirm: true));
+
+        Assert.True(r.GetProperty("ok").GetBoolean(), r.ToString());
+        Assert.False(Directory.Exists(WorldDir));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(SaveModInstaller.KeptZipPath(g.DataDir!, World, "Island.zip"))));
+    }
+
+    // Review on #379: a preview (no confirm) writes nothing, not even the Worlds folder.
+    [Fact]
+    public void A_preview_without_confirm_does_not_create_the_worlds_folder()
+    {
+        var g = Game();
+        var worlds = Path.GetDirectoryName(WorldDir)!;
+        Directory.Delete(worlds);
+        var kept = SaveModInstaller.KeptZipPath(g.DataDir!, World, "Island.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
+        File.Copy(WorldZip(), kept);
+        SaveModStore.Upsert(g.DataDir!, new SaveModEntry(World, "Island", kept, DateTime.UtcNow));
+
+        Assert.Equal("confirmation_required", Json(SaveModTools.ResetSaveMod(g.Id, World)).GetProperty("refusal").GetString());
+        Assert.Equal("confirmation_required", Json(SaveModTools.RemoveSaveMod(g.Id, World)).GetProperty("refusal").GetString());
+
+        Assert.False(Directory.Exists(worlds));
     }
 
     [Fact]

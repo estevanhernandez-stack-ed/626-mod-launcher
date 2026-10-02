@@ -48,19 +48,31 @@ public static class SaveModStore
         AtomicJson.WriteJsonAtomic(PathFor(dataDir), list);
     }
 
-    /// <summary>The zip a world resets from, or null when none is left: the recorded <c>SourceZip</c> (the kept
-    /// copy, for installs since E1's seventh slice), else the copy an older build kept in the data folder under
-    /// the zip's file name. Each must still hold this world: an older build kept every world's zip under its
-    /// bare file name, so a later world's zip of the same name could have replaced it.</summary>
+    /// <summary>The zip a world resets from, or null when none is left. In order: the recorded <c>SourceZip</c> (the
+    /// kept copy, for installs since E1's seventh slice); the kept copy's place under THIS data folder, so a moved
+    /// data folder still finds it; and the copy an older build kept in the data folder under the zip's file name.
+    /// Each must still hold this world: an older build kept every world's zip under its bare file name, so a later
+    /// world's zip of the same name could have replaced it.</summary>
     public static string? KeptZip(string dataDir, SaveModEntry entry)
     {
         if (string.IsNullOrWhiteSpace(entry.SourceZip)) return null;
-        var candidates = new[]
-        {
-            entry.SourceZip,
-            System.IO.Path.Combine(dataDir, System.IO.Path.GetFileName(entry.SourceZip)),
-        };
+        var candidates = new List<string> { entry.SourceZip };
+        try { candidates.Add(SaveModInstaller.KeptZipPath(dataDir, entry.Guid, entry.SourceZip)); }
+        catch (InvalidOperationException) { /* a hand-edited id that isn't a GUID has no kept folder */ }
+        candidates.Add(System.IO.Path.Combine(dataDir, System.IO.Path.GetFileName(entry.SourceZip)));
         return candidates.FirstOrDefault(c => File.Exists(c) && SaveModInstaller.ZipHoldsWorld(c, entry.Guid));
+    }
+
+    /// <summary>Stop listing a removed world and delete the zip kept for resetting it (its own folder under
+    /// <c>save-mods</c>). Nothing can reset it once it is unlisted, so the copy would only pile up. An older build's
+    /// copy in the data folder root is left alone: another world's zip may share its name.</summary>
+    public static void Forget(string dataDir, string guid)
+    {
+        Remove(dataDir, guid);
+        string keptDir;
+        try { keptDir = System.IO.Path.GetDirectoryName(SaveModInstaller.KeptZipPath(dataDir, guid, "x.zip"))!; }
+        catch (InvalidOperationException) { return; }
+        LinkSafeDelete.DeleteTree(keptDir);
     }
 
     public static void Remove(string dataDir, string guid)

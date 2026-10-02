@@ -34,7 +34,8 @@ public static partial class SaveModInstaller
     /// matched as a whole path segment) — and refuses BEFORE creating anything. Creates the Worlds
     /// dir if missing. Clear errors for zero/multiple profiles and no RocksDB version.
     /// </summary>
-    public static string ResolveWorldsTarget(string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden)
+    public static string ResolveWorldsTarget(string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden,
+                                             bool create = true)
     {
         var profile = SingleProfileDir(saveProfilesDir);
 
@@ -54,7 +55,7 @@ public static partial class SaveModInstaller
         // Defense-in-depth: guard the fully-resolved absolute path's segments too.
         GuardSegments(target.Split(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar), forbidSet);
 
-        Directory.CreateDirectory(target);
+        if (create) Directory.CreateDirectory(target);   // a lookup (WorldDirFor) never writes the save tree
         return target;
     }
 
@@ -76,30 +77,44 @@ public static partial class SaveModInstaller
         if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
             throw new WorldAlreadyPresentException(worldGuid, worldDir);
 
-        SaveManager.Backup(saveProfilesDir, snapshotsDir, "before-savemod", auto: true); // snapshot FIRST
-
-        Directory.CreateDirectory(worldDir);
-        ExtractWorld(zipPath, worldGuid, worldDir, overwrite: false);
-
-        // Keep a copy of the zip for reset, in a folder of this world's own: the download can be deleted, and
-        // two worlds' zips can share a file name.
+        // Keep a copy of the zip for reset, in a folder of this world's own (the download can be deleted, and two
+        // worlds' zips can share a file name), BEFORE the world goes in: a copy that fails afterwards would leave a
+        // world with no record, which the already-present check would then refuse to reinstall over.
         var kept = KeptZipPath(saveModStoreDir, worldGuid, zipPath);
+        var copied = !string.Equals(System.IO.Path.GetFullPath(kept), System.IO.Path.GetFullPath(zipPath), StringComparison.OrdinalIgnoreCase)
+                     && !File.Exists(kept);   // a copy an earlier install of this world kept is not this install's to take back
         if (!string.Equals(System.IO.Path.GetFullPath(kept), System.IO.Path.GetFullPath(zipPath), StringComparison.OrdinalIgnoreCase))
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(kept)!);
             File.Copy(zipPath, kept, overwrite: true);
         }
 
+        var worldExisted = Directory.Exists(worldDir);   // empty, by the check above
+        try
+        {
+            SaveManager.Backup(saveProfilesDir, snapshotsDir, "before-savemod", auto: true); // snapshot FIRST
+            Directory.CreateDirectory(worldDir);
+            ExtractWorld(zipPath, worldGuid, worldDir, overwrite: false);
+        }
+        catch
+        {
+            // Nothing was there before, so take back what this install put in, the kept copy included: a half
+            // world with no record is the state the already-present check can't get out of.
+            try { if (!worldExisted && Directory.Exists(worldDir)) LinkSafeDelete.DeleteTree(worldDir); } catch { }
+            try { if (copied) File.Delete(kept); } catch { }
+            throw;
+        }
+
         return worldDir;
     }
 
     /// <summary>The folder world <paramref name="worldGuid"/> lives in under the (forbidden-guarded) Worlds
-    /// target, whether or not it is there now. Throws as <see cref="ResolveWorldsTarget"/> does for a missing
-    /// or ambiguous profile, or an unsafe id.</summary>
+    /// target, whether or not it is there now. Writes nothing, so a preview can call it. Throws as
+    /// <see cref="ResolveWorldsTarget"/> does for a missing or ambiguous profile, or an unsafe id.</summary>
     public static string WorldDirFor(string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden, string worldGuid)
     {
         RequireSafeGuid(worldGuid);
-        return SafeWorldDir(ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden), worldGuid);
+        return SafeWorldDir(ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden, create: false), worldGuid);
     }
 
     /// <summary>Where <see cref="InstallWorld"/> keeps a world's zip for reset:
@@ -309,10 +324,10 @@ public static partial class SaveModInstaller
 }
 
 /// <summary>A world with this id is already in the save folder. Installing over it would mix two versions,
-/// so it is refused before anything is written; reset or remove the installed one instead.</summary>
+/// so it is refused before anything is written. Whether 626 installed it (and so can reset or remove it) is
+/// the caller's to say: this only knows the folder is there.</summary>
 public sealed class WorldAlreadyPresentException(string worldGuid, string worldDir)
-    : InvalidOperationException($"World {worldGuid} is already installed ({worldDir}). Nothing was changed. "
-                                + "Reset it to reinstall it from its kept zip, or remove it first.")
+    : InvalidOperationException($"World {worldGuid} is already in the save folder ({worldDir}). Nothing was changed.")
 {
     public string WorldGuid { get; } = worldGuid;
     public string WorldDir { get; } = worldDir;

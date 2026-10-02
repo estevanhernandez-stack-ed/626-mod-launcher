@@ -311,6 +311,68 @@ public class SaveModTests : IDisposable
         Assert.Null(SaveModStore.KeptZip(Data, entry with { SourceZip = "" }));
     }
 
+    // Review on #379: the kept copy goes in first, and a failed install takes back what it put in, so a failure
+    // never leaves a world with no record (which the already-present check would then refuse to reinstall over).
+    [Fact]
+    public void A_kept_copy_that_cannot_be_written_leaves_the_save_tree_untouched()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        Directory.CreateDirectory(Path.Combine(Store, "save-mods"));
+        File.WriteAllText(Path.Combine(Store, "save-mods", Guid32), "a file where the folder goes");
+
+        Assert.ThrowsAny<IOException>(() => SaveModInstaller.InstallWorld(
+            Profiles, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "X")), Guid32, null, null));
+
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32)));
+        Assert.False(Directory.Exists(Snaps) && SaveManager.ListSnapshots(Snaps).Count > 0);
+    }
+
+    [Fact]
+    public void An_install_that_fails_while_extracting_takes_back_the_world_and_the_kept_copy()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        var notAZip = Path.Combine(_root, "broken.zip");
+        File.WriteAllText(notAZip, "not a zip");
+
+        Assert.ThrowsAny<Exception>(() => SaveModInstaller.InstallWorld(Profiles, Snaps, Store, notAZip, Guid32, null, null));
+
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32)));
+        Assert.False(File.Exists(SaveModInstaller.KeptZipPath(Store, Guid32, notAZip)));
+    }
+
+    [Fact]
+    public void KeptZip_finds_the_copy_in_a_moved_data_folder()
+    {
+        // Recorded under the data folder as it was; the folder has since moved to Data.
+        var entry = new SaveModEntry(Guid32, "World",
+            Path.Combine(_root, "old-data", "save-mods", Guid32, "world.zip"), DateTime.UtcNow);
+        var moved = SaveModInstaller.KeptZipPath(Data, Guid32, "world.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(moved)!);
+        using (var zip = ZipFile.Open(moved, ZipArchiveMode.Create))
+            zip.CreateEntry($"Worlds/{Guid32}/level.db");
+
+        Assert.Equal(moved, SaveModStore.KeptZip(Data, entry));
+        Assert.Null(SaveModStore.KeptZip(Data, entry with { Guid = "not-a-guid" }));   // a hand-edited id: no kept folder, no throw
+    }
+
+    [Fact]
+    public void Forget_unlists_the_world_and_deletes_its_kept_copy_but_not_an_older_builds_copy()
+    {
+        Directory.CreateDirectory(Data);
+        var kept = SaveModInstaller.KeptZipPath(Data, Guid32, "world.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
+        File.WriteAllText(kept, "zip");
+        var legacy = Path.Combine(Data, "world.zip");
+        File.WriteAllText(legacy, "maybe another world's");
+        SaveModStore.Upsert(Data, new SaveModEntry(Guid32, "World", kept, DateTime.UtcNow));
+
+        SaveModStore.Forget(Data, Guid32);
+
+        Assert.Empty(SaveModStore.Load(Data));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(kept)));
+        Assert.True(File.Exists(legacy));
+    }
+
     // ---------------- RemoveWorld ----------------
 
     [Fact]

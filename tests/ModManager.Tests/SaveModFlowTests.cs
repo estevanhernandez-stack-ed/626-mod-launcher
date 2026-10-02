@@ -102,10 +102,32 @@ public class SaveModFlowTests : IDisposable
         var again = SaveModFlow.TryHandleDrops(new[] { MakeZip("world-2.zip", new[] { ($"{guid}/data.json", "TWO") }) },
             Array.Empty<string>(), profiles, NewDir("snaps2"), data, null, null, writeAllowed: true).Single();
 
-        Assert.Equal(SaveModDropOutcome.Failed, again.Outcome);
+        Assert.Equal(SaveModDropOutcome.AlreadyInstalled, again.Outcome);
         Assert.Contains("already installed", again.Reason);
+        Assert.Contains("Reset it", again.Reason);
         Assert.Equal("ONE", File.ReadAllText(Path.Combine(oneProfile, "RocksDB", "1.0", "Worlds", guid, "data.json")));
         Assert.Equal("world", SaveModStore.Load(data).Single().Name);
+    }
+
+    // Review on #379: a world folder 626 has no record of can't be reset or removed from Saves, so the reason
+    // doesn't send the user there.
+    [Fact]
+    public void A_world_folder_626_did_not_install_is_refused_with_its_own_reason()
+    {
+        var guid = "0123456789abcdef0123456789abcdef";
+        var profiles = NewDir("saves");
+        var worldDir = Path.Combine(profiles, "user1", "RocksDB", "1.0", "Worlds", guid);
+        Directory.CreateDirectory(worldDir);
+        File.WriteAllText(Path.Combine(worldDir, "data.json"), "THEIRS");
+        var data = NewDir("data");
+
+        var v = SaveModFlow.TryHandleDrops(new[] { MakeZip("world.zip", new[] { ($"{guid}/data.json", "MINE") }) },
+            Array.Empty<string>(), profiles, NewDir("snaps"), data, null, null, writeAllowed: true).Single();
+
+        Assert.Equal(SaveModDropOutcome.AlreadyInstalled, v.Outcome);
+        Assert.Contains("626 didn't install it", v.Reason);
+        Assert.Equal("THEIRS", File.ReadAllText(Path.Combine(worldDir, "data.json")));
+        Assert.Empty(SaveModStore.Load(data));
     }
 
     [Fact]

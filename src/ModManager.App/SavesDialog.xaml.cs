@@ -544,7 +544,7 @@ public sealed partial class SavesDialog : ContentDialog
         {
             SaveModInstaller.RemoveWorld(_saveDir, _savesDir, row.Entry.Guid,
                 _saveModPath, _saveModForbidden);
-            SaveModStore.Remove(_dataDir, row.Entry.Guid);
+            SaveModStore.Forget(_dataDir, row.Entry.Guid);   // unlisted, and its kept zip with it
             StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first.";
             Refresh();
             RefreshSaveMods();
