@@ -124,10 +124,29 @@ public class SaveModFlowTests : IDisposable
         var v = SaveModFlow.TryHandleDrops(new[] { MakeZip("world.zip", new[] { ($"{guid}/data.json", "MINE") }) },
             Array.Empty<string>(), profiles, NewDir("snaps"), data, null, null, writeAllowed: true).Single();
 
-        Assert.Equal(SaveModDropOutcome.AlreadyInstalled, v.Outcome);
+        Assert.Equal(SaveModDropOutcome.WorldExists, v.Outcome);
         Assert.Contains("626 didn't install it", v.Reason);
         Assert.Equal("THEIRS", File.ReadAllText(Path.Combine(worldDir, "data.json")));
         Assert.Empty(SaveModStore.Load(data));
+    }
+
+    // #380 review: a drop that would be refused is refused BEFORE the ban-risk question, so nobody accepts a risk
+    // for an install that then doesn't happen. This is Este's Save Hub shape: played, so in the game's own store.
+    [Fact]
+    public void A_world_the_game_already_holds_is_refused_before_the_ban_risk_question()
+    {
+        var guid = "0123456789abcdef0123456789abcdef";
+        var profiles = NewDir("saves");
+        Directory.CreateDirectory(Path.Combine(profiles, "user1", "RocksDB", "1.0"));
+        var played = Path.Combine(profiles, "user1", "RocksDB_v2", "1.0", "Worlds", guid);
+        Directory.CreateDirectory(played);
+        File.WriteAllText(Path.Combine(played, "000123.sst"), "PROGRESS");
+
+        var v = SaveModFlow.TryHandleDrops(new[] { MakeZip("hub.zip", new[] { ($"{guid}/000123.sst", "FRESH") }) },
+            Array.Empty<string>(), profiles, NewDir("snaps"), NewDir("data"), null, null, writeAllowed: false).Single();
+
+        Assert.Equal(SaveModDropOutcome.WorldExists, v.Outcome);
+        Assert.Contains("has been played", v.Reason);
     }
 
     [Fact]

@@ -4039,8 +4039,9 @@ public sealed partial class MainViewModel : ObservableObject
                 foreach (var v in verdicts)
                 {
                     if (v.Outcome == SaveModDropOutcome.Installed) { savedCount++; remaining.Remove(v.SourcePath); }
-                    else if (v.Outcome is SaveModDropOutcome.Failed or SaveModDropOutcome.AlreadyInstalled)
-                    { saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: {v.Reason}"); remaining.Remove(v.SourcePath); }
+                    else if (v.Outcome is SaveModDropOutcome.Failed or SaveModDropOutcome.AlreadyInstalled or SaveModDropOutcome.WorldExists)
+                    // A save-mod reason is a sentence; the line joins its parts with ". ", so its own period would print "..".
+                    { saveSkipReasons.Add($"{Path.GetFileName(v.SourcePath)}: {v.Reason?.TrimEnd('.')}"); remaining.Remove(v.SourcePath); }
                 }
             }
 

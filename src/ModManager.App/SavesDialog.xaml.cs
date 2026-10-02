@@ -529,7 +529,8 @@ public sealed partial class SavesDialog : ContentDialog
         {
             SaveModInstaller.ResetWorld(_saveDir, _savesDir, keptZip,
                 row.Entry.Guid, _saveModPath, _saveModForbidden);
-            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first.";
+            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}."
+                + GameCopyNote(row.Entry.Guid);
             Refresh();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
@@ -545,11 +546,38 @@ public sealed partial class SavesDialog : ContentDialog
             SaveModInstaller.RemoveWorld(_saveDir, _savesDir, row.Entry.Guid,
                 _saveModPath, _saveModForbidden);
             SaveModStore.Forget(_dataDir, row.Entry.Guid);   // unlisted, and its kept zip with it
-            StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first.";
+            StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}.";
             Refresh();
             RefreshSaveMods();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    // Where a save-mod reset or remove put its snapshot, when it isn't in this dialog's list: a world outside the
+    // registered save folder (Windrose's worlds, beside its RocksDB_v2) is snapshotted on its own, kept apart so it
+    // can never be restored into this folder. Core decides; this only says where.
+    private string SaveModSnapshotNote(string worldGuid)
+    {
+        try
+        {
+            return SaveModSnapshots.OutsideSavesList(_saveDir!, _savesDir, _saveModPath, _saveModForbidden, worldGuid) is { } dir
+                ? $" (in {dir}, not in this list)"
+                : "";
+        }
+        catch { return ""; }
+    }
+
+    // The game imports a world into its own store and plays it there (Windrose: RocksDB_v2). Reset replaces only the
+    // copy 626 installed, so say when the game holds its own. Core decides; this only says it.
+    private string GameCopyNote(string worldGuid)
+    {
+        try
+        {
+            return SaveModInstallerQueries.WorldInGameSave(_saveDir!, _saveModPath, worldGuid) is { } held
+                ? $" The game also holds this world ({held}); if the reset doesn't show in-game, delete the world in-game too."
+                : "";
+        }
+        catch { return ""; }
     }
 
     private static string Short(string g) => g.Length <= 8 ? g : g[..8] + "…";

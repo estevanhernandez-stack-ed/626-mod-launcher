@@ -154,6 +154,7 @@ public static partial class SaveManager
                 $"{worldId} with somebody else's world.");
 
         var worldDir = Path.Combine(saveDir, worldId);
+        RequireSameSource(snapshotZip, worldDir);
 
         // Same guarantee as the whole-folder restore, smaller blast radius.
         if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
@@ -344,14 +345,119 @@ public static partial class SaveManager
         while (File.Exists(path))
             path = System.IO.Path.Combine(snapshotsDir, (safe.Length > 0 ? $"{stamp}__{safe}-{n++}" : $"{stamp}-{n++}") + ".zip");
 
-        ZipFile.CreateFromDirectory(saveDir, path);
+        ZipFolder(saveDir, path);
         return new SaveSnapshot(path, System.IO.Path.GetFileName(path), safe, takenUtc, new FileInfo(path).Length, IsAutoLabel(safe));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Which folder a snapshot is of. A restore deletes everything in the folder it restores into and
+    // unpacks the snapshot there, so a snapshot of one folder restored into another wipes the second and
+    // fills it with the first's contents, one level off. That is how a Windrose profile came to sit
+    // nested inside its own RocksDB_v2: the game's save folder moved (the curated hint now names
+    // <id>\RocksDB_v2), and a snapshot of the old folder was restored into the new one. Every snapshot
+    // now carries its folder in the zip's comment, and every restore checks it.
+    // ---------------------------------------------------------------------------------------------
+
+    private const string SourcePrefix = "626-save-source:";
+
+    /// <summary>The folder a snapshot was taken from, or null for one taken before 626 recorded it (or a
+    /// zip 626 didn't make).</summary>
+    public static string? SourceOf(string snapshotZip)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(snapshotZip);
+            var comment = zip.Comment ?? "";
+            return comment.StartsWith(SourcePrefix, StringComparison.Ordinal) ? comment[SourcePrefix.Length..] : null;
+        }
+        catch (InvalidDataException) { return null; }
+    }
+
+    /// <summary>Refuse to restore a snapshot into a folder other than the one it was taken from. A recorded
+    /// folder that is gone, with the same name as this one, is taken as this folder moved (OneDrive moving
+    /// Documents, a renamed Windows account) and allowed. A snapshot from before 626 recorded its folder is
+    /// refused only when it is plainly of a folder above this one (see <see cref="RequireNotOfAnAncestor"/>).</summary>
+    private static void RequireSameSource(string snapshotZip, string intoDir)
+    {
+        var source = SourceOf(snapshotZip);
+        if (source is null) { RequireNotOfAnAncestor(snapshotZip, intoDir); return; }
+        if (RegistrationRefresh.SamePath(source, intoDir)) return;
+        if (!Directory.Exists(source)
+            && string.Equals(Path.GetFileName(Normalize(source)), Path.GetFileName(Normalize(intoDir)), StringComparison.OrdinalIgnoreCase))
+            return;
+        throw new InvalidOperationException(
+            $"That snapshot was taken from {source}, not {intoDir}. Restoring it here would empty this folder and "
+            + "fill it with another folder's contents. Nothing was changed.");
+    }
+
+    /// <summary>A snapshot with no recorded folder can't be checked by name, but a snapshot of a folder ABOVE
+    /// this one has a tell: this folder's own path is inside it (<c>&lt;parent&gt;/&lt;this&gt;/...</c>, or
+    /// <c>&lt;this&gt;/...</c> at its root). Restoring that here is the nesting this guard exists for, so it is
+    /// refused. A snapshot of this folder taken after such a nesting happened carries the same tell and is
+    /// refused too: the conservative side, since what it would put back is the nesting.</summary>
+    private static void RequireNotOfAnAncestor(string snapshotZip, string intoDir)
+    {
+        var path = Normalize(intoDir).Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
+        if (path.Length == 0) return;
+        var self = path[^1];
+        try
+        {
+            using var zip = ZipFile.OpenRead(snapshotZip);
+            foreach (var entry in zip.Entries)
+            {
+                var segs = entry.FullName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                for (var i = 0; i < segs.Length && i < path.Length; i++)
+                {
+                    if (!string.Equals(segs[i], self, StringComparison.OrdinalIgnoreCase)) continue;
+                    // segs[0..i) must be the i folders just above this one, in order.
+                    var above = true;
+                    for (var k = 0; k < i && above; k++)
+                        above = string.Equals(segs[k], path[path.Length - 1 - i + k], StringComparison.OrdinalIgnoreCase);
+                    if (above)
+                        throw new InvalidOperationException(
+                            $"That snapshot looks like it was taken from a folder above {intoDir}: it holds "
+                            + $"{string.Join('/', segs.Take(i + 1))} inside it. Restoring it here would empty this folder and "
+                            + "unpack it one level too deep. Nothing was changed.");
+                }
+            }
+        }
+        catch (InvalidDataException) { /* not a zip: the restore itself reports that */ }
+    }
+
+    private static string Normalize(string dir)
+        => Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    // What ZipFile.CreateFromDirectory does (every file, and empty folders as folder entries, paths relative to
+    // the folder), plus the source comment, written in the same pass.
+    // A snapshot that fails partway (the game holding a file open) is deleted rather than left behind as a
+    // complete-looking zip that holds part of the save.
+    private static void ZipFolder(string dir, string zipPath)
+    {
+        var root = new DirectoryInfo(dir);
+        try
+        {
+            using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+            zip.Comment = SourcePrefix + Normalize(dir);
+            foreach (var entry in root.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(root.FullName, entry.FullName).Replace('\\', '/');
+                if (entry is FileInfo) zip.CreateEntryFromFile(entry.FullName, rel);
+                else if (entry is DirectoryInfo d && !d.EnumerateFileSystemInfos().Any()) zip.CreateEntry(rel + "/");
+            }
+        }
+        catch
+        {
+            try { File.Delete(zipPath); } catch { }
+            throw;
+        }
     }
 
     public static void Restore(string snapshotZip, string saveDir, string snapshotsDir)
     {
         if (!File.Exists(snapshotZip))
             throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
+        RequireSameSource(snapshotZip, saveDir);
 
         // Safety: snapshot the current save state before we overwrite it (auto-tagged).
         if (Directory.Exists(saveDir) && Directory.EnumerateFileSystemEntries(saveDir).Any())
@@ -415,6 +521,7 @@ public static partial class SaveManager
     public static void RestoreType(string snapshotZip, string saveDir, string snapshotsDir, string extension)
     {
         if (!File.Exists(snapshotZip)) throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
+        RequireSameSource(snapshotZip, saveDir);
 
         if (Directory.Exists(saveDir) && Directory.EnumerateFileSystemEntries(saveDir).Any())
             Backup(saveDir, snapshotsDir, "before-restore", auto: true);
