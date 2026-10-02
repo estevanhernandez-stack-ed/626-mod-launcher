@@ -37,6 +37,13 @@ public static class SaveModFlow
         return verdicts;
     }
 
+    /// <summary>What a drop of <paramref name="path"/> WOULD be, decided exactly as a real drop decides
+    /// it, and nothing is written: NotASaveMod; Failed with the reason (saves the launcher may not write,
+    /// or no world GUID); or NeedsAcknowledgment, which here means "a save mod that would install" once
+    /// the caller has settled the ban-risk question. The drop router and a real drop share this.</summary>
+    public static SaveModDropVerdict Classify(string path, IReadOnlyList<string> saveTypeExtensions, string? writeRefusal)
+        => Handle(path, saveTypeExtensions, "", "", "", null, null, writeAllowed: false, writeRefusal);
+
     private static SaveModDropVerdict Handle(
         string path,
         IReadOnlyList<string> saveTypeExtensions,
