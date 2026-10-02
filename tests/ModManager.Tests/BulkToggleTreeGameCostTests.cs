@@ -249,4 +249,89 @@ public class BulkToggleTreeGameCostTests : IDisposable
 
         Assert.Equal(before, Hashes(GameRoot));
     }
+
+    /// <summary>
+    /// One loadout switch that turns some mods on and others off in the same pass: evens are multiplayer,
+    /// odds single-player. "sp" turns the evens off; "mp" then brings the evens back and turns the odds off,
+    /// in one operation that still reads the list and the trees a constant number of times.
+    /// </summary>
+    [Fact]
+    public async Task A_mixed_direction_mode_switch_moves_and_restores_every_extra_at_constant_cost()
+    {
+        BuildCyberpunkShape();
+        var before = Hashes(GameRoot);
+        var c = Ctx();
+        Directory.CreateDirectory(c.DataDir);
+        File.WriteAllText(c.ClassificationPath, "{\n"
+            + string.Join(",\n", Enumerable.Range(0, ModCount).Select(i => $"  \"{ModName(i)}\": \"{(i % 2 == 0 ? "mp" : "sp")}\""))
+            + "\n}\n");
+        var evens = Enumerable.Range(0, ModCount).Where(i => i % 2 == 0).Select(ModName).ToList();
+        var odds = Enumerable.Range(0, ModCount).Where(i => i % 2 == 1).Select(ModName).ToList();
+
+        await Scanner.ApplyModeAsync("sp", c);
+        AssertEveryExtraHeld(c, evens);
+
+        var (mixed, _) = await Measure("ApplyMode(mp), 100 on + 100 off", () => Scanner.ApplyModeAsync("mp", c));
+
+        AssertEveryExtraHeld(c, odds);
+        foreach (var (mod, rel) in ExtraEntries().Where(e => evens.Contains(e.Mod)))
+        {
+            Assert.Equal($"EXTRA-{mod}-{rel}", File.ReadAllText(Path.Combine(GameRoot, rel)));
+            Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees", mod)), $"{mod} still has a holding folder");
+        }
+        var rows = await Scanner.BuildModListAsync(c);
+        Assert.All(rows, m => Assert.Equal(evens.Contains(m.Name), m.Enabled));
+
+        await Scanner.ApplyModeAsync("all", c);
+
+        Assert.Equal(before, Hashes(GameRoot));
+        Assert.Empty(Hashes(Path.Combine(DataDir, "disabled-trees")));
+        Assert.True(mixed.ModListBuilds <= 2, $"mixed mode switch built the mod list {mixed.ModListBuilds} times");
+        Assert.True(mixed.TreeBuilds <= 1, $"mixed mode switch read the trees {mixed.TreeBuilds} times");
+    }
+
+    /// <summary>
+    /// The one case where a claimant name appears mid-operation, pinned to what the bulk scope does. Under
+    /// strip_underscore_p_suffix, Bar_P.pak lists as row Bar and pairs the folder Bar_P/. Once Bar is off
+    /// the folder is unpaired and library inference names it Bar_P, whose key (barp) is BarP's. The bulk
+    /// operation decides from the rows as they were when it began, when Bar_P was no row at all: BarP's
+    /// entry moves with BarP, in any order, and comes back with it byte for byte.
+    /// </summary>
+    [Fact]
+    public async Task A_library_name_that_appears_mid_operation_does_not_change_the_bulk_selection()
+    {
+        Put("archive/pc/mod/Bar_P.pak", "BAR");
+        Put("archive/pc/mod/Bar_P/data.bin", "BAR-FOLDER");
+        Put("archive/pc/mod/BarP.pak", "BARP");
+        Put("r6/scripts/BarP/main.reds", "BARP-SCRIPTS");
+        var before = Hashes(GameRoot);
+        var game = new GameEntry
+        {
+            Id = "bulk-cost-p", Engine = "custom", GameRoot = GameRoot, DataDir = DataDir,
+            FileExtensions = new[] { "pak" }, GroupingRule = "strip_underscore_p_suffix",
+            ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
+        };
+        var c = Scanner.GameContext(game, extraModTrees: Trees);
+        var names = (await Scanner.BuildModListAsync(c)).Select(m => m.Name).ToList();
+        Assert.Equal(new[] { "Bar", "BarP" }, names);   // Bar sorts first, so a fresh per-mod read saw Bar_P
+
+        await Scanner.SetAllModsAsync(false, c);
+
+        Assert.Equal("BARP-SCRIPTS", File.ReadAllText(
+            Path.Combine(DataDir, "disabled-trees", "BarP", "r6", "scripts", "BarP", "main.reds")));
+        Assert.False(Directory.Exists(Path.Combine(GameRoot, "r6", "scripts", "BarP")));
+        // The orphaned folder is not Bar's to move and stays where it was.
+        Assert.Equal("BAR-FOLDER", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "Bar_P", "data.bin")));
+
+        await Scanner.SetAllModsAsync(true, c);
+
+        Assert.Equal(before, Hashes(GameRoot));
+        Assert.Empty(Hashes(Path.Combine(DataDir, "disabled-trees")));
+
+        // The case is real: a single toggle reads fresh, so with Bar already off the orphaned Bar_P/ is a
+        // library row that contests BarP, and BarP's entry stays put. The bulk path deliberately does not.
+        await Scanner.DisableModAsync("Bar", c);
+        await Scanner.DisableModAsync("BarP", c);
+        Assert.Equal("BARP-SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "BarP", "main.reds")));
+    }
 }

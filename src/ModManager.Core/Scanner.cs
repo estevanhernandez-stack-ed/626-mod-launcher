@@ -951,8 +951,10 @@ public static class Scanner
     /// first use, so a game with no extra trees still never reads a tree, and a lane that is not the
     /// scanner's never lists anything through here.
     ///
-    /// <para><b>Why one read serves the whole operation.</b> Every consumer reads it before its own first
-    /// write, and what it reads is not changed by the other toggles in the same operation:</para>
+    /// <para><b>Why one read serves the whole operation.</b> It is read before the operation's first write
+    /// (ApplyMode reads it up front; elsewhere the first toggle reads it before it moves anything), and what
+    /// it reads is not changed by the other toggles in the same operation, with the one deliberate exception
+    /// in the second point:</para>
     /// <list type="bullet">
     /// <item>A movable extra-tree entry is unique to its mod: <see cref="ModTrees.MovableFor"/> moves an entry
     /// only when its key equals the mod's and no other row's name reduces to that key (the single-claimant
@@ -960,10 +962,17 @@ public static class Scanner
     /// another mod off takes only entries keyed to THAT mod, and turning one on restores only what its own
     /// turn-off held, keyed the same way. The entries the selection lists for this mod are still exactly
     /// where it read them when this mod's turn comes.</item>
-    /// <item>The claimant names do not change during the operation, because a turned-off row keeps its name:
-    /// a mod turned off lists from its holding folder under the same name, one turned on lists from its files
-    /// under it again, and a library turned off lists as a held mod of the same name. So a contested pair is
-    /// contested for the whole operation, and an uncontested mod stays uncontested.</item>
+    /// <item>The claimant names are the ones the rows showed when the operation began, and that is deliberate.
+    /// Nearly always they could not change anyway: a turned-off row keeps its name (a mod lists from its
+    /// holding folder under the same name, one turned on lists from its files under it again, a library turned
+    /// off lists as a held mod of the same name). The one way a name can appear mid-operation is a turned-off
+    /// mod whose row name differs from its files' stem leaving a stem-paired folder orphaned: under
+    /// <c>strip_underscore_p_suffix</c>, <c>Bar_P.pak</c> lists as row <c>Bar</c> and pairs <c>Bar_P/</c>;
+    /// once Bar is off, library inference emits <c>Bar_P</c>, whose key contests a mod <c>BarP</c>. A fresh
+    /// read per mod held BarP's entries back only when Bar happened to go first, so the outcome depended on
+    /// name order. The start-of-operation set is what the rows said before anything moved, gives the same
+    /// answer in any order, and stays reversible: what moves is held under BarP and comes back with it.
+    /// <c>BulkToggleTreeGameCostTests</c> pins this case.</item>
     /// <item>Ownership and the protected-folder rule are not snapshotted: <see cref="ExtraTreeRows.Select"/>
     /// still asks about ownership per call, and the protected rule is about paths, not contents.</item>
     /// <item>A row's own facts that the toggles read by name (read-only, loader, location, files) come from
@@ -1308,6 +1317,9 @@ public static class Scanner
         // Not seeded with ListWithClass's rows: those carry Class and metadata, and the claimant names and
         // library inference have always been computed from a plain BuildModList. The scope reads its own.
         var scope = new BulkScope(c);
+        // Read before anything moves: the loop can turn mods on and off in one pass, and the selection is the
+        // picture from before the first of them. A game with no extra trees reads nothing here.
+        if (c.ExtraModTrees is { Count: > 0 }) _ = scope.Rows;
         foreach (var m in ListWithClass(c))
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns
