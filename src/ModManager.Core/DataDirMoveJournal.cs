@@ -15,7 +15,7 @@ public enum MoveRecovery
     /// <summary>The data is at the target and only there, and the registration still points at the
     /// source: finish the save the user confirmed.</summary>
     FinishSave,
-    /// <summary>Data at both, or at neither. Not a guess to make for the user: say where each is.</summary>
+    /// <summary>Data at both folders. Not a guess to make for the user: say where each is, once.</summary>
     NeedsYou,
 }
 
@@ -35,7 +35,13 @@ public static class DataDirMoveJournal
 {
     private const string Folder = "pending-moves";
 
-    private static readonly JsonSerializerOptions ReadOpts = new() { PropertyNameCaseInsensitive = true };
+    // The rule's options (camelCase), read case-insensitively as RegistryStore does, so a record written
+    // by hand or by an older build still reads.
+    private static readonly JsonSerializerOptions ReadOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+    };
 
     public static string PathFor(string dataRoot, string gameId)
         => Path.Combine(dataRoot, Folder, Uri.EscapeDataString(gameId) + ".json");
@@ -87,15 +93,39 @@ public static class DataDirMoveJournal
         return (atFrom, atTo) switch
         {
             (false, true) => MoveRecovery.FinishSave,
-            (true, false) => MoveRecovery.NothingToDo,   // never moved, or put back
-            _ => MoveRecovery.NeedsYou,
+            (true, true) => MoveRecovery.NeedsYou,
+            // Never moved, or put back; or nothing anywhere (a move of an empty data dir), which the
+            // registration's folder serves as well as any: nothing to lose, nothing to say.
+            _ => MoveRecovery.NothingToDo,
         };
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> holds anything, answering "yes" whenever it cannot be SURE the
+    /// answer is no. Recovery finishes a save only on positive evidence that the source is empty: a
+    /// folder that is merely unreachable (an offline drive, a dropped share, a denied ACL, all of which
+    /// make <see cref="Directory.Exists"/> say false rather than throw) must never read as empty, or a
+    /// half-copied target would be adopted as the game's data.
+    /// </summary>
+    public static bool HasData(string path) => HasData(path, Directory.Exists, p => Directory.EnumerateFileSystemEntries(p).Any());
+
+    internal static bool HasData(string path, Func<string, bool> dirExists, Func<string, bool> nonEmpty)
+    {
+        try
+        {
+            if (dirExists(path)) return nonEmpty(path);
+            // Absent only counts as absent when its parent is there to be absent from.
+            var parent = Path.GetDirectoryName(Path.GetFullPath(path));
+            return parent is null || !dirExists(parent);
+        }
+        catch { return true; }
     }
 
     /// <summary>The line the player sees for a record that needs them.</summary>
     public static string NeedsYouMessage(DataDirMoveRecord r, string gameName)
-        => $"A change to {gameName}'s folders was interrupted. Its launcher data may be in {r.From} or in {r.To}. "
-           + "Nothing was moved or deleted; open the game's setup to point it at the right one.";
+        => $"A change to {gameName}'s folders was interrupted, and its launcher data is in both {r.From} and {r.To}. "
+           + $"The game still uses {r.From}. Nothing was moved or deleted; if {r.To} is the copy you want, "
+           + "open the game's setup and point it there.";
 
     /// <summary>The line the player sees when an interrupted save was finished.</summary>
     public static string FinishedMessage(DataDirMoveRecord r, string gameName)

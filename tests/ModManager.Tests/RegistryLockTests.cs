@@ -88,11 +88,54 @@ public class RegistryLockTests : IDisposable
         Assert.Equal("a", RegistryStore.Load(_root).ActiveGameId);
     }
 
+    // Review on #364: Load answers an unreadable file with an empty registry. A writer that saved that
+    // would wipe every registered game for one routine change.
+    [Fact]
+    public void A_registry_that_cannot_be_read_is_never_overwritten()
+    {
+        Directory.CreateDirectory(_root);
+        var path = RegistryStore.PathFor(_root);
+        File.WriteAllText(path, "{ \"games\": [ { \"id\": \"a\" }, ");   // a hand edit gone wrong
+
+        var e = Assert.Throws<IOException>(() => RegistryStore.Update(_root, reg => reg.ActiveGameId = "a"));
+
+        Assert.Contains("nothing was changed", e.Message);
+        Assert.Equal("{ \"games\": [ { \"id\": \"a\" }, ", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void A_missing_registry_is_an_empty_one_to_write()
+    {
+        RegistryStore.Update(_root, reg => reg.ActiveGameId = "first");
+        Assert.Equal("first", RegistryStore.Load(_root).ActiveGameId);
+    }
+
+    // Review on #364: the in-process lock is bounded too, so a stuck writer cannot freeze another
+    // writer (on the UI thread, the window) forever.
+    [Fact]
+    public async Task A_writer_stuck_in_this_process_makes_others_fail_in_bounded_time()
+    {
+        Seed("a");
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var stuck = Task.Run(() => RegistryStore.WithLock(_root, () => { holding.Set(); release.Wait(); }));
+        holding.Wait();
+
+        try
+        {
+            Assert.Throws<IOException>(() => RegistryStore.Update(_root, reg => reg.ActiveGameId = "a", TimeSpan.FromMilliseconds(200)));
+        }
+        finally { release.Set(); await stuck; }
+
+        Assert.Null(RegistryStore.Load(_root).ActiveGameId);
+    }
+
     // No surface outside Core writes games.json unlocked. The next new writer copies whatever call it
     // finds first, so the only one it can find is the locked one.
     [Theory]
     [InlineData("ModManager.App")]
     [InlineData("ModManager.Mcp")]
+    [InlineData("ModManager.Core")]
     public void No_surface_writes_the_registry_unlocked(string project)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -102,6 +145,7 @@ public class RegistryLockTests : IDisposable
 
         var offenders = Directory.EnumerateFiles(Path.Combine(dir!.FullName, "src", project), "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{sep}obj{sep}") && !f.Contains($"{sep}bin{sep}"))
+            .Where(f => Path.GetFileName(f) != "RegistryStore.cs")   // the one place Save lives
             .Where(f => File.ReadAllText(f) is var src && (src.Contains("RegistryStore.Save(") || src.Contains("SaveRegistry(")))
             .ToList();
 

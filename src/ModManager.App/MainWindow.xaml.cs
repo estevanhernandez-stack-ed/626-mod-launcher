@@ -169,12 +169,32 @@ public sealed partial class MainWindow : Window
 
         // A data-folder move a previous launcher left mid-save is finished or reported before the
         // first load reads the registry (A6).
+        // Off the UI thread: it reads folders (one may be on a slow drive) and takes the registry lock.
         string? moveNote = null;
-        try { moveNote = App.AppHost.Services.GetRequiredService<Services.RegistrationRepairService>().RecoverInterruptedMoves(); }
+        try
+        {
+            var repair = App.AppHost.Services.GetRequiredService<Services.RegistrationRepairService>();
+            moveNote = await Task.Run(repair.RecoverInterruptedMoves);
+        }
         catch (Exception ex) { moveNote = ModManager.Core.ErrorRemedy.Describe(ex, "Couldn't check for an interrupted folder change"); }
 
         await ViewModel.LoadAsync();
-        if (moveNote is not null) ViewModel.StatusText = moveNote;
+
+        // A dialog, not the status line: the library home covers the footer, and the first game load
+        // overwrites it, so a note there would never be read.
+        if (moveNote is not null)
+        {
+            var d = new ContentDialog
+            {
+                Title = "An interrupted folder change",
+                Content = new TextBlock { Text = moveNote, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content.XamlRoot,
+            };
+            ModManager.App.Services.DialogTheming.Apply(d);
+            await d.ShowAsync();
+        }
 
         // Land on the Library home. LoadAsync above already resolved the active game + mods behind the
         // overlay, so tapping into a game is instant. Load() reads the registry + builds the rows.

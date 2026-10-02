@@ -78,11 +78,43 @@ public class DataDirMoveJournalTests : IDisposable
 
     // Ambiguous: never a guess made for the user.
     [Fact]
-    public void Data_at_both_or_neither_needs_the_user()
+    public void Data_at_both_needs_the_user()
+        => Assert.Equal(MoveRecovery.NeedsYou, DataDirMoveJournal.Assess(Record(), RegisteredAt(From), Has(From, To)));
+
+    // Review on #364: nothing anywhere has nothing to lose, and a record that can never clear would
+    // come back every launch.
+    [Fact]
+    public void Data_at_neither_needs_nothing()
+        => Assert.Equal(MoveRecovery.NothingToDo, DataDirMoveJournal.Assess(Record(), RegisteredAt(From), Has()));
+
+    // Review on #364: an unreachable folder (offline drive, dropped share, denied ACL) makes
+    // Directory.Exists say false. It must read as "has data", or a half-copied target is adopted.
+    [Fact]
+    public void An_unreachable_folder_is_never_read_as_empty()
     {
-        Assert.Equal(MoveRecovery.NeedsYou, DataDirMoveJournal.Assess(Record(), RegisteredAt(From), Has(From, To)));
-        Assert.Equal(MoveRecovery.NeedsYou, DataDirMoveJournal.Assess(Record(), RegisteredAt(From), Has()));
+        var from = Path.Combine(_root, "offline-drive", "data");
+        Assert.True(DataDirMoveJournal.HasData(from, dirExists: _ => false, nonEmpty: _ => false));
     }
+
+    [Fact]
+    public void A_folder_truly_absent_from_a_present_parent_is_empty()
+    {
+        Directory.CreateDirectory(_root);
+        Assert.False(DataDirMoveJournal.HasData(Path.Combine(_root, "gone")));
+    }
+
+    [Fact]
+    public void A_folder_with_something_in_it_has_data_and_an_empty_one_does_not()
+    {
+        Directory.CreateDirectory(From);
+        Assert.False(DataDirMoveJournal.HasData(From));
+        File.WriteAllText(Path.Combine(From, "x"), "x");
+        Assert.True(DataDirMoveJournal.HasData(From));
+    }
+
+    [Fact]
+    public void A_folder_that_throws_when_read_has_data()
+        => Assert.True(DataDirMoveJournal.HasData(From, dirExists: _ => true, nonEmpty: _ => throw new UnauthorizedAccessException()));
 
     [Fact]
     public void A_game_removed_since_needs_nothing()
@@ -102,5 +134,6 @@ public class DataDirMoveJournalTests : IDisposable
         Assert.Contains(From, needs);
         Assert.Contains(To, needs);
         Assert.Contains("Nothing was moved or deleted", needs);
+        Assert.Contains($"still uses {From}", needs);
     }
 }

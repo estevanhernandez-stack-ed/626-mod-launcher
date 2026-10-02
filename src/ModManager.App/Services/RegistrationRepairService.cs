@@ -65,6 +65,10 @@ public sealed class RegistrationRepairService
         // registration points.
         var sourceSurvived = false;
 
+        // The pins first: the journal below records the entry exactly as it will be saved, so a save an
+        // interrupted launch finishes keeps the fields the user corrected pinned against the manifest.
+        if (plan.FieldsToPin.Count > 0) proposed.UserSet = plan.FieldsToPin;
+
         if (plan.DataDir is { } move)
         {
             if (moveDataDir)
@@ -91,8 +95,6 @@ public sealed class RegistrationRepairService
                 proposed.DataDir = plan.PinDataDirTo;
             }
         }
-
-        if (plan.FieldsToPin.Count > 0) proposed.UserSet = plan.FieldsToPin;
 
         try
         {
@@ -167,7 +169,7 @@ public sealed class RegistrationRepairService
     /// Finish or report data-folder moves a previous launcher left mid-save (A6). Run once at startup,
     /// before the first load. Each record is assessed inside the registry lock, against the registry
     /// as it is then: a finished save is finished exactly as the user confirmed it; anything ambiguous
-    /// is reported and left alone, with the record kept until the game's folders say otherwise.
+    /// is reported once and left alone. Synchronous file and registry work: call it off the UI thread.
     /// </summary>
     /// <returns>The status line to show, or null when there was nothing to say.</returns>
     public string? RecoverInterruptedMoves()
@@ -179,7 +181,7 @@ public sealed class RegistrationRepairService
             var (verdict, name) = _svc.UpdateRegistry(reg =>
             {
                 var registered = reg.Games.FirstOrDefault(g => string.Equals(g.Id, record.GameId, StringComparison.OrdinalIgnoreCase));
-                var v = DataDirMoveJournal.Assess(record, registered, HasData);
+                var v = DataDirMoveJournal.Assess(record, registered, DataDirMoveJournal.HasData);
                 var label = registered?.GameName ?? record.Proposed.GameName;
                 return v == MoveRecovery.FinishSave
                     ? (Registry.UpsertGame(reg, record.Proposed), (v, label))
@@ -193,6 +195,10 @@ public sealed class RegistrationRepairService
                     notes.Add(DataDirMoveJournal.FinishedMessage(record, name));
                     break;
                 case MoveRecovery.NeedsYou:
+                    // Said once, then forgotten: the folders are untouched and the game keeps the one it
+                    // uses. A record kept until the user acts would come back every launch for a choice
+                    // (keep the source) that needs no action at all.
+                    DataDirMoveJournal.Clear(root, record.GameId);
                     notes.Add(DataDirMoveJournal.NeedsYouMessage(record, name));
                     break;
                 default:
@@ -201,12 +207,6 @@ public sealed class RegistrationRepairService
             }
         }
         return notes.Count == 0 ? null : string.Join(" ", notes);
-    }
-
-    private static bool HasData(string path)
-    {
-        try { return Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any(); }
-        catch { return true; }   // unreadable is not "empty": never finish a save on a folder we cannot see into
     }
 
     // DataDirMove.Norm is internal to Core (visible only to the test assembly), so the read-back does

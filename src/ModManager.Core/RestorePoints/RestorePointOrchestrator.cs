@@ -189,7 +189,12 @@ public sealed class RestorePointOrchestrator
 
     private void DeleteTopLevelState()
     {
-        foreach (var f in TopLevelFiles) { try { var p = Path.Combine(_dataRoot, f); if (File.Exists(p)) File.Delete(p); } catch { } }
+        // Under the registry's lock (A6): games.json is one of these, and a writer mid-Update must not
+        // see it vanish between its read and its save, or save it straight back.
+        Persistence.RegistryStore.WithLock(_dataRoot, () =>
+        {
+            foreach (var f in TopLevelFiles) { try { var p = Path.Combine(_dataRoot, f); if (File.Exists(p)) File.Delete(p); } catch { } }
+        });
         foreach (var d in TopLevelDirs) { try { var p = Path.Combine(_dataRoot, d); if (Directory.Exists(p)) Directory.Delete(p, recursive: true); } catch { } }
     }
 
@@ -283,11 +288,15 @@ public sealed class RestorePointOrchestrator
     // JSON + theme/avatar files — a plain overwrite copy, not the gated game-folder path.
     private void RestoreTopLevelFrom(string rpDir)
     {
-        foreach (var f in TopLevelFiles)
+        // Under the registry's lock (A6), so a writer mid-Update cannot save over the restored games.json.
+        Persistence.RegistryStore.WithLock(_dataRoot, () =>
         {
-            var src = Path.Combine(rpDir, f);
-            if (File.Exists(src)) { Directory.CreateDirectory(_dataRoot); File.Copy(src, Path.Combine(_dataRoot, f), overwrite: true); }
-        }
+            foreach (var f in TopLevelFiles)
+            {
+                var src = Path.Combine(rpDir, f);
+                if (File.Exists(src)) { Directory.CreateDirectory(_dataRoot); File.Copy(src, Path.Combine(_dataRoot, f), overwrite: true); }
+            }
+        });
         foreach (var d in TopLevelDirs)
         {
             var src = Path.Combine(rpDir, d);

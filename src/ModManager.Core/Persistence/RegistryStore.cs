@@ -35,34 +35,76 @@ public static class RegistryStore
     /// Load, change and save the registry as ONE step that no other writer can interleave with (A6).
     ///
     /// <para><b>Why.</b> games.json is shared by every writer in the app (setting the active game,
-    /// stamping a launch, re-detection, discovery, the registration repair). Each used to Load, change
-    /// and Save on its own, so a writer holding a stale snapshot could land after another and restore
-    /// what that one had just changed. For the repair that meant a game pointing back at a data folder
-    /// its mods had just been moved out of.</para>
+    /// stamping a launch, re-detection, discovery, the registration repair, restore points). Each used
+    /// to Load, change and Save on its own, so a writer holding a stale snapshot could land after
+    /// another and restore what that one had just changed. For the repair that meant a game pointing
+    /// back at a data folder its mods had just been moved out of.</para>
     ///
-    /// <para><b>How.</b> An in-process lock per registry file, and an exclusive lock file beside it so a
-    /// second launcher process waits too. The lock file is deleted when released. A writer that cannot
-    /// get the lock within <paramref name="timeout"/> (default 10 s) throws <see cref="IOException"/>
-    /// and writes nothing, rather than writing unlocked.</para>
+    /// <para><b>How.</b> An in-process lock per registry file and an exclusive lock file beside it, so a
+    /// second launcher process waits too (<see cref="WithLock"/>). Both are bounded by
+    /// <paramref name="timeout"/> (default 10 s); a writer that cannot get them throws
+    /// <see cref="IOException"/> and writes nothing, rather than writing unlocked.</para>
+    ///
+    /// <para><b>Never writes on a bad read.</b> <see cref="Load"/> answers an unreadable file with an
+    /// empty registry, which is right for a reader and catastrophic for a writer: saving that would wipe
+    /// every registered game for one routine change. Update reads strictly: a missing file is an empty
+    /// registry, but a file that exists and cannot be read or parsed throws and nothing is written.</para>
     /// </summary>
     /// <param name="change">Given the registry as it is on disk now, returns the registry to write and a
     /// result handed back to the caller.</param>
     public static T Update<T>(string dataRoot, Func<GameRegistry, (GameRegistry Registry, T Result)> change, TimeSpan? timeout = null)
     {
-        Directory.CreateDirectory(dataRoot);
-        var path = Path.GetFullPath(PathFor(dataRoot));
-        lock (Gates.GetOrAdd(path, _ => new object()))
+        T result = default!;
+        WithLock(dataRoot, () =>
         {
-            using var held = AcquireFileLock(path + ".lock", timeout ?? TimeSpan.FromSeconds(10));
-            var (next, result) = change(Load(dataRoot));
+            var (next, r) = change(LoadForUpdate(dataRoot));
             Save(dataRoot, next);
-            return result;
-        }
+            result = r;
+        }, timeout);
+        return result;
     }
 
     /// <summary><see cref="Update{T}"/> for a change that mutates the registry in place and returns nothing.</summary>
     public static void Update(string dataRoot, Action<GameRegistry> change, TimeSpan? timeout = null)
         => Update<object?>(dataRoot, reg => { change(reg); return (reg, null); }, timeout);
+
+    /// <summary>
+    /// Run <paramref name="action"/> holding the registry's locks: for anything that touches games.json
+    /// as a FILE rather than through <see cref="Update{T}"/> (restore points copy it in and delete it).
+    /// Same in-process and cross-process locks, same bound, same refusal.
+    /// </summary>
+    public static void WithLock(string dataRoot, Action action, TimeSpan? timeout = null)
+    {
+        Directory.CreateDirectory(dataRoot);
+        var path = Path.GetFullPath(PathFor(dataRoot));
+        var limit = timeout ?? TimeSpan.FromSeconds(10);
+        var gate = Gates.GetOrAdd(path, _ => new object());
+        // Bounded, like the file lock: a writer stuck on a slow folder must not freeze another writer
+        // (on the UI thread, the window) forever.
+        if (!Monitor.TryEnter(gate, limit)) throw Busy(null);
+        try
+        {
+            using var held = AcquireFileLock(path + ".lock", limit);
+            action();
+        }
+        finally { Monitor.Exit(gate); }
+    }
+
+    private static GameRegistry LoadForUpdate(string dataRoot)
+    {
+        var path = PathFor(dataRoot);
+        if (!File.Exists(path)) return Registry.EmptyRegistry();
+        try
+        {
+            return JsonSerializer.Deserialize<GameRegistry>(File.ReadAllText(path), ReadOpts)
+                   ?? throw new JsonException("games.json is empty.");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        {
+            throw new IOException("Couldn't read the game list (games.json), so nothing was changed. "
+                                  + "If you edited it by hand, check it is valid JSON.", e);
+        }
+    }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates =
         new(StringComparer.OrdinalIgnoreCase);
@@ -77,14 +119,16 @@ public static class RegistryStore
                 return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
                     bufferSize: 1, FileOptions.DeleteOnClose);
             }
-            catch (IOException) when (DateTime.UtcNow < deadline)
+            // Access denied is how Windows answers a lock file another handle still holds pending
+            // delete; it clears as soon as that handle closes, so it is waited out like a sharing clash.
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
+                if (DateTime.UtcNow >= deadline) throw Busy(e);
                 Thread.Sleep(25);
-            }
-            catch (IOException e)
-            {
-                throw new IOException("Another launcher window is saving its game list. Nothing was changed; try again.", e);
             }
         }
     }
+
+    private static IOException Busy(Exception? inner)
+        => new("Another launcher window is saving its game list. Nothing was changed; try again.", inner);
 }
