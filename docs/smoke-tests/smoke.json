@@ -2189,6 +2189,19 @@
    "source": "scripts/smoke-run.ps1"
   },
   {
+   "id": "alias-names-hold-apart",
+   "title": "Two mods Windows would read as one folder are held apart and come back intact",
+   "surface": "fix/toggle-name-alias - holding-folder names Windows can't alias",
+   "coverage": "harness",
+   "status": "pending",
+   "lastVerified": null,
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Write inert probes B4AliasProbe_P.pak and 'B4AliasProbe _P.pak' into Windrose's ~mods, reload, turn each off through its row toggle, then turn both back on. The probes and any held leftovers for those two names are removed in a finally.",
+   "expect": "Two rows, ModRow.B4AliasProbe and 'ModRow.B4AliasProbe ' (trailing space). Turned off, the data folder holds disabled/B4AliasProbe and disabled/~626~4234416c69617350726f626520 as separate folders, each with its own probe. Turned on, both probes are back with their original hashes and both holding folders are gone.",
+   "note": "Before the fix 'B4AliasProbe ' was held in disabled/B4AliasProbe (Windows strips the trailing space), so the second turn-off collided with the first. Probes are written straight into ~mods, not through intake, so no install record is made."
+  },
+  {
    "id": "launch-verification",
    "title": "The launcher says whether the loaders actually ran",
    "surface": "B5 - did the mods load",
