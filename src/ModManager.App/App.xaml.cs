@@ -153,9 +153,15 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new MainWindow();
+        var shell = new MainWindow();
+        _window = shell;
         MainWindow = _window;
         _window.Activate();
+
+        // Another launch of the launcher was redirected here (Program.RedirectedToRunningInstance,
+        // close to tray): bring this window back. Raised on a background thread.
+        Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().Activated +=
+            (_, _) => shell.DispatcherQueue.TryEnqueue(shell.ShowFromTray);
 
         // Fire-and-forget update check (debounced 24h, fails silently). Comfort, not load-bearing.
         // Only meaningful when the app was installed via the Velopack Setup.exe — UpdateChecker

@@ -64,6 +64,25 @@ public sealed class AppSettingsService
         Save();
     }
 
+    /// <summary>Whether closing the window keeps the launcher running in the notification area (B1,
+    /// default off: closing means closing until the user says otherwise). The tray icon is shown
+    /// for as long as this is on, so Quit is always one right-click away.</summary>
+    public bool CloseToTray => _closeToTray;
+
+    private bool _closeToTray;
+
+    /// <summary>Raised when <see cref="CloseToTray"/> changes, so the shell can add or remove the
+    /// tray icon on the live window.</summary>
+    public event EventHandler? CloseToTrayChanged;
+
+    public void SetCloseToTray(bool enabled)
+    {
+        if (_closeToTray == enabled) return;
+        _closeToTray = enabled;
+        Save();
+        CloseToTrayChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>The last theme the user picked, restored at launch (F-080). Null means no pick
     /// has ever been saved — the shell falls back to ThemeService.Default (the flagship).</summary>
     public string? ThemeId => _themeId;
@@ -87,6 +106,7 @@ public sealed class AppSettingsService
         _autoCheckModUpdates = LoadAutoCheckModUpdates();
         _keepPluginsUpdated = LoadKeepPluginsUpdated();
         _themeId = LoadThemeId();
+        _closeToTray = LoadCloseToTray();
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
@@ -159,6 +179,20 @@ public sealed class AppSettingsService
         return true;
     }
 
+    private bool LoadCloseToTray()
+    {
+        try
+        {
+            if (!File.Exists(Path)) return false;
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path));
+            if (doc.RootElement.TryGetProperty("closeToTray", out var v)
+                && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
+                return v.GetBoolean();
+        }
+        catch { /* missing / corrupt — default off */ }
+        return false;
+    }
+
     private string? LoadThemeId()
     {
         try
@@ -188,6 +222,7 @@ public sealed class AppSettingsService
                 + $"\"autoUpdateDefinitions\":{(_autoUpdateDefinitions ? "true" : "false")},"
                 + $"\"autoCheckModUpdates\":{(_autoCheckModUpdates ? "true" : "false")},"
                 + $"\"keepPluginsUpdated\":{(_keepPluginsUpdated ? "true" : "false")},"
+                + $"\"closeToTray\":{(_closeToTray ? "true" : "false")},"
                 + $"\"themeId\":{themeId}}}";
             // Atomic temp-write + rename (file-op law): theme picks made this write frequent,
             // and a kill mid-WriteAllText would truncate the file and silently reset every toggle.

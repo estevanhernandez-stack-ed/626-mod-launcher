@@ -19,6 +19,9 @@ public sealed partial class MainWindow : Window
     private readonly LibraryView _libraryView;
 
     private bool _loaded;
+    // Close to tray (B1): the icon while the setting is on, and whether the next close is a real one.
+    private Services.TrayIcon? _tray;
+    private bool _quitting;
     // Session-level opt-out for the "managed by another tool" toggle warning (set from the dialog).
     private bool _suppressOwnedToggleWarning;
 
@@ -137,6 +140,18 @@ public sealed partial class MainWindow : Window
         ApplyBackdrop(appSettings.Backdrop);
         appSettings.BackdropChanged += (_, _) => ApplyBackdrop(appSettings.Backdrop);
 
+        // Close to tray (B1). The icon lives exactly as long as the setting is on; a close with it on
+        // hides the window instead, and the tray's Quit is the real exit.
+        ApplyCloseToTray(appSettings.CloseToTray);
+        appSettings.CloseToTrayChanged += (_, _) => ApplyCloseToTray(appSettings.CloseToTray);
+        AppWindow.Closing += (_, e) =>
+        {
+            if (_quitting || _tray is null) return;
+            e.Cancel = true;
+            AppWindow.Hide();
+        };
+        Closed += (_, _) => { _tray?.Dispose(); _tray = null; };
+
         Activated += OnFirstActivated;
     }
 
@@ -155,6 +170,49 @@ public sealed partial class MainWindow : Window
         RootGrid.Background = kind == Services.WindowBackdropKind.Solid
             ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ThemeBg"]
             : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    private void ApplyCloseToTray(bool on)
+    {
+        if (!on)
+        {
+            _tray?.Dispose();
+            _tray = null;
+            return;
+        }
+        if (_tray is not null) return;
+        try
+        {
+            var tray = new Services.TrayIcon(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico"), "626 Mod Launcher");
+            // Through the dispatcher, never inline: the tray raises these from inside its window
+            // procedure (and the menu's modal loop), which is no place to re-enter WinUI.
+            tray.OpenRequested += () => DispatcherQueue.TryEnqueue(ShowFromTray);
+            tray.QuitRequested += () => DispatcherQueue.TryEnqueue(QuitFromTray);
+            _tray = tray;
+        }
+        catch (Exception ex)
+        {
+            // No icon means no way back to a hidden window, so the close stays a close.
+            ModManager.App.Services.AppDiagnostics.Log("tray", ex);
+            _tray = null;
+        }
+    }
+
+    /// <summary>Bring the window back from the tray (or forward, when another launch was redirected
+    /// here). Safe to call when it is already showing.</summary>
+    public void ShowFromTray()
+    {
+        AppWindow.Show();
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } p)
+            p.Restore();
+        Activate();
+    }
+
+    private void QuitFromTray()
+    {
+        _quitting = true;
+        Close();
     }
 
     private async void OnFirstActivated(object sender, WindowActivatedEventArgs args)

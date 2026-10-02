@@ -679,6 +679,9 @@ public sealed partial class SettingsDialog : ContentDialog
         // Seed the auto-check-for-mod-updates toggle from the saved setting (default on).
         AutoCheckModUpdatesCheck.IsChecked = _appSettings.AutoCheckModUpdates;
 
+        // Seed the close-to-tray toggle (default off).
+        CloseToTrayCheck.IsChecked = _appSettings.CloseToTray;
+
         // Seed the keep-plugins-updated toggle.
 
         // Seed the Nexus section. Re-validate the stored key first (offline-safe) so the account
@@ -774,6 +777,9 @@ public sealed partial class SettingsDialog : ContentDialog
     /// needed — it mirrors the backdrop dropdown's apply-on-change behavior).</summary>
     private void OnAutoCheckModUpdatesToggled(object sender, RoutedEventArgs e)
         => _appSettings.SetAutoCheckModUpdates(AutoCheckModUpdatesCheck.IsChecked == true);
+
+    private void OnCloseToTrayToggled(object sender, RoutedEventArgs e)
+        => _appSettings.SetCloseToTray(CloseToTrayCheck.IsChecked == true);
 
     private async void OnPickImage(object sender, RoutedEventArgs e)
     {

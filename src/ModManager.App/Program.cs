@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using System.Threading;
 using Velopack;
 
@@ -28,11 +29,39 @@ public static class Program
         // until a feed exists.
         ModManager.App.Services.RemoteManifestSource.ApplyCachedAtStartup();
 
+        // Close to tray (B1): a launcher hidden in the tray is still running, so starting it again
+        // from the Start menu must bring that window back, not open a second one over the same
+        // games.json. Only with the setting on; with it off nothing ever hides, and two windows
+        // stay possible exactly as before.
+        if (RedirectedToRunningInstance()) return;
+
         Microsoft.UI.Xaml.Application.Start((p) =>
         {
             var ctx = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(ctx);
             _ = new App();
         });
+    }
+
+    /// <summary>True when another launcher already owns the "main" key and this activation was
+    /// handed to it (which shows its window), so this process should exit.</summary>
+    private static bool RedirectedToRunningInstance()
+    {
+        try
+        {
+            // Every instance claims the key when it is free, so the first one running always holds it.
+            var main = AppInstance.FindOrRegisterForKey("main");
+            if (main.IsCurrent) return false;
+            if (!new ModManager.App.Services.AppSettingsService().CloseToTray) return false;
+
+            var args = AppInstance.GetCurrent().GetActivatedEventArgs();
+            // Off this STA thread, which is about to host XAML or exit. A redirect that doesn't land
+            // in time falls through to a normal start: a second window beats no window at all.
+            return Task.Run(() => main.RedirectActivationToAsync(args).AsTask()).Wait(TimeSpan.FromSeconds(5));
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
