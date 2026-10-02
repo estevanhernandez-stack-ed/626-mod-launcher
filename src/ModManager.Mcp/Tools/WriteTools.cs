@@ -114,16 +114,22 @@ public static class WriteTools
     }
 
     [McpServerTool(Name = "get_agent_log")]
-    [Description("What agents have done to this game, newest last: every write attempt including the "
-                 + "ones that were refused, with the arguments they asked for.")]
+    [Description("What agents have done, newest last: every write attempt including the ones that were "
+                 + "refused, with the arguments they asked for. With a gameId, that game's log. With none, the "
+                 + "launcher's own log: theme changes, and refusals that named no game yet.")]
     public static object GetAgentLog(
-        [Description("The game id, from list_games.")] string gameId,
+        [Description("The game id, from list_games. Leave empty for the launcher's own log.")] string? gameId = null,
         [Description("How many entries to return, newest last. Default 50.")] int limit = 50)
     {
-        var game = RegistryStore.Load(McpConfig.DataRoot).Games.FirstOrDefault(g => g.Id == gameId);
-        if (game is null) return new { ok = false, detail = $"No game with id '{gameId}'." };
+        string dataDir;
+        if (string.IsNullOrWhiteSpace(gameId)) dataDir = McpConfig.DataRoot;
+        else
+        {
+            var game = RegistryStore.Load(McpConfig.DataRoot).Games.FirstOrDefault(g => g.Id == gameId);
+            if (game is null) return new { ok = false, detail = $"No game with id '{gameId}'." };
+            dataDir = Scanner.DataDirForGame(game);
+        }
 
-        var dataDir = Scanner.DataDirForGame(game);
         var all = AgentAudit.Read(dataDir);
         var take = Math.Clamp(limit, 1, 500);
 

@@ -193,7 +193,7 @@ public sealed class RestorePointOrchestrator
         // see it vanish between its read and its save, or save it straight back.
         Persistence.RegistryStore.WithLock(_dataRoot, () =>
         {
-            foreach (var f in TopLevelFiles) { try { var p = Path.Combine(_dataRoot, f); if (File.Exists(p)) File.Delete(p); } catch { } }
+            foreach (var f in TopLevelFiles) { try { UnderFileLock(f, () => { var p = Path.Combine(_dataRoot, f); if (File.Exists(p)) File.Delete(p); }); } catch { } }
         });
         foreach (var d in TopLevelDirs) { try { var p = Path.Combine(_dataRoot, d); if (Directory.Exists(p)) Directory.Delete(p, recursive: true); } catch { } }
     }
@@ -294,7 +294,8 @@ public sealed class RestorePointOrchestrator
             foreach (var f in TopLevelFiles)
             {
                 var src = Path.Combine(rpDir, f);
-                if (File.Exists(src)) { Directory.CreateDirectory(_dataRoot); File.Copy(src, Path.Combine(_dataRoot, f), overwrite: true); }
+                if (File.Exists(src))
+                    UnderFileLock(f, () => { Directory.CreateDirectory(_dataRoot); File.Copy(src, Path.Combine(_dataRoot, f), overwrite: true); });
             }
         });
         foreach (var d in TopLevelDirs)
@@ -302,6 +303,15 @@ public sealed class RestorePointOrchestrator
             var src = Path.Combine(rpDir, d);
             if (Directory.Exists(src)) CopyDirOverwrite(src, Path.Combine(_dataRoot, d));
         }
+    }
+
+    // app-settings.json has its own lock (the app and the agent's apply_theme merge keys into it), so a
+    // save mid-merge can't rename its copy over the one a restore just put back. games.json's lock is
+    // already held by the caller. Lock order is always games.json, then app-settings.json.
+    private void UnderFileLock(string topLevelFile, Action action)
+    {
+        if (topLevelFile == AppSettingsFile.FileName) AppSettingsFile.WithLock(AppSettingsFile.PathIn(_dataRoot), action);
+        else action();
     }
 
     private static void CopyDirOverwrite(string src, string dest)

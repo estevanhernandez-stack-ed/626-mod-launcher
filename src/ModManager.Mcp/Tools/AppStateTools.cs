@@ -1,14 +1,16 @@
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Server;
 using ModManager.Core;
+using ModManager.Core.Agent;
 using ModManager.Core.Nexus;
 using CoreThemes = ModManager.Core.Themes;
 
 namespace ModManager.Mcp.Tools;
 
 /// <summary>
-/// App-level state for an agent (E1, third slice): the themes and the preferences a human sees in
-/// Settings. Both read through the same Core functions the app reads through
+/// App-level state for an agent (E1, third slice; apply_theme in the sixth): the themes and the
+/// preferences a human sees in Settings, and switching the theme. Both read through the same Core functions the app reads through
 /// (<see cref="CoreThemes.LoadUserThemes"/>, <see cref="CoreThemes.PickActive"/>,
 /// <see cref="AppSettingsFile.Read"/>), so the answer is what the app starts from, not a second reading
 /// of the files. Parity plus the reason: each answer also says why a value is what it is (a saved
@@ -25,8 +27,7 @@ public static class AppStateTools
                  + "theme's contrast warnings.")]
     public static object ListThemes()
     {
-        var userLoad = CoreThemes.LoadUserThemes(Path.Combine(McpConfig.DataRoot, "themes"));
-        var themes = CoreThemes.BuildThemeList(CoreThemes.BuiltinThemes, userLoad.Themes);
+        var (userLoad, themes) = LoadThemes();
         var userIds = userLoad.Themes.Select(t => t.Id).ToHashSet();
         var settings = AppSettingsFile.Read(AppSettingsFile.PathIn(McpConfig.DataRoot));
         var (active, savedMissing) = CoreThemes.PickActive(themes, settings.ThemeId);
@@ -53,6 +54,96 @@ public static class AppStateTools
                    + "not offered at all. This reads the disk: a window that is already open keeps the theme it "
                    + "loaded until Settings reloads the list, so a theme file changed under a running app shows "
                    + "here first.",
+        };
+    }
+
+    // The list the Settings theme picker offers, built the way ThemeService builds it.
+    private static (CoreThemes.UserThemeLoad UserLoad, IReadOnlyList<Theme> Themes) LoadThemes()
+    {
+        var userLoad = CoreThemes.LoadUserThemes(Path.Combine(McpConfig.DataRoot, "themes"));
+        return (userLoad, CoreThemes.BuildThemeList(CoreThemes.BuiltinThemes, userLoad.Themes));
+    }
+
+    [McpServerTool(Name = "apply_theme")]
+    [Description("Switch the launcher's theme, as picking one from the THEME menu does: the pick is saved to "
+                 + "app-settings.json through the same writer the app uses. A running launcher switches to it within "
+                 + "a moment and says so on its status line, and a closed one opens on it. themeId is an id from "
+                 + "list_themes. It changes only the look, never a game or a mod, and is safe to repeat. To undo, "
+                 + "apply previousThemeId. Recorded in the launcher's agent-log.jsonl (get_agent_log with no gameId).")]
+    public static object ApplyTheme(
+        [Description("The theme id, from list_themes (e.g. 626-labs, forge).")] string themeId)
+    {
+        const string tool = "apply_theme";
+        var args = new Dictionary<string, string> { ["themeId"] = themeId ?? "" };
+        var (userLoad, themes) = LoadThemes();
+
+        // Ids are file names lowercased, so an id typed in another case is the same theme.
+        var wanted = themes.FirstOrDefault(t => string.Equals(t.Id, themeId?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (wanted is null)
+        {
+            var unusable = userLoad.Unusable.FirstOrDefault(u =>
+                string.Equals(Path.GetFileNameWithoutExtension(u.File), themeId?.Trim(), StringComparison.OrdinalIgnoreCase));
+            var why = unusable is not null
+                ? $"The theme file {unusable.File} is not offered: {unusable.Reason}."
+                : $"No theme '{themeId}'.";
+            return WriteTools.Refuse(tool, McpConfig.DataRoot, "", args, AgentRefusal.NotFound,
+                $"{why} Themes: {string.Join(", ", themes.Select(t => t.Id))}.");
+        }
+
+        var path = AppSettingsFile.PathIn(McpConfig.DataRoot);
+
+        void Audit(string result, string detail) =>
+            AgentAudit.Append(McpConfig.DataRoot, new AgentAuditEntry(DateTime.UtcNow, tool, "", args, result, detail));
+
+        // What it replaced is read under the write's own lock, so it is the pick this one overwrote, not
+        // a read taken a moment earlier. An unchanged id is not rewritten.
+        AppSettingsFile.KeyWrite write;
+        try { write = AppSettingsFile.WriteKey(path, "themeId", wanted.Id); }
+        catch (Exception e)
+        {
+            var detail = ErrorRemedy.Describe(e);
+            Audit("error", detail);
+            return new { ok = false, refusal = "error", detail };
+        }
+        // As the app reads it: a saved id that isn't a string, or is blank, is no pick.
+        var previousSaved = write.Previous is JsonValue v && v.TryGetValue<string>(out var prevId) && !string.IsNullOrWhiteSpace(prevId)
+            ? prevId
+            : null;
+        var (wasShowing, _) = CoreThemes.PickActive(themes, write.StartedOver ? null : previousSaved);
+
+        // Verify by reading back the way the app will at its next start or file event. A read that
+        // lands on another writer's rename is tried again before calling it not applied.
+        var after = AppSettingsFile.Read(path);
+        for (var attempt = 1; after.FileState != "ok" && attempt < 4; attempt++)
+        {
+            Thread.Sleep(50 * attempt);
+            after = AppSettingsFile.Read(path);
+        }
+        var (nowShowing, _) = CoreThemes.PickActive(themes, after.ThemeId);
+        if (nowShowing.Id != wanted.Id)
+        {
+            var notApplied = $"Saved {wanted.Id}, but app-settings.json reads back as '{after.ThemeId}' ({after.FileState}). "
+                             + "Something else wrote it at the same moment; apply again.";
+            Audit("not_applied", notApplied);
+            return new { ok = false, refusal = "not_applied", detail = notApplied };
+        }
+
+        var done = write.Written ? $"Theme set to {wanted.Name} (was {wasShowing.Name})." : $"{wanted.Name} was already the saved theme.";
+        Audit("ok", done);
+        return new
+        {
+            ok = true,
+            themeId = wanted.Id,
+            name = wanted.Name,
+            changed = write.Written,
+            previousThemeId = wasShowing.Id,
+            previousSavedThemeId = write.StartedOver ? null : previousSaved,
+            // A corrupt file already read as all defaults; saving started it over with just this key.
+            settingsFileStartedOver = write.StartedOver,
+            contrastWarnings = CoreThemes.ContrastReport(wanted),
+            detail = done,
+            hint = "contrastWarnings are advisory, as in the app: the theme applies either way. A running launcher "
+                   + "switches when it sees the file change; one that is closed opens on this theme.",
         };
     }
 

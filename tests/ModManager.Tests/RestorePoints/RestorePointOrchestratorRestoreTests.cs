@@ -93,6 +93,36 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
         Assert.Equal(new byte[] { 9, 9, 9 }, File.ReadAllBytes(reg));   // moved file restored byte-for-byte
     }
 
+    // E1 sixth slice review: app-settings.json is merged a key at a time by the app and the agent's
+    // apply_theme under its own lock. A restore copies it back under that lock too, so a save that read
+    // the pre-restore file can't land its merged copy over the restored one.
+    [Fact]
+    public async Task Restore_waits_for_an_app_settings_save_in_progress_and_lands_after_it()
+    {
+        var (game, c, dataRoot, _) = Setup();
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1 });
+        var settings = AppSettingsFile.PathIn(dataRoot);
+        AppSettingsFile.WriteKey(settings, "themeId", "ember");
+        var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { CreateRestorePoint = true }, "20260528-141233", default)).Ok);
+
+        // A writer mid-merge: it holds the lock, and its stale copy lands late.
+        using var holding = new ManualResetEventSlim();
+        var writer = Task.Run(() => AppSettingsFile.WithLock(settings, () =>
+        {
+            holding.Set();
+            Thread.Sleep(400);
+            File.WriteAllText(settings, "{\"themeId\":\"stale\"}");
+        }));
+        holding.Wait();
+
+        var restore = await orch.RestoreAsync("20260528-141233", default);
+        await writer;
+
+        Assert.True(restore.Ok);
+        Assert.Equal("ember", AppSettingsFile.Read(settings).ThemeId);
+    }
+
     [Fact]
     public async Task Restore_refuses_an_unsealed_point()
     {

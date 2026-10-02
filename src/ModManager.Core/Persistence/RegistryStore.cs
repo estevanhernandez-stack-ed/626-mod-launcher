@@ -84,7 +84,7 @@ public static class RegistryStore
         if (!Monitor.TryEnter(gate, limit)) throw Busy(null);
         try
         {
-            using var held = AcquireFileLock(path + ".lock", limit);
+            using var held = FileLock.Acquire(path + ".lock", limit, Busy);
             action();
         }
         finally { Monitor.Exit(gate); }
@@ -108,26 +108,6 @@ public static class RegistryStore
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates =
         new(StringComparer.OrdinalIgnoreCase);
-
-    private static FileStream AcquireFileLock(string lockPath, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (true)
-        {
-            try
-            {
-                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
-                    bufferSize: 1, FileOptions.DeleteOnClose);
-            }
-            // Access denied is how Windows answers a lock file another handle still holds pending
-            // delete; it clears as soon as that handle closes, so it is waited out like a sharing clash.
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                if (DateTime.UtcNow >= deadline) throw Busy(e);
-                Thread.Sleep(25);
-            }
-        }
-    }
 
     private static IOException Busy(Exception? inner)
         => new("Another launcher window is saving its game list. Nothing was changed; try again.", inner);

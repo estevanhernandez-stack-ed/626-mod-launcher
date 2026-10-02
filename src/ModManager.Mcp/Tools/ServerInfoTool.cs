@@ -19,7 +19,8 @@ public static class ServerInfoTool
         // 2: list_themes, get_app_settings, list_save_mods (E1, third slice).
         // 3: dry_run_intake, intake (E1, fourth slice).
         // 4: register_game, uninstall_mod (E1, fifth slice).
-        catalogVersion = 4,
+        // 5: apply_theme; get_agent_log reads the launcher's own log when given no gameId (E1, sixth slice).
+        catalogVersion = 5,
         // .mcp.json runs the server with --no-build, so it serves whatever was last compiled. That
         // sat on a nine-day-old binary through an entire session with nothing to surface it: no
         // payload carried a version, so the only way to notice was comparing file timestamps, which

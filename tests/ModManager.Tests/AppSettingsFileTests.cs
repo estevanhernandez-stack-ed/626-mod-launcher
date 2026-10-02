@@ -118,4 +118,147 @@ public class AppSettingsFileTests : IDisposable
         Assert.Equal(new NexusTokenStore.StoreSummary(false, null, false, true), NexusTokenStore.Describe("""{ "tokensProtected": 42 }"""));
         Assert.Equal(new NexusTokenStore.StoreSummary(false, null, false, true), NexusTokenStore.Describe("""{ "connectedUser": { } }"""));
     }
+
+    // ---- WriteKey: the one writer the app and the agent share (E1, sixth slice) ----
+
+    [Fact]
+    public void WriteKey_merges_one_key_and_keeps_every_other_setting()
+    {
+        File.WriteAllText(FilePath, "{\"backdrop\":\"mica\",\"closeToTray\":true,\"futureKey\":[1,2]}");
+
+        AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+
+        var json = File.ReadAllText(FilePath);
+        Assert.Contains("\"themeId\":\"forge\"", json);   // camelCase key on disk
+        Assert.Contains("\"futureKey\":[1,2]", json);        // a key this build doesn't know survives
+        var s = AppSettingsFile.Read(FilePath);
+        Assert.Equal(("mica", true, "forge", "ok"), (s.Backdrop, s.CloseToTray, s.ThemeId, s.FileState));
+    }
+
+    [Fact]
+    public void WriteKey_creates_the_file_and_its_folder()
+    {
+        var path = AppSettingsFile.PathIn(Path.Combine(_dir, "fresh", "data"));
+
+        AppSettingsFile.WriteKey(path, "themeId", "aurora");
+
+        Assert.Equal("aurora", AppSettingsFile.Read(path).ThemeId);
+    }
+
+    [Fact]
+    public void WriteKey_starts_a_corrupt_file_over_since_it_already_reads_as_defaults()
+    {
+        File.WriteAllText(FilePath, "{ not json");
+
+        AppSettingsFile.WriteKey(FilePath, "closeToTray", true);
+
+        var s = AppSettingsFile.Read(FilePath);
+        Assert.Equal(("ok", true), (s.FileState, s.CloseToTray));
+    }
+
+    [Fact]
+    public void WriteKey_leaves_no_temp_files_behind()
+    {
+        AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        AppSettingsFile.WriteKey(FilePath, "themeId", "ember");
+
+        Assert.Equal(new[] { AppSettingsFile.FileName }, Directory.GetFiles(_dir).Select(Path.GetFileName).ToArray());
+    }
+
+    [Fact]
+    public void Writers_saving_different_keys_at_once_lose_none()
+    {
+        // The app and the agent's server write the same file. Unlocked, a writer that read the file
+        // before another's save lands after it and puts the old contents back, losing that key.
+        var keys = Enumerable.Range(0, 32).Select(i => "k" + i).ToArray();
+
+        Parallel.ForEach(keys, new ParallelOptions { MaxDegreeOfParallelism = 16 }, k => AppSettingsFile.WriteKey(FilePath, k, k));
+
+        var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(FilePath))!.AsObject();
+        var lost = keys.Where(k => !json.ContainsKey(k)).ToArray();
+        Assert.True(lost.Length == 0, "Lost: " + string.Join(", ", lost));
+    }
+
+    [Fact]
+    public void WriteKey_says_what_it_replaced_and_does_not_rewrite_an_unchanged_value()
+    {
+        var first = AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        var stamp = File.GetLastWriteTimeUtc(FilePath);
+        var again = AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        var stampAfterAgain = File.GetLastWriteTimeUtc(FilePath);
+        var next = AppSettingsFile.WriteKey(FilePath, "themeId", "ember");
+
+        Assert.Equal((null, true, false), (first.Previous?.ToString(), first.Written, first.StartedOver));
+        Assert.Equal(("forge", false), (again.Previous?.ToString(), again.Written));
+        Assert.Equal(stamp, stampAfterAgain);
+        Assert.Equal(("forge", true), (next.Previous?.ToString(), next.Written));
+    }
+
+    [Fact]
+    public void WriteKey_reports_starting_a_corrupt_file_over()
+    {
+        File.WriteAllText(FilePath, "[1, 2]");
+
+        Assert.True(AppSettingsFile.WriteKey(FilePath, "themeId", "forge").StartedOver);
+    }
+
+    [Fact]
+    public void A_key_written_twice_by_hand_saves_last_wins_as_it_reads()
+    {
+        // JsonNode.Parse accepts the duplicate but throws on first touch of the object, which made every
+        // save of a file Read reads fine fail.
+        File.WriteAllText(FilePath, "{\"themeId\":\"a\",\"backdrop\":\"mica\",\"themeId\":\"b\"}");
+        Assert.Equal("b", AppSettingsFile.Read(FilePath).ThemeId);
+
+        var w = AppSettingsFile.WriteKey(FilePath, "closeToTray", true);
+
+        Assert.False(w.StartedOver);
+        var s = AppSettingsFile.Read(FilePath);
+        Assert.Equal(("b", "mica", true), (s.ThemeId, s.Backdrop, s.CloseToTray));
+    }
+
+    [Fact]
+    public async Task A_writer_that_cannot_get_the_lock_gives_up_in_time_and_writes_nothing()
+    {
+        AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var holder = Task.Run(() => AppSettingsFile.WithLock(FilePath, () => { holding.Set(); release.Wait(TimeSpan.FromSeconds(10)); }));
+        holding.Wait();
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<IOException>(() => AppSettingsFile.WriteKey(FilePath, "themeId", "ember"));
+            Assert.InRange(clock.Elapsed, AppSettingsFile.LockTimeout - TimeSpan.FromMilliseconds(100), AppSettingsFile.LockTimeout + TimeSpan.FromSeconds(1));
+            Assert.Equal("forge", AppSettingsFile.Read(FilePath).ThemeId);
+        }
+        finally { release.Set(); await holder; }
+    }
+
+    // ---- ThemeChangedOnDisk: when a running window follows a pick made outside it ----
+
+    private static AppSettingsSnapshot Snap(string? themeId, string state = "ok")
+        => new("solid", true, true, true, false, themeId, state, Array.Empty<string>());
+
+    [Fact]
+    public void A_different_saved_theme_is_followed()
+        => Assert.Equal("forge", AppSettingsFile.ThemeChangedOnDisk(Snap("forge"), "626-labs"));
+
+    [Fact]
+    public void The_windows_own_save_reading_back_changes_nothing()
+        => Assert.Null(AppSettingsFile.ThemeChangedOnDisk(Snap("forge"), "forge"));
+
+    [Fact]
+    public void A_first_pick_saved_elsewhere_is_followed()
+        => Assert.Equal("forge", AppSettingsFile.ThemeChangedOnDisk(Snap("forge"), null));
+
+    [Theory]
+    [InlineData("unreadable")]
+    [InlineData("missing")]
+    public void A_file_caught_mid_write_or_gone_says_nothing_about_the_theme(string state)
+        => Assert.Null(AppSettingsFile.ThemeChangedOnDisk(Snap("forge", state), "626-labs"));
+
+    [Fact]
+    public void A_file_with_no_theme_key_leaves_the_window_alone()
+        => Assert.Null(AppSettingsFile.ThemeChangedOnDisk(Snap(null), "626-labs"));
 }

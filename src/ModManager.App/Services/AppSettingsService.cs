@@ -13,7 +13,7 @@ public enum WindowBackdropKind { Solid, Mica, Acrylic }
 /// NexusService / AvatarService). Persisted to <c>%APPDATA%\ModManagerBuilder\app-settings.json</c>.
 /// Tolerant load — a missing or corrupt file resolves to defaults, never throws.
 /// </summary>
-public sealed class AppSettingsService
+public sealed class AppSettingsService : IDisposable
 {
     public string Path { get; }
 
@@ -86,15 +86,79 @@ public sealed class AppSettingsService
 
     /// <summary>The last theme the user picked, restored at launch (F-080). Null means no pick
     /// has ever been saved — the shell falls back to ThemeService.Default (the flagship).</summary>
-    public string? ThemeId => _themeId;
+    public string? ThemeId { get { lock (_themeGate) return _themeId; } }
 
     private string? _themeId;
 
+    // The watcher thread and the UI thread both touch _themeId.
+    private readonly object _themeGate = new();
+
     public void SetThemeId(string id)
     {
-        if (_themeId == id) return;
-        _themeId = id;
-        Save("themeId", id);
+        // Saved under the same gate the watcher reads under, and _themeId moves only once the save
+        // has landed. So the watcher never sees this window's own pick as an outside change (it reads
+        // either the old file with the old id or the new file with the new id), and a save that
+        // failed doesn't later look like someone else putting the old theme back.
+        lock (_themeGate)
+        {
+            if (_themeId == id) return;
+            try { AppSettingsFile.WriteKey(Path, "themeId", id); }
+            catch { return; /* best-effort persist, as every setting: the window still shows the pick */ }
+            _themeId = id;
+        }
+    }
+
+    /// <summary>Raised, on a background thread, when app-settings.json starts naming a different theme
+    /// from this window's: an agent's apply_theme, or a pick in another launcher window. The shell
+    /// switches to <see cref="ThemeId"/> (read when it handles this, not when it was raised, so a pick
+    /// made in between wins) so the user sees the change as it happens (agent-access law 10).</summary>
+    public event EventHandler? ThemeSavedElsewhere;
+
+    private FileSystemWatcher? _watcher;
+
+    /// <summary>Watch app-settings.json for theme picks made outside this window. Called once by the
+    /// shell, not by the constructor, so short-lived instances never leave watchers behind.</summary>
+    public void WatchForOutsideChanges()
+    {
+        if (_watcher is not null) return;
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(Path)!;
+            Directory.CreateDirectory(dir);
+            _watcher = new FileSystemWatcher(dir, System.IO.Path.GetFileName(Path))
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+            };
+            // Writers rename a temp file over it, which raises Renamed; an editor raises Changed.
+            _watcher.Changed += OnSettingsFileEvent;
+            _watcher.Created += OnSettingsFileEvent;
+            _watcher.Renamed += OnSettingsFileEvent;
+            _watcher.EnableRaisingEvents = true;
+        }
+        catch { _watcher = null; /* best-effort: without it, an outside pick shows at next start */ }
+    }
+
+    public void Dispose()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+    }
+
+    private void OnSettingsFileEvent(object sender, FileSystemEventArgs e)
+    {
+        try
+        {
+            // Core decides (and tests) what counts: a clean read naming a theme other than this
+            // window's. Read and compared under the gate SetThemeId saves under (see there).
+            lock (_themeGate)
+            {
+                var changed = AppSettingsFile.ThemeChangedOnDisk(AppSettingsFile.Read(Path), _themeId);
+                if (changed is null) return;
+                _themeId = changed;
+            }
+            ThemeSavedElsewhere?.Invoke(this, EventArgs.Empty);
+        }
+        catch { /* a watcher callback must never take the app down */ }
     }
 
     public AppSettingsService()
@@ -128,24 +192,11 @@ public sealed class AppSettingsService
 
     private void Save(string key, JsonNode? value)
     {
-        try
-        {
-            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-            // Merge the ONE changed key into what is on disk, never a dump of this instance's memory:
-            // a second launcher window holds its own copy of every setting, and rewriting them all
-            // would put back its stale values over the other window's changes (B1 review — the
-            // startup redirect reads closeToTray from this file). Keys stay camelCase, written here.
-            JsonObject root;
-            try { root = (File.Exists(Path) ? JsonNode.Parse(File.ReadAllText(Path)) as JsonObject : null) ?? new JsonObject(); }
-            catch { root = new JsonObject(); }   // corrupt — start over rather than refuse to save
-            root[key] = value;
-            var json = root.ToJsonString();
-            // Atomic temp-write + rename (file-op law): theme picks made this write frequent,
-            // and a kill mid-WriteAllText would truncate the file and silently reset every toggle.
-            var tmp = Path + ".tmp";
-            File.WriteAllText(tmp, json);
-            File.Move(tmp, Path, overwrite: true);
-        }
-        catch { /* best-effort persist; in-memory state still holds */ }
+        // Core merges the ONE changed key into what is on disk (never this instance's memory, which a
+        // second window or the agent's server may have moved past) with an atomic temp+rename: theme
+        // picks made this write frequent, and a kill mid-write would reset every toggle. Keys stay
+        // camelCase, named by each setter.
+        try { AppSettingsFile.WriteKey(Path, key, value); }
+        catch { /* best-effort persist (a busy lock or an unwritable file); in-memory state still holds */ }
     }
 }
