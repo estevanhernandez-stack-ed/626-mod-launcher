@@ -7,8 +7,8 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 > executes and what a run reports against. `scripts/smoke-run.ps1` reads it, and `SmokeCatalogueTests`
 > fails the build if the two disagree about which cases exist.
 >
-> **Triage is complete (2026-10-02): nothing in the catalogue is `untriaged`.** It holds 102 live cases
-> (31 harness, 71 human) plus 18 `retired` entries. Those are sections below that were triaged as
+> **Triage is complete (2026-10-02): nothing in the catalogue is `untriaged`.** It holds 103 live cases
+> (31 harness, 71 human, 1 agentable) plus 18 `retired` entries. Those are sections below that were triaged as
 > duplicates of a catalogue case, or superseded, and are kept as history. A NEW section added here
 > starts untriaged until it is walked with Este. Untriaged means nobody has said whether it was exercised, which is not the same as
 > untested and not the same as pending. That distinction is the whole reason the catalogue exists:
@@ -2367,3 +2367,26 @@ Needs the `eaContentId` data PR merged in `626-game-manifest` and the feed refre
 
 Why it matters: the first registration of a game from a store other than Steam, and the first where the
 launcher's default data folder would have been unwritable.
+
+## B4 stage two: a Cyberpunk mod turns off and on across its trees
+
+Shipped: turning a mod off moves its entries in the game's other declared mod trees along with its main
+files, held at `<dataDir>/disabled-trees/<Mod>/<tree>/<entry>`; turning it on puts every one back (spec
+`docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`).
+
+1. **Pick a mod** on Cyberpunk 2077 that has folders named after it in both `r6/scripts` and `r6/tweaks`.
+   Note its row's second line: `Also has files in r6/scripts, r6/tweaks`.
+2. **Turn it off.** The row now reads `Also turned off in r6/scripts, r6/tweaks`.
+3. **Check the game folder.** The mod's folders are gone from `r6/scripts` and `r6/tweaks`. They are
+   present under `<dataDir>/disabled-trees/<Mod>/r6/scripts/...` and `.../r6/tweaks/...`. Its archive is in
+   `disabled/<Mod>` as before.
+4. **Turn it on.** The row reads `Also has files in ...` again. The folders are back in the game, and
+   both `disabled/<Mod>` and `disabled-trees/<Mod>` are gone.
+5. **Compare.** The game's trees match what they held before step 2, file for file.
+
+Why it matters: before this, turning a Cyberpunk mod off left its scripts and tweaks live, so the user
+believed it was off while part of it still loaded.
+
+**Verified 2026-10-02 by the agent on Nebuchadnezzar:** BlackChrome on Este's install. 31 files in three
+trees moved off; turning it back on left 2,527 files across the six folders byte-identical. The row text
+was checked by UIA in both states.

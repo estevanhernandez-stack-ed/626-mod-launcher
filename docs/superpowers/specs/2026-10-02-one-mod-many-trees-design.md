@@ -2,8 +2,9 @@
 
 **Date:** 2026-10-02
 **Backlog:** B4
-**Status:** Stage one ("see first") shipped in #370. Stage two ("toggle") designed below and signed off
-2026-10-02.
+**Status:** Stage one ("see first") shipped in #370. Stage two ("toggle") signed off 2026-10-02 and built
+on `feat/b4-multi-tree-toggle`, live-verified the same day (see "Live verification"). Safe Clear does not
+yet know a mod's extra trees (see "Follow-ups").
 **Decided by:** Este, 2026-10-02: "See first, toggle later." Stage two: safety is decided by Core rules,
 not a manifest field, and multi-tree toggling is on by default.
 
@@ -158,11 +159,17 @@ existing `disabled/<Mod>`, not inside it.
   newer build restores them. That is no worse than today.
 - **Collision.** Turning off refuses, moving nothing, when `disabled-trees/<Mod>` already holds files,
   the same rule `HoldingFolder.HoldsFiles` applies to the main holding folder.
+- **A move across volumes undoes itself.** When the game and the data folder sit on different drives, a
+  move can't be a rename and falls back to copy then delete. That fallback (`SafeMove`) now removes its
+  own partial copy if it fails, and refuses a source that contains a link, so a junction can't drag a
+  tree from somewhere else into the holding area.
 
 ### The operation
 
 It all runs through the existing `Scanner.DisableEntry` and `Scanner.EnableMod`; there is no second path.
-Bulk toggles, loadouts, Safe Clear, profiles and the MCP's `set_mod_enabled` reach it unchanged.
+Bulk toggles, loadouts, profiles and the MCP's `set_mod_enabled` reach it unchanged. Safe Clear does not:
+it runs through `RestorePointEngine`, not `DisableEntry` or `EnableMod`, so it does not yet know a mod's
+extra trees. It is listed under "Follow-ups".
 
 **Off:**
 1. Work out the movable entries (the rules above) and check every holding destination before anything moves.
@@ -186,10 +193,25 @@ stage two shipped are unaffected.
 
 ### The row
 
-- **Live:** `Also has files in r6/scripts, red4ext/plugins` stays. The tooltip now says: "626 turns these
-  on and off with the mod." When an entry stays put because a rule held it back, the row says that
-  instead, naming the tree.
-- **Turned off:** the line reads `Also turned off in r6/scripts, r6/tweaks`, from the held layout.
+The wording lives in `ModTreesText` (Core, under test); the App only binds it. Trees are listed in the
+manifest's order, each once.
+
+| State | Line | Tooltip |
+|---|---|---|
+| Live, entries move | `Also has files in r6/scripts, red4ext/plugins` | 626 turns these on and off with the mod. |
+| Live, nothing moves (the row is read-only) | `Also has files in r6/scripts` | 626 doesn't move this mod's files in these folders. They stay where they are, on or off. |
+| Live, some held back, name can't be told apart (contested or protected) | the same line | Adds: Files in r6/tweaks stay where they are: 626 can't tell they belong only to this mod. |
+| Live, some held back, another tool owns the folder | the same line | Adds: Files in red4ext/plugins stay where they are: another tool manages that folder. (Plural: those folders.) |
+| Live, a tree where one entry moves and another is kept | the tree is listed once | The sentence opens "Some files in" instead of "Files in". |
+| Off, held in `disabled-trees` | `Also turned off in r6/scripts, r6/tweaks` | 626 turned these off with the mod. Turning it on puts them back. |
+| Off, entries still live (turned off before stage two) | `Files in r6/tweaks are still on.` | These files didn't move when the mod was turned off. Turn it on and off again to move them. |
+| Off, both held and still live | `Also turned off in r6/scripts. Files in r6/tweaks are still on.` | The held tooltip, then: Files in r6/tweaks didn't move when the mod was turned off. Turn it on and off again to move them. |
+| Off, files held under no declared tree | `Some files are held in <path>.` | 626 can't tell which folders these came from. |
+| Off, holding folder unreadable | `626 couldn't read <path>.` | 626 couldn't check whether this mod's other files are held here. |
+
+An unreadable folder never says files are there. After a turn-on that leaves files held, the status line
+reads: "<Mod> is on, but some of its files are still held in <path>. 626 couldn't tell where they go." When
+626 couldn't read the folder: "<Mod> is on, but 626 couldn't read <path> to check for leftover files."
 
 ### Testing
 
@@ -204,3 +226,20 @@ New `ModTreesToggleTests` and the existing toggle suites cover:
 - a held entry whose tree is gone on enable: the tree folder is recreated
 
 The App row text is checked with a Debug build and a UIA walk on Este's Cyberpunk install.
+
+## Live verification
+
+2026-10-02, on Este's Cyberpunk 2077 install, with BlackChrome. Turning it off moved 31 files in three
+trees out of the game. Turning it back on left 2,527 files across the six folders byte-identical to
+before. The row text was verified by a UIA walk in both states.
+
+## Follow-ups
+
+- **Safe Clear and extra trees.** Safe Clear runs through `RestorePointEngine`, which does not know a
+  mod's extra trees, so it doesn't clear or restore them.
+- **A warning on one toggle path only.** An `EnableOutcome` warning shows on the single-row toggle. Bulk
+  enable doesn't surface it.
+- **Per-reload cost on tree games.** A reload on a game with extra trees runs a second `BuildModList`.
+- **OneDrive placeholder files.** The cross-volume fallback refuses them.
+- **A same-length rewrite.** `SafeMove`'s size check doesn't catch a file rewritten to the same length
+  mid-move.
