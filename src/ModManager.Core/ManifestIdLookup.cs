@@ -83,10 +83,12 @@ public static class ManifestIdLookup
     /// </summary>
     public static IReadOnlySet<string> IdsFor(GameEntry game)
     {
+        // One snapshot of both maps, so the Steam and EA answers come from the same feed generation.
+        var (steam, ea) = Maps();
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrEmpty(game.Id)) ids.Add(game.Id);
-        if (BySteamAppId(game.SteamAppId) is { } bySteam) ids.Add(bySteam);
-        if (ByEaContentId(game.EaContentId) is { } byEa) ids.Add(byEa);
+        if (!string.IsNullOrWhiteSpace(game.SteamAppId) && steam.TryGetValue(game.SteamAppId, out var bySteam)) ids.Add(bySteam);
+        if (!string.IsNullOrWhiteSpace(game.EaContentId) && ea.TryGetValue(game.EaContentId, out var byEa)) ids.Add(byEa);
         return ids;
     }
 

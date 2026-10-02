@@ -113,4 +113,70 @@ public class BanRiskCatalogTests : IDisposable
         EffectiveManifest.SetRemote(new GameManifest { Games = new[] { Entry("changing", null, "medium") } });
         Assert.Equal(GameBanRisk.Medium, BanRiskCatalog.Effective(Game("changing", null)));
     }
+
+    // A second store copy of a game the user already has is renamed "<id>-2" by EnginePresets.UniqueId,
+    // so the EA copy of a dual-store game never carried the manifest id. These resolve it through the
+    // store identity it does carry (ManifestIdLookup.IdsFor), never by trimming the suffix: the test
+    // above still holds, so a bare "-2" id with no store identity matches nothing.
+    private static GameEntry EaGame(string id, string eaContentId)
+        => new() { Id = id, GameName = id, EaContentId = eaContentId };
+
+    private static GameManifestEntry EaEntry(string id, string? steam, string eaContentId, string? risk)
+        => new() { Id = id, Name = id, Stores = new StoreIds { SteamAppId = steam, EaContentId = eaContentId }, BanRisk = risk };
+
+    [Fact]
+    public void The_ea_copy_of_a_dual_store_game_gets_the_feeds_risk_through_its_ea_content_id()
+    {
+        EffectiveManifest.SetRemote(new GameManifest { Games = new[] { EaEntry("some-game", "123", "ea.content.1", "high") } });
+
+        var steamCopy = new GameEntry { Id = "some-game", GameName = "some-game", SteamAppId = "123" };
+        var eaId = EnginePresets.UniqueId("some-game", new[] { steamCopy.Id });
+        Assert.Equal("some-game-2", eaId);   // what the registry actually does to the second copy
+
+        Assert.Equal(GameBanRisk.High, BanRiskCatalog.Effective(steamCopy));
+        Assert.Equal(GameBanRisk.High, BanRiskCatalog.Effective(EaGame(eaId, "ea.content.1")));
+    }
+
+    // The compiled floor exists for the games the launcher itself writes files for, and must hold with
+    // no feed at all. The embedded snapshot carries neither EA title, so nothing could map an EA
+    // content id to a manifest id there; the floor is keyed by EA content id directly. Content ids as
+    // read from both installs' installerdata.xml (EA football grand plan, K3).
+    [Theory]
+    [InlineData("madden-nfl-27-2", "16425895")]
+    [InlineData("ea-sports-college-football-27-2", "16425899")]
+    [InlineData("whatever-the-registration-is-called", "16425895")]
+    public void The_compiled_floor_holds_for_an_ea_copy_with_no_remote_feed(string id, string eaContentId)
+    {
+        EffectiveManifest.SetRemote(null);
+
+        Assert.Equal(GameBanRisk.High, BanRiskCatalog.Effective(EaGame(id, eaContentId)));
+    }
+
+    // A feed saying "low" for the EA copy cannot lower the floor either, by any route.
+    [Fact]
+    public void A_feed_cannot_lower_the_floor_for_an_ea_copy()
+    {
+        EffectiveManifest.SetRemote(new GameManifest { Games = new[] { EaEntry("madden-nfl-27", "3940610", "16425895", "low") } });
+
+        Assert.Equal(GameBanRisk.High, BanRiskCatalog.Effective(EaGame("madden-nfl-27-2", "16425895")));
+    }
+
+    // An EA content id the feed does not know resolves to nothing extra: no guessing.
+    [Fact]
+    public void An_unknown_ea_content_id_adds_no_risk()
+    {
+        EffectiveManifest.SetRemote(new GameManifest { Games = new[] { EaEntry("some-game", null, "ea.content.1", "high") } });
+
+        Assert.Equal(GameBanRisk.None, BanRiskCatalog.Effective(EaGame("some-game-2", "ea.content.unknown")));
+    }
+
+    // K19 is open: a title might ship under a second content id. When the feed names one for a floor
+    // game, the floor follows it through the feed's mapping even if that entry carries no risk itself.
+    [Fact]
+    public void A_content_id_the_feed_names_for_a_floor_game_carries_the_floor()
+    {
+        EffectiveManifest.SetRemote(new GameManifest { Games = new[] { EaEntry("madden-nfl-27", null, "alt.content.id", null) } });
+
+        Assert.Equal(GameBanRisk.High, BanRiskCatalog.Effective(EaGame("madden-nfl-27-2", "alt.content.id")));
+    }
 }
