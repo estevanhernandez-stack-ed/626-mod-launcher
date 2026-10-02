@@ -10,8 +10,8 @@ public enum UninstallBlock
     /// <summary>A row the listing appends that is not an installed mod (a proxy loader DLL, a shared
     /// library): there is nothing of its own to delete by name. Turn it off instead.</summary>
     NotAnInstalledMod,
-    /// <summary>A turned-off mod with files held in <c>disabled-trees/&lt;Mod&gt;</c> (B4 stage two): uninstall
-    /// would orphan them. Turn it on first.</summary>
+    /// <summary>A mod with files held in <c>disabled-trees/&lt;Mod&gt;</c> (B4 stage two): uninstall would orphan
+    /// them. A turned-off mod is told to turn on first; a live one holds leftovers, so it is told to move them.</summary>
     HeldInOtherFolders,
 }
 
