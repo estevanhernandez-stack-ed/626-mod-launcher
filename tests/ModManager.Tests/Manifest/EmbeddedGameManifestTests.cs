@@ -24,4 +24,23 @@ public class EmbeddedGameManifestTests
         Assert.Null(witchfire.Engine);
         Assert.Equal("witchfire", witchfire.NexusDomain);
     }
+
+    [Fact]
+    public void Cyberpunk_embedded_entry_carries_its_five_extra_trees_in_order()
+    {
+        // The embedded snapshot is the floor: a launcher offline, freshly installed or holding a cached
+        // feed older than the extraModTrees field still needs to see (and toggle) a mod's other trees.
+        var cp = EmbeddedGameManifest.Current.Games.Single(g => g.Id == "cyberpunk-2077");
+        var expected = new[]
+        {
+            "r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins",
+            "bin/x64/plugins/cyber_engine_tweaks/mods",
+        };
+        Assert.Equal(expected, cp.ExtraModTrees);
+
+        // And the validator keeps every one: nothing is dropped as unsafe.
+        var result = ManifestValidator.Validate(
+            new GameManifest { Games = new[] { cp } }, new HashSet<string> { "custom" });
+        Assert.Equal(expected, result.Manifest.Games.Single().ExtraModTrees);
+    }
 }
