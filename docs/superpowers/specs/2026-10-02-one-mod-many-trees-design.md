@@ -183,7 +183,7 @@ existing `disabled/<Mod>`, not inside it.
     toggle would look only in `~626~...` and leave the row stuck off. `HoldingName.LegacyPath` finds the
     raw-named folder by its exact real name when the encoded one has no record (`disabled`) or does not
     exist (`disabled-trees`). Turn-on reads and tears it down there, uninstall deletes it, and a new
-    turn-off refuses while it holds a copy. A raw prefixed folder reaches the same fallback. A tagged encoding was chosen over a lossy slug or a hash because it is reversible from the
+    turn-off refuses while it holds files (a record-only legacy hold protects nothing: the new hold goes to the encoded folder, which the listing and turn-on prefer, and the old record is left alone). A raw prefixed folder reaches the same fallback. A tagged encoding was chosen over a lossy slug or a hash because it is reversible from the
   folder name alone (the layout stays the record) and changes nothing for the names that were already safe.
 - **A move across volumes undoes itself.** When the game and the data folder sit on different drives, a
   move can't be a rename and falls back to copy then delete. That fallback (`SafeMove`) now removes its

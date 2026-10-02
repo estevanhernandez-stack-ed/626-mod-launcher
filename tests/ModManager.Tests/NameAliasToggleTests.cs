@@ -369,23 +369,49 @@ public class NameAliasToggleTests : IDisposable
         Assert.Equal("LEGACY UPPER", File.ReadAllText(Path.Combine(Mods, "Upper_P.pak")));
     }
 
-    // A legacy hold blocks a fresh turn-off, and the refusal names the legacy folder, not the encoded one.
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task A_blocking_legacy_hold_is_named_in_the_refusal(bool withFiles)
+    // A legacy hold WITH files blocks a fresh turn-off, and the refusal names the legacy folder, not the encoded one.
+    [Fact]
+    public async Task A_blocking_legacy_hold_is_named_in_the_refusal()
     {
         var dir = LegacyHold("Aux", "Aux_P.pak", "OLD AUX");
         if (dir is null) return;   // passing vacuously: this Windows refuses the name
-        if (!withFiles) File.Delete(Path.Combine(dir, "Aux_P.pak"));
+        File.Move(Path.Combine(dir, "Aux_P.pak"), Path.Combine(dir, "Aux_old_P.pak"));   // held, not live
         File.WriteAllText(Path.Combine(Mods, "Aux_P.pak"), "NEW AUX");
 
         var e = await Assert.ThrowsAsync<HeldCopyCollisionException>(() => Scanner.DisableModAsync("Aux", Ctx()));
 
         Assert.Contains(dir, e.Message);
         Assert.DoesNotContain(HoldingName.Folder("Aux")!, e.Message);
-        if (!withFiles) Assert.Contains("Turn it on first to clear the old record.", e.Message);
+        Assert.DoesNotContain("clear the old record", e.Message);
         Assert.Equal("NEW AUX", File.ReadAllText(Path.Combine(Mods, "Aux_P.pak")));
+    }
+
+    // A legacy hold with only its record protects nothing, like a lone record in the encoded folder: the turn-off
+    // goes ahead into the encoded folder, the mod lists once, and the old record is left exactly as it was.
+    [Fact]
+    public async Task A_record_only_legacy_hold_does_not_block_and_never_shadows_the_new_hold()
+    {
+        var dir = LegacyHold("Aux", "Aux_P.pak", "OLD AUX");
+        if (dir is null) return;   // passing vacuously: this Windows refuses the name
+        File.Delete(Path.Combine(dir, "Aux_P.pak"));
+        var record = File.ReadAllText(Path.Combine(dir, "meta.json"));
+        File.WriteAllText(Path.Combine(Mods, "Aux_P.pak"), "NEW AUX");
+        var before = GameHashes();
+
+        await Scanner.DisableModAsync("Aux", Ctx());
+
+        Assert.Equal("NEW AUX", File.ReadAllText(Path.Combine(Disabled, HoldingName.Folder("Aux")!, "Aux_P.pak")));
+        var aux = Assert.Single(await Rows(), m => m.Name == "Aux");
+        Assert.False(aux.Enabled);
+        Assert.Equal(new[] { "Aux_P.pak" }, aux.Files);
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("Aux", Ctx());
+
+        Assert.True(outcome.Enabled, outcome.Reason);
+        Assert.Equal(before, GameHashes());
+        Assert.False(Directory.Exists(Path.Combine(Disabled, HoldingName.Folder("Aux")!)));
+        Assert.Equal(new[] { "meta.json" }, Directory.GetFiles(dir).Select(Path.GetFileName));
+        Assert.Equal(record, File.ReadAllText(Path.Combine(dir, "meta.json")));
     }
 }
 

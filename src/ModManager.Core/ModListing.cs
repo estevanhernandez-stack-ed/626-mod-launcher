@@ -241,7 +241,7 @@ public static class ModListing
                 ? Directory.GetDirectories(ctx.DisabledRoot).Select(Path.GetFileName)
                     // A holding folder is the mod's name or its HoldingName encoding; the key is the name.
                     .Select(n => n is null ? null : HoldingName.ModName(n))   // the encoding's exact inverse
-                    .Where(n => n is not null).Select(n => n!).ToList()
+                    .Where(n => n is not null).Select(n => n!).Distinct(StringComparer.Ordinal).ToList()   // a legacy and an encoded hold may coincide
                 : Array.Empty<string>();
         }
         catch { return Array.Empty<string>(); }

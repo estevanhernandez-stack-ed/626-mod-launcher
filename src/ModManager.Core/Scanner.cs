@@ -472,8 +472,14 @@ public static class Scanner
     private static IReadOnlyList<DisabledEntry> ListDisabled(GameContext c)
     {
         var result = new List<DisabledEntry>();
-        foreach (var folder in SafeReadDirs(c.DisabledRoot))
+        // Encoded holds first: when an older build's raw-named folder (disabled/Aux) and an encoded one both
+        // decode to the same mod, the encoded one is the hold turn-on uses, so it is the one listed. A name
+        // listed once is not listed again.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var folder in SafeReadDirs(c.DisabledRoot)
+                     .OrderBy(f => HoldingName.ModName(f) == f ? 1 : 0))
         {
+            if (!seen.Add(HoldingName.ModName(folder))) continue;
             // The folder is the mod's name, or its HoldingName encoding when Windows would not keep that name
             // as written. Any other folder (an older build's disabled/Aux, a hand-made ~626~ name) is listed by
             // its raw name, and turning it on reaches it through HoldingName.LegacyPath.
@@ -739,18 +745,15 @@ public static class Scanner
                         + $"626 holds for \"{HoldingName.ModName(other!)}\". Nothing was moved. Turn that mod on first.");
 
         // An older build's hold under the raw name (disabled/Aux) is such a copy too, and the refusal names it.
-        var legacyHeld = HoldingName.LegacyPath(c.DisabledRoot, m.Name);
-        if (legacyHeld is not null)
-        {
-            var legacyFiles = HoldingFolder.HoldsFiles(legacyHeld, "meta.json");
-            if (legacyFiles || File.Exists(Path.Combine(legacyHeld, "meta.json")))
-                throw new HeldCopyCollisionException(
-                    $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {legacyHeld}, "
-                    + "and the mod list only shows the copy that is live. Nothing was moved. "
-                    + (legacyFiles
-                        ? "Move or remove one of the two copies first."
-                        : "Turn it on first to clear the old record."));
-        }
+        // A legacy hold with only its record protects nothing, exactly like a lone record in the encoded folder
+        // (HoldsFiles ignores meta.json): the turn-off goes ahead into the encoded folder, the old record is left
+        // where it is, and the listing and turn-on both prefer the encoded hold.
+        if (HoldingName.LegacyPath(c.DisabledRoot, m.Name) is { } legacyHeld
+            && HoldingFolder.HoldsFiles(legacyHeld, "meta.json"))
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {legacyHeld}, "
+                + "and the mod list only shows the copy that is live. Nothing was moved. Move or remove one of "
+                + "the two copies first.");
         if (HoldingFolder.HoldsFiles(dest, "meta.json")
             || files.Any(f => File.Exists(Path.Combine(dest, f)) || Directory.Exists(Path.Combine(dest, f))))
             throw new HeldCopyCollisionException(
