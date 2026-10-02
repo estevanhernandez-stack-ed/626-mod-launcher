@@ -31,6 +31,12 @@
     <Compile Include="..\..\src\ModManager.App\Services\AppSettingsService.cs">
       <Link>AppSettingsService.cs</Link>
     </Compile>
+    <!-- AppSettingsService reads its file through Core's AppSettingsFile (shared with the agent's
+         get_app_settings). It is pure System.Text.Json, so it is source-linked the same way rather than
+         pulling in a Core ProjectReference. -->
+    <Compile Include="..\..\src\ModManager.Core\AppSettingsFile.cs">
+      <Link>AppSettingsFile.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>
