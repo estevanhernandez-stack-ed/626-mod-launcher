@@ -83,6 +83,9 @@ public static class ModTools
                 // changed meaning from a relative tail to an absolute path. An agent reading a
                 // registration would report a folder the user never configured as configured.
                 declared = d.Declared,
+                // B1. Set when the game's definition corrected the stored path: `path` is then the
+                // corrected location and this is what games.json says. Null when nothing was corrected.
+                correctedFrom = d.CorrectedFrom,
             }).ToArray(),
             contentRoots = s.ContentRoots.Select(r => new
             {
@@ -93,7 +96,9 @@ public static class ModTools
             notes = s.Notes,
             hint = "modCount counts mod keys; rowCount counts what a person sees, after variantFamilies "
                    + "collapse into single rows. They differ only by those families. A declaredLocation "
-                   + "with declared=false is the launcher's own folder, not one the registration states.",
+                   + "with declared=false is the launcher's own folder, not one the registration states. "
+                   + "When correctedFrom is set, path is the manifest-corrected location and correctedFrom "
+                   + "is what games.json says.",
         };
     }
 

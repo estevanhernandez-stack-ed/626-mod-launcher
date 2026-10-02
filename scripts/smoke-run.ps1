@@ -17,11 +17,17 @@
 
 .PARAMETER OutDir
     Where per-case screenshots and the JSON result land.
+
+.PARAMETER Only
+    Run just these case ids. Every other case is skipped, not reported. For re-running one surface
+    without driving the rest - several cases write to Windrose's real ~mods, so a scoped run is the
+    only way to exercise the read-only cases on their own.
 #>
 [CmdletBinding()]
 param(
     [string]$Exe,
-    [string]$OutDir
+    [string]$OutDir,
+    [string[]]$Only
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,6 +50,7 @@ $catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
 
 function Case {
     param([string]$Id, [string]$Section, [scriptblock]$Body)
+    if ($Only -and $Only -notcontains $Id) { return }
     $script:Seq++
     $shot = Join-Path $OutDir ("{0:d2}-{1}.png" -f $script:Seq, ($Id -replace '[^A-Za-z0-9\-]','_'))
     $status = 'PASS'; $detail = ''
@@ -93,12 +100,45 @@ Write-Host ''
 
 Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 Start-Sleep -Seconds 2
+
+# The fixture cases register a throwaway game in the REAL games.json. Each removes its own fixture in
+# a finally, but a run can still die between the register and that finally. So whenever one of them
+# is selected, the whole file is snapshotted here, with the app closed, and written back byte for byte
+# in the finally at the end of the run - activeGameId included, as the user had it before the run.
+$gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
+$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating')
+$script:GamesSnapshot = $null
+$script:GamesHashAfterHarness = $null
+$gamesSnapshotPath = Join-Path $OutDir 'games.json.run-start'
+function Get-GamesJsonHash {
+    try { [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData([System.IO.File]::ReadAllBytes($gamesJson))) }
+    catch { $null }
+}
+# The harness OWNS a games.json state only right after something it did wrote it: the fixture's
+# register and remove, the app starting, and each navigation it drives (the app records activeGameId
+# when a game is opened or left). Never after an arbitrary case - re-hashing there would absorb a
+# change someone else made mid-run, and the end-of-run restore would then overwrite it.
+function Set-HarnessOwnedGames {
+    if ($null -ne $script:GamesSnapshot) { $script:GamesHashAfterHarness = Get-GamesJsonHash }
+}
+if ((-not $Only -or @($Only | Where-Object { $fixtureCases -contains $_ }).Count -gt 0) -and (Test-Path -LiteralPath $gamesJson)) {
+    $script:GamesSnapshot = [System.IO.File]::ReadAllBytes($gamesJson)
+    # Also on disk, so a refused restore below still leaves the user a copy to put back by hand.
+    [System.IO.File]::WriteAllBytes($gamesSnapshotPath, $script:GamesSnapshot)
+    $script:GamesHashAfterHarness = Get-GamesJsonHash
+    Write-Host "  games.json snapshotted to $gamesSnapshotPath; restored at the end of the run" -ForegroundColor DarkGray
+}
+
+# Closed by the finally just before the report. A try block is not a new scope in PowerShell, so the
+# functions and variables defined below stay visible to the report.
+try {
 if (-not (Test-Path $Exe)) { throw "launcher not found: $Exe" }
 Start-Process $Exe
 Start-Sleep -Seconds 4
 
 $root = Get-AppRoot
 if (-not $root) { throw "app did not present a window" }
+Set-HarnessOwnedGames   # whatever the app wrote while starting is the run's own
 
 # Wait for the window to finish building rather than guessing at it. See Wait-Ready.
 $built = Wait-Ready $root
@@ -187,7 +227,7 @@ Case 'navigate-to-game' 'fix/library-repaint-after-add' {
     Assert-True ($null -ne $target) "no registered game reports any mods - nothing to exercise"
 
     $script:gameId = ($target.Current.AutomationId -replace '^GameRow\.','')
-    Invoke-Node $target; Wait-Idle 4000
+    Invoke-Node $target; Wait-Idle 4000; Set-HarnessOwnedGames
     $t2 = Get-Tree $root
     Assert-True ($null -ne (Find-ById $t2 'HomeButton')) "HomeButton absent after navigation"
     "opened '$($script:gameId)' ($targetLabel), game-view chrome realised"
@@ -260,7 +300,7 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
     # keyed on the FACT (StateChip.ban-risk), which is why the same assertion held before and after
     # the move.
     $t = Get-Tree $root
-    if (Find-ById $t 'HomeButton') { Invoke-Node (Find-ById $t 'HomeButton'); Wait-Idle 3000 }
+    if (Find-ById $t 'HomeButton') { Invoke-Node (Find-ById $t 'HomeButton'); Wait-Idle 3000; Set-HarnessOwnedGames }
 
     $rows = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.')
     $target = $null
@@ -272,7 +312,7 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
 
     $id = ($target.Current.AutomationId -replace '^GameRow\.','')
     try {
-        Invoke-Node $target; Wait-Idle 5000
+        Invoke-Node $target; Wait-Idle 5000; Set-HarnessOwnedGames
         $t2 = Get-Tree $root
         Assert-OnGameView $t2
         $chip = Find-ById $t2 'StateChip.ban-risk'
@@ -297,9 +337,9 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
         # passed is worse, because it hides the mess exactly when there is one.
         if ($script:gameId -and $id -ne $script:gameId) {
             $h = Find-ById (Get-Tree $root) 'HomeButton'
-            if ($h) { Invoke-Node $h; Wait-Idle 3000 }
+            if ($h) { Invoke-Node $h; Wait-Idle 3000; Set-HarnessOwnedGames }
             $back = Find-ById (Get-Tree $root) ("GameRow." + $script:gameId)
-            if ($back) { Invoke-Node $back; Wait-Idle 5000 }
+            if ($back) { Invoke-Node $back; Wait-Idle 5000; Set-HarnessOwnedGames }
         }
     }
 }
@@ -590,11 +630,11 @@ Write-Host '  -- cross-game views --' -ForegroundColor White
 Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $t = Get-Tree $root
     $homeBtn = Find-ById $t 'HomeButton'
-    if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500 }
+    if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500; Set-HarnessOwnedGames }
     $t2 = Get-Tree $root
     $entry = Find-ById $t2 'LibraryUpdatesEntry'
     if (-not $entry) { return "no pending updates - view not reachable from home" }
-    Invoke-Node $entry; Wait-Idle 3500
+    Invoke-Node $entry; Wait-Idle 3500; Set-HarnessOwnedGames
     $t3 = Get-Tree $root
     $rows = @(Find-AllByIdPrefix $t3 'UpdateRow.')
     $back = Find-ById $t3 'UpdatesBackButton'
@@ -633,7 +673,7 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $backwards = @($rowText | Where-Object {
         $_ -match '(\S+)\s*→\s*(\S+)' -and -not (Test-ProvablyNewer $Matches[1] $Matches[2])
     })
-    if ($back) { Invoke-Node $back; Wait-Idle 2000 }
+    if ($back) { Invoke-Node $back; Wait-Idle 2000; Set-HarnessOwnedGames }
     # This case printed '0 update rows' and passed for as long as it existed, because the rows carried
     # no AutomationId and nothing asserted they did (A28). A number nobody checks is a case that
     # cannot fail.
@@ -666,18 +706,21 @@ $wrMods = 'C:\Program Files (x86)\Steam\steamapps\common\Windrose\R5\Content\Pak
 # reports 'no confirm dialog' while a perfectly good modal sits on screen. That is the
 # check-for-ANY-modal trap in .claude/rules/automation-ids.md, walked into by the person who wrote
 # the harness that documents it.
-Remove-Item (Join-Path $wrMods 'SmokePicker626.pak') -Force -EA SilentlyContinue
-Remove-Item (Join-Path $wrData 'installs\SmokePicker626.json') -Force -EA SilentlyContinue
+# Skipped on a scoped run that does not include the intake case: a -Only run touches no real game's folder.
+if (-not $Only -or $Only -contains 'intake-via-picker') {
+    Remove-Item (Join-Path $wrMods 'SmokePicker626.pak') -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $wrData 'installs\SmokePicker626.json') -Force -EA SilentlyContinue
+}
 
 Case 'intake-via-picker' 'A25/A26 - intake records what it placed' {
     $t = Get-Tree $root
     if (-not (Find-ById $t 'AddModsButton')) {
         $home = Find-ById $t 'HomeButton'
-        if ($home) { Invoke-Node $home; Wait-Idle 2500; $t = Get-Tree $root }
+        if ($home) { Invoke-Node $home; Wait-Idle 2500; Set-HarnessOwnedGames; $t = Get-Tree $root }
     }
     # Explicitly Windrose - not whichever game the earlier navigation happened to land on.
     $row = Find-ById (Get-Tree $root) 'GameRow.windrose'
-    if ($row) { Invoke-Node $row; Wait-Idle 4000 }
+    if ($row) { Invoke-Node $row; Wait-Idle 4000; Set-HarnessOwnedGames }
     $t = Get-Tree $root
     Assert-OnGameView $t
 
@@ -791,10 +834,10 @@ Case 'alias-names-hold-apart' 'fix/toggle-name-alias - holding-folder names Wind
         $t = Get-Tree $root
         if (-not (Find-ById $t 'AddModsButton')) {
             $homeBtn = Find-ById $t 'HomeButton'
-            if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500 }
+            if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500; Set-HarnessOwnedGames }
         }
         $wr = Find-ById (Get-Tree $root) 'GameRow.windrose'
-        if ($wr) { Invoke-Node $wr; Wait-Idle 4000 }
+        if ($wr) { Invoke-Node $wr; Wait-Idle 4000; Set-HarnessOwnedGames }
         Assert-OnGameView (Get-Tree $root)
         Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 4000
         Assert-NoModal $root
@@ -875,6 +918,261 @@ Case 'loadout-segments-filter-only' 'Wave 6 - the segments filter, they do not m
     "MP listed $mpRows of $allRows rows; enabled count unchanged at $before"
 }
 
+Write-Host ''
+Write-Host '  -- registration repair (Check setup) --' -ForegroundColor White
+
+# The GAME // SETUP dialog edits a game's registration and can move its launcher data. On a REAL game
+# these cases only open, read and close it - by AutomationId CloseButton, never by the name 'Close',
+# which the window's own close button also carries - and assert games.json did not change. Anything
+# that types runs on a throwaway fixture game registered here and removed in a finally.
+$gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
+function Get-GamesHash { (Get-FileHash $gamesJson -Algorithm SHA256).Hash }
+
+function Open-GameById([string]$Id) {
+    $h = Find-ById (Get-Tree $root) 'HomeButton'
+    if ($h) { Invoke-Node $h; Wait-Idle 2500; Set-HarnessOwnedGames }
+    $null = Test-RowPresent (Get-Tree $root) "GameRow.$Id"
+    $row = Find-ById (Get-Tree $root) "GameRow.$Id"
+    if (-not $row) { throw "SKIP: no GameRow.$Id on this machine" }
+    Invoke-Node $row; Wait-Idle 5000; Set-HarnessOwnedGames
+    Assert-OnGameView (Get-Tree $root)
+}
+
+function Open-CheckSetup {
+    $opts = Find-ById (Get-Tree $root) 'GameOptionsButton'
+    Assert-True ($null -ne $opts) "no GameOptionsButton"
+    try { Expand-Node $opts } catch { Invoke-Node $opts }
+    Wait-Idle 1200
+    $item = Find-ById (Get-Tree $root) 'MenuCheckSetup'
+    Assert-True ($null -ne $item) "no MenuCheckSetup in the More menu"
+    Invoke-Node $item; Wait-Idle 2500
+    Assert-True ($null -ne (Find-ByName (Get-Tree $root) 'Edit setup…')) "Check setup did not open the setup dialog"
+}
+
+function Close-SetupDialog {
+    $c = Find-ById (Get-Tree $root) 'CloseButton'
+    if ($c) { Invoke-Node $c; Wait-Idle 2000 }
+}
+
+# The diagnosis grid, as the text a user reads: the value that follows a label.
+function Get-SetupValue([string]$Label) {
+    $texts = @(Get-Tree $root | ForEach-Object {
+        try { if ($_.Current.ControlType.ProgrammaticName -eq 'ControlType.Text') { $_.Current.Name } } catch {} })
+    $i = [array]::IndexOf($texts, $Label)
+    if ($i -lt 0 -or $i + 1 -ge $texts.Count) { return $null }
+    return $texts[$i + 1]
+}
+
+function Get-SetupTexts {
+    @(Get-Tree $root | ForEach-Object { try { $_.Current.Name } catch { '' } }) | Where-Object { $_ }
+}
+
+function Open-SetupEditor {
+    $x = Find-ByName (Get-Tree $root) 'Edit setup…'
+    Assert-True ($null -ne $x) "no Edit setup expander"
+    try { Expand-Node $x } catch { Invoke-Node $x }
+    Wait-Idle 1200
+}
+
+function Get-BoxValue([string]$Id) {
+    (Find-ById (Get-Tree $root) $Id).GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+}
+
+function Test-SaveEnabled {
+    $p = Find-ById (Get-Tree $root) 'PrimaryButton'
+    if (-not $p) { return $false }
+    return [bool]$p.Current.IsEnabled
+}
+
+# A throwaway UE-pak game: three inert paks in a fake layout under artifacts\, registered through the
+# MCP server's register_game (the app's own add path), and removed again by the app's Remove this game.
+$fixtureRoot = Join-Path $repo 'artifacts\smoke\repair-fixture'
+$fixtureId = 'repair-harness-fixture'
+$mcpExe = Join-Path $repo 'src/ModManager.Mcp/bin/Debug/net10.0/ModManager.Mcp.exe'
+
+function Invoke-McpTool([string]$Tool, [hashtable]$Arguments) {
+    if (-not (Test-Path $mcpExe)) { throw "SKIP: build src/ModManager.Mcp (Debug) first - the fixture registers through it" }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo $mcpExe
+    # stderr carries the server's own logging; drained and dropped so it neither floods the report nor
+    # fills the pipe and stalls the server.
+    $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.BeginErrorReadLine()
+    try {
+        $send = { param($o) $p.StandardInput.WriteLine(($o | ConvertTo-Json -Depth 10 -Compress)); $p.StandardInput.Flush() }
+        $read = { param($id) while ($true) { $l = $p.StandardOutput.ReadLine(); if ($null -eq $l) { throw "MCP server closed" }
+                  try { $m = $l | ConvertFrom-Json } catch { continue }; if ($m.id -eq $id) { return $m } } }
+        & $send @{ jsonrpc = '2.0'; id = 1; method = 'initialize'; params = @{ protocolVersion = '2025-06-18'; capabilities = @{}; clientInfo = @{ name = 'smoke-run'; version = '1' } } }
+        $null = & $read 1
+        & $send @{ jsonrpc = '2.0'; method = 'notifications/initialized' }
+        & $send @{ jsonrpc = '2.0'; id = 2; method = 'tools/call'; params = @{ name = $Tool; arguments = $Arguments } }
+        return ((& $read 2).result.content | Select-Object -First 1).text | ConvertFrom-Json
+    }
+    finally { try { $p.StandardInput.Close() } catch {}; if (-not $p.WaitForExit(5000)) { $p.Kill() } }
+}
+
+function New-RepairFixture {
+    Remove-RepairFixtureFiles
+    $mods = Join-Path $fixtureRoot 'FixtureGame\FixtureGame\Content\Paks\~mods'
+    New-Item -ItemType Directory -Force -Path $mods | Out-Null
+    1..3 | ForEach-Object { Set-Content -LiteralPath (Join-Path $mods "RepairFixture$($_)_P.pak") -Value "SMOKE626 inert $_" -Encoding ascii }
+    $r = Invoke-McpTool 'register_game' @{ name = 'Repair Harness Fixture'; gameRoot = (Join-Path $fixtureRoot 'FixtureGame'); engine = 'ue-pak' }
+    Set-HarnessOwnedGames   # the register, if it wrote anything, was ours
+    Assert-True ($r.ok -and $r.gameId -eq $fixtureId) "fixture registration failed: $($r | ConvertTo-Json -Compress)"
+    Open-GameById $fixtureId
+}
+
+function Remove-RepairFixtureFiles {
+    # ONLY the fixture's own folder (its _626mods data dir lives inside it, beside the fake game).
+    if (Test-Path -LiteralPath $fixtureRoot) { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force }
+}
+
+function Remove-RepairFixture {
+    try {
+        if (Test-ModalOpen $root) { Close-SetupDialog }
+        $h = Find-ById (Get-Tree $root) 'HomeButton'
+        if ($h) { Invoke-Node $h; Wait-Idle 2500; Set-HarnessOwnedGames }
+        $row = Find-ById (Get-Tree $root) "GameRow.$fixtureId"
+        if ($row) {
+            Invoke-Node $row; Wait-Idle 4000; Set-HarnessOwnedGames
+            $opts = Find-ById (Get-Tree $root) 'GameOptionsButton'
+            try { Expand-Node $opts } catch { Invoke-Node $opts }
+            Wait-Idle 1200
+            Invoke-Node (Find-ById (Get-Tree $root) 'MenuRemoveGame'); Wait-Idle 1500
+            $d = Get-ContentDialog $root 'Remove game?' -ButtonName 'Remove'
+            $rb = @(Get-Tree $d | Where-Object { try { $_.Current.Name -eq 'Remove' } catch { $false } })[0]
+            Invoke-Node $rb; Wait-Idle 3000; Set-HarnessOwnedGames
+        }
+    }
+    finally {
+        Remove-RepairFixtureFiles
+        $still = ((Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq $fixtureId)
+        if ($still) { Write-Host "  !! $fixtureId is still registered - remove it with More > Remove this game" -ForegroundColor Red }
+    }
+}
+
+Case 'repair-elden-ring-reads-healthy' 'PR (feat/registration-repair-ui) step 1' {
+    # Read-only. The dialog must not imply a repair on a working install: Elden Ring's mods load by
+    # direct-inject while its registration describes a Mod Engine 2 folder, and that is drift, not damage.
+    Open-GameById 'elden-ring'
+    Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.setup-drift')) "the SETUP chip is showing on a working install"
+    $h0 = Get-GamesHash
+    try {
+        Open-CheckSetup
+        $mods = Get-SetupValue 'Mods found'
+        $loaded = Get-SetupValue 'Loaded by'
+        $verdict = (Get-SetupTexts | Where-Object { $_ -like '*drift, not damage*' } | Select-Object -First 1)
+        $look = Get-SetupValue 'Set to look in'
+        $stored = @(((Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq 'elden-ring').modLocations)[0].path
+        Assert-True ($mods -and $mods -ne 'None.') "Mods found reads '$mods'"
+        Assert-True ($loaded -like '*Elden Mod Loader*') "Loaded by reads '$loaded'"
+        Assert-True ($null -ne $verdict) "no verdict saying the drift is not damage"
+        # B1: the registration's own location, even when the game definition corrected its path
+        # (stored 'mod', effective 'mods'), is declared - never "added by the launcher".
+        Assert-True ($look -and $look -notlike '*added by the launcher*') "Set to look in attributes Elden Ring's own folder to the launcher: '$look'"
+        Assert-True (-not $look.Contains('  ')) "Set to look in has a double space: '$look'"
+        # Either the line IS the stored path (nothing corrected), or it names the stored path as what the
+        # definition corrected. A bare Contains was vacuous: "mods" contains "mod".
+        $s = [string]$stored
+        $asStored = $look -eq $s -or $look.StartsWith("$s (")
+        $asCorrected = $look.Contains("(corrected from $s by the game's definition)")
+        Assert-True ((-not $s) -or $asStored -or $asCorrected) "Set to look in neither is nor names as corrected the stored path '$s': '$look'"
+        Assert-True (-not (Test-SaveEnabled)) "Save is enabled with nothing changed"
+        "'$mods' loaded by '$loaded'; look-in '$look'; verdict says drift, not damage; no SETUP chip"
+    }
+    finally {
+        Close-SetupDialog
+        Assert-True ((Get-GamesHash) -eq $h0) "games.json changed while Elden Ring's setup was only read"
+    }
+}
+
+Case 'repair-windrose-location-count-readonly' 'PR (feat/registration-repair-ui) step 8' {
+    # Read-only. The count comes from games.json, never from the row above it: the editor rebuilds
+    # the location list, and an earlier revision silently dropped locations 2 and 3.
+    $declared = @(((Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq 'windrose').modLocations).Count
+    if ($declared -lt 2) { throw "SKIP: Windrose declares $declared mod location(s) here - needs two or more" }
+    Open-GameById 'windrose'
+    $h0 = Get-GamesHash
+    try {
+        Open-CheckSetup
+        $look = Get-SetupValue 'Set to look in'
+        Open-SetupEditor
+        $label = (Get-SetupTexts | Where-Object { $_ -like 'Mod folder (relative*' } | Select-Object -First 1)
+        $picker = Find-ById (Get-Tree $root) 'SetupModLocationBox'
+        Assert-True ($null -ne $picker) "no SetupModLocationBox for a game with $declared locations"
+        $items = Get-ItemCount $picker
+        Assert-True ($items -eq $declared) "the picker offers $items locations; games.json declares $declared"
+        Assert-True ($label -match "has $declared;") "the label does not name $declared locations: '$label'"
+        Assert-True (-not (Test-SaveEnabled)) "Save is enabled with nothing changed"
+        "games.json declares $declared; picker offers $items; label '$label'; look-in '$look'"
+    }
+    finally {
+        Close-SetupDialog
+        Assert-True ((Get-GamesHash) -eq $h0) "games.json changed while Windrose's setup was only read"
+    }
+}
+
+Case 'repair-cancel-is-inert' 'PR (feat/registration-repair-ui) step 7' {
+    # Planning reads the filesystem on every pause in typing and must never write. Type into several
+    # fields - the folder one included, so a data-dir move gets planned - then Close.
+    # Inside the try: a fixture that fails half-way (registered, then a failed Open) must still be
+    # removed. Remove-RepairFixture copes with a row that never appeared.
+    try {
+        New-RepairFixture
+        $h0 = Get-GamesHash
+        $files0 = @(Get-ChildItem -LiteralPath $fixtureRoot -Recurse -Force -File | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" })
+        Open-CheckSetup
+        Open-SetupEditor
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupNameBox') 'Cancel Probe Name'; Wait-Idle 600
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupFolderBox') $env:TEMP; Wait-Idle 600
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupExtensionsBox') 'pak, zip'; Wait-Idle 600
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupSteamAppIdBox') '999999'; Wait-Idle 1500
+        $planned = @(Get-SetupTexts | Where-Object { $_ -like '*ask whether to move*' }).Count
+        Close-SetupDialog
+        Assert-True (-not (Test-ModalOpen $root)) "a dialog is still open after Close"
+        Assert-True ((Get-GamesHash) -eq $h0) "games.json changed after Close"
+        $files1 = @(Get-ChildItem -LiteralPath $fixtureRoot -Recurse -Force -File | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" })
+        Assert-True (@(Compare-Object $files0 $files1).Count -eq 0) "the fixture's files changed after Close"
+        "typed four fields (a move was planned: $($planned -gt 0)), closed; games.json and $($files0.Count) files unchanged"
+    }
+    finally { Remove-RepairFixture }
+}
+
+Case 'repair-save-gating' 'PR (feat/registration-repair-ui) step 3' {
+    # Nothing changed: Save off. A blank game folder or a blank mod folder: Save off AND the reason
+    # on screen. Put the value back: Save off again, because there is nothing to save.
+    # Inside the try: a fixture that fails half-way (registered, then a failed Open) must still be
+    # removed. Remove-RepairFixture copes with a row that never appeared.
+    try {
+        New-RepairFixture
+        $h0 = Get-GamesHash
+        Open-CheckSetup
+        Open-SetupEditor
+        Assert-True (-not (Test-SaveEnabled)) "Save is enabled with nothing changed"
+
+        $folder = Get-BoxValue 'SetupFolderBox'
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupFolderBox') ''; Wait-Idle 1200
+        Assert-True (-not (Test-SaveEnabled)) "Save is enabled with a blank game folder"
+        Assert-True (@(Get-SetupTexts | Where-Object { $_ -like 'A game folder is required*' }).Count -gt 0) "a blank game folder shows no reason"
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupFolderBox') $folder; Wait-Idle 1200
+
+        $mp = Get-BoxValue 'SetupModPathBox'
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupModPathBox') ''; Wait-Idle 1200
+        Assert-True (-not (Test-SaveEnabled)) "Save is enabled with a blank mod folder"
+        Assert-True (@(Get-SetupTexts | Where-Object { $_ -like "A mod folder can't be blank*" }).Count -gt 0) "a blank mod folder shows no reason"
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupModPathBox') $mp; Wait-Idle 1200
+        Assert-True (-not (Test-SaveEnabled)) "Save is enabled after every field went back to its stored value"
+
+        Set-EditValue (Find-ById (Get-Tree $root) 'SetupGroupingBox') 'filename_no_ext'; Wait-Idle 1200
+        Assert-True (Test-SaveEnabled) "Save stays disabled on a real change"
+        Close-SetupDialog
+        Assert-True ((Get-GamesHash) -eq $h0) "games.json changed without a save"
+        "off unchanged; off + reason for a blank folder and a blank mod folder; off when restored; on for a real change"
+    }
+    finally { Remove-RepairFixture }
+}
+
 # ---------------------------------------------------------------- what a harness cannot do
 Write-Host ''
 Write-Host '  -- cases this harness cannot run --' -ForegroundColor White
@@ -883,8 +1181,35 @@ foreach ($c in $catalog.cases | Where-Object { $_.coverage -eq 'human' }) {
     HumanOnly $c.id $c.surface $c.humanReason
 }
 
+}
+finally {
+    Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
+    if ($null -ne $script:GamesSnapshot) {
+        Start-Sleep -Seconds 2   # let the app's last write land before it is overwritten
+        $want = [System.BitConverter]::ToString(
+            [System.Security.Cryptography.SHA256]::HashData($script:GamesSnapshot))
+        $now = Get-GamesJsonHash
+        try {
+            # Someone else changed games.json after the harness's last own write (the user, another
+            # tool, another launcher instance). Overwriting would destroy their change, so leave it.
+            # With no harness write at all, the owned hash is still the snapshot's, so this compares
+            # against the snapshot. A file already back at the snapshot is fine to rewrite: no-op.
+            if ($now -ne $script:GamesHashAfterHarness -and $now -ne $want) {
+                # Not `return`: at script level that would end the run before the report.
+                Write-Host "  !! games.json changed outside the harness during the run - NOT restored. The run-start copy is $gamesSnapshotPath" -ForegroundColor Red
+            }
+            else {
+                [System.IO.File]::WriteAllBytes($gamesJson, $script:GamesSnapshot)
+                $got = Get-GamesJsonHash
+                if ($got -eq $want) { Write-Host '  games.json restored byte-identical to the run-start snapshot' -ForegroundColor Green }
+                else { Write-Host "  !! games.json restore did NOT match the snapshot - check it by hand against $gamesSnapshotPath" -ForegroundColor Red }
+            }
+        }
+        catch { Write-Host "  !! games.json could not be restored: $($_.Exception.Message)" -ForegroundColor Red }
+    }
+}
+
 # ---------------------------------------------------------------- report
-Get-Process ModManager.App -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 
 $pass  = @($script:Results | Where-Object Status -eq 'PASS').Count
 $fail  = @($script:Results | Where-Object Status -eq 'FAIL').Count

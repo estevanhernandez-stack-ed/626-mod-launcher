@@ -412,7 +412,7 @@ public class GameShapeTests
 
     // FrameworkRegistry.List reads <dataDir>/frameworks/<id>/install.json — camelCase on disk, like
     // every file this launcher writes.
-    private static void WriteUe4ssManifest(string dataDir, string installPath)
+    internal static void WriteUe4ssManifest(string dataDir, string installPath)
     {
         var dir = Path.Combine(dataDir, "frameworks", "ue4ss");
         Directory.CreateDirectory(dir);

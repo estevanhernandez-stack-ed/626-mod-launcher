@@ -1366,6 +1366,38 @@ those, and for any manual re-run; it always reports back, even on nothing-found.
    this step proves the view-model actually hands it over. This is the one site of the three A5
    touched that was broken in the field — the other two were latent.
 
+   **2026-10-02, agent on Nebuchadnezzar: FAIL on the mod-path half; the extension half holds.** Run
+   on a throwaway registration, not Cyberpunk: name `Dragon's Dogma: Dark Arisen`, engine `custom`, no
+   Steam id, so it joins the `dragon-s-dogma-dark-arisen` manifest entry by id and stays stale as
+   added (`fileExtensions: ["pak"]`, mod path `mods`; the manifest says `["arc"]` and `nativePC`).
+   Nexus was not connected, so no network calls. Two stale-text corrections first: the custom
+   scanner lists a SUBFOLDER of the mod path as a folder row (`626smoke` showed as a mod), so "swept
+   but never a row" is not the discriminator it was written as - the sweep keys the probe by its
+   filename, so the probe still survives the exclusion; and the review dialog only opens after a
+   downloads-folder prompt (`Skip`).
+   - `nativePC\626smoke\A5SweepProbe.arc` (under the path the SCANNER uses): **absent** from the
+     review; status "Nexus isn't connected...", no dialog.
+   - `mods\626smoke\RawPathProbe.arc` (under the RAW stored path): **present**, "not identified".
+     So the sweep now takes the corrected extensions (`.arc` is engine-shaped) but still takes its
+     mod paths from the raw `ctx.Game.ModLocations` (`MainViewModel.BuildDiscoveryProposalsAsync`,
+     the `modPaths` loop), while the scanner reads the manifest-refreshed locations. Same bug class as
+     A5, other field: a stale registration still sitting on the preset mod path sweeps a folder the
+     launcher never lists from.
+   - Leading-dot variant: extensions saved as `.arc` through Check setup (pins them) - RawPathProbe
+     still appears.
+   Cyberpunk itself would not show this (its stored path is already `archive/pc/mod`), which is why
+   the original recipe could not catch it.
+
+   **Fixed 2026-10-02 (B2), not yet re-run live.** The sweep's mod folders now come from
+   `DiscoverySweep.ModPathsFor(ctx)` in Core, which reads `ctx.Locations` - the same resolved list the
+   scanner lists from - instead of the raw `ctx.Game.ModLocations`. Folders-form locations (one folder
+   per mod, like the appended UE4SS folder) are skipped, since no loose file there ever becomes a row.
+   `BuildDiscoveryProposalsAsync` calls it, so folders and extensions both come from the resolved
+   context. The stale raw folder is deliberately not swept as well: engine-shaped promises a row after
+   adoption, and the scanner never reads that folder. Covered by `DiscoverySweepModPathsTests` (the
+   A5 fixture shape: a probe under `nativePC` is offered, one under the stale `mods` is not). EXPECT
+   on a re-run: `A5SweepProbe.arc` present, `RawPathProbe.arc` absent.
+
 **Why these matter:** every layer below the App wiring is unit-tested, but three separate
 review-round bugs on this exact feature were "ran fine, showed a status line, wrote nothing" —
 wrong extensions swept, archive candidates keyed to a dead write target, and a name index with no
@@ -1621,6 +1653,105 @@ unit test at all. Steps 12 and 13 are the only coverage its failure branches get
     else is still running." rather than open. *Why it matters:* this is deliberate and wider than the
     cancellable-long-op check, because a data-dir move cannot be stopped and leaves the window looking
     idle. Whoever hits it first during an unrelated operation will read it as a bug; it is not.
+
+**Stale expectations, corrected 2026-10-02 against the code after PR #353 (A6):**
+
+- Step 1: "Living in" now reads `mods, the game folder`, and "Set to look in" no longer reads
+  `mod (this folder doesn't exist)` - see the step 1 bug below for what it reads instead.
+- Step 2: the "banner" is now the game-state strip chip `StateChip.setup-drift` (SETUP, "No mods
+  found, and the folder this game is set to look in doesn't exist.", action `Check setup`), dismissed
+  with `StateChipDismiss`. Same two-term predicate. A disabled mod held in the data dir counts as a
+  mod, so a game with anything turned off never shows it.
+- Step 3: "Restore it - Save enables" is wrong. Restoring the stored value leaves nothing to save, so
+  Save stays DISABLED; it enables only on a real change. A blank MOD folder now blocks too ("A mod
+  folder can't be blank..."). The blocker renders below the fold of the dialog's scroll area, so on a
+  normal window you scroll to read why Save is off.
+- Step 8: there is no "first of two" label any more. A6 made every location editable: the label reads
+  `Mod folder (relative to the game folder) - this game has 2; pick one to edit`, with a
+  `SetupModLocationBox` picker listing each declared location. Windrose lists 30 mods.
+- Step 12: the setup dialog does not stay open, and the data dir is the `_626mods\<id>` next to the
+  game folder for a non-Steam path. A failed move now writes and clears a breadcrumb in
+  `%APPDATA%\ModManagerBuilder\pending-moves` (A6).
+- Step 14: the confirm states it: "Cancel abandons the whole edit, including the other fields you
+  changed."
+- Step 15: the long operation can be the data-dir move itself, which is the case the refusal exists
+  for.
+
+**Verified 2026-10-02, agent on Nebuchadnezzar** (v0.23.0 Debug build of 1f8bad1, driven by UIA; every
+destructive step on throwaway test games under the session scratchpad and `G:\626-repair-smoke`, all
+removed afterwards; real games opened read-only; games.json restored byte-identical):
+
+1. FAIL (one line). 11 mods, Loaded by Elden Mod Loader, verdict "This is drift, not damage", no SETUP
+   chip, Save disabled - all as promised. But "Set to look in" reads
+   `...\ELDEN RING\mods (added by the launcher, not declared)  (this folder doesn't exist)` while
+   games.json declares `mod`. **Bug:** `GameShape.DeclaredFor` matches stored paths against the
+   MANIFEST-CORRECTED location (`mod` refreshed to `mods`), finds no match, and labels the
+   registration's own declared location launcher-derived; the verdict repeats it ("the registration
+   does not declare it"), `get_game_shape` reports `declared:false`, and because `Attention` counts
+   declared entries only, the SETUP chip can never fire for a refreshed location. Reproduced on a
+   second registration (custom engine joined to the `dragon-s-dogma-dark-arisen` manifest entry:
+   stored `mods`, scanned `nativePC`, `declared:false`). Also a cosmetic double space before "(this
+   folder doesn't exist)".
+   **Fixed 2026-10-02 (B1), not yet re-run live.** `Scanner.GameContext` now tags each registration
+   location with its stored path and its resolved path, and `GameShape` calls a location declared when
+   it came from the registration's list, corrected or not; only a launcher-appended location (the
+   UE4SS folder) is derived. The corrected path is what shows, with what the registration stored:
+   EXPECT `mods (corrected from mod by the game's definition) (this folder doesn't exist)`, one space
+   before each parenthesis. `DeclaredLocation.CorrectedFrom` carries the stored path; the
+   missing-folder note adds "The game's definition corrected it from 'mod'." `get_game_shape` now
+   reports `declared:true` and `path: "mods"` with no MCP change (it projects `GameShape`; it does not
+   project `CorrectedFrom` yet). The SETUP chip does NOT fire for a missing corrected location: its
+   path is the definition's, and a definition's folder that is not there means "not started" (Este,
+   2026-08-18, ModFolderSeed); a missing path the registration itself chose still raises it. When the
+   registration's own pre-correction folder still holds files, a note says "The registration's own
+   '<stored>' folder holds N files the launcher no longer reads." `get_game_shape` also returns
+   `correctedFrom`. Covered by `GameShapeCorrectedPathTests` and `GameShapeToolTests`; the
+   `repair-elden-ring-reads-healthy` case asserts the line is either the stored path or names it as
+   `(corrected from <stored> by the game's definition)`.
+2. PASS. Test game with its folder present and 0 mods: no chip. Mod folder set to a missing path and
+   saved: `StateChip.setup-drift` appears; Dismiss removes it; switching away and back re-shows it.
+3. PASS (current behaviour, see above). Off with no change; off + "A game folder is required..." for
+   a blank folder; off + "A mod folder can't be blank..." for a blank mod folder; off when restored;
+   on for a grouping change. games.json unchanged.
+4. PASS. Only "update the game name", no lock-in line; saved; game picker and library row show the
+   new name; `userSet` stays empty.
+5. PASS. Confirm named the real count (5 files) and source path; status ticked "Moving launcher data:
+   2 of 5 files."; data dir (with a 3 GB ballast file) now only at `G:\626-repair-smoke\_626mods\<id>`,
+   the old one gone, all 3 mods still listed, games.json `gameRoot` on G: with `userSet: gameRoot`.
+6. PASS. "Leave it": no progress ticks, data dir untouched, games.json `dataDir` = the original path;
+   a later folder change then previews only "update the game folder", no move.
+7. PASS. Typed name, folder, extensions and Steam id (a move was planned), Close: games.json hash and
+   every test file unchanged.
+8. PASS (read-only, not saved per the safety rule). games.json declares 2 locations; the picker
+   offers 2; "Set to look in" lists `~mods`, `LogicMods` and the UE4SS folder marked "(added by the
+   launcher, not declared)"; Save disabled; hash unchanged after Close.
+9. PASS. "None declared." Rename saved with `modLocations` still `[]`, no `userSet`.
+10. PASS. frostbite to bepinex with `BepInEx/plugins` and `dll`: "update the file extensions / mod
+    folder / engine", no "lock in", plus the engine note; saved `userSet` empty.
+11. PASS. "Saved." still on the status line 3 s after the reload.
+12. PASS. With a test-data-dir file held open (`FileShare.None`): "One of these files is in use, so
+    nothing was moved. Close the game and any tool that has its folder open, then try again.";
+    games.json byte-identical; the data dir whole at the old path; no staging left. Minor: an EMPTY
+    `_626mods` folder is left on the target drive.
+13. NOT EXERCISED. No practical route (the ACL trick was ruled out for this run).
+14. PASS. Rename + folder change, Save, Cancel on the confirm: games.json byte-identical, rename
+    included; no file touched.
+15. PASS. During an 11 GB test move (no Stop), More > Check setup set the status to "Something else
+    is still running. Give it a moment, then try again." and no dialog opened.
+
+Harness: steps 1, 3, 7 and 8 are `repair-elden-ring-reads-healthy`, `repair-save-gating`,
+`repair-cancel-is-inert` and `repair-windrose-location-count-readonly` in `scripts/smoke-run.ps1`
+(run them alone with `-Only`; 3 and 7 register and remove their own fixture game). Step 1's case
+now also asserts the "Set to look in" line (no "added by the launcher", no double space, and either
+the stored path itself or "(corrected from <stored> by the game's definition)"), so B1 cannot come back
+unnoticed. The two fixture cases now register their fixture inside the try, and whenever either is
+selected the harness snapshots games.json at run start and writes it back byte-identical in a finally
+at the end of the run, printing whether the restore matched.
+
+Minor findings, also fixed 2026-10-02: a failed move now removes the parent folders it created
+(the empty `_626mods` on the target drive in step 12), only while they are empty
+(`DataDirMoveExecuteTests`); and the Save blocker is pinned below the scroll area, directly above the
+buttons, with `AutomationId` `SetupBlockerText`, so a greyed Save always shows its reason (step 3).
 
 ---
 
