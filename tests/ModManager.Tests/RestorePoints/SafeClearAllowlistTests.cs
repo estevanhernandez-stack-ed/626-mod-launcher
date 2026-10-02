@@ -368,23 +368,27 @@ public class SafeClearAllowlistTests : IDisposable
     [Fact]
     public async Task A_mod_folder_outside_the_game_is_never_swept_but_its_mods_turn_off_and_come_back()
     {
-        // Round 5 (review r4, I-2): base content can't plausibly live outside the game folder, so its rows are
-        // turned off like any mod. The folder itself is still never swept: the loose file there stays, named.
+        // Round 7 (review r6, I-1): outside the game folder a row is turned off ONLY with proof that 626
+        // installed it. cc.package has an install record: off, and back on restore. other.package has none:
+        // it stays on, named. The folder itself is never swept: the loose file there stays, named.
         var root = Path.Combine(_root, "sims");
         var docs = Path.Combine(_root, "Documents", "Electronic Arts", "The Sims 4", "Mods");
         Put(Path.Combine(root, "game.exe"), "EXE");
         Put(Path.Combine(docs, "cc.package"), "CC");
+        Put(Path.Combine(docs, "other.package"), "OTHER");
         Put(Path.Combine(docs, "Resource.cfg"), "CFG");
         var g = new GameEntry
         {
             Id = "sims", GameName = "Sims", Engine = "custom", GameRoot = root, DataDir = DataDir("sims"),
             FileExtensions = new[] { "package" }, ModLocations = new[] { new ModLocation("mods", "Mods", docs) },
         };
+        ModInstallRegistry.Save(g.DataDir!, new ModInstallManifest("cc", "cc.zip", "mods", new[] { "cc.package" }, DateTime.UtcNow.AddMinutes(1)));
         var before = Snapshot(docs);
         var orch = Make(g);
         Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
 
-        Assert.False(File.Exists(Path.Combine(docs, "cc.package")));       // the mod is held
+        Assert.False(File.Exists(Path.Combine(docs, "cc.package")));       // 626 installed it: held
+        Assert.Equal("OTHER", File.ReadAllText(Path.Combine(docs, "other.package")));   // no proof: left on
         Assert.Equal("CFG", File.ReadAllText(Path.Combine(docs, "Resource.cfg")));   // the folder is not swept
         var ga = RestorePointManifestStore.Read(RpDir)!.Games[0];
         Assert.Contains(ga.TurnedOffByClear!, m => m.Name == "cc");

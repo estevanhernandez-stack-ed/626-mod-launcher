@@ -112,7 +112,9 @@ public static class OffBoardingHydrator
         var head = off == 0
             ? (activeMods == 0 ? "626 didn't turn off any mods here" : $"626 didn't turn off any mods here: {Mods(activeMods)} {IsAre(activeMods)} still active")
             : activeMods == 0
-                ? $"626 turned off all {Mods(off)} it found"
+                // "All" only when nothing else was left in place. Beside items 626 couldn't tell apart, it would
+                // read as "every mod there was" (replica r6: "all 3 mods" next to 191 items).
+                ? (items == 0 ? $"626 turned off all {Mods(off)} it found" : $"626 turned off the {Mods(off)} it could tell were mods")
                 : $"626 turned off {off} of {off + activeMods} mods; {activeMods} {IsAre(activeMods)} still active";
         var sweep = moved > 0 ? $", and moved {moved} other file{(moved == 1 ? "" : "s")} from the mod folders into your restore point" : "";
         var unknown = items > 0

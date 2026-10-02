@@ -88,9 +88,10 @@ public static partial class RestorePointEngine
             .Where(p => p is not null).Select(p => p!).ToList();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var installed = ModInstallRegistry.List(c.DataDir);
+        var replaced = ReplacedGameFiles(c);   // once per plan (r6, m-3)
         return ModListing.Resolve(c.Game)
             .Where(m => m.Enabled && !m.ReadOnly && m.Loader is not ("ue4ss" or "bepinex"))
-            .Where(m => InTurnOffScope(c, m, installed))
+            .Where(m => InTurnOffScope(c, m, installed, replaced))
             .Where(m => !HasBaseGamePak(c, m))
             .Where(m => !CoveredByMoves(c, m, moved))
             .Where(m => !CoveredByMoves(c, m, frameworkOwned))
@@ -154,52 +155,50 @@ public static partial class RestorePointEngine
         _ => c.Locations.FirstOrDefault(l => l.Name == m.Location)?.Abs,
     };
 
-    // A row vanilla may turn off (review r4, I5): one on a lane with its own safe mechanism (direct-inject,
-    // loose-root, Mod Engine 2's config, a proxy step-aside), or one whose location the launcher KNOWS holds
-    // only mods. A scanner row anywhere else (Skyrim.esm in Data, a base pak in a files-form Content/Paks)
-    // could be the game itself: it is left on, and the sheet lists it as still active.
-    //
-    // Round 5 widens it where the review showed it was safe, and where Este ruled it must stay useful:
-    //  - a paks-root location (Scanner.GuardNoBasePakMove refuses a base pak there, and base-pak rows are
-    //    skipped up front by HasBaseGamePak anyway);
-    //  - a location outside the game folder (Documents\...\Mods): base content can't plausibly live there;
-    //  - anywhere else, a row whose every file an install record says 626 placed (ModInstallRegistry):
-    //    the launcher wrote those bytes, so they are a mod by evidence. Skyrim.esm never has a record.
-    private static bool InTurnOffScope(GameContext c, Mod m, IReadOnlyList<ModInstallManifest> installed)
+    // A row vanilla may turn off. The principle (review r6): vouch by ALLOWLIST or by PROOF OF OWNERSHIP,
+    // never by a list of exclusions.
+    //  - a lane with its own safe mechanism (direct-inject, loose-root, Mod Engine 2's config, a proxy
+    //    step-aside);
+    //  - a location the launcher KNOWS holds only mods (ModOnlyFolders: an engine shape, the UE4SS folder, a
+    //    definition-flagged modPath), compared on REAL paths;
+    //  - a paks-root location inside the game (GuardNoBasePakMove refuses a base pak there, and base-pak
+    //    rows are skipped up front by HasBaseGamePak anyway);
+    //  - anywhere else, INCLUDING every location outside the game folder, only a row whose every file an
+    //    install record says 626 placed (ModInstallRegistry). A mis-set location (an ancestor of the game, the
+    //    profile, SysWOW64, through any alias) turns off nothing 626 didn't install.
+    // A drive-relative location ("C:") means "the current folder on that drive" and is never acted on.
+    private static bool InTurnOffScope(GameContext c, Mod m, IReadOnlyList<ModInstallManifest> installed, ReplacedFiles replaced)
     {
         if (m.Location is "direct-inject" or "mod engine 2" or ProxyLoaderRows.LocationTag
             || m.Location == LooseMods.LooseRootListing.LooseRootLocation)
             return true;
         var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
         if (loc is null || !string.IsNullOrEmpty(loc.Managed)) return false;
-        // A system folder (a drive root, the profile, Windows, Program Files, an ancestor of the game) is never
-        // a mod folder, whatever a location says: no turn-offs there at all (review r5, I-C).
-        if (SystemFolderReason(c, loc.Abs) is not null) return false;
+        if (RealPath.IsDriveRelative(loc.DeclaredPath ?? loc.StoredPath)) return false;
         if (ModOnlyFolders.WhyModOnly(c, loc) is not null) return true;
-        if (loc.Form == "paks-root") return true;
-        if (IsOutsideGame(c, loc.Abs)) return true;
-        return PlacedBy626(c, m, loc, installed);
+        if (loc.Form == "paks-root" && ModOnlyFolders.RelativeToRoot(c.GameRoot, loc.Abs) is not null) return true;
+        return PlacedBy626(c, m, loc, installed, replaced);
     }
 
     /// <summary>
-    /// Why <paramref name="folder"/> is a system folder vanilla never touches, or null. A location set to one
-    /// of these is a mistake, and acting on it would hit the game itself or Windows: an ancestor of the game
-    /// folder (a <c>steamapps\common</c> holds the game), a drive root, the user profile or its AppData,
-    /// Documents or Desktop themselves, Windows, Program Files or ProgramData (review r5, I-C).
+    /// A note on a location that is a system folder (an ancestor of the game, a drive, the profile and its
+    /// well-known folders, Windows, Program Files, ProgramData), or null. Only ever a NOTE: nothing decides on
+    /// it, because a list can't be complete (round 7). Ancestors are compared on real paths.
     /// </summary>
     internal static string? SystemFolderReason(GameContext c, string folder)
     {
-        var full = FullNorm(folder);
-        var root = FullNorm(c.GameRoot);
+        var full = RealPath.Final(folder);
+        var root = RealPath.Final(c.GameRoot);
         if (full is null) return null;
-        if (root is not null && IsUnder(root, full)) return "it contains the game folder itself";
-        try { if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? ""), full, StringComparison.OrdinalIgnoreCase)) return "it is a whole drive"; }
+        if (root is not null && RealPath.IsAtOrUnder(root, full) && !string.Equals(root, full, StringComparison.OrdinalIgnoreCase))
+            return "it contains the game folder itself";
+        try { if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? ""), Path.TrimEndingDirectorySeparator(full), StringComparison.OrdinalIgnoreCase)) return "it is a whole drive"; }
         catch { }
         foreach (var (sf, what) in SystemFolders)
         {
             string? p;
             try { p = Environment.GetFolderPath(sf); } catch { continue; }
-            if (string.IsNullOrEmpty(p) || FullNorm(p) is not { } sys) continue;
+            if (string.IsNullOrEmpty(p) || RealPath.Final(p) is not { } sys) continue;
             if (string.Equals(sys, full, StringComparison.OrdinalIgnoreCase)) return $"it is {what}";
         }
         return null;
@@ -220,30 +219,29 @@ public static partial class RestorePointEngine
         (Environment.SpecialFolder.CommonApplicationData, "the ProgramData folder"),
     };
 
-    // A location outside the game folder that isn't a system folder (Documents\...\The Sims 4\Mods).
-    private static bool IsOutsideGame(GameContext c, string folder)
+    /// <summary>The note for a row vanilla leaves on because installing it put aside a file that was already
+    /// there. True for a game file 626 replaced and for an update over an earlier copy alike (review r6, m-1).</summary>
+    public const string ReplacedGameFileNote =
+        "still active: 626 kept an earlier copy of a file here; turning this off could leave the game without it";
+
+    /// <summary>Every file 626 put aside when installing over it: by full path, and by path relative to the
+    /// location it was written into (so a game folder moved to another library still matches, r6 m-2).</summary>
+    internal sealed record ReplacedFiles(HashSet<string> FullPaths, HashSet<string> RelPaths)
     {
-        var full = FullNorm(folder);
-        var root = FullNorm(c.GameRoot);
-        return full is not null && root is not null && !string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
-               && ModOnlyFolders.RelativeToRoot(c.GameRoot, folder) is null
-               && SystemFolderReason(c, folder) is null;
+        public static readonly ReplacedFiles None = new(new(StringComparer.OrdinalIgnoreCase), new(StringComparer.OrdinalIgnoreCase));
+        public int Count => FullPaths.Count + RelPaths.Count;
     }
 
-    /// <summary>The note for a row vanilla leaves on because 626 replaced one of the game's own files with it.</summary>
-    public const string ReplacedGameFileNote =
-        "still active: 626 replaced a game file here; turning it off would leave the game without it";
-
-    // Every file 626 replaced (ReplacedStore batch manifests under <dataDir>\replaced), by full path. Turning
-    // such a row off would move the mod's copy to holding and leave the game with neither file (review r5, I-B).
-    internal static HashSet<string> ReplacedGameFiles(GameContext c)
+    // Read every ReplacedStore batch manifest under <dataDir>\replaced ONCE per plan (r6, m-3).
+    internal static ReplacedFiles ReplacedGameFiles(GameContext c)
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var full = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var rel = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var root = Path.Combine(c.DataDir, "replaced");
-        if (!Directory.Exists(root)) return set;
+        if (!Directory.Exists(root)) return ReplacedFiles.None;
         IEnumerable<string> manifests;
         try { manifests = Directory.EnumerateFiles(root, "__626replaced.json", SearchOption.AllDirectories).ToList(); }
-        catch { return set; }
+        catch { return ReplacedFiles.None; }
         foreach (var mf in manifests)
         {
             try
@@ -251,21 +249,35 @@ public static partial class RestorePointEngine
                 var entries = System.Text.Json.JsonSerializer.Deserialize<List<ReplacedStore.ReplacedEntry>>(File.ReadAllText(mf),
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 foreach (var e in entries ?? new List<ReplacedStore.ReplacedEntry>())
-                    if (!string.IsNullOrEmpty(e.OriginalPath) && FullNorm(e.OriginalPath) is { } p) set.Add(p);
+                {
+                    if (!string.IsNullOrEmpty(e.OriginalPath) && FullNorm(e.OriginalPath) is { } p) full.Add(p);
+                    if (!string.IsNullOrEmpty(e.RelPath) && !IsRooted(e.RelPath)) rel.Add(NormRel(e.RelPath));
+                }
             }
             catch { /* a torn record: nothing known from it */ }
         }
-        return set;
+        return new ReplacedFiles(full, rel);
     }
 
-    // True when any of the row's files (or, for a folder row, any file under it) is one 626 replaced.
-    internal static bool ReplacedAGameFile(GameContext c, Mod m, HashSet<string> replaced)
+    private static string NormRel(string f) => f.Replace(Path.DirectorySeparatorChar, '/').Replace('\\', '/').Trim('/');
+
+    // True when any of the row's files (or, for a folder row, any file under it) is one 626 put aside. A
+    // relative match counts only in the PRIMARY location, the one intake writes into.
+    internal static bool ReplacedAGameFile(GameContext c, Mod m, ReplacedFiles replaced)
     {
         if (replaced.Count == 0 || BaseDirFor(c, m) is not { } baseDir) return false;
+        var primary = c.Locations.FirstOrDefault()?.Name == m.Location;
         foreach (var f in m.Files)
         {
-            if (FullNorm(Path.Combine(baseDir, f)) is not { } p) continue;
-            if (replaced.Contains(p) || replaced.Any(r => IsUnder(r, p))) return true;
+            if (FullNorm(Path.Combine(baseDir, f)) is { } p
+                && (replaced.FullPaths.Contains(p) || replaced.FullPaths.Any(r => IsUnder(r, p))))
+                return true;
+            if (primary)
+            {
+                var rf = NormRel(f);
+                if (replaced.RelPaths.Contains(rf) || replaced.RelPaths.Any(r => r.StartsWith(rf + "/", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
         }
         return false;
     }
@@ -275,31 +287,31 @@ public static partial class RestorePointEngine
     /// wrote those bytes. A file row: each of its files is recorded and exists as a file. A folder row: every
     /// file under the folder (links not followed) is recorded under the folder's prefix, and at least one is.
     ///
-    /// <para>Never a row with a file 626 REPLACED (I-B): the record claims it, but the original was the game's.
-    /// Record entries that are rooted or climb with <c>..</c> are ignored, and a file changed after the install
-    /// (written later than the record, beyond a small slack) doesn't count.</para>
+    /// <para>Never a row with a file 626 put aside on install (I-B): the record claims it, but the original
+    /// may be the game's. Record entries that are rooted or climb with <c>..</c> are ignored, and a file
+    /// changed after the install (written later than the record, beyond a small slack) doesn't count.</para>
     ///
     /// <para>Names only, otherwise: <see cref="ModInstallManifest"/> carries no per-file size or hash today, so
     /// there is nothing to compare content against. When it gains them, compare them here.</para>
     /// </summary>
-    private static bool PlacedBy626(GameContext c, Mod m, ModLocationCtx loc, IReadOnlyList<ModInstallManifest> installed)
+    private static bool PlacedBy626(GameContext c, Mod m, ModLocationCtx loc, IReadOnlyList<ModInstallManifest> installed, ReplacedFiles replaced)
     {
         if (m.Files.Count == 0) return false;
-        if (ReplacedAGameFile(c, m, ReplacedGameFiles(c))) return false;
-        static string Norm(string f) => f.Replace(Path.DirectorySeparatorChar, '/').Trim('/');
         var records = installed.Where(i => string.Equals(i.Location, m.Location, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (records.Count == 0) return false;   // nothing recorded here: never walk, never guess
+        if (ReplacedAGameFile(c, m, replaced)) return false;
         var recorded = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in records)
             foreach (var f in r.Files)
             {
                 if (string.IsNullOrWhiteSpace(f) || IsRooted(f) || f.Replace('\\', '/').Split('/').Contains("..")) continue;
-                var key = Norm(f.Replace('\\', '/'));
+                var key = NormRel(f);
                 if (!recorded.TryGetValue(key, out var at) || r.InstalledUtc > at) recorded[key] = r.InstalledUtc;
             }
 
         bool Placed(string rel)
         {
-            if (!recorded.TryGetValue(Norm(rel.Replace('\\', '/')), out var installedUtc)) return false;
+            if (!recorded.TryGetValue(NormRel(rel), out var installedUtc)) return false;
             var abs = Path.Combine(loc.Abs, rel);
             if (!File.Exists(abs)) return false;   // a folder or nothing: never matched as a placed file
             try { return File.GetLastWriteTimeUtc(abs) <= installedUtc.ToUniversalTime().AddMinutes(10); }
@@ -308,13 +320,22 @@ public static partial class RestorePointEngine
 
         if (m.IsFolder)
         {
+            var prefix = NormRel(m.Files[0]) + "/";
+            // Only a folder some record names files under is ever walked (an ancestor's children never are).
+            if (!recorded.Keys.Any(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) return false;
             var folder = Path.Combine(loc.Abs, m.Files[0]);
             if (!Directory.Exists(folder) || IsLink(folder)) return false;
-            var files = FilesNoLinks(folder, folder, null).ToList();
-            return files.Count > 0 && files.All(f => Placed(Path.GetRelativePath(loc.Abs, f)));
+            var any = false;
+            foreach (var f in FilesNoLinks(folder, folder, null))
+            {
+                if (!Placed(Path.GetRelativePath(loc.Abs, f))) return false;   // stops at the first unrecorded file
+                any = true;
+            }
+            return any;
         }
         return m.Files.All(Placed);
     }
+
     // A row with a file that looks like the base game's own pak is never turned off by vanilla, in any form
     // (GuardNoBasePakMove only guards paks-root). Named on the sheet as still active (review r4, m2).
     private static bool HasBaseGamePak(GameContext c, Mod m)

@@ -57,10 +57,18 @@ public static class ModOnlyFolders
         var userSet = c.Game.UserSet?.Contains(GameEntry.UserSetModLocations, StringComparer.OrdinalIgnoreCase) == true;
         if (!userSet && loc.Primary && ManifestIdLookup.ConfirmedEntryFor(c.Game) is { ModPathModOnly: true, ModPath: { } mp }
             && string.Equals(Normalise(mp), rel, StringComparison.OrdinalIgnoreCase)
-            // A belt over the validator's gate: a flag on a base-content shape is never honoured here either.
-            && ModOnlyFlagProblem(mp) is null)
+            // A belt over the validator's gate: a flag on a base-content shape is never honoured here either,
+            // and neither is one on a folder holding an executable (the game's own binaries; r6, m-4).
+            && ModOnlyFlagProblem(mp) is null
+            && !HoldsExecutable(loc.Abs))
             return "marked mod-only by the game's definition";
         return null;
+    }
+
+    private static bool HoldsExecutable(string dir)
+    {
+        try { return Directory.Exists(dir) && Directory.EnumerateFiles(dir, "*.exe", SearchOption.TopDirectoryOnly).Any(); }
+        catch { return true; }   // unreadable: not known to be safe
     }
 
     // A fromsoft game with a Mod Engine 2 config: its mod folder is the one beside the config, nothing else.
@@ -117,10 +125,14 @@ public static class ModOnlyFolders
     /// or null when it is the game root itself or not under it.</summary>
     public static string? RelativeToRoot(string gameRoot, string abs)
     {
+        // Compared on REAL paths (round 7): a junction, the \\?\ prefix, subst or UNC spelling of a folder is resolved
+        // first, so a link that leads out of the game is never "inside" it, and an alias of an ancestor is
+        // never mistaken for a child.
         try
         {
-            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameRoot));
-            var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(abs));
+            if (RealPath.Final(gameRoot) is not { } root || RealPath.Final(abs) is not { } full) return null;
+            root = Path.TrimEndingDirectorySeparator(root);
+            full = Path.TrimEndingDirectorySeparator(full);
             if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return null;
             return Normalise(full[(root.Length + 1)..]);
         }

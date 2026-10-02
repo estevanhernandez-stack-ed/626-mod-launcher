@@ -404,3 +404,42 @@ A game's folder under Documents is still fine.
   read the way Windows opens it (`Data.` and ` Data ` are `Data`).
 - **`PakClassifier`** treats UE4's project-named base pak (`<Project>-WindowsNoEditor.pak`, `-Windows`,
   `-WindowsClient`, `-WindowsServer`, no `_P`) as base. That is a one-line regex change, with tests.
+
+## Round 7: allowlist or proof, never a list of exclusions (review r6)
+
+**The principle for the whole feature.** Vanilla acts on a folder only when it is vouched for:
+
+- by the allowlist (`ModOnlyFolders`), or
+- by proof of ownership, meaning an install record shows 626 placed every file of the row.
+
+It never acts because a folder is missing from a list of exclusions. Round 6 tried to make "outside the
+game folder" safe with a list of system folders. A junction, the `\\?\` prefix, UNC to the parent, or an
+unlisted folder (`C:\Users`, `SysWOW64`, OneDrive, the Steam folder) went straight past it, and vanilla
+turned off the game itself. Now:
+
+- **Outside the game folder,** a row is turned off only with proof of ownership. Outside folders are never
+  swept, as before. The system-folder list remains as a note on the sheet only; nothing decides on it.
+- **Real paths.** Every containment comparison resolves both sides first (`RealPath.Final`): Windows'
+  final path of an open handle, falling back to following link targets segment by segment. That covers
+  junctions, symlinks, `subst` and the `\\?\` prefix. A UNC path to a local share stays UNC, so it is never
+  "inside" the game. A link that leads out of the game is therefore never vouched for.
+- **Drive-relative locations.** A location such as `C:` (no slash) is ignored, with a note.
+- **Ownership walks only what a record names.** A folder row is walked only when a record lists files
+  under it, so an ancestor's children are never walked.
+
+**PakClassifier.** The round-6 widening is reverted. It hid real mods named `<Name>-WindowsNoEditor.pak`
+everywhere. A test pins `BetterHUD-WindowsNoEditor.pak` as a visible, switchable mod in `~mods` and on
+paks-root. The narrow rule (prefix equals `<Project>`, directly in `<Project>/Content/Paks`) is a
+follow-up.
+
+**Minors.**
+
+- The kept-copy note is true for an update and a game-file replace alike: "626 kept an earlier copy of a
+  file here; turning this off could leave the game without it".
+- Replaced files also match by path relative to the primary location, so they still match after the game
+  folder moved to another library.
+- The ReplacedStore manifests are read once per plan.
+- A definition-flagged folder holding an `.exe` is never vouched for.
+
+**Sheet.** "All N mods it found" appears only when nothing else was left in place. Beside items 626
+couldn't tell apart, the sheet says "626 turned off the N mods it could tell were mods".

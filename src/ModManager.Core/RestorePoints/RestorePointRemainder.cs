@@ -132,6 +132,7 @@ public static partial class RestorePointEngine
     /// </summary>
     private static List<string> ModOnlyRoots(GameContext c, string gameRoot, List<InPlaceNote>? left, IReadOnlyList<Mod>? rows)
     {
+        var replaced = left is null ? ReplacedFiles.None : ReplacedGameFiles(c);   // once per plan
         var roots = new List<string>();
         bool TryAdd(string full)
         {
@@ -154,8 +155,21 @@ public static partial class RestorePointEngine
 
         foreach (var loc in c.Locations)
         {
+            if (RealPath.IsDriveRelative(loc.DeclaredPath ?? loc.StoredPath))
+            {
+                left?.Add(new InPlaceNote(loc.DeclaredPath ?? loc.StoredPath ?? loc.Name,
+                    "this location names a drive but no folder (it would mean whatever folder is current), so 626 ignored it"));
+                continue;
+            }
             var full = FullNorm(loc.Abs);
             if (full is null || !Directory.Exists(full)) continue;   // nothing there to sweep or to name
+            if (left is not null && IsLink(full))
+            {
+                left.Add(new InPlaceNote(full, "it is a link to somewhere else, so 626 doesn't sweep it"));
+                foreach (var m in (rows ?? Array.Empty<Mod>()).Where(r => r.Enabled && r.Location == loc.Name && !HasBaseGamePak(c, r)))
+                    left.Add(new InPlaceNote(m.Name, $"{CantTellRowPrefix}{full}, a link to somewhere else"));
+                continue;
+            }
             var inside = ModOnlyFolders.RelativeToRoot(gameRoot, full) is not null;
             if (inside && string.IsNullOrEmpty(loc.Managed) && ModOnlyFolders.WhyModOnly(c, loc) is not null)
             {
@@ -184,7 +198,6 @@ public static partial class RestorePointEngine
             // data, Content/Paks), a user's own path, a folder outside the game. Named, never swept.
             var where = !inside ? (string.Equals(full, gameRoot, StringComparison.OrdinalIgnoreCase) ? "the game folder itself" : full)
                                 : Rel(gameRoot, full);
-            var replaced = ReplacedGameFiles(c);
             var active = (rows ?? Array.Empty<Mod>())
                 .Where(m => m.Enabled && string.Equals(m.Location, loc.Name, StringComparison.Ordinal))
                 .Where(m => !HasBaseGamePak(c, m))   // named once, by the base-pak note

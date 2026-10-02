@@ -325,7 +325,7 @@ public class SafeClearRound6Tests : IDisposable
 
         var line = OffBoardingHydrator.WhatHappened(ga);
 
-        Assert.StartsWith("626 turned off all 1 mod it found", line);
+        Assert.StartsWith("626 turned off the 1 mod it could tell were mods", line);   // never "all" beside items
         Assert.Contains("1 item 626 can't tell from the game's own files is still in place", line);
     }
 
@@ -344,37 +344,8 @@ public class SafeClearRound6Tests : IDisposable
     public void m_d_executable_folders_and_disguised_base_names_never_carry_the_flag(string modPath)
         => Assert.NotNull(ModOnlyFolders.ModOnlyFlagProblem(modPath));
 
-    // ---- m-e: UE4's project-named base pak ----
-
-    [Theory]
-    [InlineData("Indie-WindowsNoEditor.pak", true)]
-    [InlineData("MyGame-Windows.pak", true)]
-    [InlineData("MyGame-WindowsClient.pak", true)]
-    [InlineData("CoolMod-WindowsNoEditor_P.pak", false)]
-    [InlineData("CoolMod_P.pak", false)]
-    [InlineData("zz_Funner_Witchfire.pak", false)]
-    public void m_e_a_small_project_named_base_pak_is_base(string name, bool isBase)
-        => Assert.Equal(isBase, PakClassifier.IsBaseGamePak(name, 10 * 1024));
-
-    [Fact]
-    public async Task m_e_on_paks_root_a_small_project_named_base_pak_is_never_turned_off()
-    {
-        var root = Path.Combine(_root, "indie");
-        var paks = Path.Combine(root, "Indie", "Content", "Paks");
-        Put(Path.Combine(paks, "Indie-WindowsNoEditor.pak"), "BASE");
-        Put(Path.Combine(paks, "CoolMod_P.pak"), "COOL");
-        var g = new GameEntry
-        {
-            Id = "indie", GameName = "Indie", Engine = "ue-pak", GameRoot = root, DataDir = DataDir("indie"),
-            FileExtensions = new[] { "pak" }, GroupingRule = "filename_no_ext",
-            ModLocations = new[] { new ModLocation("mods", "Paks", "Indie/Content/Paks") { Form = "paks-root" } },
-        };
-
-        Assert.True((await Make(g).SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
-
-        Assert.Equal("BASE", File.ReadAllText(Path.Combine(paks, "Indie-WindowsNoEditor.pak")));
-        Assert.False(File.Exists(Path.Combine(paks, "CoolMod_P.pak")));
-    }
+    // ---- m-e was reverted in round 7: a project-named pak is a MOD unless proven base ----
+    // (SafeClearRound7Tests.A_project_named_mod_pak_stays_a_visible_toggleable_mod pins it.)
 }
 
 /// <summary>I-A against the published feed's shape: Cyberpunk restated with <c>archive/pc/mod</c> and no flag,
