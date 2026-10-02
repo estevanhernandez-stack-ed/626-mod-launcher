@@ -496,6 +496,127 @@ public class MultiTreeToggleTests : IDisposable
         Assert.Equal(heldTrees, Hashes(HeldTrees));
     }
 
+    // ---- Every public entry point reaches the same DisableEntry / EnableMod (Task 5) ----
+
+    private string HeldTreesOf(string mod) => Path.Combine(DataDir, "disabled-trees", mod);
+
+    private void AddSecondMod()
+    {
+        Put("archive/pc/mod/SecondMod.archive", "MAIN2");
+        Put("r6/scripts/SecondMod/second.reds", "SCRIPTS2");
+        Put("r6/tweaks/SecondMod.yaml", "TWEAK2");
+    }
+
+    private void AssertExtrasHeld(string mod)
+    {
+        Assert.True(Directory.Exists(HeldTreesOf(mod)));
+        Assert.NotEmpty(Hashes(HeldTreesOf(mod)));
+        Assert.False(Directory.Exists(Path.Combine(GameRoot, "r6", "scripts", mod)));
+        Assert.False(File.Exists(Path.Combine(GameRoot, "r6", "tweaks", mod + ".yaml")));
+    }
+
+    private void AssertRoundTripped(Dictionary<string, string> before, params string[] mods)
+    {
+        Assert.Equal(before, Hashes(GameRoot));
+        foreach (var m in mods)
+        {
+            Assert.False(Directory.Exists(HeldTreesOf(m)));
+            Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled", m)));
+        }
+        // The framework folder with no row never moved.
+        Assert.Equal("FRAMEWORK", File.ReadAllText(Path.Combine(GameRoot, "red4ext", "plugins", "ArchiveXL", "ArchiveXL.dll")));
+    }
+
+    private async Task<Mod> RowAsync(string name)
+        => Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == name);
+
+    [Fact]
+    public async Task The_mcp_lane_ModToggle_off_then_on_round_trips_the_extras()
+    {
+        var before = Hashes(GameRoot);
+
+        await ModToggle.SetEnabledAsync(Ctx(), await RowAsync("CoolMod"), enabled: false);
+        AssertExtrasHeld("CoolMod");
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", enabled: false));
+        Assert.False(ModToggle.IsApplied(Game(), "CoolMod", enabled: true));
+
+        await ModToggle.SetEnabledAsync(Ctx(), await RowAsync("CoolMod"), enabled: true);
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", enabled: true));
+        AssertRoundTripped(before, "CoolMod");
+    }
+
+    [Fact]
+    public async Task Set_all_off_then_on_moves_every_mods_extras_and_never_the_framework_folder()
+    {
+        AddSecondMod();
+        var before = Hashes(GameRoot);
+
+        await Scanner.SetAllModsAsync(false, Ctx());
+        AssertExtrasHeld("CoolMod");
+        AssertExtrasHeld("SecondMod");
+        Assert.Equal("FRAMEWORK", File.ReadAllText(Path.Combine(GameRoot, "red4ext", "plugins", "ArchiveXL", "ArchiveXL.dll")));
+        Assert.Equal("OTHER", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "OtherThing", "other.reds")));
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", false));
+        Assert.True(ModToggle.IsApplied(Game(), "SecondMod", false));
+
+        await Scanner.SetAllModsAsync(true, Ctx());
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", true));
+        Assert.True(ModToggle.IsApplied(Game(), "SecondMod", true));
+        AssertRoundTripped(before, "CoolMod", "SecondMod");
+    }
+
+    [Fact]
+    public async Task Apply_mode_turns_a_classified_mod_off_then_back_on_with_its_extras()
+    {
+        // "sp" is off under mp and on under sp (Classification.ModeFilter); an existing choice wins the seed.
+        Scanner.SaveClassification(Ctx(), new Dictionary<string, string> { ["CoolMod"] = "sp" });
+        var before = Hashes(GameRoot);
+
+        await Scanner.ApplyModeAsync("mp", Ctx());
+        AssertExtrasHeld("CoolMod");
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", false));
+
+        await Scanner.ApplyModeAsync("sp", Ctx());
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", true));
+        AssertRoundTripped(before, "CoolMod");
+    }
+
+    [Fact]
+    public async Task Loading_a_profile_with_the_mod_on_brings_the_extras_back()
+    {
+        var before = Hashes(GameRoot);
+        await Scanner.SaveProfileAsync("on", Ctx());
+        await ModToggle.SetEnabledAsync(Ctx(), await RowAsync("CoolMod"), enabled: false);
+        AssertExtrasHeld("CoolMod");
+
+        await Scanner.LoadProfileAsync("on", Ctx());
+
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", true));
+        AssertRoundTripped(before, "CoolMod");
+    }
+
+    [Fact]
+    public async Task Loading_a_profile_with_the_mod_off_holds_the_extras()
+    {
+        var before = Hashes(GameRoot);
+        await ModToggle.SetEnabledAsync(Ctx(), await RowAsync("CoolMod"), enabled: false);
+        await Scanner.SaveProfileAsync("off", Ctx());
+        await Scanner.LoadProfileAsync("off", Ctx());   // already off: nothing to do, still held
+        AssertExtrasHeld("CoolMod");
+
+        // Now from on to the off profile: the load itself does the turn-off.
+        await Scanner.SetAllModsAsync(true, Ctx());
+        AssertRoundTripped(before, "CoolMod");
+        await Scanner.LoadProfileAsync("off", Ctx());
+
+        AssertExtrasHeld("CoolMod");
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", false));
+        Assert.True(File.Exists(Path.Combine(HeldTreesOf("CoolMod"), "r6", "tweaks", "CoolMod.yaml")));
+
+        await Scanner.SetAllModsAsync(true, Ctx());
+        AssertRoundTripped(before, "CoolMod");
+    }
+
     [Fact]
     public async Task Files_held_under_a_tree_no_longer_declared_turn_on_with_a_warning_naming_the_folder()
     {
