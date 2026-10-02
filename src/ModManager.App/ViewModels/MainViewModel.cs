@@ -758,12 +758,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_suppressActiveSwitch || value is null) return;
         // A filter typed for one game must not pre-narrow the next game's first render (F-061).
-        // A guarded clear: the change hook would run FilterRows over the OUTGOING game's rows for one
-        // wasted render. The setter's notify still empties the TwoWay-bound box. (A partial property
-        // has no backing field to write past, so the flag does what the field write used to.)
-        _clearingFilter = true;
-        try { ModFilterText = ""; }
-        finally { _clearingFilter = false; }
+        // Through the setter, so the box and the list agree while the next game loads: the outgoing
+        // game's rows show unfiltered for one in-memory render, never narrowed by a search the
+        // now-empty box no longer shows. (This used to write the backing field to skip that render.)
+        ModFilterText = "";
         _svc.SetActiveGame(value.Id);
         _ = ReloadModsAsync();
     }
@@ -1270,13 +1268,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] public partial string ModFilterText { get; set; } = "";
 
-    private bool _clearingFilter;
-
     partial void OnModFilterTextChanged(string value)
-    {
-        if (_clearingFilter) return;
-        Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
-    }
+        => Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
 
     // The mod list's empty state (wave 8, item 4). F-059 named the query on a search miss and stopped
     // there, so TWO holes stayed open: a registered game with zero mods rendered a blank rectangle

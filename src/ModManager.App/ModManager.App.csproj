@@ -15,6 +15,9 @@
     <!-- TreatWarningsAsErrors comes from Directory.Build.props, as for every other project (C7). It
          was off here while 33 [ObservableProperty] fields raised MVVMTK0045; those are partial
          properties now, and the XAML codegen itself raises nothing. -->
+    <!-- Except NuGet audit (a new advisory against a package): that is news about the world, not
+         about this code, and it must not be what fails a release build. It stays a warning. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <!-- Real version for the first portable drop (was defaulting to 1.0.0.0). -->
     <Version>0.1.0</Version>
     <!-- The 626 mark as the exe icon (Explorer / taskbar). The window icon is set at runtime. -->
