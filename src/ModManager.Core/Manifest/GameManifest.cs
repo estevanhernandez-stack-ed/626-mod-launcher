@@ -122,6 +122,15 @@ public sealed record LoaderManifestEntry
     public bool? BanSafe { get; init; }
 
     /// <summary>
+    /// Any property this binary does not know. A loader carrying one is SKIPPED by the validator, never
+    /// used. Pins fail closed: a newer feed might scope a loader by a field this binary cannot read, and
+    /// ignoring that field would turn a game-specific loader into an engine-wide one, offered as the
+    /// safe path on every game on the engine.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, JsonElement>? UnknownFields { get; init; }
+
+    /// <summary>
     /// The loader writes to saves. Carried so the runtime <c>KnownLoader</c> can say so, but NOT yet
     /// acted on: launching a loader does not snapshot saves today (tools do; loaders never needed it,
     /// since no shipped loader sets this). Honouring it is a launcher change, not a feed one; until

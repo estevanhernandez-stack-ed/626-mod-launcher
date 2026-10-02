@@ -16,7 +16,8 @@ public static class LoaderScan
     ///
     /// <para>Takes the whole game, never <c>(engine, steamAppId)</c>. Steam id alone was the shape of
     /// the ban-risk bug fixed for EA app games: they are registered with no Steam id, so every lookup
-    /// keyed on one read them as nothing. The manifest id is what every registration carries.</para>
+    /// keyed on one read them as nothing. A <c>gameIds</c> pin is matched against every manifest id the
+    /// registration resolves to (<see cref="ManifestIdLookup.IdsFor"/>), not its raw id.</para>
     /// </summary>
     private static bool Applies(KnownLoader l, GameEntry game)
     {
@@ -25,7 +26,12 @@ public static class LoaderScan
         if (!l.IsPinned) return true;
         if (l.SteamAppId is not null && string.Equals(l.SteamAppId, game.SteamAppId, StringComparison.Ordinal))
             return true;
-        return l.GameIds is { } ids && !string.IsNullOrEmpty(game.Id) && ids.Contains(game.Id, StringComparer.Ordinal);
+        // Resolved, not compared raw: a registration's own id can be "<id>-2" (a second store copy) or
+        // a slug of its display name (an older add), and both still carry the store identity that
+        // names the game. See ManifestIdLookup.IdsFor.
+        if (l.GameIds is not { Count: > 0 } pins) return false;
+        var manifestIds = ManifestIdLookup.IdsFor(game);
+        return pins.Any(manifestIds.Contains);
     }
 
     public static IReadOnlyList<DetectedLoader> Detect(string? playFolder, GameEntry game)

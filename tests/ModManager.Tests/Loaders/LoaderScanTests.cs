@@ -1,21 +1,12 @@
 using System.IO;
 using ModManager.Core.Loaders;
 
+using static ModManager.Tests.Loaders.LoaderTestKit;
+
 namespace ModManager.Tests.Loaders;
 
 public class LoaderScanTests
 {
-    // A registration as the scan sees it. The id is irrelevant to these Steam-scoped cases.
-    private static ModManager.Core.GameEntry G(string engine, string steamAppId)
-        => new() { Id = "game-" + steamAppId, GameName = "g", Engine = engine, SteamAppId = steamAppId };
-
-    private static string TempPlayFolder(params string[] files)
-    {
-        var d = Path.Combine(Path.GetTempPath(), "mm-loaders-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(d);
-        foreach (var f in files) File.WriteAllText(Path.Combine(d, f), "x");
-        return d;
-    }
 
     [Fact]
     public void Detect_finds_modengine2_when_its_launcher_is_present()
@@ -23,7 +14,7 @@ public class LoaderScanTests
         var dir = TempPlayFolder("modengine2_launcher.exe");
         try
         {
-            var found = LoaderScan.Detect(dir, G("fromsoft", "1245620"));
+            var found = LoaderScan.Detect(dir, SteamGame("fromsoft", "1245620"));
             var d = Assert.Single(found);
             Assert.Equal("mod-engine-2", d.Loader.LoaderId);
             Assert.Equal(Path.Combine(dir, "modengine2_launcher.exe"), d.LauncherPath);
@@ -37,9 +28,9 @@ public class LoaderScanTests
         var dir = TempPlayFolder("eldenring.exe");
         try
         {
-            Assert.Empty(LoaderScan.Detect(dir, G("fromsoft", "1245620"))); // no loader exe present
-            Assert.Empty(LoaderScan.Detect(dir, G("bethesda", "1245620"))); // wrong engine
-            Assert.Empty(LoaderScan.Detect(null, G("fromsoft", "1245620"))); // null play folder
+            Assert.Empty(LoaderScan.Detect(dir, SteamGame("fromsoft", "1245620"))); // no loader exe present
+            Assert.Empty(LoaderScan.Detect(dir, SteamGame("bethesda", "1245620"))); // wrong engine
+            Assert.Empty(LoaderScan.Detect(null, SteamGame("fromsoft", "1245620"))); // null play folder
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -51,7 +42,7 @@ public class LoaderScanTests
         try
         {
             // Dark Souls III appid — ME2 is engine-wide, so it surfaces here too.
-            var found = LoaderScan.Detect(dir, G("fromsoft", "374320"));
+            var found = LoaderScan.Detect(dir, SteamGame("fromsoft", "374320"));
             var d = Assert.Single(found);
             Assert.Equal("mod-engine-2", d.Loader.LoaderId);
         }
@@ -65,9 +56,9 @@ public class LoaderScanTests
         try
         {
             // Seamless is pinned to Elden Ring (1245620); a different fromsoft appid must not surface it.
-            Assert.Empty(LoaderScan.Detect(dir, G("fromsoft", "374320")));
+            Assert.Empty(LoaderScan.Detect(dir, SteamGame("fromsoft", "374320")));
             // BanSafeFor for a non-ER fromsoft game returns ME2 (engine-wide) but not Seamless.
-            var safe = LoaderScan.BanSafeFor(G("fromsoft", "374320"));
+            var safe = LoaderScan.BanSafeFor(SteamGame("fromsoft", "374320"));
             Assert.Contains(safe, l => l.LoaderId == "mod-engine-2");
             Assert.DoesNotContain(safe, l => l.LoaderId == "seamless-coop");
         }
@@ -77,10 +68,10 @@ public class LoaderScanTests
     [Fact]
     public void BanSafeFor_lists_the_games_ban_safe_loaders_regardless_of_install()
     {
-        var safe = LoaderScan.BanSafeFor(G("fromsoft", "1245620"));
+        var safe = LoaderScan.BanSafeFor(SteamGame("fromsoft", "1245620"));
         Assert.Contains(safe, l => l.LoaderId == "mod-engine-2");
         Assert.Contains(safe, l => l.LoaderId == "seamless-coop");
         Assert.All(safe, l => Assert.True(l.BanSafe));
-        Assert.Empty(LoaderScan.BanSafeFor(G("bethesda", "377160"))); // none scoped to Fallout 4
+        Assert.Empty(LoaderScan.BanSafeFor(SteamGame("bethesda", "377160"))); // none scoped to Fallout 4
     }
 }

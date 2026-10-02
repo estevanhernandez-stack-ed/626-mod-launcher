@@ -47,11 +47,28 @@ public static class LoaderOverrides
     /// lose. Ids compare case-insensitively, because two spellings of one id are still one loader to a
     /// curator. What the launcher's gate would refuse is <see cref="Rejections"/>, reported separately.
     /// </summary>
-    public static IReadOnlyList<OverrideProblem> Check(IReadOnlyList<LoaderManifestEntry> loaders)
+    /// <param name="knownGameIds">The draft's game ids. When given, a <c>gameIds</c> pin naming a game
+    /// the feed does not carry is a problem: it would pin the loader to nothing and ship silently.</param>
+    public static IReadOnlyList<OverrideProblem> Check(
+        IReadOnlyList<LoaderManifestEntry> loaders, IReadOnlySet<string>? knownGameIds = null)
     {
         var problems = new List<OverrideProblem>();
         foreach (var dup in loaders.GroupBy(l => l.Id, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
             problems.Add(new OverrideProblem($"loader id '{dup.Key}' is claimed by {dup.Count()} files"));
+
+        foreach (var l in loaders)
+        {
+            // The miner is built from the same source as the launcher, so a field it does not know is
+            // a typo ("gameId" for "gameIds"), and the launcher would skip the loader for carrying it.
+            if (l.UnknownFields is { Count: > 0 } unknown)
+                problems.Add(new OverrideProblem(
+                    $"loader '{l.Id}' has field(s) the launcher does not know: {string.Join(", ", unknown.Keys)}"));
+
+            if (knownGameIds is not null && l.GameIds is { } pins)
+                foreach (var pin in pins.Where(p => p is not null && !knownGameIds.Contains(p)))
+                    problems.Add(new OverrideProblem(
+                        $"loader '{l.Id}' is pinned to game id '{pin}', which no game in the feed has"));
+        }
         return problems;
     }
 

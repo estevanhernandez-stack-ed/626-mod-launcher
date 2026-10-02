@@ -60,6 +60,9 @@ public static class ManifestValidator
             // Same order as games: an engine this binary does not know is SKIPPED before anything else
             // is judged, so a newer feed's loader lands in the forward-compat bucket, not the unsafe one.
             if (!string.IsNullOrWhiteSpace(l.Engine) && !knownEngines.Contains(l.Engine)) { skippedLoaders.Add(l.Id); continue; }
+            // A field this binary does not know may be a pin it cannot honour, so the loader is
+            // skipped, not used as if unpinned. Forward-compat bucket, the same as an unknown engine.
+            if (l.UnknownFields is { Count: > 0 }) { skippedLoaders.Add(l.Id); continue; }
             if (LoaderProblem(l) is not null) { rejectedLoaders.Add(l.Id); continue; }
             // One loader per id. The ban-risk gate keys a dictionary on the id, so a duplicate would
             // throw there; the first one wins, as the miner's own duplicate check would have demanded.

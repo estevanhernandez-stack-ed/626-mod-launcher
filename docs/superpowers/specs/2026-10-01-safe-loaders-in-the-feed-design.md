@@ -60,6 +60,19 @@ pinned two ways, and either one is enough:
   EA-only games and every store's copy of a multi-store game. It is the same lesson the ban-risk work
   learned on 2026-09-13: `BanRiskCatalog.Effective(game)` resolves by manifest id as well as Steam id.
 
+A `gameIds` pin is matched against every manifest id the registration **resolves** to
+(`ManifestIdLookup.IdsFor`), case-insensitively, never against its raw id alone:
+
+- its own id
+- the manifest entry that claims its Steam app id
+- the manifest entry that claims its EA content id
+
+The raw id is not reliable. A second store copy of a game the user already has is renamed `<id>-2` by
+`EnginePresets.UniqueId`, and a game added before `ManifestIdLookup` existed (or while the feed was
+unreachable) carries a slug of its display name. Both still carry their store identity, and that names
+the game. Found by the review of #356, whose first cut compared the raw id and so missed the very
+multi-store case it was written for.
+
 So `LoaderScan` takes the whole `GameEntry`, never `(engine, steamAppId)`. The old overloads are gone
 rather than kept beside the new ones, so no caller can quietly stay Steam-only. A game-id pin narrows a
 loader but never moves it to another engine; the engine must still match.
@@ -69,6 +82,11 @@ loader but never moves it to another engine; the engine must still match.
 is safe today only because no released binary reads `loaders` yet (0.23.0 predates both). If a release
 ever goes out with one and not the other, a feed using `gameIds` needs a `minBinaryVersion` that
 excludes it.
+
+**Unknown fields fail closed.** A loader carrying a property this binary does not know is skipped, not
+used. A newer feed might pin a loader by a field an older binary cannot read, and ignoring that field
+would turn a game-specific loader into an engine-wide one, offered as the safe path on every game on
+the engine. The miner, built from the same source, treats an unknown field as a typo and stops.
 
 The validator refuses a `gameIds` entry that is not lowercase kebab-case (a manifest id never is) and
 an empty list, which, like an empty `steamAppId`, would be ambiguous between "pinned" and "engine-wide".
