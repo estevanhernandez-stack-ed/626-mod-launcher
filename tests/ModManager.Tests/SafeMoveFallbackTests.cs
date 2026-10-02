@@ -182,6 +182,106 @@ public class SafeMoveFallbackTests
         foreach (var (rel, bytes) in before) Assert.Equal(bytes, kept[rel]);
     }
 
+    // A real junction, because the bug is in how enumeration treats one: AllDirectories walks through
+    // it, and a file-by-file delete would then empty a folder that is not part of the move at all.
+    // xunit 2.9 has no runtime skip, so a machine that cannot make one fails here with the reason
+    // rather than passing without having tested anything.
+    private static void MakeJunction(string link, string target)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var err = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0 && Directory.Exists(link),
+            $"Could not create a junction for this test (mklink exit {p.ExitCode}): {err}");
+    }
+
+    [Fact]
+    public void Folder_containing_a_junction_is_refused_and_nothing_is_changed()
+    {
+        var root = TestSupport.TempDir("safemove-fb-");
+        var src = MakeTree(root);
+        var target = Path.Combine(root, "elsewhere");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "t.txt"), "NOT PART OF THE MOVE");
+        MakeJunction(Path.Combine(src, "b-inner", "link"), target);
+        var before = Snapshot(src);
+        var dest = Path.Combine(root, "dest");
+
+        try
+        {
+            var ex = Assert.ThrowsAny<IOException>(() => SafeMove.MoveByCopy(src, dest));
+            Assert.Contains("link", ex.Message);
+
+            Assert.False(Directory.Exists(dest));
+            Assert.Equal("NOT PART OF THE MOVE", File.ReadAllText(Path.Combine(target, "t.txt")));
+            var after = Snapshot(src);   // reads through the junction, so its file is in both
+            Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
+            foreach (var (rel, bytes) in before) Assert.Equal(bytes, after[rel]);
+            Assert.True(new DirectoryInfo(Path.Combine(src, "b-inner", "link")).Attributes.HasFlag(FileAttributes.ReparsePoint));
+        }
+        finally
+        {
+            var link = Path.Combine(src, "b-inner", "link");
+            if (Directory.Exists(link)) Directory.Delete(link);   // the link only, never its target
+        }
+    }
+
+    [Fact]
+    public void File_changed_after_its_copy_is_not_deleted_and_the_source_is_put_back()
+    {
+        var root = TestSupport.TempDir("safemove-fb-");
+        var src = MakeTree(root);
+        var dest = Path.Combine(root, "dest");
+        var mid = Path.Combine(src, "b-inner", "mid.txt");
+
+        // The game appends to a file between its copy and its delete. Deleting it would lose the tail.
+        SafeMove.FallbackStepForTests = (step, path) =>
+        {
+            if (step == "delete" && path == mid) File.AppendAllText(mid, "+TAIL");
+        };
+        try { Assert.ThrowsAny<IOException>(() => SafeMove.MoveByCopy(src, dest)); }
+        finally { SafeMove.FallbackStepForTests = null; }
+
+        Assert.Equal("MID+TAIL", File.ReadAllText(mid));                          // never deleted
+        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(Path.Combine(src, "a-first.bin")));   // put back
+        Assert.Equal("DEEP", File.ReadAllText(Path.Combine(src, "b-inner", "deeper", "deep.txt")));   // put back
+        Assert.Equal(new byte[] { 9, 8, 7, 6 }, File.ReadAllBytes(Path.Combine(src, "z-last.bin")));
+        Assert.False(Directory.Exists(dest));
+    }
+
+    [Fact]
+    public void Source_file_that_differs_from_its_copy_during_put_back_keeps_dest()
+    {
+        var root = TestSupport.TempDir("safemove-fb-");
+        var src = MakeTree(root);
+        var before = Snapshot(src);
+        var dest = Path.Combine(root, "dest");
+        var mid = Path.Combine(src, "b-inner", "mid.txt");
+        var last = Path.Combine(src, "z-last.bin");
+
+        // mid.txt changing stops the delete; then, while the source is being put back, a file that was
+        // never deleted changes too. The source can no longer be confirmed as it was, so dest stays.
+        SafeMove.FallbackStepForTests = (step, path) =>
+        {
+            if (step == "delete" && path == mid) File.AppendAllText(mid, "+TAIL");
+            if (step == "restore") File.AppendAllText(last, "X");
+        };
+        try
+        {
+            var ex = Assert.ThrowsAny<IOException>(() => SafeMove.MoveByCopy(src, dest));
+            Assert.Contains(dest, ex.Message);
+        }
+        finally { SafeMove.FallbackStepForTests = null; }
+
+        var kept = Snapshot(dest);
+        foreach (var (rel, bytes) in before) Assert.Equal(bytes, kept[rel]);
+    }
+
     [Fact]
     public void Fast_path_rename_is_unchanged_for_a_folder()
     {

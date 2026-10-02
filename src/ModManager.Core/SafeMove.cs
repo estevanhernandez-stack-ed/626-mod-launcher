@@ -29,8 +29,9 @@ public static class SafeMove
         }
     }
 
-    // Called with ("copy", source file) before each fallback copy and ("restore", copy file) before each
-    // copy back, so a test can fail either phase partway. Null in production; the fallback is already
+    // Called with ("copy", source file) before each fallback copy, ("delete", source file) before each
+    // source delete, and ("restore", copy file) before each copy back, so a test can fail or disturb any
+    // phase partway. Null in production; the fallback is already
     // paying for a file copy per call, so one null check beside it costs nothing measurable.
     [ThreadStatic] internal static Action<string, string>? FallbackStepForTests;
 
@@ -47,9 +48,36 @@ public static class SafeMove
         if (File.Exists(dest) || Directory.Exists(dest))
             throw new IOException($"Couldn't move \"{src}\": \"{dest}\" already exists. Nothing was copied.");
 
+        // A junction or symlink inside the tree would be walked THROUGH by the enumeration below, and the
+        // file-by-file delete would then empty a folder that was never part of this move. A rename moves
+        // the link itself and is fine; a copy across drives has no honest way to carry one. Refuse first.
+        var link = FirstLink(src);
+        if (link is not null)
+            throw new IOException(
+                $"Couldn't move \"{src}\": it contains a link (\"{link}\"), and 626 won't copy a link across "
+                + "drives. Nothing was changed.");
+
         var createdParents = MissingAncestors(dest);
         if (Directory.Exists(src)) MoveDirByCopy(src, dest, createdParents);
         else MoveFileByCopy(src, dest, createdParents);
+    }
+
+    // The first reparse point at or under src, found without ever stepping into one.
+    private static string? FirstLink(string src)
+    {
+        if (!File.Exists(src) && !Directory.Exists(src)) return null;   // the copy reports the real error
+        if (File.GetAttributes(src).HasFlag(FileAttributes.ReparsePoint)) return src;
+        if (!Directory.Exists(src)) return null;
+
+        var pending = new Stack<DirectoryInfo>();
+        pending.Push(new DirectoryInfo(src));
+        while (pending.Count > 0)
+            foreach (var entry in pending.Pop().EnumerateFileSystemInfos())
+            {
+                if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint)) return entry.FullName;
+                if (entry is DirectoryInfo d) pending.Push(d);
+            }
+        return null;
     }
 
     private static void MoveFileByCopy(string src, string dest, List<string> createdParents)
@@ -91,15 +119,28 @@ public static class SafeMove
         // are ever deleted, and when one refuses (the game holds it), the undo knows the tree's shape.
         // Folders go deepest first and never recursively, so a file that arrived after the copy keeps
         // its folder, and that failure is undone like any other.
+        string? changed = null;
         try
         {
-            foreach (var f in files) File.Delete(Path.Combine(src, f));
+            foreach (var f in files)
+            {
+                var srcFile = Path.Combine(src, f);
+                FallbackStepForTests?.Invoke("delete", srcFile);
+                // The copy was verified when it was made. A file the game wrote to since then is longer or
+                // shorter than its copy, and deleting it would lose what changed: stop and undo instead.
+                if (new FileInfo(srcFile).Length != new FileInfo(Path.Combine(dest, f)).Length)
+                {
+                    changed = f;
+                    throw new IOException($"\"{srcFile}\" changed after it was copied, so it was not deleted. Nothing was moved.");
+                }
+                File.Delete(srcFile);
+            }
             for (var i = dirs.Count - 1; i >= 0; i--) Directory.Delete(Path.Combine(src, dirs[i]));
             Directory.Delete(src);
         }
         catch (Exception deleteFailure)
         {
-            PutSourceBack(src, dest, createdParents);
+            PutSourceBack(src, dest, createdParents, changed);
             // The original, not a wrapper: a sharing violation must still read as one, so callers keep
             // telling the user to close the game.
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(deleteFailure).Throw();
@@ -108,8 +149,11 @@ public static class SafeMove
 
     // The source is half-deleted and dest holds a full verified copy. Copy back only what is missing,
     // confirm the source is complete, and only then drop the copy: until that check passes, dest is the
-    // last full copy anywhere.
-    private static void PutSourceBack(string src, string dest, List<string> createdParents)
+    // last full copy anywhere. A source file that was never deleted counts only if it still matches its
+    // copy; one that does not means the source cannot be confirmed as it was, so dest stays. The one
+    // exception is the file that stopped the delete for changing: the source holds its newer content,
+    // and the older copy at dest is not worth keeping over it.
+    private static void PutSourceBack(string src, string dest, List<string> createdParents, string? changed)
     {
         try
         {
@@ -127,8 +171,14 @@ public static class SafeMove
                 CopyFileVerified(Path.Combine(dest, f), back);
             }
 
-            var missing = copied.FirstOrDefault(f => !File.Exists(Path.Combine(src, f)));
-            if (missing is not null) throw new IOException($"\"{missing}\" is still missing after the copy back.");
+            // Checked after the copy back, not before, so a write that lands during it is caught too.
+            foreach (var f in copied)
+            {
+                var back = Path.Combine(src, f);
+                if (!File.Exists(back)) throw new IOException($"\"{back}\" is still missing after the copy back.");
+                if (f != changed && new FileInfo(back).Length != new FileInfo(Path.Combine(dest, f)).Length)
+                    throw new IOException($"\"{back}\" no longer matches its copy.");
+            }
         }
         catch (Exception restoreFailure)
         {
