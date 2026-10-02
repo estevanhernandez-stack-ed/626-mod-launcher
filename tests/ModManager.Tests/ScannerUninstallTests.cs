@@ -73,4 +73,85 @@ public class ScannerUninstallTests
         // The file must still exist — nothing was deleted.
         Assert.True(File.Exists(Path.Combine(primary, "cool.pak")));
     }
+
+    // ---- B4U round 3: a name alias must never reach another mod's turned-off copy ----
+    // Windows strips a trailing dot or space and expands an 8.3 alias when a path is opened, so joining a
+    // mod's name onto disabled/ can land on a different mod's folder. The delete only happens when the
+    // name is one folder as written AND disabled/ lists an entry by that real name.
+
+    [Theory]
+    [InlineData("cool.")]
+    [InlineData("cool ")]
+    public async Task A_name_ending_in_a_dot_or_space_never_deletes_the_turned_off_copy_it_normalises_onto(string name)
+    {
+        var (primary, _, c) = Setup();
+        await Scanner.DisableModAsync("cool", c);
+        var coolsCopy = Path.Combine(c.DisabledRoot, "cool", "cool.pak");
+        Assert.True(File.Exists(coolsCopy)); // pre-condition: cool is off, its copy held
+        var alias = Path.Combine(primary, name + ".pak");
+        File.WriteAllText(alias, "ALIAS");
+        Assert.Contains(await Scanner.BuildModListAsync(c), m => m.Name == name); // pre-condition: listed by that name
+
+        await Scanner.UninstallModAsync(name, c);
+
+        Assert.False(File.Exists(alias));
+        Assert.Equal("X", File.ReadAllText(coolsCopy));
+    }
+
+    [Fact]
+    public async Task An_8_3_alias_never_deletes_the_long_named_turned_off_copy()
+    {
+        var (primary, _, c) = Setup();
+        File.WriteAllText(Path.Combine(primary, "Other Long Name Mod.pak"), "LONG");
+        await Scanner.DisableModAsync("Other Long Name Mod", c);
+        var longDir = Path.Combine(c.DisabledRoot, "Other Long Name Mod");
+        var longCopy = Path.Combine(longDir, "Other Long Name Mod.pak");
+        Assert.True(File.Exists(longCopy)); // pre-condition
+        var alias = ModUninstallTests.ShortNameOf(longDir);
+        if (alias is null) return;   // xUnit 2 has no runtime skip: 8.3 names are off on this volume, nothing to alias
+        Assert.True(Directory.Exists(Path.Combine(c.DisabledRoot, alias))); // pre-condition: the alias resolves
+        File.WriteAllText(Path.Combine(primary, alias + ".pak"), "ALIAS");
+
+        await Scanner.UninstallModAsync(alias, c);
+
+        Assert.False(File.Exists(Path.Combine(primary, alias + ".pak")));
+        Assert.Equal("LONG", File.ReadAllText(longCopy));
+    }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("..\\..\\x")]
+    public async Task A_name_that_leads_outside_the_disabled_root_is_refused_and_nothing_is_deleted(string name)
+    {
+        var (primary, _, c) = Setup();
+        await Scanner.DisableModAsync("cool", c);
+        var coolsCopy = Path.Combine(c.DisabledRoot, "cool", "cool.pak");
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.UninstallModAsync(name, c));
+
+        Assert.Contains("leads outside", e.Message);
+        Assert.Equal("X", File.ReadAllText(coolsCopy));
+        Assert.True(Directory.Exists(c.DataDir));
+    }
+
+    // The live-file loop deletes entries the scan enumerated, by their real names. One whose name ends in a dot
+    // or space (only a \\?\-aware tool can make one) must be deleted exactly, never the entry Windows would
+    // normalise the path onto.
+    [Fact]
+    public void An_entry_whose_name_ends_in_a_space_is_deleted_exactly_and_its_lookalike_survives()
+    {
+        var dir = TestSupport.TempDir("uninstall-exact-");
+        var real = Path.Combine(dir, "Foo");
+        Directory.CreateDirectory(real);
+        File.WriteAllText(Path.Combine(real, "keep.pak"), "KEEP");
+        var odd = @"\\?\" + Path.Combine(dir, "Foo ");
+        Directory.CreateDirectory(odd);
+        File.WriteAllText(odd + @"\gone.pak", "GONE");
+
+        Scanner.DeleteEntryExactly(dir, "Foo ");
+
+        Assert.False(Directory.Exists(odd));
+        Assert.Equal("KEEP", File.ReadAllText(Path.Combine(real, "keep.pak")));
+    }
 }

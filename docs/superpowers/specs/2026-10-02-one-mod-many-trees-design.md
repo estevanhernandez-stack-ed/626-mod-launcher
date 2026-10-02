@@ -291,6 +291,13 @@ still listed; a later family member's failure leaves no orphan behind.
 - **Real names only.** The folder is touched only when the root lists an entry with the mod's real name
   (enumerated without a search pattern). A mod literally named `OTHERL~1` never reaches `Other Long Name
   Mod`, although opening that path would.
+- **The same guards on the main uninstall.** `Scanner.UninstallMod` had the same alias hole in its delete of
+  `disabled/<name>`: uninstalling `Foo.` (from `Foo..archive`), `Foo ` or an 8.3 alias recursively deleted
+  `Foo`'s turned-off copy, and `..` reached the data folder. It now shares `FolderNames` with the held-folder
+  delete. A name that leads outside `disabled` is refused before anything is deleted. The turned-off copy is
+  deleted only when the name is one folder as written and `disabled` lists it by that real name; otherwise
+  there is no copy of this mod's, and the rest of the uninstall proceeds. The live-file loop deletes each
+  scanned entry by its exact name (`\\?\` when a segment ends in a dot or space).
 - **No following links.** `LinkSafeDelete` walks the tree without descending into a reparse point. A
   junction or symlink is removed as the link (`Directory.Delete(path)` non-recursively, after clearing a
   read-only flag on the link itself, or `File.Delete`), and its target is never touched; that includes a

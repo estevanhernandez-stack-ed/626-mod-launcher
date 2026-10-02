@@ -233,18 +233,18 @@ public static class ModUninstall
     {
         var dataDir = Path.GetFullPath(ctx.DataDir);
         var root = Path.GetFullPath(TreeHolding.Root(ctx)).TrimEnd(Path.DirectorySeparatorChar);
-        if (!StrictlyUnder(root, dataDir))
+        if (!FolderNames.StrictlyUnder(root, dataDir))
             throw new InvalidOperationException(
                 $"626's holding folder {root} is not inside its data folder {dataDir}, so nothing in it was deleted.");
 
         string resolved;
         try { resolved = Path.GetFullPath(Path.Combine(root, modName)); }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { resolved = ""; }
-        if (!StrictlyUnder(resolved, root))
+        if (!FolderNames.StrictlyUnder(resolved, root))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{modName}\": that name leads outside 626's holding folder {root}. Nothing was changed.");
 
-        if (!NamesOneFolder(modName)) return null;
+        if (!FolderNames.NamesOneFolder(modName)) return null;
 
         if (Directory.Exists(root) && LinkSafeDelete.IsLink(new DirectoryInfo(root)))
             throw new InvalidOperationException(
@@ -259,25 +259,8 @@ public static class ModUninstall
     /// <c>OTHERL~1</c> does not reach <c>Other Long Name Mod</c>, though opening that path would.
     /// </summary>
     private static bool HeldPresent(GameContext ctx, string modName)
-    {
-        var root = TreeHolding.Root(ctx);
-        if (!Directory.Exists(root)) return false;
-        return new DirectoryInfo(root).EnumerateFileSystemInfos()
-            .Any(e => string.Equals(e.Name, modName, StringComparison.OrdinalIgnoreCase));
-    }
+        => FolderNames.HasEntryNamed(TreeHolding.Root(ctx), modName);
 
-    // One path segment that Windows keeps exactly as written: no separators or other invalid characters (':'
-    // included, so no alternate stream), not "." or "..", and no trailing dot or space, which Windows strips.
-    private static bool NamesOneFolder(string name)
-        => name.Length > 0 && name is not ("." or "..")
-           && !name.EndsWith('.') && !name.EndsWith(' ')
-           && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
-
-    private static bool StrictlyUnder(string path, string parent)
-    {
-        var withSep = parent.EndsWith(Path.DirectorySeparatorChar) ? parent : parent + Path.DirectorySeparatorChar;
-        return path.Length > withSep.Length && path.StartsWith(withSep, StringComparison.OrdinalIgnoreCase);
-    }
 }
 
 

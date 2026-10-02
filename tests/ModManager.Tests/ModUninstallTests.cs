@@ -392,7 +392,7 @@ mods = [
     }
 
     // The 8.3 alias of the last segment, from `dir /x`, or null when the volume makes none.
-    private static string? ShortNameOf(string dir)
+    internal static string? ShortNameOf(string dir)
     {
         var parent = Path.GetDirectoryName(dir)!;
         var name = Path.GetFileName(dir);
