@@ -46,11 +46,14 @@ public static class ManifestValidator
             // The same gate for every extra tree (B4), but it drops the TREE, not the entry: these are
             // descriptive, and rejecting the whole entry over one bad tree would throw away its ban-risk,
             // store-id and modPath corrections with it. An unsafe tree is simply never read.
-            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeExtraTree(t, g.ModPath)))
+            if (g.ExtraModTrees is { } trees)
             {
-                var safe = trees.Where(t => IsSafeExtraTree(t, g.ModPath)).ToList();
-                kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
-                continue;
+                var safe = trees.Where(IsSafeExtraTree).ToList();
+                if (safe.Count != trees.Count)
+                {
+                    kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
+                    continue;
+                }
             }
             kept.Add(g);
         }
@@ -152,27 +155,27 @@ public static class ManifestValidator
         => app.Length > 0 && app.All(char.IsAsciiDigit);
 
     /// <summary>
-    /// Whether an <see cref="GameManifestEntry.ExtraModTrees"/> entry may be read (B4). It must pass the
-    /// same check as <c>modPath</c> and also name a folder BELOW the game root that is not the entry's
-    /// own <paramref name="modPath"/> or a folder above it. "." would make the root a mod tree, and
-    /// "archive" above "archive/pc/mod" would list "pc" as a mod's other home: a mod named "bin" or
-    /// "pc" would be told it "also has files" there. The miner refuses a curated file that breaks this
-    /// rule, and a launcher reading the feed drops the tree.
+    /// Why an <see cref="GameManifestEntry.ExtraModTrees"/> entry may not be read (B4), or null when it
+    /// may. A tree must name a folder below the game root, and the verdict must be the same on every OS:
+    /// the miner signs the feed on Linux and the launcher reads it on Windows. So a leading slash or
+    /// backslash counts as absolute whatever <see cref="Path.IsPathRooted"/> says here, and a segment of
+    /// only dots or spaces ("...", " ") is refused because Windows strips it to nothing. Which trees are
+    /// the game's own mod folders, or hold them, is a runtime question <see cref="ModTrees.Build"/>
+    /// answers with the real locations, not this gate.
     /// </summary>
-    public static bool IsSafeExtraTree(string? tree, string? modPath = null)
+    public static string? ExtraTreeProblem(string? tree)
     {
-        if (tree is null || !IsSafeRelativePath(tree)) return false;
-        var t = NormalizeRelative(tree);
-        if (t.Length == 0) return false;                                  // ".", "./", "/" and the like
-        if (modPath is null) return true;
-        var m = NormalizeRelative(modPath);
-        return !(m.Equals(t, StringComparison.OrdinalIgnoreCase)
-                 || m.StartsWith(t + "/", StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(tree)) return "is empty";
+        if (tree[0] is '/' or '\\' || Path.IsPathRooted(tree)) return "is absolute";
+        if (tree.Contains(':')) return "is drive-qualified";
+        var segments = tree.Split('/', '\\').Where(seg => seg.Length > 0 && seg != ".").ToList();
+        if (segments.Contains("..")) return "climbs out with '..'";
+        if (segments.Any(seg => seg.TrimEnd('.', ' ').Length == 0)) return "has a segment of only dots or spaces";
+        if (segments.Count == 0) return "is the game root, not a folder below it";
+        return null;
     }
 
-    /// <summary>A relative path as its real segments joined by '/': no empty or "." segments.</summary>
-    private static string NormalizeRelative(string path)
-        => string.Join('/', path.Split('/', '\\').Where(s => s.Length > 0 && s != "."));
+    public static bool IsSafeExtraTree(string? tree) => ExtraTreeProblem(tree) is null;
 
     private static bool IsSafeRelativePath(string path)
     {

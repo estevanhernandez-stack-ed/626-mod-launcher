@@ -36,13 +36,16 @@ holds paths relative to the game root, in the order the row should list them.
 - **Descriptive only**, like every manifest field: it says where mods put files, never how to enable
   them. Whether a tree may be toggled is deliberately NOT a field yet. It is stage two's question, and
   a flag shipped now would be answered by guesswork.
-- **Gated like `modPath`, but per tree.** `ManifestValidator.IsSafeExtraTree` drops any tree that is
-  absolute, drive-qualified, contains `..`, names no folder below the game root (`.`, `./`, empty), or
-  is the entry's `modPath` or a folder above it (`archive` above `archive/pc/mod` would list `pc` as a
-  mod), and keeps the rest of the entry. The miner's `OverridesValidate` refuses a curated file holding such
-  a tree, so the drop is never silent at build time (review on 626-game-manifest#27). The trees are descriptive, and
-  rejecting the whole entry over one bad tree would throw away its ban-risk, store-id and `modPath`
-  corrections with it.
+- **Gated like `modPath`, but per tree.** `ManifestValidator.ExtraTreeProblem` drops any tree that is
+  empty, absolute (a leading `/` or `\` counts on every OS), drive-qualified, contains `..`, has a
+  segment of only dots or spaces, or names no folder below the game root (`.`, `./`), and keeps the rest
+  of the entry. The verdict is the same on Linux, where the miner signs the feed, and Windows, where it
+  is read. The miner's `OverridesValidate` refuses a curated file holding such a tree and names the
+  rule, so the drop is never silent at build time (reviews on 626-game-manifest#27 and #370).
+- **The game's own folders are a runtime question.** `ModTrees.Build` skips a tree that is, holds or
+  sits inside one of the game's real mod locations (engine preset, the user's choice, a second
+  location), and the game root or anything outside it. The manifest only knows the declared `modPath`,
+  so it can't decide this.
 - **No schema bump.** An older binary ignores the key, as it did for `loaders`.
 - **Merge and miner.** `EffectiveManifest.MergeEntry` carries it (remote wins), and the merge
   completeness test covers it. The miner's `OverrideEntry` and `OverridesMerge` carry it from a
@@ -54,8 +57,8 @@ holds paths relative to the game root, in the order the row should list them.
 the trees holding an entry whose name EQUALS the mod's, compared on letters and digits,
 case-insensitively. A folder is known by its whole name and a file by its stem. `NameMatch`'s
 cleaner is deliberately not used: it drops short all-caps and version tokens to help a search, and
-here that would collapse `BetterHUD` and `BetterUI` into one name. A tree that is one of the game's
-own mod folders is skipped, and a tree spelled two ways is listed once.
+here that would collapse `BetterHUD` and `BetterUI` into one name. A tree that is, holds or sits inside one
+of the game's own mod folders is skipped, and a tree spelled two ways is listed once.
 
 - **Equality, not similarity.** Telling a user a folder belongs to a mod it doesn't is worse than
   saying nothing. `CoolModExtras` is not `CoolMod`.

@@ -83,11 +83,10 @@ public static partial class OverridesValidate
         // A curated tree the launcher's gate would drop is a build failure here, not a silent drop. The
         // signed feed would otherwise ship without it and the curator would never hear about it (B4).
         foreach (var e in overrides.Where(e => e.ExtraModTrees is not null))
-            foreach (var tree in e.ExtraModTrees!.Where(t => !ManifestValidator.IsSafeExtraTree(t, e.ModPath)))
-                problems.Add(new OverrideProblem(
-                    $"{FileOf(e)} has an extra mod tree '{tree}' that is not a folder below the game root "
-                    + "apart from its modPath (absolute, drive-qualified, '..', '.', empty, or the modPath or a "
-                    + "folder above it). The launcher would drop it."));
+            foreach (var tree in e.ExtraModTrees!)
+                if (ManifestValidator.ExtraTreeProblem(tree) is { } why)
+                    problems.Add(new OverrideProblem(
+                        $"{FileOf(e)} has an extra mod tree '{tree}' that {why}. The launcher would drop it."));
 
         return problems;
     }

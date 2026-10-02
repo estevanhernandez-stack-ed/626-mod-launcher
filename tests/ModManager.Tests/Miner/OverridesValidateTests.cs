@@ -155,13 +155,17 @@ public class OverridesValidateTests
         Assert.Contains($"'{bad}'", p.Message);
     }
 
-    [Fact]
-    public void A_curated_extra_tree_above_its_modPath_fails_the_build()
+    [Theory]
+    [InlineData("\\r6\\scripts", "is absolute")]     // rooted on Windows, where the feed is read
+    [InlineData("...", "only dots or spaces")]
+    [InlineData("./", "is the game root")]
+    [InlineData("r6/../..", "'..'")]
+    public void The_build_failure_names_the_rule_the_tree_broke(string bad, string why)
     {
         var entry = E(id: "cyberpunk-2077", steam: "1091500", path: "cyberpunk-2077.json")
-            with { ModPath = "archive/pc/mod", ExtraModTrees = new[] { "archive" } };
+            with { ExtraModTrees = new[] { bad } };
 
-        Assert.Contains("'archive'", Assert.Single(OverridesValidate.Check(new[] { entry })).Message);
+        Assert.Contains(why, Assert.Single(OverridesValidate.Check(new[] { entry })).Message);
     }
 
     [Fact]

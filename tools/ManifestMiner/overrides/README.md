@@ -26,12 +26,15 @@ entry; one that matches OVERRIDES the mined fields. Unspecified fields are left 
 `extraModTrees` (optional) lists the OTHER folders, relative to the game root, where this game's mods
 also put files, beside `modPath`. For example, Cyberpunk 2077:
 `"extraModTrees": ["r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods"]`.
-The launcher only SHOWS which of these trees hold an entry at their top level named exactly like a
-mod. It still turns mods on and off in `modPath` alone (B4,
-`docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`). Each path must be a folder below the
-game root: relative, no drive letter, no `..`, not `.` itself, and not `modPath` or a folder above it. A launcher reading the feed drops a
-bad tree and keeps the rest of the entry, but this build REFUSES a curated file that has one, so a typo
-can't vanish from the signed feed unnoticed.
+The launcher only SHOWS which of these trees hold an entry at their top level with the same name as a
+mod, compared on letters and digits, ignoring case (`Cool_Mod` and `CoolMod` are one name). So list
+folders where each mod gets its own entry (`r6/scripts/<Mod>`), not a framework's root. It still turns
+mods on and off in `modPath` alone (B4, `docs/superpowers/specs/2026-10-02-one-mod-many-trees-design.md`).
+Each path must be a folder below the game root: relative, no leading `/` or `\`, no drive letter, no
+`..`, not `.` itself, and no segment of only dots or spaces. A launcher reading the feed drops a bad tree
+and keeps the rest of the entry, but this build REFUSES a curated file that has one and names the rule
+it broke, so a typo can't vanish from the signed feed unnoticed. A tree that is, holds or sits inside
+the game's own mod folder is skipped at runtime, where the real folders are known.
 
 To add a game: drop a `<game>.json` here, run `dotnet run --project tools/ManifestMiner -- --with-mo2
 --with-overrides`, and check the coverage summary + the diff. Verify the Steam id (a wrong id just

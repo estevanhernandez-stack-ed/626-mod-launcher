@@ -26,15 +26,20 @@ public sealed class ModTrees
     /// <param name="gameRoot">The game's install folder.</param>
     /// <param name="trees">Relative tree paths, in the manifest's order. Missing or unreadable trees are
     /// skipped: an absent <c>red4ext/plugins</c> just means no mod has files there.</param>
-    /// <param name="ownLocations">The game's own mod folders, absolute. A tree that IS one of them is not
-    /// "somewhere else": listing it would tell every row it also has files in its own main folder.</param>
+    /// <param name="ownLocations">The game's own mod folders, absolute, as this game actually resolves
+    /// them (engine preset, the user's own choice, a second location). A tree that IS one of them, holds
+    /// one, or sits inside one is not "somewhere else": its files either are the main folder's or would
+    /// list the main folder's parents as mods, and toggling moves them with the main folder either way.
+    /// The game root itself and anything outside it are skipped too.</param>
     public static ModTrees Build(string? gameRoot, IEnumerable<string>? trees, IEnumerable<string>? ownLocations = null)
     {
         var index = new ModTrees();
         if (string.IsNullOrWhiteSpace(gameRoot) || trees is null) return index;
 
+        var root = FullDir(gameRoot);
+        if (root.Length == 0) return index;
         var own = (ownLocations ?? Enumerable.Empty<string>())
-            .Select(FullDir).Where(p => p.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Select(FullDir).Where(p => p.Length > 0).ToList();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var raw in trees)
@@ -46,7 +51,8 @@ public sealed class ModTrees
             if (tree.Length == 0 || !seen.Add(tree)) continue;
 
             var dir = FullDir(Path.Combine(gameRoot, tree));
-            if (dir.Length == 0 || own.Contains(dir)) continue;
+            if (dir.Length == 0 || !IsBelow(dir, root)) continue;
+            if (own.Any(o => SameDir(o, dir) || IsBelow(o, dir) || IsBelow(dir, o))) continue;
 
             IEnumerable<string> entries;
             try { entries = Directory.Exists(dir) ? Directory.EnumerateFileSystemEntries(dir).ToList() : Enumerable.Empty<string>(); }
@@ -83,6 +89,14 @@ public sealed class ModTrees
         => string.IsNullOrWhiteSpace(name)
             ? ""
             : new string(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+    private static bool SameDir(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    // Strictly inside: "C:/g/r6" is below "C:/g"; "C:/g" and "C:/game" are not below "C:/g".
+    private static bool IsBelow(string path, string parent)
+        => path.Length > parent.Length + 1
+           && path.StartsWith(parent, StringComparison.OrdinalIgnoreCase)
+           && (path[parent.Length] == Path.DirectorySeparatorChar || path[parent.Length] == Path.AltDirectorySeparatorChar);
 
     private static string FullDir(string? path)
     {
