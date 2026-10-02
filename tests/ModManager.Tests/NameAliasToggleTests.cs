@@ -553,6 +553,33 @@ public class NameAliasTreeToggleTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees", "Aux")));
     }
 
+    // A risky name's holding folder is found by listing disabled-trees, which can fail (a permission, an
+    // antivirus lock). The row and the post-enable leftover check report it as unreadable, never throw.
+    [Fact]
+    public async Task A_risky_names_holding_folder_that_cant_be_read_reports_as_unreadable()
+    {
+        await Scanner.DisableModAsync("Foo.", Ctx());
+        var ctx = Ctx();
+        var row = Assert.Single(await Scanner.BuildModListAsync(ctx), m => m.Name == "Foo.");
+        var rows = Scanner.ExtraTreeRowsFor(ctx);
+        var dir = Path.Combine(DataDir, "disabled-trees", "~626~466f6f2e");
+
+        TreeHolding.BeforeReadForTests = _ => throw new UnauthorizedAccessException("denied");
+        ModTreesText text;
+        TreeLeftover? leftover;
+        try
+        {
+            text = rows.TextFor(row);
+            leftover = Scanner.ExtraTreeLeftover(ctx, "Foo.");
+        }
+        finally { TreeHolding.BeforeReadForTests = null; }
+
+        Assert.Equal($"626 couldn't read {dir}.", text.Line);
+        Assert.NotNull(leftover);
+        Assert.False(leftover!.Readable);
+        Assert.Equal(dir, leftover.Path);
+    }
+
     [Fact]
     public void A_held_extra_tree_folder_uses_the_encoded_name()
         => Assert.Equal(Path.Combine(DataDir, "disabled-trees", "~626~466f6f2e"), TreeHolding.ModDir(Ctx(), "Foo."));

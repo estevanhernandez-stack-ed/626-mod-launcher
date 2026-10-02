@@ -44,8 +44,15 @@ internal static class TreeHolding
 
     /// <summary>False when the mod has no holding folder: a risky name too long to encode
     /// (<see cref="HoldingName.Folder"/> is null) with no older raw-named hold, or one whose encoded folder is
-    /// shadowed by another mod's raw-named folder that Windows would open in its place.</summary>
+    /// shadowed by another mod's raw-named folder that Windows would open in its place.
+    /// For a risky name this lists the holding root, so it can throw like any other read of it; callers that
+    /// report an unreadable folder call it inside their try.</summary>
     public static bool CanHold(GameContext ctx, string mod) => DirFor(ctx, mod) is not null;
+
+    /// <summary>The folder a mod's holds would be in, built without reading the disk: its
+    /// <see cref="HoldingName"/> folder (or the raw name when it has none). For naming a folder that could not
+    /// be read; never for moving or deleting.</summary>
+    public static string NominalDir(GameContext ctx, string mod) => Path.Combine(Root(ctx), HoldingName.Folder(mod) ?? mod);
 
     private static string? DirFor(GameContext ctx, string mod)
     {
@@ -53,6 +60,8 @@ internal static class TreeHolding
         var folder = HoldingName.Folder(mod);
         if (folder == mod) return Path.Combine(root, folder);
         var encoded = folder is null ? null : Path.Combine(root, folder);
+        // A risky name's folder is found by LISTING the root (below), so it is a read that can fail.
+        BeforeReadForTests?.Invoke(NominalDir(ctx, mod));
         // Present only by its exact real name: Windows would open another mod's raw "~626~466F6F2E" for Foo.'s
         // "~626~466f6f2e", and that folder is never this mod's.
         if (folder is not null && FolderNames.HasEntryNamedExactly(root, folder)) return encoded;

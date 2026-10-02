@@ -969,9 +969,16 @@ public static class Scanner
     /// </summary>
     public static TreeLeftover? ExtraTreeLeftover(GameContext c, string modName)
     {
-        if (string.IsNullOrEmpty(modName) || !TreeHolding.CanHold(c, modName)) return null;
-        var dir = TreeHolding.ModDir(c, modName);
-        try { return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null; }
+        if (string.IsNullOrEmpty(modName)) return null;
+        // Named without reading the disk; CanHold lists disabled-trees for a risky name, so it sits inside the
+        // try and a failed read reports the folder as unreadable rather than throwing out of the turn-on.
+        var dir = TreeHolding.NominalDir(c, modName);
+        try
+        {
+            if (!TreeHolding.CanHold(c, modName)) return null;
+            dir = TreeHolding.ModDir(c, modName);
+            return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null;
+        }
         catch { return new TreeLeftover(dir, Readable: false); }
     }
 
