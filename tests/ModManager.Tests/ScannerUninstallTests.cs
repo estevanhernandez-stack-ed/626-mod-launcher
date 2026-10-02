@@ -135,6 +135,22 @@ public class ScannerUninstallTests
         Assert.True(Directory.Exists(c.DataDir));
     }
 
+    // An empty key once deleted every turned-off mod (disabled/ + "" is disabled/ itself). Refused in words.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task An_empty_name_is_refused_with_the_no_name_message_and_nothing_is_deleted(string empty)
+    {
+        var (_, _, c) = Setup();
+        await Scanner.DisableModAsync("cool", c);
+        var coolsCopy = Path.Combine(c.DisabledRoot, "cool", "cool.pak");
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.UninstallModAsync(empty, c));
+
+        Assert.Equal("626 can't uninstall a mod with no name. Nothing was deleted.", e.Message);
+        Assert.Equal("X", File.ReadAllText(coolsCopy));
+    }
+
     // The live-file loop deletes entries the scan enumerated, by their real names. One whose name ends in a dot
     // or space (only a \\?\-aware tool can make one) must be deleted exactly, never the entry Windows would
     // normalise the path onto.

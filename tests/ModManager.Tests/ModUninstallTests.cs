@@ -318,6 +318,38 @@ mods = [
         Assert.Equal("PLAIN", File.ReadAllText(pak));
     }
 
+    // Round 4: a key can come out empty (`_P.pak` under strip_underscore_p_suffix, a bare `.pak`). It is
+    // refused in the up-front pass, so a family never loses its earlier members before the refusal fires.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_family_with_an_empty_named_member_deletes_nothing(string empty)
+    {
+        var (g, ctx) = TreeGame();
+        var plainPak = Path.Combine(ctx.GameRoot, "archive", "pc", "mod", "Plain.archive");
+        var plain = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+        var nameless = new Mod { Name = empty, Location = "mods", Enabled = true, Files = new List<string>() };
+
+        var e = Assert.Throws<InvalidOperationException>(() => ModUninstall.RunAll(ctx, new[] { plain, nameless }));
+
+        Assert.Equal("626 can't uninstall a mod with no name. Nothing was deleted.", e.Message);
+        Assert.Equal("PLAIN", File.ReadAllText(plainPak));
+        Assert.Contains(ModListing.Resolve(g), m => m.Name == "Plain");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_single_empty_name_is_refused(string empty)
+    {
+        var (_, ctx) = TreeGame();
+        var nameless = new Mod { Name = empty, Location = "mods", Enabled = true, Files = new List<string>() };
+
+        var e = Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, nameless));
+
+        Assert.Equal("626 can't uninstall a mod with no name. Nothing was deleted.", e.Message);
+    }
+
     // Round 2: a name that stays inside the root but can't own a folder there as written (Windows strips a
     // trailing dot or space; ':' and separators aren't one folder name) holds nothing. It is not refused,
     // since that made such Mod Engine 2 mods impossible to uninstall, and it never reaches the folder Windows

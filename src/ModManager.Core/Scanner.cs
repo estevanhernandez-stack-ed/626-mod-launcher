@@ -591,6 +591,8 @@ public static class Scanner
     {
         // A name that leads outside disabled/ is refused before anything is deleted: the turned-off-copy
         // delete below joins the name onto that root, and for ".." that join is the whole data folder.
+        // An empty key used to join onto disabled/ as disabled/ itself: every turned-off mod, deleted.
+        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException(ModUninstall.NoNameMessage);
         if (FolderNames.Escapes(c.DisabledRoot, name))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{name}\": that name leads outside 626's folder for turned-off mods. Nothing was changed.");

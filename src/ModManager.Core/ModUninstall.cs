@@ -65,6 +65,9 @@ public sealed record UninstallPreview(IReadOnlyList<UninstallPreviewMod> Mods, I
 /// </summary>
 public static class ModUninstall
 {
+    /// <summary>The refusal for a mod whose name is empty or only spaces, here and in the scanner's uninstall.</summary>
+    internal const string NoNameMessage = "626 can't uninstall a mod with no name. Nothing was deleted.";
+
     /// <summary>Why this mod can't be uninstalled, or null when it can.</summary>
     public static UninstallRefusal? Refusal(GameContext ctx, Mod mod) => Refusal(ModListing.MechanismFor(ctx.Game, ctx), mod);
 
@@ -105,7 +108,7 @@ public static class ModUninstall
         var held = new List<UninstallHeldFolder>();
         foreach (var m in mods)
         {
-            if (string.IsNullOrEmpty(m.Name)) continue;
+            if (string.IsNullOrWhiteSpace(m.Name)) continue;   // refused by the run, with the no-name message
             if (HeldDir(ctx, m.Name) is not { } dir) continue;   // a name that can't own a held folder
             try
             {
@@ -167,11 +170,14 @@ public static class ModUninstall
     /// <returns>The held folders that existed and were deleted.</returns>
     public static IReadOnlyList<string> RunAll(GameContext ctx, IReadOnlyList<Mod> mods)
     {
+        // A key can come out empty (`_P.pak` under strip_underscore_p_suffix, a bare `.pak`). Refused here,
+        // before any member is touched, so a family can't lose its earlier members first.
+        if (mods.Any(m => string.IsNullOrWhiteSpace(m.Name))) throw new InvalidOperationException(NoNameMessage);
         var lane = ModListing.MechanismFor(ctx.Game, ctx);
         foreach (var m in mods)
             if (Refusal(lane, m) is { } why) throw new InvalidOperationException(why.Message);
         // Containment before anything is deleted: a name that escapes stops the whole run here.
-        var heldDirs = mods.Select(m => string.IsNullOrEmpty(m.Name) ? null : HeldDir(ctx, m.Name)).ToList();
+        var heldDirs = mods.Select(m => HeldDir(ctx, m.Name)).ToList();
 
         var deleted = new List<string>();
         var left = new List<(string Mod, string Path)>();
@@ -237,10 +243,7 @@ public static class ModUninstall
             throw new InvalidOperationException(
                 $"626's holding folder {root} is not inside its data folder {dataDir}, so nothing in it was deleted.");
 
-        string resolved;
-        try { resolved = Path.GetFullPath(Path.Combine(root, modName)); }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { resolved = ""; }
-        if (!FolderNames.StrictlyUnder(resolved, root))
+        if (FolderNames.Escapes(root, modName))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{modName}\": that name leads outside 626's holding folder {root}. Nothing was changed.");
 
