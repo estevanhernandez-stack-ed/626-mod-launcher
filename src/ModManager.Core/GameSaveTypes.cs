@@ -87,7 +87,10 @@ public static class SaveFileKindsCatalog
     public static IReadOnlyList<SaveFileKind> For(GameEntry game)
     {
         var entry = ManifestIdLookup.ConfirmedEntryFor(game);
-        foreach (var id in new[] { entry?.Id, game.ManifestId, game.Id })
+        // The confirmed entry first. The raw named id only when the game carries no store id at all:
+        // with one, the confirmed join has already said whether that id is to be believed.
+        var noStoreId = string.IsNullOrEmpty(game.SteamAppId) && string.IsNullOrEmpty(game.EaContentId);
+        foreach (var id in new[] { entry?.Id, noStoreId ? ManifestIdLookup.NamedId(game) : null })
             if (!string.IsNullOrEmpty(id) && ById.TryGetValue(id, out var byId)) return byId;
         foreach (var ea in new[] { game.EaContentId, entry?.Stores.EaContentId })
             if (!string.IsNullOrEmpty(ea) && ByEaContentId.TryGetValue(ea, out var byEa)) return byEa;

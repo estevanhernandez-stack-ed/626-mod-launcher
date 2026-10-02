@@ -98,8 +98,13 @@ public static partial class EnginePresets
         if (!string.IsNullOrEmpty(input.EaContentId)) entry.EaContentId = input.EaContentId;
         // The entry the add named, kept through the -2 rename above. Only an explicit id counts: a name
         // that slugifies to a manifest id ("doom" for Doom Eternal) is a guess, not a choice.
-        if (!string.IsNullOrEmpty(input.Id) && ManifestIdLookup.EntryById(input.Id) is { } named)
+        // A store id on the same add that names another game, or that the entry claims differently, makes
+        // the pick a contradiction, and a contradicted record would be read fail-closed forever.
+        var named = string.IsNullOrEmpty(input.Id) ? null : ManifestIdLookup.EntryById(input.Id);
+        if (named is not null && !ManifestIdLookup.ContradictsAdd(named, input.SteamAppId, input.EaContentId))
             entry.ManifestId = named.Id;
+        else
+            named = null;
         if (!string.IsNullOrEmpty(input.LaunchUrl)) entry.LaunchUrl = input.LaunchUrl;
         if (!string.IsNullOrEmpty(input.DataDir)) entry.DataDir = input.DataDir;
         if (!string.IsNullOrEmpty(input.LaunchExe)) entry.LaunchExe = input.LaunchExe;
@@ -109,9 +114,11 @@ public static partial class EnginePresets
         if (input.SaveModForbidden is { Count: > 0 }) entry.SaveModForbidden = input.SaveModForbidden;
         // Explicit domain (AI profile / manual) wins; otherwise resolve from the Steam app id so
         // Steam-auto-added + quick-pick games still get a Nexus domain for md5 metadata identify.
+        // A store-less pick (GOG, hand-added) has no Steam id to resolve by, but the entry it was added as
+        // states its domain.
         entry.NexusGameDomain = !string.IsNullOrEmpty(input.NexusGameDomain)
             ? input.NexusGameDomain
-            : NexusDomains.ByAppId(input.SteamAppId);
+            : NexusDomains.ByAppId(input.SteamAppId) ?? (string.IsNullOrWhiteSpace(named?.NexusDomain) ? null : named!.NexusDomain);
         return entry;
     }
 

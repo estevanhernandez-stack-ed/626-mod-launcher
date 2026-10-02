@@ -50,9 +50,7 @@ public static class SaveWritePolicy
         // names when a store id disagrees. The save-fact join refuses that entry (wrong game's folder);
         // a write block must not, or a contradiction would switch the protection off.
         var isEa = !string.IsNullOrWhiteSpace(game.EaContentId)
-            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryFor(game)?.Stores.EaContentId)
-            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryById(game.Id)?.Stores.EaContentId)
-            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryById(game.ManifestId)?.Stores.EaContentId);
+            || ManifestIdLookup.CandidateEntries(game).Any(e => !string.IsNullOrWhiteSpace(e.Stores.EaContentId));
         return isEa ? EaRefusal : null;
     }
 

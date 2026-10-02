@@ -70,6 +70,18 @@ public static class ManifestIdLookup
             if (!string.IsNullOrEmpty(g.Id))
                 byId.TryAdd(g.Id, g);
         }
+
+        // A snapshot id the feed folded away (EffectiveManifest.Merge keeps the feed's id when both name
+        // one game by store id) still names that game. A registration recorded or registered under the
+        // old id (skyrim-se, before the-elder-scrolls-v-skyrim-special-edition) must not lose it. Matched
+        // by store id exactly as the fold matched; a real id always wins over an alias.
+        foreach (var g in EmbeddedGameManifest.Current.Games)
+        {
+            if (string.IsNullOrEmpty(g.Id) || byId.ContainsKey(g.Id)) continue;
+            var heir = (g.Stores.SteamAppId is { } a && steam.TryGetValue(a, out var bySteam) ? bySteam : null)
+                    ?? (g.Stores.EaContentId is { } e && ea.TryGetValue(e, out var byEa) ? byEa : null);
+            if (heir is not null) byId.TryAdd(g.Id, heir);
+        }
         return new Snapshot(steam, ea, byId);
     }
 
@@ -89,6 +101,15 @@ public static class ManifestIdLookup
     /// before this lookup existed, or while the feed was unreachable, carries a slug of its display
     /// name. Both still carry the store identity, and the store identity names the game.</para>
     /// </summary>
+    /// <summary>
+    /// The manifest id a registration names ITSELF by: the entry it was added as
+    /// (<see cref="GameEntry.ManifestId"/>) when one was recorded, else its own id. Never both: a
+    /// recorded copy's own id is a <c>-N</c> rename, and <c>portal-2</c> can be a different game's id.
+    /// The one rule every join uses after the store ids, so no two of them can disagree.
+    /// </summary>
+    public static string? NamedId(GameEntry game)
+        => !string.IsNullOrEmpty(game.ManifestId) ? game.ManifestId : game.Id;
+
     public static IReadOnlySet<string> IdsFor(GameEntry game)
     {
         // One snapshot of both maps, so the Steam and EA answers come from the same feed generation.
@@ -98,11 +119,11 @@ public static class ManifestIdLookup
         if (StoreEntry(snap.Ea, game.EaContentId) is { } byEa) ids.Add(byEa.Id);
         // The own id only when no store id names a game, the same precedence as EntryFor, so the loader
         // scan and the mod scan never disagree about which game this is.
-        if (ids.Count == 0)
-        {
-            if (!string.IsNullOrEmpty(game.ManifestId)) ids.Add(game.ManifestId);
-            if (!string.IsNullOrEmpty(game.Id)) ids.Add(game.Id);
-        }
+        // The named id only when no store id names a game, the same precedence as EntryFor, so the loader
+        // scan and the mod scan never disagree about which game this is. Through the id map, so a folded
+        // alias is reported as the id that absorbed it.
+        if (ids.Count == 0 && NamedId(game) is { Length: > 0 } named)
+            ids.Add(IdEntry(snap, named)?.Id ?? named);
         return ids;
     }
 
@@ -111,8 +132,8 @@ public static class ManifestIdLookup
     /// manifest correction (file extensions, grouping, mod path) reach a game the user already added.
     ///
     /// <para><b>Store identity first.</b> The entry claiming the registration's Steam app id, else the
-    /// one claiming its EA content id, else the entry it was added as (<see cref="GameEntry.ManifestId"/>),
-    /// else the entry with its own id. A store id names exactly one
+    /// one claiming its EA content id, else the entry it names itself by (<see cref="NamedId"/>: the entry
+    /// it was added as, else its own id). A store id names exactly one
     /// game; the own id is only as good as however it was made. A second store copy is <c>&lt;id&gt;-2</c>
     /// and an older registration is a slug of its display name, which can collide with a different
     /// game's manifest id ("doom" for Doom Eternal).</para>
@@ -127,8 +148,7 @@ public static class ManifestIdLookup
         var snap = Maps();
         return StoreEntry(snap.Steam, game.SteamAppId)
             ?? StoreEntry(snap.Ea, game.EaContentId)
-            ?? IdEntry(snap, game.ManifestId)
-            ?? IdEntry(snap, game.Id);
+            ?? IdEntry(snap, NamedId(game));
     }
 
     /// <summary>
@@ -148,15 +168,39 @@ public static class ManifestIdLookup
         var snap = Maps();
         if ((StoreEntry(snap.Steam, game.SteamAppId) ?? StoreEntry(snap.Ea, game.EaContentId)) is { } byStore)
             return byStore;
-        // The recorded id, then the own id, each refused when a store id the game carries disagrees.
-        foreach (var id in new[] { game.ManifestId, game.Id })
-        {
-            if (IdEntry(snap, id) is not { } named) continue;
-            return Contradicts(game.SteamAppId, named.Stores.SteamAppId) || Contradicts(game.EaContentId, named.Stores.EaContentId)
-                ? null
-                : named;
-        }
-        return null;
+        // The named id, refused when a store id the game carries disagrees.
+        if (IdEntry(snap, NamedId(game)) is not { } named) return null;
+        return Contradicts(game.SteamAppId, named.Stores.SteamAppId) || Contradicts(game.EaContentId, named.Stores.EaContentId)
+            ? null
+            : named;
+    }
+
+    /// <summary>
+    /// Every manifest entry this registration could be, from ONE snapshot: its store entries, the entry
+    /// it was added as, and the entry its own id names, with no contradiction check. For a caller that
+    /// must fail CLOSED (the save write policy): any of them can carry the fact that refuses.
+    /// </summary>
+    public static IReadOnlyList<GameManifestEntry> CandidateEntries(GameEntry? game)
+    {
+        if (game is null) return Array.Empty<GameManifestEntry>();
+        var snap = Maps();
+        return new[]
+            {
+                StoreEntry(snap.Steam, game.SteamAppId), StoreEntry(snap.Ea, game.EaContentId),
+                IdEntry(snap, game.ManifestId), IdEntry(snap, game.Id),
+            }
+            .OfType<GameManifestEntry>().Distinct().ToList();
+    }
+
+    /// <summary>Whether recording <paramref name="entry"/> as the entry a new registration was added AS
+    /// would contradict the store ids the same add carries: one naming a different entry, or one the
+    /// entry claims differently. A contradicted record would be read, fail-closed, forever.</summary>
+    public static bool ContradictsAdd(GameManifestEntry entry, string? steamAppId, string? eaContentId)
+    {
+        var snap = Maps();
+        if (StoreEntry(snap.Steam, steamAppId) is { } s && !ReferenceEquals(s, entry)) return true;
+        if (StoreEntry(snap.Ea, eaContentId) is { } e && !ReferenceEquals(e, entry)) return true;
+        return Contradicts(steamAppId, entry.Stores.SteamAppId) || Contradicts(eaContentId, entry.Stores.EaContentId);
     }
 
     private static GameManifestEntry? IdEntry(Snapshot snap, string? id)
@@ -169,8 +213,7 @@ public static class ManifestIdLookup
     /// <summary>The manifest entry with exactly this id (case-insensitive), or null. No store
     /// resolution and no contradiction check: for a caller that must fail CLOSED and so wants every
     /// entry a registration could be, including the one its own id names when a store id disagrees.</summary>
-    public static GameManifestEntry? EntryById(string? id)
-        => !string.IsNullOrEmpty(id) && Maps().ById.TryGetValue(id, out var e) ? e : null;
+    public static GameManifestEntry? EntryById(string? id) => IdEntry(Maps(), id);
 
     /// <summary>The manifest entry claiming this Steam app id, or null. What <c>KnownModPaths</c> reads,
     /// so the add path and the scan path break a tie the same way.</summary>
