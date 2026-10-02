@@ -9,8 +9,9 @@ namespace ModManager.Core;
 /// trees where an entry with its name stays put, each with the rule that kept it, worded per rule so the
 /// row always gives the true reason; <c>heldWhileOff</c>, the trees held in <c>disabled-trees/&lt;Mod&gt;</c>
 /// while the mod is off; <c>stillOn</c>, for an off mod, the trees whose entries are still live (turned
-/// off before stage two, say); and <c>heldUnknownPath</c>, the holding folder when files are held there
-/// but 626 can't say under which tree. A tree can be both moving and held back (one entry moves, another
+/// off before stage two, say); and <c>heldUnknown</c>, the holding folder when files are held there under
+/// no declared tree (<c>Readable</c>), or when 626 couldn't read it (not <c>Readable</c>: then the row never
+/// says files are there). A tree can be both moving and held back (one entry moves, another
 /// is kept); the line lists it once and the tooltip says SOME of its files stay.</para>
 /// </summary>
 public sealed record ModTreesText(string Line, string Tooltip)
@@ -25,11 +26,12 @@ public sealed record ModTreesText(string Line, string Tooltip)
         "626 doesn't move this mod's files in these folders. They stay where they are, on or off.";
     public const string StillOnTooltip =
         "These files didn't move when the mod was turned off. Turn it on and off again to move them.";
-    public const string UnknownHeldTooltip = "626 couldn't read which folders these came from.";
+    public const string UnknownHeldTooltip = "626 can't tell which folders these came from.";
+    public const string UnreadableHeldTooltip = "626 couldn't check whether this mod's other files are held here.";
 
     public static ModTreesText For(
         IEnumerable<string> moving, IEnumerable<HeldTree> heldBack, IEnumerable<string> heldWhileOff,
-        IEnumerable<string>? stillOn = null, string? heldUnknownPath = null)
+        IEnumerable<string>? stillOn = null, TreeLeftover? heldUnknown = null)
     {
         var move = Distinct(moving);
         var back = DistinctHeld(heldBack);
@@ -39,7 +41,8 @@ public sealed record ModTreesText(string Line, string Tooltip)
 
         // Off: what is held, and what did not move, in one line.
         var heldPart = off.Count > 0 ? "Also turned off in " + string.Join(", ", off)
-            : !string.IsNullOrEmpty(heldUnknownPath) ? $"Some files are held in {heldUnknownPath}."
+            : heldUnknown is { Readable: true } ? $"Some files are held in {heldUnknown.Path}."
+            : heldUnknown is { Readable: false } ? $"626 couldn't read {heldUnknown.Path}."
             : null;
         if (heldPart is not null || still.Count > 0)
         {
@@ -48,7 +51,10 @@ public sealed record ModTreesText(string Line, string Tooltip)
                 : stillLine is null ? heldPart
                 : EndSentence(heldPart) + " " + stillLine;
 
-            var heldTip = off.Count > 0 ? OffTooltip : heldPart is not null ? UnknownHeldTooltip : null;
+            var heldTip = off.Count > 0 ? OffTooltip
+                : heldUnknown is { Readable: true } ? UnknownHeldTooltip
+                : heldUnknown is { Readable: false } ? UnreadableHeldTooltip
+                : null;
             var stillTip = still.Count == 0 ? null
                 : heldPart is null ? StillOnTooltip
                 : $"Files in {string.Join(", ", still)} didn't move when the mod was turned off. "

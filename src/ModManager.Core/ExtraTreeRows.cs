@@ -81,12 +81,13 @@ public sealed class ExtraTreeRows
 
         var held = Held(row.Name);
         return ModTreesText.For(Array.Empty<string>(), moves.Held,
-            held.Entries.Select(e => e.Tree), stillOn: moving, heldUnknownPath: held.UnknownPath);
+            held.Entries.Select(e => e.Tree), stillOn: moving, heldUnknown: held.Unknown);
     }
 
-    // What is held for a mod. UnknownPath is the holding folder when files sit there under no declared tree,
-    // or when the folder could not be read: neither may fall silent.
-    private (IReadOnlyList<TreeHolding.HeldEntry> Entries, string? UnknownPath) Held(string modName)
+    // What is held for a mod. Unknown is the holding folder when files sit there under no declared tree
+    // (Readable), or when the folder could not be read (not Readable): neither may fall silent, and the
+    // second must never be reported as files being there.
+    private (IReadOnlyList<TreeHolding.HeldEntry> Entries, TreeLeftover? Unknown) Held(string modName)
     {
         if (_ctx is null || string.IsNullOrEmpty(modName)) return (Array.Empty<TreeHolding.HeldEntry>(), null);
         var dir = TreeHolding.ModDir(_ctx, modName);
@@ -94,9 +95,9 @@ public sealed class ExtraTreeRows
         {
             var entries = TreeHolding.Held(_ctx, modName, _ctx.ExtraModTrees);
             if (entries.Count > 0) return (entries, null);
-            return (entries, TreeHolding.HoldsFiles(_ctx, modName) ? dir : null);
+            return (entries, TreeHolding.HoldsFiles(_ctx, modName) ? new TreeLeftover(dir, Readable: true) : null);
         }
-        catch { return (Array.Empty<TreeHolding.HeldEntry>(), dir); }
+        catch { return (Array.Empty<TreeHolding.HeldEntry>(), new TreeLeftover(dir, Readable: false)); }
     }
 
     private bool MovesExtras(Mod row)

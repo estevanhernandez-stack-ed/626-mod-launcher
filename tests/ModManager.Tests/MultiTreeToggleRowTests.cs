@@ -170,6 +170,7 @@ public class MultiTreeToggleRowTests : IDisposable
         var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(await Row(ctx, "CoolMod"));
 
         Assert.Equal($"Some files are held in {TreeHoldingDir(ctx)}.", text.Line);
+        Assert.Equal("626 can't tell which folders these came from.", text.Tooltip);
     }
 
     [Fact]
@@ -185,7 +186,8 @@ public class MultiTreeToggleRowTests : IDisposable
         try { text = rows.TextFor(row); }
         finally { TreeHolding.BeforeReadForTests = null; }
 
-        Assert.Equal($"Some files are held in {TreeHoldingDir(ctx)}.", text.Line);
+        Assert.Equal($"626 couldn't read {TreeHoldingDir(ctx)}.", text.Line);
+        Assert.Equal("626 couldn't check whether this mod's other files are held here.", text.Tooltip);
     }
 
     private static string TreeHoldingDir(GameContext ctx) => Path.Combine(ctx.DataDir, "disabled-trees", "CoolMod");

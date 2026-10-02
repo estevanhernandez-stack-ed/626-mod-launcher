@@ -149,11 +149,24 @@ public class ModTreesTextTests
     [Fact]
     public void Held_files_with_no_known_tree_name_the_folder()
     {
-        var t = ModTreesText.For(None, NoHeld, None, heldUnknownPath: @"C:\data\disabled-trees\CoolMod");
+        var t = ModTreesText.For(None, NoHeld, None,
+            heldUnknown: new TreeLeftover(@"C:\data\disabled-trees\CoolMod", Readable: true));
 
         Assert.True(t.Visible);
         Assert.Equal(@"Some files are held in C:\data\disabled-trees\CoolMod.", t.Line);
-        Assert.Equal("626 couldn't read which folders these came from.", t.Tooltip);
+        Assert.Equal("626 can't tell which folders these came from.", t.Tooltip);
+    }
+
+    [Fact]
+    public void An_unreadable_holding_folder_never_claims_files_are_there()
+    {
+        var t = ModTreesText.For(None, NoHeld, None,
+            heldUnknown: new TreeLeftover(@"C:\data\disabled-trees\CoolMod", Readable: false));
+
+        Assert.True(t.Visible);
+        Assert.Equal(@"626 couldn't read C:\data\disabled-trees\CoolMod.", t.Line);
+        Assert.Equal("626 couldn't check whether this mod's other files are held here.", t.Tooltip);
+        Assert.DoesNotContain("are held in", t.Line);
     }
 
     [Fact]
