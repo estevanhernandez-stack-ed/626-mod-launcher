@@ -3,7 +3,8 @@ using System.Text.Json;
 namespace ModManager.Core;
 
 /// <summary>One installed save/world mod: its world GUID, friendly name, the source zip kept for
-/// reset, and when it was installed.</summary>
+/// reset, and when it was installed. Before E1's seventh slice <see cref="SourceZip"/> named the download
+/// rather than the kept copy; <see cref="SaveModStore.KeptZip"/> reads both.</summary>
 public sealed record SaveModEntry(string Guid, string Name, string SourceZip, DateTime InstalledUtc);
 
 /// <summary>
@@ -45,6 +46,21 @@ public static class SaveModStore
             .ToList();
         list.Add(entry);
         AtomicJson.WriteJsonAtomic(PathFor(dataDir), list);
+    }
+
+    /// <summary>The zip a world resets from, or null when none is left: the recorded <c>SourceZip</c> (the kept
+    /// copy, for installs since E1's seventh slice), else the copy an older build kept in the data folder under
+    /// the zip's file name. Each must still hold this world: an older build kept every world's zip under its
+    /// bare file name, so a later world's zip of the same name could have replaced it.</summary>
+    public static string? KeptZip(string dataDir, SaveModEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.SourceZip)) return null;
+        var candidates = new[]
+        {
+            entry.SourceZip,
+            System.IO.Path.Combine(dataDir, System.IO.Path.GetFileName(entry.SourceZip)),
+        };
+        return candidates.FirstOrDefault(c => File.Exists(c) && SaveModInstaller.ZipHoldsWorld(c, entry.Guid));
     }
 
     public static void Remove(string dataDir, string guid)

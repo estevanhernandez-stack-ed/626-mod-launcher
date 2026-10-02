@@ -63,6 +63,51 @@ public class SaveModFlowTests : IDisposable
         Assert.Equal(guid, entries[0].Guid);
     }
 
+    // E1 seventh slice: the record names the kept copy, so a world still resets once the download is gone.
+    [Fact]
+    public void The_record_names_the_kept_copy_so_reset_works_after_the_download_is_deleted()
+    {
+        var guid = "0123456789abcdef0123456789abcdef";
+        var zip = MakeZip("world.zip", new[] { ($"{guid}/data.json", "ORIGINAL") });
+        var profiles = NewDir("saves");
+        var oneProfile = Path.Combine(profiles, "user1");
+        Directory.CreateDirectory(Path.Combine(oneProfile, "RocksDB", "1.0"));
+        var data = NewDir("data");
+        var snaps = NewDir("snaps");
+        SaveModFlow.TryHandleDrops(new[] { zip }, Array.Empty<string>(), profiles, snaps, data, null, null, writeAllowed: true);
+        File.Delete(zip);
+        var world = Path.Combine(oneProfile, "RocksDB", "1.0", "Worlds", guid, "data.json");
+        File.WriteAllText(world, "PLAYED");
+
+        var entry = SaveModStore.Load(data).Single();
+        Assert.Equal(SaveModInstaller.KeptZipPath(data, guid, zip), entry.SourceZip);
+        var kept = SaveModStore.KeptZip(data, entry);
+        Assert.NotNull(kept);
+        SaveModInstaller.ResetWorld(profiles, snaps, kept!, guid, null, null);
+
+        Assert.Equal("ORIGINAL", File.ReadAllText(world));
+    }
+
+    [Fact]
+    public void Dropping_an_installed_world_again_fails_with_the_reason_and_changes_nothing()
+    {
+        var guid = "0123456789abcdef0123456789abcdef";
+        var profiles = NewDir("saves");
+        var oneProfile = Path.Combine(profiles, "user1");
+        Directory.CreateDirectory(Path.Combine(oneProfile, "RocksDB", "1.0"));
+        var data = NewDir("data");
+        SaveModFlow.TryHandleDrops(new[] { MakeZip("world.zip", new[] { ($"{guid}/data.json", "ONE") }) },
+            Array.Empty<string>(), profiles, NewDir("snaps"), data, null, null, writeAllowed: true);
+
+        var again = SaveModFlow.TryHandleDrops(new[] { MakeZip("world-2.zip", new[] { ($"{guid}/data.json", "TWO") }) },
+            Array.Empty<string>(), profiles, NewDir("snaps2"), data, null, null, writeAllowed: true).Single();
+
+        Assert.Equal(SaveModDropOutcome.Failed, again.Outcome);
+        Assert.Contains("already installed", again.Reason);
+        Assert.Equal("ONE", File.ReadAllText(Path.Combine(oneProfile, "RocksDB", "1.0", "Worlds", guid, "data.json")));
+        Assert.Equal("world", SaveModStore.Load(data).Single().Name);
+    }
+
     [Fact]
     public void A_save_zip_with_no_savedir_fails_with_a_clear_reason()
     {

@@ -59,27 +59,69 @@ public static partial class SaveModInstaller
     }
 
     /// <summary>
-    /// Install a world zip: (1) resolve the (forbidden-guarded) Worlds target, (2) snapshot the
-    /// save tree FIRST, (3) extract the zip's &lt;guid&gt; world into &lt;target&gt;\&lt;guid&gt;\
-    /// with a zip-slip guard, (4) copy the original zip into the store dir for reset. Returns the
-    /// installed Worlds\&lt;guid&gt; path.
+    /// Install a world zip: (1) resolve the (forbidden-guarded) Worlds target, (2) refuse a world that is
+    /// already there, (3) snapshot the save tree FIRST, (4) extract the zip's &lt;guid&gt; world into
+    /// &lt;target&gt;\&lt;guid&gt;\ with a zip-slip guard, (5) keep a copy of the zip at
+    /// <see cref="KeptZipPath"/> for reset. Returns the installed Worlds\&lt;guid&gt; path.
     /// </summary>
     public static string InstallWorld(string saveProfilesDir, string snapshotsDir, string saveModStoreDir,
                                       string zipPath, string worldGuid, string? saveModPath, IReadOnlyList<string>? forbidden)
     {
         RequireSafeGuid(worldGuid); // refuse a traversal worldGuid BEFORE touching the save tree
         var target = ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden); // guarded
+        var worldDir = SafeWorldDir(target, worldGuid);
+
+        // Installing over a world that is already there extracted until the first file that existed and then
+        // threw, leaving a mix of the two. Refused before the snapshot, so nothing is written.
+        if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
+            throw new WorldAlreadyPresentException(worldGuid, worldDir);
+
         SaveManager.Backup(saveProfilesDir, snapshotsDir, "before-savemod", auto: true); // snapshot FIRST
 
-        var worldDir = SafeWorldDir(target, worldGuid);
         Directory.CreateDirectory(worldDir);
         ExtractWorld(zipPath, worldGuid, worldDir, overwrite: false);
 
-        // Keep the original zip for reset.
-        Directory.CreateDirectory(saveModStoreDir);
-        File.Copy(zipPath, System.IO.Path.Combine(saveModStoreDir, System.IO.Path.GetFileName(zipPath)), overwrite: true);
+        // Keep a copy of the zip for reset, in a folder of this world's own: the download can be deleted, and
+        // two worlds' zips can share a file name.
+        var kept = KeptZipPath(saveModStoreDir, worldGuid, zipPath);
+        if (!string.Equals(System.IO.Path.GetFullPath(kept), System.IO.Path.GetFullPath(zipPath), StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(kept)!);
+            File.Copy(zipPath, kept, overwrite: true);
+        }
 
         return worldDir;
+    }
+
+    /// <summary>The folder world <paramref name="worldGuid"/> lives in under the (forbidden-guarded) Worlds
+    /// target, whether or not it is there now. Throws as <see cref="ResolveWorldsTarget"/> does for a missing
+    /// or ambiguous profile, or an unsafe id.</summary>
+    public static string WorldDirFor(string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden, string worldGuid)
+    {
+        RequireSafeGuid(worldGuid);
+        return SafeWorldDir(ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden), worldGuid);
+    }
+
+    /// <summary>Where <see cref="InstallWorld"/> keeps a world's zip for reset:
+    /// <c>&lt;store&gt;\save-mods\&lt;guid&gt;\&lt;zip file name&gt;</c>. The record points here, not at the
+    /// download.</summary>
+    public static string KeptZipPath(string saveModStoreDir, string worldGuid, string zipPath)
+    {
+        RequireSafeGuid(worldGuid);
+        return System.IO.Path.Combine(saveModStoreDir, "save-mods", worldGuid, System.IO.Path.GetFileName(zipPath));
+    }
+
+    /// <summary>True when the zip at <paramref name="zipPath"/> carries the world <paramref name="worldGuid"/> (a
+    /// folder of that name anywhere in it). False for an unreadable zip.</summary>
+    public static bool ZipHoldsWorld(string zipPath, string worldGuid)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(zipPath);
+            return zip.Entries.Any(e => e.FullName.Replace('\\', '/').Split('/')
+                .Any(seg => string.Equals(seg, worldGuid, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch { return false; }
     }
 
     /// <summary>Reset: resolve (guarded) -&gt; snapshot first -&gt; delete &lt;target&gt;\&lt;guid&gt;
@@ -264,4 +306,14 @@ public static partial class SaveModInstaller
     // (DirectInject.IsUnder was the previous reference; it now delegates to PathGate too.)
     private static bool IsUnder(string root, string path)
         => PathGate.IsContainedAbsolute(path, root);
+}
+
+/// <summary>A world with this id is already in the save folder. Installing over it would mix two versions,
+/// so it is refused before anything is written; reset or remove the installed one instead.</summary>
+public sealed class WorldAlreadyPresentException(string worldGuid, string worldDir)
+    : InvalidOperationException($"World {worldGuid} is already installed ({worldDir}). Nothing was changed. "
+                                + "Reset it to reinstall it from its kept zip, or remove it first.")
+{
+    public string WorldGuid { get; } = worldGuid;
+    public string WorldDir { get; } = worldDir;
 }

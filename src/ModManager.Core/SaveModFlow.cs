@@ -91,7 +91,9 @@ public static class SaveModFlow
                 saveProfilesDir, snapshotsDir, dataDir,
                 path, verdict.WorldGuid!, saveModPath, forbidden);
             var name = System.IO.Path.GetFileNameWithoutExtension(path);
-            SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name, path, DateTime.UtcNow));
+            // The record points at the kept copy, which reset reads: the download may be deleted.
+            SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name,
+                SaveModInstaller.KeptZipPath(dataDir, verdict.WorldGuid!, path), DateTime.UtcNow));
             return new SaveModDropVerdict(path, SaveModDropOutcome.Installed, verdict.WorldGuid, null);
         }
         catch (Exception e)
