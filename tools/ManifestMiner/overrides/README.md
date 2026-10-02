@@ -48,15 +48,19 @@ game.
 }
 ```
 
+- **`id`** is lowercase kebab-case (`seamless-coop`), and must match the built-in loader's id exactly
+  to correct it.
 - **Write the whole loader, every time.** A feed loader replaces the launcher's built-in loader with
   the same `id`, so a file that only says `"banSafe": false` is rejected, not merged. To correct one
   field, copy the loader and change that field.
-- **`steamAppId`** pins the loader to one game. Leave it out for an engine-wide loader (Mod Engine 2
-  serves every FromSoft game).
+- **`steamAppId`** pins the loader to one game, and must be the numeric Steam id. Leave it out
+  entirely for an engine-wide loader (Mod Engine 2 serves every FromSoft game); an empty string is
+  rejected, because it would pin the loader to nothing.
 - **`launcherExeNames`** are bare `*.exe` filenames found in the game's play folder: no directories,
   no drive, no `..`. The launcher runs whatever file has that name, so the gate is strict.
 - **`getUrl`** must be an absolute `https` link. The binary is never bundled; this is where the user
   gets it.
+- **`editsSaves`** is not acted on yet: launching a loader does not snapshot saves. Don't rely on it.
 - **`banSafe`** is a claim that the loader's modding path avoids the game's anti-cheat. Only set it with
   evidence. `"banSafe": false` withdraws a claim the launcher shipped with.
 

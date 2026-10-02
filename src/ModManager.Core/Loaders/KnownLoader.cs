@@ -35,22 +35,26 @@ public sealed record KnownLoader(
 /// </summary>
 public static class KnownLoaderCatalog
 {
-    // A reference, swapped whole, so a reader on another thread never sees one generation's number
-    // paired with another's list. A race between reading Generation and Current can only cache a newer
-    // list under an older number, which the next read simply recomputes.
-    private sealed record Snapshot(int Generation, IReadOnlyList<KnownLoader> Loaders);
-    private static volatile Snapshot? _cache;
+    // The same lock-and-generation cache every other manifest facade uses (KnownEngines, NexusDomains,
+    // BanRiskCatalog), so there is one reviewed pattern rather than a second, lock-free one.
+    private static IReadOnlyList<KnownLoader>? _catalog;
+    private static int _catalogGen = -1;
+    private static readonly object _gate = new();
 
     public static IReadOnlyList<KnownLoader> Catalog
     {
         get
         {
-            var generation = EffectiveManifest.Generation;
-            if (_cache is { } c && c.Generation == generation) return c.Loaders;
-
-            var loaders = EffectiveManifest.Current.Loaders.Select(ToKnownLoader).ToList();
-            _cache = new Snapshot(generation, loaders);
-            return loaders;
+            lock (_gate)
+            {
+                var gen = EffectiveManifest.Generation;
+                if (_catalog is null || _catalogGen != gen)
+                {
+                    _catalog = EffectiveManifest.Current.Loaders.Select(ToKnownLoader).ToList();
+                    _catalogGen = gen;
+                }
+                return _catalog;
+            }
         }
     }
 

@@ -111,7 +111,12 @@ public sealed record LoaderManifestEntry
     /// it as the safe way to mod. Null means unclaimed, which reads as not safe.</summary>
     public bool? BanSafe { get; init; }
 
-    /// <summary>The loader writes to saves, so launching it snapshots them first.</summary>
+    /// <summary>
+    /// The loader writes to saves. Carried so the runtime <c>KnownLoader</c> can say so, but NOT yet
+    /// acted on: launching a loader does not snapshot saves today (tools do; loaders never needed it,
+    /// since no shipped loader sets this). Honouring it is a launcher change, not a feed one; until
+    /// then a curator should not rely on it.
+    /// </summary>
     public bool? EditsSaves { get; init; }
 }
 

@@ -92,8 +92,8 @@ public static class EffectiveManifest
     private static IReadOnlyList<LoaderManifestEntry> MergeLoaders(
         IReadOnlyList<LoaderManifestEntry> embedded, IReadOnlyList<LoaderManifestEntry> remote)
     {
-        var merged = new List<LoaderManifestEntry>(embedded);
-        foreach (var r in remote)
+        var merged = new List<LoaderManifestEntry>(embedded ?? Array.Empty<LoaderManifestEntry>());
+        foreach (var r in remote ?? Array.Empty<LoaderManifestEntry>())
         {
             var i = merged.FindIndex(e => string.Equals(e.Id, r.Id, StringComparison.Ordinal));
             if (i < 0) merged.Add(r);

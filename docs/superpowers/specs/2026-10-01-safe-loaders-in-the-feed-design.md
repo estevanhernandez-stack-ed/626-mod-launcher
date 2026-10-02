@@ -66,9 +66,16 @@ trust-sensitive field, because the app launches whatever file has that name in t
 - **Skipped:** an engine this binary does not know, the same forward-compatible rule games follow.
 - **Rejected:**
   - a blank `id`, `displayName` or `engine`
+  - an `id` that isn't lowercase kebab-case. The merge matches ids exactly, so a case variant would
+    sit beside the built-in as a second loader instead of correcting it
+  - a duplicate `id`, keeping the first. The ban-risk gate keys on the id
+  - a `steamAppId` that isn't all digits. An empty pin would match no game at all
+  - a null list or a null entry, which degrade like any bad entry, so a bad feed still falls back to
+    the embedded manifest instead of throwing
   - an empty `launcherExeNames`
-  - any exe name that is not a bare `*.exe` filename: no directory separators, no `:`, no `..`, no
-    leading or trailing whitespace
+  - any exe name that is not a bare `*.exe` filename: no `..`, no leading or trailing whitespace, and
+    none of Windows' invalid filename characters (`<>:"/\|?*` and control characters). That set is
+    fixed, not taken from the platform, so the miner on Linux and the launcher on Windows agree
   - a `getUrl` that is not an absolute `https` URL
 
 A rejected loader is dropped alone. The rest of the feed still applies, as with an unsafe `modPath`.
@@ -102,6 +109,12 @@ Curated loaders live in `overrides/loaders/*.json`, one loader per file. The gam
 reads only the top level of `overrides/`, so the subfolder does not collide with it. The
 `--with-overrides` step loads them, refuses the run on a duplicate id, and puts them on the draft. The
 draft then goes through the same `ManifestValidator` gate as everything else.
+
+## Known gap: `editsSaves`
+
+The field is carried so the runtime `KnownLoader` can say a loader writes to saves, but launching a
+loader does not snapshot saves today. Tools do; loaders never needed to, since no shipped loader sets
+it. Honouring it is a launcher change, not a feed one, and a curator should not rely on it until then.
 
 ## Out of scope
 

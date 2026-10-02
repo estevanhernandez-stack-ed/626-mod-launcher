@@ -160,6 +160,10 @@ if (args.Contains("--with-overrides"))
     var validatedCurated = ManifestValidator.Validate(
         LoaderOverrides.Apply(mergeResult.Manifest, loaders), EnginePresets.Presets.Keys.ToHashSet());
     current = validatedCurated.Manifest;
+    // A loader whose engine this binary does not know is SKIPPED, not rejected, so the gate above says
+    // nothing about it. A typo such as "FromSoft" would otherwise vanish from the draft in silence.
+    foreach (var id in validatedCurated.SkippedLoaders)
+        Console.Error.WriteLine($"  loader '{id}' skipped: its engine is not one this launcher knows");
 
     File.WriteAllText(Path.Combine(outDir, "manifest-draft.json"),
         JsonSerializer.Serialize(current, ManifestJson.Options));

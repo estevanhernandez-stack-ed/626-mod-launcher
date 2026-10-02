@@ -81,6 +81,76 @@ public class ManifestLoadersTests
         Assert.Equal(new[] { "test-loader" }, result.RejectedLoaders);
     }
 
+    // Windows' invalid filename characters. Checked from a fixed set, not the platform's: the miner
+    // runs on Linux, where Path.GetInvalidFileNameChars() is only '/' and NUL, and it must not sign a
+    // name every Windows client then drops.
+    [Theory]
+    [InlineData("er|launcher.exe")]
+    [InlineData("launcher?.exe")]
+    [InlineData("<x>.exe")]
+    [InlineData("a*b.exe")]
+    [InlineData("quote\"d.exe")]
+    [InlineData("tab\there.exe")]
+    public void Windows_invalid_filename_characters_reject_the_loader_on_every_platform(string exe)
+        => Assert.Equal(new[] { "test-loader" }, Validate(Loader(exes: new[] { exe })).RejectedLoaders);
+
+    // Review on #355: the merge matches ids exactly, so a case variant would have been appended beside
+    // the built-in rather than replacing it. Refusing the spelling is what makes exact matching safe.
+    [Theory]
+    [InlineData("Seamless-Coop")]
+    [InlineData("seamless_coop")]
+    [InlineData("seamless coop")]
+    [InlineData("-seamless")]
+    [InlineData("seamless-")]
+    [InlineData("seamless--coop")]
+    public void A_loader_id_that_is_not_lowercase_kebab_is_rejected(string id)
+        => Assert.Single(Validate(Loader(id: id)).RejectedLoaders);
+
+    // An empty pin passes a null check, pins the loader to no game, and makes it vanish everywhere.
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("12a45")]
+    public void A_steam_app_id_that_is_not_digits_rejects_the_loader(string app)
+        => Assert.Equal(new[] { "test-loader" }, Validate(Loader(steamAppId: app)).RejectedLoaders);
+
+    // Review on #355: the ban-risk gate keys a dictionary on the loader id, so two loaders with one id
+    // would throw there. The first wins; the second is rejected by name.
+    [Fact]
+    public void A_duplicate_loader_id_keeps_the_first_and_rejects_the_second()
+    {
+        var result = Validate(Loader(id: "a", getUrl: "https://example.com/first"), Loader(id: "a", getUrl: "https://example.com/second"));
+
+        Assert.Equal("https://example.com/first", Assert.Single(result.Manifest.Loaders).GetUrl);
+        Assert.Equal(new[] { "a" }, result.RejectedLoaders);
+    }
+
+    // Review on #355: "loaders": null, or a null entry, is reachable from JSON. It has to degrade like
+    // any bad entry; a throw would escape LoadVerifiedRemote (which catches only JsonException) and
+    // break the fall-back-to-embedded promise at startup.
+    [Fact]
+    public void A_null_loader_list_or_entry_is_dropped_rather_than_thrown()
+    {
+        var nullList = JsonSerializer.Deserialize<GameManifest>("{\"games\":[],\"loaders\":null}", ManifestJson.Options)!;
+        var nullEntry = JsonSerializer.Deserialize<GameManifest>("{\"games\":[],\"loaders\":[null]}", ManifestJson.Options)!;
+
+        Assert.Empty(ManifestValidator.Validate(nullList, Engines).Manifest.Loaders);
+        var r = ManifestValidator.Validate(nullEntry, Engines);
+        Assert.Empty(r.Manifest.Loaders);
+        Assert.Single(r.RejectedLoaders);
+    }
+
+    // Same order as games: an unknown engine is judged first, so a newer feed's loader lands in the
+    // forward-compat bucket even when it has something this binary would also object to.
+    [Fact]
+    public void An_unknown_engine_is_skipped_before_anything_else_is_judged()
+    {
+        var result = Validate(Loader(engine: "future-engine", exes: new[] { "future.launcher" }));
+
+        Assert.Equal(new[] { "test-loader" }, result.SkippedLoaders);
+        Assert.Empty(result.RejectedLoaders);
+    }
+
     [Fact]
     public void Exe_names_are_matched_case_insensitively_on_the_extension()
         => Assert.Single(Validate(Loader(exes: new[] { "Loader_Launcher.EXE" })).Manifest.Loaders);
