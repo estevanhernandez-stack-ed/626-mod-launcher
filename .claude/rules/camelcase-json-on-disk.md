@@ -78,7 +78,8 @@ The string-contains assertion is what protects you — without it, the round-tri
 
 - `ModInstallManifest` per-install records (`src/ModManager.Core/ModInstallRegistry.cs` — written to
   `<dataDir>/installs/<installId>.json` via `AtomicJson`; what an intake actually placed, so a row can
-  say which files are its own)
+  say which files are its own; optional `locationPath`, where the location was when 626 installed, covered by
+  `SafeClearRound8Tests.The_location_path_round_trips_as_camelCase_and_an_old_record_loads_without_it`)
 
 - `DataDirMoveJournal` pending-moves/<id>.json (`src/ModManager.Core/DataDirMoveJournal.cs` — the A6
   breadcrumb for a data-folder move, written via `AtomicJson`; covered by

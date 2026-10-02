@@ -43,4 +43,15 @@ public sealed record OffBoardingModLine(
     string Name,
     string? SourceUrl,
     string? SourceConfidence,   // "manual" | "fingerprint" | "md5" | "nameSearch" | null
-    string? InstalledDate);     // pre-formatted yyyy-MM-dd or null
+    string? InstalledDate,      // pre-formatted yyyy-MM-dd or null
+    // Vanilla with a turn-off record: where the mod stands after the reset. TurnedOff | StillActive |
+    // AlreadyOff. Null on any other sheet (one list, as before).
+    string? State = null);
+
+/// <summary>The states a mod line can carry on a vanilla sheet.</summary>
+public static class OffBoardingModState
+{
+    public const string TurnedOff = "turned-off";
+    public const string StillActive = "still-active";
+    public const string AlreadyOff = "already-off";
+}

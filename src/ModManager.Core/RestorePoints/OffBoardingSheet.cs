@@ -90,26 +90,52 @@ public static class OffBoardingSheet
             sb.AppendLine();
         }
 
-        // Vanilla: the mods are kept and turned off, so "still installed" under "turned off" would read as a
-        // contradiction. Say what the list is.
-        sb.AppendLine(r.KeptTurnedOff ? "YOUR MODS (KEPT, TURNED OFF)" : "WHAT'S STILL INSTALLED");
+        // Vanilla: the list is split by where each mod stands, so nothing still active ever sits under a
+        // "turned off" heading (replica r7). Every other sheet keeps one plain list.
+        var split = r.KeptTurnedOff && r.Mods.Any(m => m.State is not null);
+        sb.AppendLine(split ? "YOUR MODS" : r.KeptTurnedOff ? "YOUR MODS (KEPT, TURNED OFF)" : "WHAT'S STILL INSTALLED");
         sb.AppendLine(r.Frameworks.Count == 0
             ? "  Frameworks:  (none)"
             : "  Frameworks:  " + string.Join(", ", r.Frameworks));
-        sb.AppendLine(r.KeptTurnedOff
-            ? $"  Mods ({r.Mods.Count}), with where to find each again:"
-            : $"  Mods ({r.Mods.Count}):");
-        foreach (var m in r.Mods)
+        void Lines(IEnumerable<OffBoardingModLine> mods)
         {
-            var date = m.InstalledDate is null ? "" : $"   (installed {m.InstalledDate})";
-            string line = m.SourceUrl switch
+            foreach (var m in mods)
             {
-                null => $"    {m.Name} — source not recorded — sideloaded; you'll need to find it again",
-                _ when string.Equals(m.SourceConfidence, "nameSearch", StringComparison.OrdinalIgnoreCase)
-                    => $"    {m.Name} — likely source: {m.SourceUrl}{date}",
-                _ => $"    {m.Name} — source: {m.SourceUrl}{date}",
+                var date = m.InstalledDate is null ? "" : $"   (installed {m.InstalledDate})";
+                string line = m.SourceUrl switch
+                {
+                    null => $"    {m.Name} — source not recorded — sideloaded; you'll need to find it again",
+                    _ when string.Equals(m.SourceConfidence, "nameSearch", StringComparison.OrdinalIgnoreCase)
+                        => $"    {m.Name} — likely source: {m.SourceUrl}{date}",
+                    _ => $"    {m.Name} — source: {m.SourceUrl}{date}",
+                };
+                sb.AppendLine(line);
+            }
+        }
+        if (split)
+        {
+            var groups = new[]
+            {
+                (OffBoardingModState.TurnedOff, "Turned off by 626 (restoring turns these back on)"),
+                (OffBoardingModState.StillActive, "Still active (626 left these on)"),
+                (OffBoardingModState.AlreadyOff, "Already off before the reset"),
             };
-            sb.AppendLine(line);
+            foreach (var (state, label) in groups)
+            {
+                var these = r.Mods.Where(m => m.State == state).ToList();
+                if (these.Count == 0) continue;
+                sb.AppendLine($"  {label} ({these.Count}):");
+                Lines(these);
+            }
+            var rest = r.Mods.Where(m => m.State is null).ToList();
+            if (rest.Count > 0) { sb.AppendLine($"  Other mods ({rest.Count}):"); Lines(rest); }
+        }
+        else
+        {
+            sb.AppendLine(r.KeptTurnedOff
+                ? $"  Mods ({r.Mods.Count}), with where to find each again:"
+                : $"  Mods ({r.Mods.Count}):");
+            Lines(r.Mods);
         }
         if (r.OwnedMods.Count > 0)
             foreach (var grp in r.OwnedMods.GroupBy(o => o.ManagedBy, StringComparer.OrdinalIgnoreCase))

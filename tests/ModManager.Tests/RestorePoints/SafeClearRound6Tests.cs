@@ -185,7 +185,7 @@ public class SafeClearRound6Tests : IDisposable
         if (!string.IsNullOrEmpty(drive)) yield return new object[] { "drive root", drive };
     }
 
-    [Theory]
+    [WindowsTheory]
     [MemberData(nameof(SystemFolders))]
     public void A_system_folder_location_plans_no_turn_off_and_no_sweep_and_is_named(string what, string folder)
     {
@@ -208,7 +208,7 @@ public class SafeClearRound6Tests : IDisposable
         Assert.NotNull(RestorePointEngine.SystemFolderReason(c, folder));
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_game_folder_under_Documents_is_not_a_system_folder()
     {
         var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);

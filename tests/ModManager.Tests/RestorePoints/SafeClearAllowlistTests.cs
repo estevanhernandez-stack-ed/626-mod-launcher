@@ -212,7 +212,7 @@ public class SafeClearAllowlistTests : IDisposable
         catch { return false; }
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_junction_inside_a_mod_folder_is_named_and_never_followed()
     {
         var root = Path.Combine(_root, "bep");
@@ -234,7 +234,7 @@ public class SafeClearAllowlistTests : IDisposable
         Directory.Delete(Path.Combine(root, "BepInEx", "plugins", "linked"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_mod_folder_that_is_itself_a_junction_is_not_swept()
     {
         var root = Path.Combine(_root, "bep2");

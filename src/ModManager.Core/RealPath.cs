@@ -25,13 +25,35 @@ public static class RealPath
 
     /// <summary>The final path of <paramref name="path"/>, without a trailing separator, or the normalised full
     /// path when it can't be resolved (it doesn't exist yet). Null when it can't even be made absolute.</summary>
+    /// <summary>Tests only: how many times <see cref="Final"/> ran on this thread (the per-plan memo's proof).</summary>
+    [ThreadStatic] internal static int CallsForTests;
+
     public static string? Final(string? path)
     {
+        CallsForTests++;
         if (string.IsNullOrWhiteSpace(path)) return null;
         string full;
         try { full = Path.GetFullPath(path); }
         catch { return null; }
-        if (OperatingSystem.IsWindows() && FinalByHandle(full) is { } byHandle) return Trim(StripPrefix(byHandle));
+        if (OperatingSystem.IsWindows())
+        {
+            if (FinalByHandle(full) is { } byHandle) return Trim(StripPrefix(byHandle));
+            // A path that doesn't exist yet: resolve its deepest EXISTING ancestor by handle (so a subst drive
+            // or a junction above it resolves the same way an existing path would) and keep the rest as typed
+            // (review r7, m-3).
+            var rest = new List<string>();
+            for (var d = full; !string.IsNullOrEmpty(d); d = Path.GetDirectoryName(d))
+            {
+                if (Directory.Exists(d) && FinalByHandle(d) is { } ancestor)
+                {
+                    rest.Reverse();
+                    return Trim(rest.Aggregate(StripPrefix(ancestor), Path.Combine));
+                }
+                var name = Path.GetFileName(d);
+                if (string.IsNullOrEmpty(name)) break;
+                rest.Add(name);
+            }
+        }
         return Trim(StripPrefix(FollowLinks(full)));
     }
 

@@ -23,11 +23,18 @@ public class SafeClearRound7Tests : IDisposable
 
     public SafeClearRound7Tests()
     {
-        // Outside the profile: the system drive's root. Falls back to %TEMP% only if that can't be written.
-        var sysRoot = Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
-        var candidate = Path.Combine(sysRoot, "626-r7-" + Guid.NewGuid().ToString("n")[..10]);
-        try { Directory.CreateDirectory(candidate); _root = candidate; }
-        catch { _root = Path.Combine(Path.GetTempPath(), "rp-r7-" + Guid.NewGuid().ToString("n")); Directory.CreateDirectory(_root); }
+        // Outside the profile: the system drive's root, on Windows when it can be written. Everywhere else
+        // (Linux, a locked-down root) %TEMP%: the tests that need the outside-the-profile root skip there
+        // (WindowsFact / WindowsTheory with NeedsWritableSystemDriveRoot), and nothing ever builds a relative
+        // drive-letter folder under the working directory.
+        string? rooted = null;
+        if (WindowsOnly.SystemDriveRoot() is { } sysRoot && WindowsOnly.SystemDriveRootWritable)
+        {
+            var candidate = Path.Combine(sysRoot, "626-r7-" + Guid.NewGuid().ToString("n")[..10]);
+            try { Directory.CreateDirectory(candidate); rooted = candidate; } catch { }
+        }
+        _root = rooted ?? Path.Combine(Path.GetTempPath(), "rp-r7-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(_root);
     }
 
     public void Dispose()
@@ -127,11 +134,11 @@ public class SafeClearRound7Tests : IDisposable
 
     // ---- I-1: aliases of an ancestor, real clears ----
 
-    [Fact]
+    [WindowsFact(NeedsWritableSystemDriveRoot = true)]
     public void The_fixture_root_is_outside_the_user_profile()
         => Assert.True(OutsideProfile, $"{_root} is inside the profile; the profile cases would not exercise the rule");
 
-    [Fact]
+    [WindowsFact]
     public async Task A_location_that_is_a_junction_to_the_games_parent_turns_nothing_off()
     {
         var (common, root) = Library();
@@ -140,7 +147,7 @@ public class SafeClearRound7Tests : IDisposable
         await AssertClearTurnsNothingOffAndChangesNothing(GameWithLocation("j1", root, link), common);
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_game_registered_through_a_junction_with_the_real_parent_as_location_turns_nothing_off()
     {
         var (common, root) = Library();
@@ -149,24 +156,25 @@ public class SafeClearRound7Tests : IDisposable
         await AssertClearTurnsNothingOffAndChangesNothing(GameWithLocation("j1b", linkRoot, common), common);
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task The_extended_length_spelling_of_the_parent_turns_nothing_off()
     {
         var (common, root) = Library();
         await AssertClearTurnsNothingOffAndChangesNothing(GameWithLocation("j1f", root, @"\\?\" + common), common);
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_UNC_path_to_the_parent_turns_nothing_off()
     {
         var (common, root) = Library();
-        var drive = Path.GetPathRoot(common)!.TrimEnd('\\', ':');
+        if (Path.GetPathRoot(common) is not { Length: > 0 } driveRoot) return;
+        var drive = driveRoot.TrimEnd('\\', ':');
         var unc = $@"\\localhost\{drive}$\{common[3..]}";
         if (!Directory.Exists(unc)) return;   // admin shares off on this machine: the junction cases stand in
         await AssertClearTurnsNothingOffAndChangesNothing(GameWithLocation("j3", root, unc), common);
     }
 
-    [Fact]
+    [WindowsFact]
     public void Real_paths_see_through_a_junction_and_the_extended_prefix()
     {
         var (common, _) = Library();
@@ -181,8 +189,11 @@ public class SafeClearRound7Tests : IDisposable
 
     public static IEnumerable<object[]> SystemShapes()
     {
+        // Data discovery runs on every host: off Windows there is nothing to yield, and nothing may throw.
+        if (WindowsOnly.SystemDriveRoot() is not { } sysRootPath) yield break;
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var sysDrive = Path.GetPathRoot(Environment.SystemDirectory)!.TrimEnd('\\', ':');
+        if (string.IsNullOrEmpty(profile)) yield break;
+        var sysDrive = sysRootPath.TrimEnd('\\', ':');
         yield return new object[] { "C:\\Users", Path.GetDirectoryName(profile)!, "folders", "dat" };
         yield return new object[] { "profile", profile, "folders", "dat" };
         yield return new object[] { "profile via \\\\?\\", @"\\?\" + profile, "folders", "dat" };
@@ -196,7 +207,7 @@ public class SafeClearRound7Tests : IDisposable
         yield return new object[] { "Steam files", Directory.Exists(steam) ? steam : profile, "files", "dll" };
     }
 
-    [Theory]
+    [WindowsTheory(NeedsWritableSystemDriveRoot = true)]
     [MemberData(nameof(SystemShapes))]
     public void A_system_shaped_location_plans_zero_turn_offs_and_no_sweep(string what, string location, string form, string ext)
     {
@@ -211,7 +222,7 @@ public class SafeClearRound7Tests : IDisposable
         Assert.Empty(RestorePointEngine.PlanVanillaRemainder(c, Array.Empty<ClearSkip>()).Files);
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_drive_relative_location_is_ignored_with_a_note()
     {
         var root = Path.Combine(_root, "dr");

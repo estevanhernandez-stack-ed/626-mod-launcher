@@ -443,3 +443,27 @@ follow-up.
 
 **Sheet.** "All N mods it found" appears only when nothing else was left in place. Beside items 626
 couldn't tell apart, the sheet says "626 turned off the N mods it could tell were mods".
+
+## Round 8: cross-platform tests, per-location cost, records bound to their folder (review r7)
+
+- **Windows-only tests skip elsewhere.** The cloud runs `ModManager.Tests` on Linux. `WindowsFact` and
+  `WindowsTheory` (one shared definition in the test project) mark every test that needs junctions, UNC
+  or `\\?\` paths, Windows special folders or drive letters. The skip decision is a pure function, tested
+  for both the Windows and non-Windows inputs. Tests whose fixture sits at the system drive's root (outside
+  the profile) also skip when that root can't be written. The round-7 fixture never builds a relative
+  drive-letter folder off Windows, and its theory data yields nothing there.
+- **Real paths once per location.** `LocationScopes` decides each location's turn-off scope once per plan:
+  containment, the definition flag, the location's current path, and whether it sits in Windows or
+  Program Files. Per row, only the ownership check runs. A test counts `RealPath` calls: 20 rows and 400
+  rows cost the same.
+- **An install record proves ownership of the folder it was written for.** New records carry
+  `locationPath`: the location relative to the game root when it is inside the game (so a library move
+  keeps it valid), else its real absolute path. A record whose `locationPath` doesn't match where the
+  location is now proves nothing.
+  - **Legacy records (no `locationPath`)** keep the name rule, except for a location in Windows or
+    Program Files outside the game folder. A record dated in the future is clamped to the present.
+- **Paths that don't exist yet** resolve through their deepest existing ancestor, so a junction or `subst`
+  drive above them resolves the same way it would for an existing path.
+- **The vanilla sheet splits the mod list:** turned off by 626 (restoring turns these back on), still
+  active (626 left these on), already off before the reset. Nothing still active sits under a "turned
+  off" heading.

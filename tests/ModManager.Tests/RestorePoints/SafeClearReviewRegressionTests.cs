@@ -419,7 +419,7 @@ public class SafeClearReviewRegressionTests : IDisposable
 
     // ---- M8: a held name Windows can't copy fails closed, and restore uses the data folder ----
 
-    [Fact]
+    [WindowsFact]
     public async Task M8_a_held_file_whose_name_ends_in_a_dot_fails_the_copy_closed_and_restore_uses_the_data_folder()
     {
         var root = Path.Combine(_root, "dotgame");

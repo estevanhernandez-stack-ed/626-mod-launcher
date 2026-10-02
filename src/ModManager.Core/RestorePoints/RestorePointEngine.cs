@@ -89,9 +89,10 @@ public static partial class RestorePointEngine
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var installed = ModInstallRegistry.List(c.DataDir);
         var replaced = ReplacedGameFiles(c);   // once per plan (r6, m-3)
+        var scopes = LocationScopes(c);        // real paths once per LOCATION, not per row (r7, m-1)
         return ModListing.Resolve(c.Game)
             .Where(m => m.Enabled && !m.ReadOnly && m.Loader is not ("ue4ss" or "bepinex"))
-            .Where(m => InTurnOffScope(c, m, installed, replaced))
+            .Where(m => InTurnOffScope(c, m, installed, replaced, scopes))
             .Where(m => !HasBaseGamePak(c, m))
             .Where(m => !CoveredByMoves(c, m, moved))
             .Where(m => !CoveredByMoves(c, m, frameworkOwned))
@@ -117,6 +118,7 @@ public static partial class RestorePointEngine
         var rows = ModListing.Resolve(c.Game);
         // The extra-tree selection, read once: what each row's turn-off would move out of the extra trees.
         var extraRows = Scanner.ExtraTreeRowsFor(c);
+        var scopes = LocationScopes(c);
         foreach (var cm in PlanVanillaTurnOffs(c, PlanVanillaMoves(c)))
         {
             var row = FindRow(rows, cm);
@@ -124,8 +126,7 @@ public static partial class RestorePointEngine
             if (row is null || baseDir is null) continue;
             // Rows in a swept (vouched) folder are counted by EstimateModOnlyBytes; everything else here
             // (direct-inject, loose-root, proxy-loader, paks-root, outside-root, 626-installed) is added.
-            if (outsideModOnlyOnly && c.Locations.FirstOrDefault(l => l.Name == row.Location) is { } vl
-                && string.IsNullOrEmpty(vl.Managed) && ModOnlyFolders.WhyModOnly(c, vl) is not null) continue;
+            if (outsideModOnlyOnly && scopes.TryGetValue(row.Location, out var vs) && vs.Vouched) continue;
             try
             {
                 foreach (var x in extraRows.MovesFor(row).Movable)
@@ -167,17 +168,51 @@ public static partial class RestorePointEngine
     //    install record says 626 placed (ModInstallRegistry). A mis-set location (an ancestor of the game, the
     //    profile, SysWOW64, through any alias) turns off nothing 626 didn't install.
     // A drive-relative location ("C:") means "the current folder on that drive" and is never acted on.
-    private static bool InTurnOffScope(GameContext c, Mod m, IReadOnlyList<ModInstallManifest> installed, ReplacedFiles replaced)
+    private static bool InTurnOffScope(GameContext c, Mod m, IReadOnlyList<ModInstallManifest> installed, ReplacedFiles replaced,
+        IReadOnlyDictionary<string, LocationScope> scopes)
     {
         if (m.Location is "direct-inject" or "mod engine 2" or ProxyLoaderRows.LocationTag
             || m.Location == LooseMods.LooseRootListing.LooseRootLocation)
             return true;
-        var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
-        if (loc is null || !string.IsNullOrEmpty(loc.Managed)) return false;
-        if (RealPath.IsDriveRelative(loc.DeclaredPath ?? loc.StoredPath)) return false;
-        if (ModOnlyFolders.WhyModOnly(c, loc) is not null) return true;
-        if (loc.Form == "paks-root" && ModOnlyFolders.RelativeToRoot(c.GameRoot, loc.Abs) is not null) return true;
-        return PlacedBy626(c, m, loc, installed, replaced);
+        if (!scopes.TryGetValue(m.Location, out var scope) || scope.Never) return false;
+        if (scope.TurnsOffEverything) return true;
+        return PlacedBy626(c, m, scope, installed, replaced);
+    }
+
+    /// <summary>One location's turn-off scope, decided ONCE per plan: every real-path resolution behind it
+    /// (containment, the definition flag, the location's own path for matching install records) is paid per
+    /// location, not per row (review r7, m-1).</summary>
+    internal sealed record LocationScope(ModLocationCtx Location, bool Never, bool Vouched, bool TurnsOffEverything,
+        string? CurrentPath, bool InsideGame, bool UnderSystemFolder);
+
+    internal static Dictionary<string, LocationScope> LocationScopes(GameContext c)
+    {
+        var scopes = new Dictionary<string, LocationScope>(StringComparer.Ordinal);
+        foreach (var loc in c.Locations)
+        {
+            if (scopes.ContainsKey(loc.Name)) continue;
+            var never = !string.IsNullOrEmpty(loc.Managed) || RealPath.IsDriveRelative(loc.DeclaredPath ?? loc.StoredPath);
+            if (never) { scopes[loc.Name] = new LocationScope(loc, true, false, false, null, false, false); continue; }
+            var inside = ModOnlyFolders.RelativeToRoot(c.GameRoot, loc.Abs) is not null;
+            var vouched = ModOnlyFolders.WhyModOnly(c, loc) is not null;
+            var everything = vouched || (loc.Form == "paks-root" && inside);
+            scopes[loc.Name] = new LocationScope(loc, false, vouched, everything,
+                ModInstallRegistry.LocationPathFor(c.GameRoot, loc.Abs), inside, UnderWindowsOrProgramFiles(loc.Abs));
+        }
+        return scopes;
+    }
+
+    // %WINDIR% or Program Files, on real paths. A legacy install record (no locationPath) is never honoured
+    // for such a location unless the location is inside the game folder (r7, m-2; see PlacedBy626).
+    private static bool UnderWindowsOrProgramFiles(string folder)
+    {
+        foreach (var sf in new[] { Environment.SpecialFolder.Windows, Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
+        {
+            string p;
+            try { p = Environment.GetFolderPath(sf); } catch { continue; }
+            if (!string.IsNullOrEmpty(p) && RealPath.IsAtOrUnder(folder, p)) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -294,10 +329,22 @@ public static partial class RestorePointEngine
     /// <para>Names only, otherwise: <see cref="ModInstallManifest"/> carries no per-file size or hash today, so
     /// there is nothing to compare content against. When it gains them, compare them here.</para>
     /// </summary>
-    private static bool PlacedBy626(GameContext c, Mod m, ModLocationCtx loc, IReadOnlyList<ModInstallManifest> installed, ReplacedFiles replaced)
+    private static bool PlacedBy626(GameContext c, Mod m, LocationScope scope, IReadOnlyList<ModInstallManifest> installed, ReplacedFiles replaced)
     {
         if (m.Files.Count == 0) return false;
-        var records = installed.Where(i => string.Equals(i.Location, m.Location, StringComparison.OrdinalIgnoreCase)).ToList();
+        var loc = scope.Location;
+        // A record proves ownership of THIS folder, not of whatever folder carries the same location name
+        // today (r7, m-2). A record that says where it installed must match where the location is now: the
+        // path relative to the game root when inside it (so a library move keeps working), else the real
+        // absolute path. A legacy record (no locationPath, written before the field existed) keeps the old
+        // name-only rule, except for a location in Windows or Program Files outside the game folder, where a
+        // stale name match could reach system files.
+        var records = installed
+            .Where(i => string.Equals(i.Location, m.Location, StringComparison.OrdinalIgnoreCase))
+            .Where(i => i.LocationPath is null
+                ? !(scope.UnderSystemFolder && !scope.InsideGame)
+                : scope.CurrentPath is not null && ModInstallRegistry.SameLocationPath(i.LocationPath, scope.CurrentPath))
+            .ToList();
         if (records.Count == 0) return false;   // nothing recorded here: never walk, never guess
         if (ReplacedAGameFile(c, m, replaced)) return false;
         var recorded = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
@@ -306,7 +353,9 @@ public static partial class RestorePointEngine
             {
                 if (string.IsNullOrWhiteSpace(f) || IsRooted(f) || f.Replace('\\', '/').Split('/').Contains("..")) continue;
                 var key = NormRel(f);
-                if (!recorded.TryGetValue(key, out var at) || r.InstalledUtc > at) recorded[key] = r.InstalledUtc;
+                // A record dated in the future can't vouch for a file written now: clamp to the present.
+                var when = r.InstalledUtc.ToUniversalTime() > DateTime.UtcNow ? DateTime.UtcNow : r.InstalledUtc.ToUniversalTime();
+                if (!recorded.TryGetValue(key, out var at) || when > at) recorded[key] = when;
             }
 
         bool Placed(string rel)

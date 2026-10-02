@@ -12,7 +12,7 @@ public static class OffBoardingHydrator
             LaunchLines: LaunchLinesFrom(ga),
             Frameworks: ga.Frameworks.Select(f => $"{f.DisplayName} (by {f.Author})").ToList(),
             Mods: ga.Mods.Select(m => new OffBoardingModLine(
-                m.Name, m.SourceUrl, m.SourceConfidence, FormatDate(m.InstalledUtc))).ToList(),
+                m.Name, m.SourceUrl, m.SourceConfidence, FormatDate(m.InstalledUtc), StateOf(ga, m))).ToList(),
             OwnedMods: ga.OwnedMods.Select(o => new OffBoardingOwnedMod(o.Name, o.ManagedBy)).ToList(),
             SaveLocation: ga.SaveLocation,
             SaveBackupCount: ga.SaveBackupCount,
@@ -27,6 +27,16 @@ public static class OffBoardingHydrator
             KeptTurnedOff: IsVanilla(ga) && ga.TurnedOffByClear is not null,
             RemainderMoved: ga.VanillaRemainder?.Count ?? 0,
             StillInPlace: ga.LeftInPlace);
+
+    // Where a mod stands after a vanilla reset (round 8): turned off by 626, left active, or already off before.
+    // Null outside a vanilla sheet with a turn-off record, which keeps one plain list.
+    private static string? StateOf(GameArchive ga, ArchivedMod m)
+    {
+        if (!IsVanilla(ga) || ga.TurnedOffByClear is null) return null;
+        if (TurnedOff(ga).Any(c => string.Equals(c.Name, m.Name, StringComparison.OrdinalIgnoreCase)))
+            return OffBoardingModState.TurnedOff;
+        return m.Enabled ? OffBoardingModState.StillActive : OffBoardingModState.AlreadyOff;
+    }
 
     private static bool IsVanilla(GameArchive ga) => string.Equals(ga.EndState, "vanilla", StringComparison.OrdinalIgnoreCase);
 

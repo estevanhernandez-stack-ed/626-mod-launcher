@@ -372,7 +372,7 @@ public class SafeClearRound5Tests : IDisposable
         catch { return false; }
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task m3_a_junction_planted_after_the_clear_is_refused_at_restore_and_bin_is_untouched()
     {
         var root = Path.Combine(_root, "mc");
