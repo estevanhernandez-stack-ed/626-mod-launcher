@@ -828,6 +828,13 @@ public static class Scanner
     [ThreadStatic] internal static Action<string>? BeforeRollbackMoveForTests;
 
     /// <summary>
+    /// Tests only: the enable side's twin of <see cref="BeforeRollbackMoveForTests"/>, called with the live
+    /// path of each restored extra-tree entry <see cref="EnableMod"/>'s rollback is about to move back to
+    /// holding. Thread-static for the same reason.
+    /// </summary>
+    [ThreadStatic] internal static Action<string>? BeforeEnableRollbackMoveForTests;
+
+    /// <summary>
     /// The extra-tree entries that move with <paramref name="m"/> (B4 stage two), decided by
     /// <see cref="ModTrees.MovableFor"/>: one claimant, nothing protected inside, tree not owned by
     /// another tool. A game that declares no extra trees pays nothing, not even the mod-list read.
@@ -884,6 +891,22 @@ public static class Scanner
         // corrupt the external tool's deployment manifest.
         if (ToolOwnership.Resolve(Path.GetFullPath(loc.Abs), c.TakenOver).State == OwnershipState.Owned)
             return new EnableOutcome(name, false, true, "target folder now owned by another tool");
+
+        // B4 stage two: what turning off put in disabled-trees/<Mod> comes back in the same operation. Only
+        // what is HELD is restored; an entry Task 3's rollback already put back is live and not listed here.
+        // Every destination is checked before anything is written, so a collision changes nothing anywhere.
+        // A mod turned off before stage two has no such folder, Held is empty, and this is the old path.
+        var heldExtras = TreeHolding.Held(c, name, c.ExtraModTrees);
+        string LiveFor(TreeHolding.HeldEntry x)
+            => Path.Combine(c.GameRoot, Path.Combine(x.Tree.Split('/')), x.EntryName);
+        foreach (var x in heldExtras)
+        {
+            var dst = LiveFor(x);
+            if (Directory.Exists(dst) || File.Exists(dst))
+                throw new InvalidOperationException(
+                    $"Couldn't enable \"{name}\" (\"{x.Tree}/{x.EntryName}\" already exists at \"{dst}\" — conflict.)");
+        }
+
         var hadOnServer = meta.HadOnServer ?? new Dictionary<string, bool>();
         Directory.CreateDirectory(loc.Abs);
         foreach (var mp in loc.Mirrors) Directory.CreateDirectory(mp);
@@ -893,6 +916,8 @@ public static class Scanner
         // rollback). Track each destination in `created` BEFORE the write so a mid-copy failure (disk full,
         // nested error) rolls back the partial copy too — the pre-check guarantees we only ever created it.
         var created = new List<string>();
+        var restored = new List<(string Held, string Live, string Label)>();
+        var madeTreeDirs = new List<string>();
         try
         {
             foreach (var entry in Directory.GetFileSystemEntries(src))
@@ -919,16 +944,53 @@ public static class Scanner
                     if (isDir) CopyDir(entry, dst); else File.Copy(entry, dst);
                 }
             }
+
+            // Main files are live; now each held extra moves back. A move, not a copy like the main lane:
+            // these trees can be large, and the holding copy has no reason to outlive the restore. A tree
+            // folder the user removed while the mod was off is recreated, and remembered so a failure can
+            // take it away again.
+            foreach (var x in heldExtras)
+            {
+                var dst = LiveFor(x);
+                var parent = Path.GetDirectoryName(dst)!;
+                var topMissing = TopMissingAncestor(parent);
+                Directory.CreateDirectory(parent);
+                if (topMissing is not null) madeTreeDirs.Add(topMissing);
+                MoveAny(x.AbsPath, dst);
+                restored.Add((x.AbsPath, dst, x.Tree + "/" + x.EntryName));
+            }
         }
         catch (Exception e)
         {
+            // Extras go back to holding first, newest first, so the holding folder ends as it began. One that
+            // cannot go back stays live and is named: the mod then lists as off with that entry in the game,
+            // which is the partial state turning it on already handles (only what is held is restored).
+            var stuck = new List<string>();
+            for (var i = restored.Count - 1; i >= 0; i--)
+            {
+                try
+                {
+                    BeforeEnableRollbackMoveForTests?.Invoke(restored[i].Live);
+                    Directory.CreateDirectory(Path.GetDirectoryName(restored[i].Held)!);
+                    MoveAny(restored[i].Live, restored[i].Held);
+                }
+                catch { stuck.Insert(0, restored[i].Label); }
+            }
+            // Tree folders this run recreated go only once nothing is in them: never a recursive delete
+            // over something that could be the user's.
+            for (var i = madeTreeDirs.Count - 1; i >= 0; i--) HoldingFolder.RemoveIfNoFiles(madeTreeDirs[i]);
+
             // Roll back only paths we created this run; the holding folder is left untouched.
             foreach (var p in created)
             {
                 try { if (Directory.Exists(p)) Directory.Delete(p, recursive: true); else if (File.Exists(p)) File.Delete(p); }
                 catch { /* best effort */ }
             }
-            throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})", e);
+            throw new InvalidOperationException($"Couldn't enable \"{name}\" ({e.Message})"
+                + (stuck.Count == 0 ? ""
+                    : $" {string.Join(", ", stuck.Select(s => $"\"{s}\""))} could not be moved back and "
+                      + $"{(stuck.Count == 1 ? "is" : "are")} still in the game, so \"{name}\" stays off; turning it on "
+                      + "again restores the rest."), e);
         }
 
         // All live/mirror copies succeeded — now tear down the holding folder.
@@ -939,7 +1001,39 @@ public static class Scanner
         }
         try { File.Delete(Path.Combine(src, "meta.json")); } catch { /* best effort */ }
         try { Directory.Delete(src); } catch { /* may be non-empty on partial */ }
+
+        // Every held extra has moved out, so this removes the folders they left; a file never goes. The tree
+        // folders are pruned one by one first, so a leftover elsewhere in the mod's folder (below) does not
+        // keep the restored trees' empty shells around as well.
+        var treesRoot = Path.GetFullPath(TreeHolding.ModDir(c, name));
+        foreach (var x in heldExtras)
+            for (var d = Path.GetDirectoryName(Path.GetFullPath(x.AbsPath));
+                 d is not null && d.Length > treesRoot.Length
+                     && d.StartsWith(treesRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                 d = Path.GetDirectoryName(d))
+                HoldingFolder.RemoveIfNoFiles(d);
+        TreeHolding.RemoveIfEmpty(c, name);
+
+        // Files still under disabled-trees/<Mod> sit under a tree the manifest no longer declares, where Held
+        // does not look. The mod is on, but saying nothing would leave them stranded where no toggle finds
+        // them, and the next turn-off would refuse on them with no visible reason. A folder that cannot be
+        // read is not known to be empty, so it warns too.
+        bool leftover;
+        try { leftover = TreeHolding.HoldsFiles(c, name); } catch { leftover = true; }
+        if (leftover)
+            return new EnableOutcome(name, true, false,
+                $"turned on, but files remain in {TreeHolding.ModDir(c, name)}: they sit under folders this game "
+                + "no longer lists, so 626 left them there. Move them back or remove them by hand.");
         return new EnableOutcome(name, true, false, null);
+    }
+
+    /// <summary>The highest folder on the way to <paramref name="dir"/> that does not exist yet, or null when
+    /// <paramref name="dir"/> is already there. Creating <paramref name="dir"/> creates this one and below.</summary>
+    private static string? TopMissingAncestor(string dir)
+    {
+        string? top = null;
+        for (var d = dir; !string.IsNullOrEmpty(d) && !Directory.Exists(d); d = Path.GetDirectoryName(d)) top = d;
+        return top;
     }
 
     private static void SetAllMods(bool enabled, GameContext c)

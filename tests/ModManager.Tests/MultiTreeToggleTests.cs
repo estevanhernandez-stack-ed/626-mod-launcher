@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using ModManager.Core;
 
 namespace ModManager.Tests;
@@ -242,12 +243,13 @@ public class MultiTreeToggleTests : IDisposable
         Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(HeldTrees, "r6", "scripts", "CoolMod", "main.reds")));
         Assert.False(Directory.Exists(Path.Combine(GameRoot, "r6", "scripts", "CoolMod")));
 
-        // Back on: the owned entry was never touched, and the main file returns. (Restoring the held
-        // extras is the enable side's job, Task 4.)
+        // Back on: the owned entry was never touched, and the main file and the held scripts return.
         await Scanner.EnableModAsync("CoolMod", Ctx());
         Assert.Equal("TWEAK", File.ReadAllText(Path.Combine(tweaks, "CoolMod.yaml")));
         Assert.True(File.Exists(Path.Combine(tweaks, "__folder_managed_by_vortex")));
         Assert.Equal("MAIN", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+        Assert.False(Directory.Exists(HeldTrees));
     }
 
     [Fact]
@@ -263,5 +265,211 @@ public class MultiTreeToggleTests : IDisposable
         Assert.Equal(before, GameTree());
         Assert.False(Directory.Exists(HeldTrees));
         Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled", "CoolMod")));
+    }
+
+    // ---- Turning back on (Task 4) ----
+
+    private string HeldMain => Path.Combine(DataDir, "disabled", "CoolMod");
+    private string LiveCet => Path.Combine(GameRoot, "bin", "x64", "plugins", "cyber_engine_tweaks", "mods", "CoolMod");
+
+    /// <summary>Every file under <paramref name="dir"/>, by relative path, with a hash of its bytes, so a
+    /// round trip is checked byte for byte and not just as text.</summary>
+    private static Dictionary<string, string> Hashes(string dir)
+        => !Directory.Exists(dir)
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : Directory.GetFiles(dir, "*", SearchOption.AllDirectories).ToDictionary(
+                p => Path.GetRelativePath(dir, p).Replace('\\', '/'),
+                p => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))),
+                StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public async Task Off_then_on_leaves_every_tree_byte_identical_with_both_holding_folders_gone()
+    {
+        var before = Hashes(GameRoot);
+
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        Assert.True(Directory.Exists(HeldTrees));
+        var outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx());
+
+        Assert.True(outcome.Enabled);
+        Assert.Null(outcome.Reason);
+        Assert.Equal(before, Hashes(GameRoot));
+        Assert.False(Directory.Exists(HeldTrees));
+        Assert.False(Directory.Exists(HeldMain));
+        var row = Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod");
+        Assert.True(row.Enabled);
+    }
+
+    [Fact]
+    public async Task A_collision_in_one_extra_tree_refuses_with_nothing_written_and_everything_still_held()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        // Something new took the tweak's place while the mod was off.
+        Put("r6/tweaks/CoolMod.yaml", "SOMEONE-ELSES");
+        var game = Hashes(GameRoot);
+        var heldTrees = Hashes(HeldTrees);
+        var heldMain = Hashes(HeldMain);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.EnableModAsync("CoolMod", Ctx()));
+
+        Assert.Contains("Couldn't enable \"CoolMod\"", e.Message);
+        Assert.Contains("conflict", e.Message);
+        Assert.Contains("r6/tweaks/CoolMod.yaml", e.Message);
+        // Not even the main file, which has no collision of its own, was written.
+        Assert.Equal(game, Hashes(GameRoot));
+        Assert.False(File.Exists(Path.Combine(GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
+        Assert.Equal(heldTrees, Hashes(HeldTrees));
+        Assert.Equal(heldMain, Hashes(HeldMain));
+    }
+
+    [Fact]
+    public async Task A_mod_turned_off_before_stage_two_turns_on_unchanged()
+    {
+        // Turned off by a build with no extra trees: only the main file was held, no disabled-trees.
+        await Scanner.DisableModAsync("CoolMod", Scanner.GameContext(Game()));
+        Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees")));
+        var before = Hashes(GameRoot);
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx());
+
+        Assert.True(outcome.Enabled);
+        Assert.Null(outcome.Reason);
+        Assert.Equal("MAIN", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
+        before["archive/pc/mod/CoolMod.archive"] = Hashes(GameRoot)["archive/pc/mod/CoolMod.archive"];
+        Assert.Equal(before, Hashes(GameRoot));
+        Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees")));
+        Assert.False(Directory.Exists(HeldMain));
+    }
+
+    [Fact]
+    public async Task A_held_entry_whose_tree_folder_was_deleted_is_restored_with_the_folder_recreated()
+    {
+        var before = Hashes(GameRoot);
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        // r6/tweaks held only CoolMod's file, so the user tidied the empty folder away; and the whole CET
+        // mods path goes too, so more than one missing parent has to come back.
+        Directory.Delete(Path.Combine(GameRoot, "r6", "tweaks"), recursive: true);
+        Directory.Delete(Path.Combine(GameRoot, "bin"), recursive: true);
+
+        await Scanner.EnableModAsync("CoolMod", Ctx());
+
+        Assert.Equal(before, Hashes(GameRoot));
+        Assert.False(Directory.Exists(HeldTrees));
+    }
+
+    [Fact]
+    public async Task A_mod_left_off_with_only_some_extras_held_comes_all_the_way_back()
+    {
+        // The stranded state Task 3 can leave: main file held with a record, r6/scripts held, r6/tweaks
+        // already back in the game, CET back too. Enable restores only what is held, and the live entries
+        // are not collisions because nothing held claims their destinations.
+        var before = Hashes(GameRoot);
+        var heldScripts = Path.Combine(HeldTrees, "r6", "scripts", "CoolMod");
+        Scanner.BeforeRollbackMoveForTests = from =>
+        {
+            if (string.Equals(from, heldScripts, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("injected: cannot move back");
+        };
+        try
+        {
+            using (new FileStream(Path.Combine(LiveCet, "init.lua"), FileMode.Open, FileAccess.Read, FileShare.None))
+                await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.DisableModAsync("CoolMod", Ctx()));
+        }
+        finally { Scanner.BeforeRollbackMoveForTests = null; }
+        Assert.True(File.Exists(Path.Combine(heldScripts, "main.reds")));
+        Assert.True(File.Exists(Path.Combine(GameRoot, "r6", "tweaks", "CoolMod.yaml")));
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx());
+
+        Assert.True(outcome.Enabled);
+        Assert.Null(outcome.Reason);
+        Assert.Equal(before, Hashes(GameRoot));
+        Assert.False(Directory.Exists(HeldTrees));
+        Assert.False(Directory.Exists(HeldMain));
+    }
+
+    [Fact]
+    public async Task A_failure_restoring_an_extra_puts_the_restored_ones_back_and_removes_the_main_copy()
+    {
+        // CET is the LAST tree, so r6/scripts and r6/tweaks are already back in the game when it fails:
+        // the undo of a restored extra is really exercised, then the main copy's.
+        var original = Hashes(GameRoot);
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        var game = Hashes(GameRoot);
+        var heldTrees = Hashes(HeldTrees);
+        var heldMain = Hashes(HeldMain);
+        var heldCet = Path.Combine(HeldTrees, "bin", "x64", "plugins", "cyber_engine_tweaks", "mods", "CoolMod");
+
+        using (new FileStream(Path.Combine(heldCet, "init.lua"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.EnableModAsync("CoolMod", Ctx()));
+            Assert.Contains("Couldn't enable \"CoolMod\"", e.Message);
+            Assert.DoesNotContain("could not be moved back", e.Message);
+        }
+
+        Assert.Equal(game, Hashes(GameRoot));
+        Assert.False(Directory.Exists(Path.Combine(GameRoot, "r6", "scripts", "CoolMod")));
+        Assert.Equal(heldTrees, Hashes(HeldTrees));
+        Assert.Equal(heldMain, Hashes(HeldMain));
+        Assert.False(Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod").Enabled);
+
+        // Nothing was lost on the way: with the lock gone, it turns on whole.
+        await Scanner.EnableModAsync("CoolMod", Ctx());
+        Assert.Equal(original, Hashes(GameRoot));
+    }
+
+    [Fact]
+    public async Task A_restored_extra_that_cannot_go_back_is_named_and_the_mod_can_still_be_turned_on()
+    {
+        var original = Hashes(GameRoot);
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        var heldCet = Path.Combine(HeldTrees, "bin", "x64", "plugins", "cyber_engine_tweaks", "mods", "CoolMod");
+        var liveTweak = Path.Combine(GameRoot, "r6", "tweaks", "CoolMod.yaml");
+        Scanner.BeforeEnableRollbackMoveForTests = from =>
+        {
+            if (string.Equals(from, liveTweak, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("injected: cannot go back to holding");
+        };
+        InvalidOperationException e;
+        try
+        {
+            using (new FileStream(Path.Combine(heldCet, "init.lua"), FileMode.Open, FileAccess.Read, FileShare.None))
+                e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.EnableModAsync("CoolMod", Ctx()));
+        }
+        finally { Scanner.BeforeEnableRollbackMoveForTests = null; }
+
+        // The tweak stays in the game, said so; everything else went back to holding and the main copy went.
+        Assert.Contains("\"r6/tweaks/CoolMod.yaml\" could not be moved back", e.Message);
+        Assert.Equal("TWEAK", File.ReadAllText(liveTweak));
+        Assert.True(File.Exists(Path.Combine(HeldTrees, "r6", "scripts", "CoolMod", "main.reds")));
+        Assert.False(File.Exists(Path.Combine(GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
+        Assert.True(File.Exists(Path.Combine(HeldMain, "meta.json")));
+
+        // That is the partial state enable already handles: it restores what is held.
+        await Scanner.EnableModAsync("CoolMod", Ctx());
+        Assert.Equal(original, Hashes(GameRoot));
+        Assert.False(Directory.Exists(HeldTrees));
+    }
+
+    [Fact]
+    public async Task Files_held_under_a_tree_no_longer_declared_turn_on_with_a_warning_naming_the_folder()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        // A tree the manifest has since dropped: Held does not look there, so restoring cannot reach it.
+        var stray = Path.Combine(HeldTrees, "r6", "old", "CoolMod.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(stray)!);
+        File.WriteAllText(stray, "STRAY");
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx());
+
+        Assert.True(outcome.Enabled);
+        Assert.False(outcome.Skipped);
+        Assert.NotNull(outcome.Reason);
+        Assert.Contains(HeldTrees, outcome.Reason);
+        Assert.Contains("files remain", outcome.Reason);
+        // Everything the manifest still declares came back; the stray stays exactly where it was.
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+        Assert.Equal("STRAY", File.ReadAllText(stray));
+        Assert.False(Directory.Exists(Path.Combine(HeldTrees, "r6", "scripts")));
     }
 }
