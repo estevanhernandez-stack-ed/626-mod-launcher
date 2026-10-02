@@ -148,4 +148,50 @@ public class RestorePointEngineCombinedTests : IDisposable
             "disabled/cool/ must NOT be resurrected from the stale archive — that would leave the mod in both mods/ and holding.");
         Assert.Equal("MOD-CONTENT", File.ReadAllText(Path.Combine(modsDir, "cool.pak")));
     }
+
+    // B4 stage two, the same double-state one folder over: a mod turned off holds its extra-tree entries in
+    // disabled-trees/<Mod>, the capture archives that folder, and modsActive puts every entry back in the
+    // game. Replaying the stale archived disabled-trees/ would hold a second copy of entries that are live,
+    // and the next turn-off would refuse on it as an earlier turned-off copy.
+    [Fact]
+    public async Task ModsActive_round_trip_does_not_resurrect_held_extra_tree_entries()
+    {
+        var gameRoot = Path.Combine(_tmp, "game3");
+        var archiveMods = Path.Combine(gameRoot, "archive", "pc", "mod");
+        var scripts = Path.Combine(gameRoot, "r6", "scripts");
+        Directory.CreateDirectory(archiveMods);
+        Directory.CreateDirectory(Path.Combine(scripts, "CoolMod"));
+        File.WriteAllText(Path.Combine(archiveMods, "CoolMod.archive"), "MAIN");
+        File.WriteAllText(Path.Combine(scripts, "CoolMod", "main.reds"), "SCRIPTS");
+        var dataDir = Path.Combine(_tmp, "_626mods", "t3");
+        var game = new GameEntry
+        {
+            Id = "t3", GameName = "T3", Engine = "custom", GameRoot = gameRoot, DataDir = dataDir,
+            FileExtensions = new[] { "archive" },
+            ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
+        };
+        var c = Scanner.GameContext(game, extraModTrees: new[] { "r6/scripts" });
+        var heldExtras = Path.Combine(dataDir, "disabled-trees", "CoolMod");
+
+        await Scanner.DisableModAsync("CoolMod", c);
+        Assert.True(File.Exists(Path.Combine(heldExtras, "r6", "scripts", "CoolMod", "main.reds"))); // pre-condition
+
+        var gameArchiveDir = Path.Combine(_tmp, "archive3", "games", "t3");
+        var entry = RestorePointEngine.CaptureGame(new GameCaptureInput(game, c, "modsActive"), gameArchiveDir);
+        var end = RestorePointEngine.ApplyEndState(c, "modsActive", gameArchiveDir);
+        Assert.Contains(end.EnableOutcomes, o => o.Name == "CoolMod" && o.Enabled);
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(scripts, "CoolMod", "main.reds")));
+        Assert.False(Directory.Exists(heldExtras));
+
+        RestorePointEngine.ReplayGame(entry, gameArchiveDir, c);
+
+        Assert.False(Directory.Exists(heldExtras),
+            "disabled-trees/CoolMod must NOT be resurrected from the stale archive: its entries are live.");
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(scripts, "CoolMod", "main.reds")));
+
+        // And the mod turns off again cleanly, rather than refusing on a phantom held copy.
+        await Scanner.DisableModAsync("CoolMod", c);
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(heldExtras, "r6", "scripts", "CoolMod", "main.reds")));
+        Assert.False(Directory.Exists(Path.Combine(scripts, "CoolMod")));
+    }
 }

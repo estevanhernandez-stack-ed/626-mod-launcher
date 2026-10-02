@@ -132,11 +132,14 @@ public static partial class RestorePointEngine
         //    modsActive: ApplyEndState re-enabled all mods and emptied the holding folder.
         //    The archived disabled/ sub-tree is stale — skip it to prevent double-state
         //    (mod live in mods/ AND resurrected in holding), which would break a later disable.
+        //    disabled-trees/ (B4 stage two: a turned-off mod's extra-tree entries) is stale for the same
+        //    reason: re-enabling moved those entries back into the game, and a resurrected copy would make
+        //    the next turn-off refuse on it as an earlier turned-off copy.
         var archivedData = Path.Combine(gameArchiveDir, "data");
         if (Directory.Exists(archivedData))
         {
             var skip = string.Equals(ga.EndState, "modsActive", StringComparison.OrdinalIgnoreCase)
-                ? new[] { "disabled" } : null;
+                ? new[] { "disabled", "disabled-trees" } : null;
             CopyTreeVerifiedOverwrite(archivedData, liveCtx.DataDir, skip);
         }
 
