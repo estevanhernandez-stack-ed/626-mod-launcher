@@ -120,14 +120,21 @@ public sealed partial class GameSetupDialog : ContentDialog
         _seeding = true;   // suppress the live preview while we populate
         NameBox.Text = _game.GameName;
         FolderBox.Text = _game.GameRoot;
-        ModPathBox.Text = _game.ModLocations.Count > 0 ? _game.ModLocations[0].Path : "";
-
         // One box, possibly several locations. ModLocator.Detect adds every candidate folder that
         // exists ("mods", "mods2", "mods3"…), and games really do carry three — Windrose declares
-        // ~mods, LogicMods, and the UE4SS folder, all holding mods. The diagnosis above lists all of
-        // them, so say plainly which one this box edits rather than let it read as covering the lot.
+        // ~mods, LogicMods, and the UE4SS folder, all holding mods. Each location keeps its own typed
+        // path, and a picker says which one the box is editing (A6: only the first was editable, so a
+        // wrong second folder had no repair path short of hand-editing games.json).
+        _locationPaths = _game.ModLocations.Select(l => l.Path).ToArray();
+        _locationIndex = 0;
+        ModPathBox.Text = _locationPaths.Length > 0 ? _locationPaths[0] : "";
         if (_game.ModLocations.Count > 1)
-            ModPathLabel.Text = $"Mod folder (the first of {_game.ModLocations.Count}; the others are unchanged)";
+        {
+            ModPathLabel.Text = $"Mod folder (relative to the game folder) — this game has {_game.ModLocations.Count}; pick one to edit";
+            ModLocationBox.ItemsSource = _game.ModLocations.Select(l => $"{l.Label} ({l.Name})").ToList();
+            ModLocationBox.SelectedIndex = 0;
+            ModLocationBox.Visibility = Visibility.Visible;
+        }
         ExtensionsBox.Text = string.Join(", ", _game.FileExtensions);
         GroupingBox.Text = _game.GroupingRule;
         SteamBox.Text = _game.SteamAppId ?? "";
@@ -141,6 +148,20 @@ public sealed partial class GameSetupDialog : ContentDialog
     }
 
     private sealed record EngineOption(string Key, string Label);
+
+    // One typed path per declared location, and which one the box is showing.
+    private string[] _locationPaths = Array.Empty<string>();
+    private int _locationIndex;
+
+    private void OnModLocationChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_seeding || ModLocationBox.SelectedIndex < 0 || _locationPaths.Length == 0) return;
+        _locationPaths[_locationIndex] = ModPathBox.Text;   // keep what was typed for the one we leave
+        _locationIndex = ModLocationBox.SelectedIndex;
+        _seeding = true;                                    // showing a value is not an edit
+        ModPathBox.Text = _locationPaths[_locationIndex];
+        _seeding = false;
+    }
 
     private void OnFieldChanged(object sender, TextChangedEventArgs e) => Preview();
 
@@ -184,12 +205,14 @@ public sealed partial class GameSetupDialog : ContentDialog
         p.SteamAppId = string.IsNullOrWhiteSpace(SteamBox.Text) ? null : SteamBox.Text.Trim();
         p.RequiredLauncher = string.IsNullOrWhiteSpace(LauncherBox.Text) ? null : LauncherBox.Text.Trim();
 
-        // EDIT THE FIRST LOCATION, CARRY THE REST — and with none stored, a blank box proposes none.
+        // EDIT EACH LOCATION BY INDEX, CARRY THE REST — and with none stored, a blank box proposes none.
         // Rebuilding the list here reshaped it twice before (3 → 1 for a multi-location game, 0 → 1
         // for "None declared."), and the planner rightly reads a reshape as a stated choice: a rename
         // pinned modLocations and opted the game out of every future mod-path correction. The rule
         // lives in Core, behind tests that assert on the reshape.
-        p.ModLocations = RegistrationChange.EditLocation(_game.ModLocations, 0, ModPathBox.Text);
+        if (_locationPaths.Length > 0) _locationPaths[_locationIndex] = ModPathBox.Text;
+        p.ModLocations = RegistrationChange.EditLocations(_game.ModLocations,
+            _locationPaths.Length > 0 ? _locationPaths : new[] { ModPathBox.Text });
 
         return p;
     }

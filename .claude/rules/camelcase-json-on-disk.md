@@ -72,6 +72,10 @@ The string-contains assertion is what protects you — without it, the round-tri
   `<dataDir>/installs/<installId>.json` via `AtomicJson`; what an intake actually placed, so a row can
   say which files are its own)
 
+- `DataDirMoveJournal` pending-moves/<id>.json (`src/ModManager.Core/DataDirMoveJournal.cs` — the A6
+  breadcrumb for a data-folder move, written via `AtomicJson`; covered by
+  `DataDirMoveJournalTests.A_record_round_trips_as_camelCase`)
+
 - Game manifest `loaders` list (`src/ModManager.Core/Manifest/GameManifest.cs` — `LoaderManifestEntry`,
   serialized with `ManifestJson.Options`; written by the miner to `games-manifest.json`, curated in
   `overrides/loaders/*.json`; covered by `ManifestLoadersTests.Loaders_round_trip_as_camelCase`)

@@ -283,6 +283,25 @@ public static class RegistrationChange
         return edited;
     }
 
+    /// <summary>
+    /// <see cref="EditLocation"/> for every location at once: <paramref name="typedPaths"/>[i] is what the
+    /// box for location i holds. The setup dialog keeps one typed path per declared location (A6: only
+    /// the first was editable, so a wrong SECOND folder had no repair path). Index by index through the
+    /// one tested rule, so an untouched location carries over exactly and the list is never reshaped.
+    /// With nothing stored, only the first typed path counts, as <see cref="EditLocation"/> requires.
+    /// </summary>
+    public static IReadOnlyList<ModLocation> EditLocations(IReadOnlyList<ModLocation> stored, IReadOnlyList<string> typedPaths)
+    {
+        if (stored.Count == 0)
+            return EditLocation(stored, 0, typedPaths.Count > 0 ? typedPaths[0] : "");
+        if (typedPaths.Count != stored.Count)
+            throw new ArgumentException("One typed path per stored location.", nameof(typedPaths));
+
+        var edited = stored;
+        for (var i = 0; i < stored.Count; i++) edited = EditLocation(edited, i, typedPaths[i]);
+        return edited;
+    }
+
     // One spelling for a grouping-rule comparison, shared by the change test and the preset-default
     // test so the two can never drift apart the way the extension sets once did.
     private static bool SameGrouping(string a, string b)

@@ -69,9 +69,16 @@ public sealed class RegistrationRepairService
         {
             if (moveDataDir)
             {
+                // The breadcrumb first (A6): if the launcher dies between this move and the registry
+                // write, the next launch finds the record and finishes or reports the save.
+                DataDirMoveJournal.Write(LauncherService.DataRoot,
+                    new DataDirMoveRecord(proposed.Id, move.From, move.To, proposed, DateTime.UtcNow));
                 var result = await Task.Run(() => DataDirMove.Execute(move, progress));
                 if (!result.Moved)
+                {
+                    DataDirMoveJournal.Clear(LauncherService.DataRoot, proposed.Id);   // nothing moved
                     return new RepairSaveOutcome(false, result.Error ?? "The launcher data could not be moved.");
+                }
                 movedFrom = move.From;
                 movedTo = move.To;
                 sourceSurvived = !result.SourceRemoved && move.Kind != DataDirMoveKind.Nothing;
@@ -89,16 +96,12 @@ public sealed class RegistrationRepairService
 
         try
         {
-            var reg = _svc.LoadRegistry();
-            _svc.SaveRegistry(Registry.UpsertGame(reg, proposed));
+            _svc.UpdateRegistry(reg => (Registry.UpsertGame(reg, proposed), 0));
 
-            // READ IT BACK. games.json is a shared read-modify-write with no lock — StampLaunch,
-            // SetActiveGame, Redetect and discovery all do LoadRegistry → change → SaveRegistry — so a
-            // writer holding a stale snapshot can land after this one and restore the OLD GameRoot,
-            // with the data already sitting at the new path. That is a silent orphan: the launcher
-            // would then look for this game's disabled mods where they no longer are. Locking the file
-            // properly is a backlog item; going silent about it is not acceptable in the one caller
-            // where the cost is the user's only copy of their mods.
+            // READ IT BACK. Every writer now goes through one lock (RegistryStore.Update, A6), so another
+            // writer can no longer interleave with this one. The read-back stays as the last word in the
+            // one caller where a lost write costs the user's only copy of their mods: a hand-edited file,
+            // or a launcher too old to take the lock, could still land after it.
             var written = _svc.LoadRegistry().Games.FirstOrDefault(g => g.Id == proposed.Id);
             if (written is null
                 || !PathEquals(written.GameRoot, proposed.GameRoot)
@@ -123,8 +126,11 @@ public sealed class RegistrationRepairService
             // the design says must never look like a hang.
             var back = await Task.Run(() => DataDirMove.Execute(DataDirMove.Plan(movedTo, movedFrom), progress));
             if (back.Moved)
+            {
+                DataDirMoveJournal.Clear(LauncherService.DataRoot, proposed.Id);   // put back: nothing to finish
                 return new RepairSaveOutcome(false,
                     ErrorRemedy.Describe(e, "Couldn't save your settings, so nothing was changed"));
+            }
 
             // THE OLD COPY MAY STILL BE THERE. CopyVerifyDelete reports SourceRemoved false when the
             // source could not be deleted — a file held open, which is the likeliest failure here since
@@ -149,9 +155,58 @@ public sealed class RegistrationRepairService
         // removes children one at a time, so what survives a lock partway through may be a partial
         // tree, and "spare copy" invites treating it as a second complete one.
         // sourceSurvived is only ever set in the block that assigns both paths.
+        // Saved and read back: the move, if any, is finished. A record kept on any failure path above
+        // stays for the next launch to assess.
+        DataDirMoveJournal.Clear(LauncherService.DataRoot, proposed.Id);
         return new RepairSaveOutcome(true, sourceSurvived
             ? RegistrationRepairText.SavedOldFolderRemains(movedFrom!, movedTo!)
             : RegistrationRepairText.Saved);
+    }
+
+    /// <summary>
+    /// Finish or report data-folder moves a previous launcher left mid-save (A6). Run once at startup,
+    /// before the first load. Each record is assessed inside the registry lock, against the registry
+    /// as it is then: a finished save is finished exactly as the user confirmed it; anything ambiguous
+    /// is reported and left alone, with the record kept until the game's folders say otherwise.
+    /// </summary>
+    /// <returns>The status line to show, or null when there was nothing to say.</returns>
+    public string? RecoverInterruptedMoves()
+    {
+        var root = LauncherService.DataRoot;
+        var notes = new List<string>();
+        foreach (var record in DataDirMoveJournal.Pending(root))
+        {
+            var (verdict, name) = _svc.UpdateRegistry(reg =>
+            {
+                var registered = reg.Games.FirstOrDefault(g => string.Equals(g.Id, record.GameId, StringComparison.OrdinalIgnoreCase));
+                var v = DataDirMoveJournal.Assess(record, registered, HasData);
+                var label = registered?.GameName ?? record.Proposed.GameName;
+                return v == MoveRecovery.FinishSave
+                    ? (Registry.UpsertGame(reg, record.Proposed), (v, label))
+                    : (reg, (v, label));
+            });
+
+            switch (verdict)
+            {
+                case MoveRecovery.FinishSave:
+                    DataDirMoveJournal.Clear(root, record.GameId);
+                    notes.Add(DataDirMoveJournal.FinishedMessage(record, name));
+                    break;
+                case MoveRecovery.NeedsYou:
+                    notes.Add(DataDirMoveJournal.NeedsYouMessage(record, name));
+                    break;
+                default:
+                    DataDirMoveJournal.Clear(root, record.GameId);
+                    break;
+            }
+        }
+        return notes.Count == 0 ? null : string.Join(" ", notes);
+    }
+
+    private static bool HasData(string path)
+    {
+        try { return Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any(); }
+        catch { return true; }   // unreadable is not "empty": never finish a save on a folder we cannot see into
     }
 
     // DataDirMove.Norm is internal to Core (visible only to the test assembly), so the read-back does

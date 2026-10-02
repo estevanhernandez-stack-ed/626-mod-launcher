@@ -167,7 +167,14 @@ public sealed partial class MainWindow : Window
         if (interrupted is not null)
             await HandleInterruptedClearAsync(rp, interrupted);
 
+        // A data-folder move a previous launcher left mid-save is finished or reported before the
+        // first load reads the registry (A6).
+        string? moveNote = null;
+        try { moveNote = App.AppHost.Services.GetRequiredService<Services.RegistrationRepairService>().RecoverInterruptedMoves(); }
+        catch (Exception ex) { moveNote = ModManager.Core.ErrorRemedy.Describe(ex, "Couldn't check for an interrupted folder change"); }
+
         await ViewModel.LoadAsync();
+        if (moveNote is not null) ViewModel.StatusText = moveNote;
 
         // Land on the Library home. LoadAsync above already resolved the active game + mods behind the
         // overlay, so tapping into a game is instant. Load() reads the registry + builds the rows.
