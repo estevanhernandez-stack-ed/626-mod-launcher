@@ -90,6 +90,7 @@ public class EaSavesReadOnlyTests : IDisposable
         var listed = SaveManager.ListNamedSaveFiles(_dir, SaveFileKindsCatalog.For(Ea()));
 
         Assert.Equal(new[] { "PROFILE-COLLEGE", "ROSTER-Official", "RTG-E", "RTG-E-AUTOSAVE" }, listed.Select(f => f.Name));
+        Assert.DoesNotContain(SaveFileKindsCatalog.For(Ea()), k => k.Prefix == "CAREER-");   // Madden's, not College's
         Assert.Equal("Road to Glory career", listed.Single(f => f.Name == "RTG-E").TypeLabel);
         Assert.Equal("Roster", listed.Single(f => f.Name == "ROSTER-Official").TypeLabel);
         Assert.Equal("Profile", listed.Single(f => f.Name == "PROFILE-COLLEGE").TypeLabel);
@@ -119,6 +120,51 @@ public class EaSavesReadOnlyTests : IDisposable
     [Fact]
     public void Named_kinds_are_not_save_types_so_clone_and_per_type_restore_stay_off()
         => Assert.Empty(GameSaveTypesCatalog.Resolve(Ea()).SaveTypes);
+
+    // Review on #360: kinds are per GAME. Every EA app import is stamped frostbite, and a Battlefield
+    // whose correct save folder holds none of these must not be told it looks wrong.
+    [Fact]
+    public void A_frostbite_game_that_is_not_a_football_game_declares_no_named_kinds()
+        => Assert.Empty(SaveFileKindsCatalog.For(Ea("battlefield-6", eaContentId: "12345678")));
+
+    [Fact]
+    public void A_second_copy_finds_its_games_kinds_through_its_content_id()
+        => Assert.Equal("Franchise career", SaveFileKindsCatalog.For(Ea("madden-nfl-27-2", "16425895"))[0].Label);
+
+    [Fact]
+    public void A_copy_added_by_hand_finds_its_kinds_through_its_manifest_id()
+        => Assert.Equal("Road to Glory career",
+            SaveFileKindsCatalog.For(Ea("ea-sports-college-football-27", eaContentId: null))[0].Label);
+
+    // Review on #360: the save-fact join refuses an own id whose entry a store id contradicts. A write
+    // block must not, or the contradiction would switch the protection off.
+    [Fact]
+    public void A_contradicted_own_id_still_refuses_writes()
+    {
+        EffectiveManifest.SetRemote(new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "madden-nfl-27", Name = "Madden NFL 27", Engine = "frostbite", Stores = new StoreIds { SteamAppId = "111111", EaContentId = "16425895" } } },
+        });
+        var handAdded = new GameEntry { Id = "madden-nfl-27", GameName = "Madden", Engine = "frostbite", SteamAppId = "999999" };
+
+        Assert.Null(ManifestIdLookup.ConfirmedEntryFor(handAdded));   // no save facts from it
+        Assert.NotNull(SaveWritePolicy.Refusal(handAdded));            // and no writes either
+    }
+
+    // Harder: the Steam id names a DIFFERENT, non-EA game, so every join lands there. The own id still
+    // names an EA game, and a write block takes the most cautious reading.
+    [Fact]
+    public void An_own_id_naming_an_ea_game_refuses_writes_even_when_the_steam_id_names_another_game()
+    {
+        EffectiveManifest.SetRemote(new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "madden-nfl-27", Name = "Madden NFL 27", Engine = "frostbite", Stores = new StoreIds { EaContentId = "16425895" } } },
+        });
+        var confused = new GameEntry { Id = "madden-nfl-27", GameName = "Madden", Engine = "frostbite", SteamAppId = "1245620" };   // Elden Ring's
+
+        Assert.Equal("elden-ring", ManifestIdLookup.EntryFor(confused)?.Id);
+        Assert.NotNull(SaveWritePolicy.Refusal(confused));
+    }
 
     [Fact]
     public void Other_engines_declare_no_named_kinds()

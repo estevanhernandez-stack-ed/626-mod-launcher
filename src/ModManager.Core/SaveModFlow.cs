@@ -28,11 +28,12 @@ public static class SaveModFlow
         string dataDir,
         string? saveModPath,
         IReadOnlyList<string>? forbidden,
-        bool writeAllowed)
+        bool writeAllowed,
+        string? writeRefusal = null)
     {
         var verdicts = new List<SaveModDropVerdict>();
         foreach (var p in paths ?? Enumerable.Empty<string>())
-            verdicts.Add(Handle(p, saveTypeExtensions, saveProfilesDir, snapshotsDir, dataDir, saveModPath, forbidden, writeAllowed));
+            verdicts.Add(Handle(p, saveTypeExtensions, saveProfilesDir, snapshotsDir, dataDir, saveModPath, forbidden, writeAllowed, writeRefusal));
         return verdicts;
     }
 
@@ -44,7 +45,8 @@ public static class SaveModFlow
         string dataDir,
         string? saveModPath,
         IReadOnlyList<string>? forbidden,
-        bool writeAllowed)
+        bool writeAllowed,
+        string? writeRefusal)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path) || !IsArchive(path))
             return new SaveModDropVerdict(path, SaveModDropOutcome.NotASaveMod, null, null);
@@ -63,6 +65,12 @@ public static class SaveModFlow
 
         var verdict = SaveModDetect.Detect(names, saveTypeExtensions);
         if (!verdict.IsSaveMod) return new SaveModDropVerdict(path, SaveModDropOutcome.NotASaveMod, null, null);
+
+        // A save mod for a game whose saves are not the launcher's to write (SaveWritePolicy): still
+        // recognised, so regular intake never tries to classify it, and turned away with the reason.
+        // No acknowledgement unlocks it - this is not a risk the player can accept for the launcher.
+        if (writeRefusal is not null)
+            return new SaveModDropVerdict(path, SaveModDropOutcome.Failed, verdict.WorldGuid, writeRefusal);
         if (string.IsNullOrEmpty(verdict.WorldGuid))
             return new SaveModDropVerdict(path, SaveModDropOutcome.Failed, null,
                 "Save mod detected but no world GUID - only Worlds/<GUID> packages auto-install for now.");

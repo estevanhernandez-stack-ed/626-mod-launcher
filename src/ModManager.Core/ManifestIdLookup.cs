@@ -152,6 +152,12 @@ public static class ManifestIdLookup
         => !string.IsNullOrWhiteSpace(registered) && !string.IsNullOrWhiteSpace(claimed)
            && !string.Equals(registered, claimed, StringComparison.Ordinal);
 
+    /// <summary>The manifest entry with exactly this id (case-insensitive), or null. No store
+    /// resolution and no contradiction check: for a caller that must fail CLOSED and so wants every
+    /// entry a registration could be, including the one its own id names when a store id disagrees.</summary>
+    public static GameManifestEntry? EntryById(string? id)
+        => !string.IsNullOrEmpty(id) && Maps().ById.TryGetValue(id, out var e) ? e : null;
+
     /// <summary>The manifest entry claiming this Steam app id, or null. What <c>KnownModPaths</c> reads,
     /// so the add path and the scan path break a tie the same way.</summary>
     public static GameManifestEntry? EntryBySteamAppId(string? steamAppId) => StoreEntry(Maps().Steam, steamAppId);

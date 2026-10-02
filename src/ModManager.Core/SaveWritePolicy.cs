@@ -15,9 +15,13 @@ namespace ModManager.Core;
 /// folder, so it is exactly what the decision rules out. Backups are untouched: a snapshot reads the
 /// save folder and writes into the launcher's own data folder.</para>
 ///
-/// <para>Keyed on store identity, the registration's own EA content id or the one its manifest entry
-/// carries, never on a name: a game added by hand that resolves to an EA entry is the same game with
-/// the same cloud sync.</para>
+/// <para>Keyed on store identity, the registration's own EA content id or the one any manifest entry
+/// it could be carries, never on a name: a game added by hand that resolves to an EA entry is the same
+/// game with the same cloud sync.</para>
+///
+/// <para>Enforced at the App's call sites, because the write primitives take folders, not games. A
+/// source-scan test (<c>SaveWriteCallSiteTests</c>) holds every App method that calls one to this
+/// policy, so a new handler that forgets fails a test.</para>
 /// </summary>
 public static class SaveWritePolicy
 {
@@ -36,10 +40,13 @@ public static class SaveWritePolicy
     public static string? Refusal(GameEntry? game)
     {
         if (game is null) return null;
-        var eaId = !string.IsNullOrWhiteSpace(game.EaContentId)
-            ? game.EaContentId
-            : ManifestIdLookup.ConfirmedEntryFor(game)?.Stores.EaContentId;
-        return string.IsNullOrWhiteSpace(eaId) ? null : EaRefusal;
+        // Fails CLOSED: any identity that names an EA app game refuses, including the entry the own id
+        // names when a store id disagrees. The save-fact join refuses that entry (wrong game's folder);
+        // a write block must not, or a contradiction would switch the protection off.
+        var isEa = !string.IsNullOrWhiteSpace(game.EaContentId)
+            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryFor(game)?.Stores.EaContentId)
+            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryById(game.Id)?.Stores.EaContentId);
+        return isEa ? EaRefusal : null;
     }
 
     /// <summary>The parts of a machine-transport restore this game may take: everything asked for,

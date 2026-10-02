@@ -9,7 +9,12 @@ using Windows.Storage.Pickers;
 namespace ModManager.App;
 
 /// <summary>A snapshot row prepared for display (title + "time · size").</summary>
-public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail);
+public sealed record SaveRow(SaveSnapshot Snap, string Title, string Detail, bool Restorable = true)
+{
+    // Restore writes into the save folder; a game whose saves are not the launcher's to write
+    // (SaveWritePolicy) keeps its snapshots but loses the buttons that would put one back.
+    public Visibility RestoreVisibility => Restorable ? Visibility.Visible : Visibility.Collapsed;
+}
 
 /// <summary>One "clone to" choice for a save file: the target type's label + extension.</summary>
 public sealed record SaveCloneTarget(string TypeLabel, string Ext);
@@ -81,6 +86,10 @@ public sealed record SaveWorldRow(string Id, string Title, string Kind, string D
 public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<SaveCloneTarget> Targets)
 {
     public string CloneAutomationName => $"Clone {Name} to another type"; // per-item UIA name (F-065)
+
+    // No targets means nothing to clone to (a named EA save, or writes refused): no button that can
+    // only open a menu saying so.
+    public Visibility CloneVisibility => Targets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 }
 
 /// <summary>One installed-save-mod row: friendly title + when/source detail.</summary>
@@ -153,7 +162,11 @@ public sealed partial class SavesDialog : ContentDialog
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
         KeepBox.Value = ctx.Game.SaveAutoKeep ?? 25;
         if (!string.IsNullOrEmpty(_saveDir)) StatusText.Text = "Save folder ready.";
-        if (SaveWritePolicy.Notice(_game) is { } notice) StatusText.Text = notice;
+        if (_writeRefusal is not null)
+        {
+            ReadOnlyNotice.Text = SaveWritePolicy.EaNotice;
+            ReadOnlyNotice.Visibility = Visibility.Visible;
+        }
         FolderBox.Text = _saveDir ?? "";
         Refresh();
         RefreshSaveFiles();
@@ -168,7 +181,8 @@ public sealed partial class SavesDialog : ContentDialog
         var rows = SaveManager.ListSnapshots(_savesDir)
             .Select(s => new SaveRow(s,
                 (s.IsAuto ? "auto · " : "") + (s.Label.Length > 0 ? s.Label : "(unlabeled)"),
-                $"{s.TakenUtc.ToLocalTime():g}  ·  {Human(s.SizeBytes)}"))
+                $"{s.TakenUtc.ToLocalTime():g}  ·  {Human(s.SizeBytes)}",
+                Restorable: _writeRefusal is null))
             .ToList();
         SnapshotList.ItemsSource = rows;
         EmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -635,6 +649,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void DoRestore(SaveRow row)
     {
+        if (WritesRefused()) return;   // the write itself, reached from a confirm flyout
         try
         {
             SaveManager.Restore(row.Snap.Path, _saveDir!, _savesDir);
@@ -790,6 +805,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void ShowImportConfirm(FrameworkElement anchor, string bundlePath, SaveBundleManifest manifest)
     {
+        if (WritesRefused()) return;   // the write itself, reached from a confirm flyout
         var res = Application.Current.Resources;
         var panel = new StackPanel { Spacing = 8, MaxWidth = 400 };
 
@@ -1070,7 +1086,6 @@ public sealed partial class SavesDialog : ContentDialog
     /// </summary>
     private void OnRenameWorld(object sender, RoutedEventArgs e)
     {
-        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 
@@ -1107,6 +1122,8 @@ public sealed partial class SavesDialog : ContentDialog
             flyout.Hide();
             try
             {
+                // Only the in-game rename writes the save; a label lives in the launcher's own folder.
+                if (row.CanRenameInGame && WritesRefused()) return;
                 if (row.CanRenameInGame)
                 {
                     if (GameIsRunning())
@@ -1289,6 +1306,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void DoRestoreWorld(SaveWorldRow row, ModManager.Core.SaveSnapshot snap)
     {
+        if (WritesRefused()) return;   // the write itself, reached from a confirm flyout
         try
         {
             SaveManager.RestoreWorld(snap.Path, _saveDir!, row.Id, _savesDir);

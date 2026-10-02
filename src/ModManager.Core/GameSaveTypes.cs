@@ -46,26 +46,53 @@ public sealed record SaveFileKind(string Prefix, string Label)
     public bool Matches(string fileName) => fileName.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>Which named save kinds a game's engine declares. Engine-level, like
-/// <see cref="GameSaveTypesCatalog"/>'s types: a prefix that never occurs in a folder matches nothing.</summary>
+/// <summary>
+/// Which named save kinds a game declares. Per GAME, not per engine: every EA app import is stamped
+/// <c>frostbite</c>, and a Battlefield whose folder holds none of these would be told its correct save
+/// folder looks wrong (<see cref="SaveListingEmptyState"/>). Resolved by manifest id or EA content id,
+/// so a second copy (<c>-2</c>) and a copy added by hand both find their game.
+/// </summary>
 public static class SaveFileKindsCatalog
 {
-    // Frostbite, as EA SPORTS College Football 27 and Madden NFL 27 write it (VERIFIED on the owner's
-    // machine, docs/superpowers/plans/2026-09-13-ea-football-grand-plan.md). Order is the order a
-    // player thinks in: their careers, then the league, then the profile that indexes the careers.
-    private static readonly SaveFileKind[] Frostbite =
+    // As each game writes them, directly in Documents\<title>\saves, with no extension (VERIFIED on the
+    // owner's machine 2026-10-02). Careers first, then the league, then the profile that indexes them.
+    private static readonly SaveFileKind[] CollegeFootball27 =
     {
         new("RTG-", "Road to Glory career"),
+        new("ROSTER-", "Roster"),
+        new("PROFILE-", "Profile"),
+    };
+
+    private static readonly SaveFileKind[] Madden27 =
+    {
         new("CAREER-", "Franchise career"),
         new("ROSTER-", "Roster"),
         new("PROFILE-", "Profile"),
     };
 
-    public static IReadOnlyList<SaveFileKind> For(GameEntry game) => game.Engine switch
+    private static readonly IReadOnlyDictionary<string, SaveFileKind[]> ById =
+        new Dictionary<string, SaveFileKind[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ea-sports-college-football-27"] = CollegeFootball27,
+            ["madden-nfl-27"] = Madden27,
+        };
+
+    private static readonly IReadOnlyDictionary<string, SaveFileKind[]> ByEaContentId =
+        new Dictionary<string, SaveFileKind[]>(StringComparer.Ordinal)
+        {
+            ["16425899"] = CollegeFootball27,   // same ids as BanRiskCatalog's floors
+            ["16425895"] = Madden27,
+        };
+
+    public static IReadOnlyList<SaveFileKind> For(GameEntry game)
     {
-        "frostbite" => Frostbite,
-        _ => Array.Empty<SaveFileKind>(),
-    };
+        var entry = ManifestIdLookup.ConfirmedEntryFor(game);
+        foreach (var id in new[] { entry?.Id, game.Id })
+            if (!string.IsNullOrEmpty(id) && ById.TryGetValue(id, out var byId)) return byId;
+        foreach (var ea in new[] { game.EaContentId, entry?.Stores.EaContentId })
+            if (!string.IsNullOrEmpty(ea) && ByEaContentId.TryGetValue(ea, out var byEa)) return byEa;
+        return Array.Empty<SaveFileKind>();
+    }
 }
 
 /// <summary>

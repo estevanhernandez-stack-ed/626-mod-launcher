@@ -128,6 +128,43 @@ public class SaveModFlowTests : IDisposable
         return Convert.ToHexString(sha.ComputeHash(stream));
     }
 
+    // A save mod for a game whose saves the launcher may not write (EA cloud sync, SaveWritePolicy):
+    // still recognised, so regular intake never classifies it, turned away with the reason, and nothing
+    // lands. Even with writeAllowed: no acknowledgement unlocks this one.
+    [Fact]
+    public void A_save_mod_for_a_game_whose_saves_are_refused_is_recognised_and_turned_away()
+    {
+        var guid = "0123456789abcdef0123456789abcdef";
+        var zip = MakeZip("world.zip", new[] { ($"{guid}/data.json", "{}") });
+        var profiles = NewDir("saves");
+        var oneProfile = Path.Combine(profiles, "user1"); Directory.CreateDirectory(Path.Combine(oneProfile, "RocksDB", "1.0"));
+        var data = NewDir("data");
+
+        var verdicts = SaveModFlow.TryHandleDrops(
+            new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
+            saveProfilesDir: profiles, snapshotsDir: NewDir("snaps"),
+            dataDir: data, saveModPath: null, forbidden: null, writeAllowed: true,
+            writeRefusal: SaveWritePolicy.EaRefusal);
+
+        var v = Assert.Single(verdicts);
+        Assert.Equal(SaveModDropOutcome.Failed, v.Outcome);   // carved out of intake, with its reason
+        Assert.Equal(SaveWritePolicy.EaRefusal, v.Reason);
+        Assert.False(Directory.Exists(Path.Combine(oneProfile, "RocksDB", "1.0", "Worlds")));
+        Assert.Empty(SaveModStore.Load(data));
+    }
+
+    [Fact]
+    public void A_refusal_leaves_a_non_save_mod_to_regular_intake()
+    {
+        var zip = MakeZip("content.zip", new[] { ("AwesomeMod_P.pak", "x") });
+        var verdicts = SaveModFlow.TryHandleDrops(
+            new[] { zip }, saveTypeExtensions: Array.Empty<string>(),
+            saveProfilesDir: NewDir("saves"), snapshotsDir: NewDir("snaps"),
+            dataDir: NewDir("data"), saveModPath: null, forbidden: null, writeAllowed: true,
+            writeRefusal: SaveWritePolicy.EaRefusal);
+        Assert.Equal(SaveModDropOutcome.NotASaveMod, verdicts[0].Outcome);
+    }
+
     private string NewDir(string name) { var d = Path.Combine(_root, name); Directory.CreateDirectory(d); return d; }
     private string MakeZip(string name, IEnumerable<(string Entry, string Content)> entries)
     {
