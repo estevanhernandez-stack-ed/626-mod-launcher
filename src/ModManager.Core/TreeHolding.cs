@@ -38,10 +38,13 @@ internal static class TreeHolding
     /// Throws for a name with no holding folder (<see cref="CanHold"/> is false); every caller asks first or
     /// goes through <see cref="Held"/> / <see cref="HoldsFiles"/>, which answer "nothing held" for it.</summary>
     public static string ModDir(GameContext ctx, string mod)
-        => DirFor(ctx, mod) ?? throw new InvalidOperationException(HoldingName.TooLongMessage(mod));
+        => DirFor(ctx, mod) ?? throw new InvalidOperationException(HoldingName.Folder(mod) is null
+            ? HoldingName.TooLongMessage(mod)
+            : $"626 has no holding folder for \"{mod}\": the one it would use belongs to another mod. Nothing was moved.");
 
     /// <summary>False when the mod has no holding folder: a risky name too long to encode
-    /// (<see cref="HoldingName.Folder"/> is null) with no older raw-named hold.</summary>
+    /// (<see cref="HoldingName.Folder"/> is null) with no older raw-named hold, or one whose encoded folder is
+    /// shadowed by another mod's raw-named folder that Windows would open in its place.</summary>
     public static bool CanHold(GameContext ctx, string mod) => DirFor(ctx, mod) is not null;
 
     private static string? DirFor(GameContext ctx, string mod)
@@ -50,9 +53,11 @@ internal static class TreeHolding
         var folder = HoldingName.Folder(mod);
         if (folder == mod) return Path.Combine(root, folder);
         var encoded = folder is null ? null : Path.Combine(root, folder);
-        if ((encoded is null || !Directory.Exists(encoded)) && HoldingName.LegacyPath(root, mod) is { } legacy)
-            return legacy;
-        return encoded;
+        // Present only by its exact real name: Windows would open another mod's raw "~626~466F6F2E" for Foo.'s
+        // "~626~466f6f2e", and that folder is never this mod's.
+        if (folder is not null && FolderNames.HasEntryNamedExactly(root, folder)) return encoded;
+        if (HoldingName.LegacyPath(root, mod) is { } legacy) return legacy;
+        return folder is not null && HoldingName.Shadowed(root, folder, out _) ? null : encoded;
     }
 
     /// <summary>Where an entry of <paramref name="tree"/> is held while the mod is off.</summary>

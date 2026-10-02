@@ -92,8 +92,22 @@ internal static class HoldingName
     public static string? LegacyPath(string root, string modName)
     {
         if (string.IsNullOrWhiteSpace(modName) || Folder(modName) == modName) return null;
-        if (!FolderNames.HasEntryNamed(root, modName) || FolderNames.Escapes(root, modName)) return null;
-        return FolderNames.ExactPath(root, modName);
+        if (FolderNames.Escapes(root, modName)) return null;
+        // Matched without case, as Windows opens it (aux reaches its own Aux), but never onto a folder that is
+        // ANOTHER name's encoding: "~626~466F6F2E" would otherwise open Foo.'s "~626~466f6f2e".
+        if (FolderNames.RealEntryName(root, modName) is not { } real || ModName(real) != real) return null;
+        return FolderNames.ExactPath(root, real);
+    }
+
+    /// <summary>
+    /// True when <paramref name="root"/> holds an entry that Windows would open for <paramref name="folder"/>
+    /// but whose real name differs: another name's folder (an older build's raw <c>~626~466F6F2E</c> where
+    /// <c>Foo.</c>'s <c>~626~466f6f2e</c> would go). Writing <paramref name="folder"/> there would land in it.
+    /// </summary>
+    public static bool Shadowed(string root, string folder, out string? real)
+    {
+        real = FolderNames.RealEntryName(root, folder);
+        return real is not null && !string.Equals(real, folder, StringComparison.Ordinal);
     }
 
     // True when Windows keeps the name as one folder exactly as written, and it can't be mistaken for an

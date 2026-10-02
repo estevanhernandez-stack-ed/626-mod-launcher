@@ -45,6 +45,21 @@ internal static class FolderNames
            && new DirectoryInfo(root).EnumerateFileSystemInfos()
                .Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The real name of the entry <paramref name="root"/> lists for <paramref name="name"/>, matched
+    /// case-insensitively as Windows opens it, or null when there is none. Listed without a search pattern,
+    /// so an 8.3 alias never matches.</summary>
+    public static string? RealEntryName(string root, string name)
+        => Directory.Exists(root)
+            ? new DirectoryInfo(root).EnumerateFileSystemInfos()
+                .FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))?.Name
+            : null;
+
+    /// <summary>True when <paramref name="root"/> lists an entry whose real name is exactly
+    /// <paramref name="name"/>, case included. For an encoded holding folder: <c>~626~466F6F2E</c> is a different
+    /// mod's folder from <c>~626~466f6f2e</c>, although Windows would open either for the other.</summary>
+    public static bool HasEntryNamedExactly(string root, string name)
+        => string.Equals(RealEntryName(root, name), name, StringComparison.Ordinal);
+
     /// <summary>
     /// The path to give the file system for an entry the scan enumerated by its real relative name. When a
     /// segment ends in a dot or space (only a <c>\\?\</c>-aware tool can create one), the extended-length form

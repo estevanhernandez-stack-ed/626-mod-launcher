@@ -252,9 +252,11 @@ public static class ModUninstall
 
         // An older build's hold under the raw name (disabled-trees/Aux, which Windows 11 allows) when there is
         // no encoded one: read and deleted by its exact real name, like the toggle reads it.
-        var encodedPresent = folder is not null && FolderNames.HasEntryNamed(root, folder);
+        // Exactly, case included: another mod's raw "~626~466F6F2E" is not Foo.'s "~626~466f6f2e".
+        var encodedPresent = folder is not null && FolderNames.HasEntryNamedExactly(root, folder);
         var dir = !encodedPresent && HoldingName.LegacyPath(root, modName) is { } legacy ? legacy
-            : folder is not null && FolderNames.NamesOneFolder(folder) ? Path.Combine(root, folder)
+            : folder is not null && FolderNames.NamesOneFolder(folder)
+              && !(folder != modName && HoldingName.Shadowed(root, folder, out _)) ? Path.Combine(root, folder)
             : null;
         if (dir is null) return null;
 
@@ -272,7 +274,9 @@ public static class ModUninstall
     /// path would.
     /// </summary>
     private static bool HeldPresent(GameContext ctx, string modName)
-        => (HoldingName.Folder(modName) is { } folder && FolderNames.HasEntryNamed(TreeHolding.Root(ctx), folder))
+        => (HoldingName.Folder(modName) is { } folder
+            && (folder == modName ? FolderNames.HasEntryNamed(TreeHolding.Root(ctx), folder)
+                                  : FolderNames.HasEntryNamedExactly(TreeHolding.Root(ctx), folder)))
            || HoldingName.LegacyPath(TreeHolding.Root(ctx), modName) is not null;
 
 }

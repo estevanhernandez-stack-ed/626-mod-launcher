@@ -282,6 +282,111 @@ public class NameAliasToggleTests : IDisposable
         Assert.Equal("ODD", File.ReadAllText(Path.Combine(Mods, "Odd_P.pak")));
         Assert.False(Directory.Exists(Path.Combine(Disabled, name)));
     }
+
+    // ---- A legacy lookup never lands on another name's encoded folder, and the reverse ----
+    // Windows compares folder names without case, so "~626~466F6F2E" opens Foo.'s "~626~466f6f2e".
+
+    private const string Upper = "~626~466F6F2E";   // a mod literally named so: not Foo.'s encoding
+    private string FoosHold => Path.Combine(Disabled, "~626~466f6f2e");
+
+    private async Task HoldFooDot()
+    {
+        File.WriteAllText(Path.Combine(Mods, "Foo._P.pak"), "FOO DOT");
+        await Scanner.DisableModAsync("Foo.", Ctx());
+        Assert.True(FolderNames.HasEntryNamed(Disabled, "~626~466f6f2e"));   // pre-condition: Foo. is held
+    }
+
+    [Fact]
+    public async Task Uninstalling_a_mod_named_like_Foo_dots_folder_in_other_case_leaves_Foo_dots_hold()
+    {
+        await HoldFooDot();
+        File.WriteAllText(Path.Combine(Mods, Upper + "_P.pak"), "UPPER");
+        var row = ModListing.Resolve(Game()).Single(m => m.Name == Upper);
+
+        Assert.Empty(ModUninstall.Preview(Ctx(), row).HeldFolders);
+        ModUninstall.Run(Ctx(), row);
+
+        Assert.False(File.Exists(Path.Combine(Mods, Upper + "_P.pak")));
+        Assert.Equal("FOO DOT", File.ReadAllText(Path.Combine(FoosHold, "Foo._P.pak")));
+        Assert.Single(await Rows(), m => m.Name == "Foo." && !m.Enabled);
+    }
+
+    [Fact]
+    public async Task Turning_on_a_name_like_Foo_dots_folder_in_other_case_never_restores_Foo_dot()
+    {
+        await HoldFooDot();
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync(Upper, Ctx());
+
+        Assert.False(outcome.Enabled);
+        Assert.False(File.Exists(Path.Combine(Mods, "Foo._P.pak")));
+        Assert.Equal("FOO DOT", File.ReadAllText(Path.Combine(FoosHold, "Foo._P.pak")));
+    }
+
+    [Fact]
+    public async Task Turning_off_a_name_like_Foo_dots_folder_in_other_case_holds_it_in_its_own_folder()
+    {
+        await HoldFooDot();
+        File.WriteAllText(Path.Combine(Mods, Upper + "_P.pak"), "UPPER");
+
+        await Scanner.DisableModAsync(Upper, Ctx());
+
+        Assert.Equal("UPPER", File.ReadAllText(Path.Combine(Disabled, HoldingName.Folder(Upper)!, Upper + "_P.pak")));
+        Assert.Equal("FOO DOT", File.ReadAllText(Path.Combine(FoosHold, "Foo._P.pak")));
+        Assert.False(File.Exists(Path.Combine(FoosHold, Upper + "_P.pak")));
+
+        await Scanner.EnableModAsync(Upper, Ctx());
+        Assert.Equal("UPPER", File.ReadAllText(Path.Combine(Mods, Upper + "_P.pak")));
+        Assert.Equal("FOO DOT", File.ReadAllText(Path.Combine(FoosHold, "Foo._P.pak")));
+    }
+
+    // The mirror: an older build held a mod literally named "~626~466F6F2E" under that raw name. Foo.'s
+    // encoded folder must not be taken to be it.
+    [Fact]
+    public async Task Another_names_legacy_folder_is_never_taken_for_Foo_dots_encoded_one()
+    {
+        var legacy = LegacyHold(Upper, "Upper_P.pak", "LEGACY UPPER")!;
+        File.WriteAllText(Path.Combine(Mods, "Foo._P.pak"), "FOO DOT");
+        var foo = ModListing.Resolve(Game()).Single(m => m.Name == "Foo.");
+
+        // Turn-on of Foo. restores nothing of the other mod's.
+        var outcome = await Scanner.EnableModWithOutcomeAsync("Foo.", Ctx());
+        Assert.False(File.Exists(Path.Combine(Mods, "Upper_P.pak")));
+
+        // Turn-off of Foo. refuses rather than write into the other mod's folder.
+        var e = await Assert.ThrowsAsync<HeldCopyCollisionException>(() => Scanner.DisableModAsync("Foo.", Ctx()));
+        Assert.Contains(Upper, e.Message);
+        Assert.Contains("Nothing was moved", e.Message);
+        Assert.Equal("FOO DOT", File.ReadAllText(Path.Combine(Mods, "Foo._P.pak")));
+
+        // Uninstall of Foo. leaves it alone.
+        Assert.Empty(ModUninstall.Preview(Ctx(), foo).HeldFolders);
+        ModUninstall.Run(Ctx(), foo);
+        Assert.Equal("LEGACY UPPER", File.ReadAllText(Path.Combine(legacy, "Upper_P.pak")));
+
+        // And it still turns on as itself.
+        Assert.True((await Scanner.EnableModWithOutcomeAsync(Upper, Ctx())).Enabled);
+        Assert.Equal("LEGACY UPPER", File.ReadAllText(Path.Combine(Mods, "Upper_P.pak")));
+    }
+
+    // A legacy hold blocks a fresh turn-off, and the refusal names the legacy folder, not the encoded one.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_blocking_legacy_hold_is_named_in_the_refusal(bool withFiles)
+    {
+        var dir = LegacyHold("Aux", "Aux_P.pak", "OLD AUX");
+        if (dir is null) return;   // passing vacuously: this Windows refuses the name
+        if (!withFiles) File.Delete(Path.Combine(dir, "Aux_P.pak"));
+        File.WriteAllText(Path.Combine(Mods, "Aux_P.pak"), "NEW AUX");
+
+        var e = await Assert.ThrowsAsync<HeldCopyCollisionException>(() => Scanner.DisableModAsync("Aux", Ctx()));
+
+        Assert.Contains(dir, e.Message);
+        Assert.DoesNotContain(HoldingName.Folder("Aux")!, e.Message);
+        if (!withFiles) Assert.Contains("Turn it on first to clear the old record.", e.Message);
+        Assert.Equal("NEW AUX", File.ReadAllText(Path.Combine(Mods, "Aux_P.pak")));
+    }
 }
 
 /// <summary>

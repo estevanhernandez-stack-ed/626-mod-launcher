@@ -644,7 +644,8 @@ public static class Scanner
         // The turned-off copy is in the mod's holding folder (HoldingName: the name itself, or its encoding
         // when Windows would not keep the name as written, so Foo. is never held in, or deleted from, Foo's).
         // Only when disabled/ lists an entry by that real name, so an 8.3 alias never reaches the long name.
-        if (heldFolder is not null && FolderNames.HasEntryNamed(c.DisabledRoot, heldFolder))
+        // By its exact real name, case included: "~626~466F6F2E" (another mod's raw folder) is not Foo.'s.
+        if (heldFolder is not null && FolderNames.HasEntryNamedExactly(c.DisabledRoot, heldFolder))
             DeletePath(Path.Combine(c.DisabledRoot, heldFolder));
         // A folder whose real name ends in a dot or space can only have been made by a \\?\-aware tool, never
         // by 626, which encodes such a name. It still lists under that name, so it still goes with the mod,
@@ -725,11 +726,32 @@ public static class Scanner
         // listing shows only the live copy when both exist, so the user cannot see the held one. This
         // used to collide mid-move and the rollback ran a recursive delete over the holding folder,
         // destroying that copy; a folder mod that did not collide was silently merged into it instead.
-        // An older build's hold under the raw name (disabled/Aux) is such a copy too.
+        //
+        // A folder Windows would open for this mod's encoded name but whose real name differs is ANOTHER mod's
+        // (an older build's raw "~626~466F6F2E" where Foo.'s "~626~466f6f2e" would go): never written into.
+        // Checked in both holding roots, for a risky name only: two ordinary names differing in case have
+        // always shared a folder, and that is unchanged.
+        if (destFolder != m.Name)
+            foreach (var root in new[] { c.DisabledRoot, TreeHolding.Root(c) })
+                if (HoldingName.Shadowed(root, destFolder, out var other))
+                    throw new HeldCopyCollisionException(
+                        $"Couldn't turn \"{m.Name}\" off: its holding folder would be {Path.Combine(root, other!)}, which "
+                        + $"626 holds for \"{HoldingName.ModName(other!)}\". Nothing was moved. Turn that mod on first.");
+
+        // An older build's hold under the raw name (disabled/Aux) is such a copy too, and the refusal names it.
         var legacyHeld = HoldingName.LegacyPath(c.DisabledRoot, m.Name);
+        if (legacyHeld is not null)
+        {
+            var legacyFiles = HoldingFolder.HoldsFiles(legacyHeld, "meta.json");
+            if (legacyFiles || File.Exists(Path.Combine(legacyHeld, "meta.json")))
+                throw new HeldCopyCollisionException(
+                    $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {legacyHeld}, "
+                    + "and the mod list only shows the copy that is live. Nothing was moved. "
+                    + (legacyFiles
+                        ? "Move or remove one of the two copies first."
+                        : "Turn it on first to clear the old record."));
+        }
         if (HoldingFolder.HoldsFiles(dest, "meta.json")
-            || (legacyHeld is not null && (HoldingFolder.HoldsFiles(legacyHeld, "meta.json")
-                                           || File.Exists(Path.Combine(legacyHeld, "meta.json"))))
             || files.Any(f => File.Exists(Path.Combine(dest, f)) || Directory.Exists(Path.Combine(dest, f))))
             throw new HeldCopyCollisionException(
                 $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {dest}, "
@@ -989,7 +1011,9 @@ public static class Scanner
         // the raw name (Windows 11 let a plain CreateDirectory make disabled/Aux). Read and torn down by its
         // exact real name. A name with no folder of either kind was never turned off.
         var srcFolder = HoldingName.Folder(name);
-        var src = srcFolder is null ? null : Path.Combine(c.DisabledRoot, srcFolder);
+        // Exactly, case included: Windows would open another mod's raw "~626~466F6F2E" for Foo.'s folder.
+        var src = srcFolder is null || !FolderNames.HasEntryNamedExactly(c.DisabledRoot, srcFolder) ? null
+            : Path.Combine(c.DisabledRoot, srcFolder);
         if ((src is null || !File.Exists(Path.Combine(src, "meta.json")))
             && HoldingName.LegacyPath(c.DisabledRoot, name) is { } legacySrc)
             src = legacySrc;
