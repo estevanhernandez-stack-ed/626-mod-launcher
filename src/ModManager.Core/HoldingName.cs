@@ -100,6 +100,28 @@ internal static class HoldingName
     }
 
     /// <summary>
+    /// Holding folders read back as mods, one entry per mod. Encoded holds come first, so when an older
+    /// build's raw-named folder (<c>disabled/Aux</c>) and an encoded one decode to the same mod, the encoded
+    /// one, which turn-on uses, is the one listed. A raw-named folder for a risky name is also that mod's
+    /// leftover when a listed name matches it without case (the encoded hold of <c>aux</c>): Windows and
+    /// <see cref="LegacyPath"/> both treat the two as one. Ordinary names keep exact de-duplication.
+    /// </summary>
+    public static IEnumerable<(string Folder, string Name)> Listed(IEnumerable<string> folders)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var seenAnyCase = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in folders.OrderBy(f => ModName(f) == f ? 1 : 0))
+        {
+            var name = ModName(folder);
+            var legacyRisky = name == folder && Folder(name) != name;
+            if (legacyRisky ? seenAnyCase.Contains(name) : seen.Contains(name)) continue;
+            seen.Add(name);
+            seenAnyCase.Add(name);
+            yield return (folder, name);
+        }
+    }
+
+    /// <summary>
     /// True when <paramref name="root"/> holds an entry that Windows would open for <paramref name="folder"/>
     /// but whose real name differs: another name's folder (an older build's raw <c>~626~466F6F2E</c> where
     /// <c>Foo.</c>'s <c>~626~466f6f2e</c> would go). Writing <paramref name="folder"/> there would land in it.

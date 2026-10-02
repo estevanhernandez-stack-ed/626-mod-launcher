@@ -238,10 +238,11 @@ public static class ModListing
         try
         {
             return Directory.Exists(ctx.DisabledRoot)
-                ? Directory.GetDirectories(ctx.DisabledRoot).Select(Path.GetFileName)
-                    // A holding folder is the mod's name or its HoldingName encoding; the key is the name.
-                    .Select(n => n is null ? null : HoldingName.ModName(n))   // the encoding's exact inverse
-                    .Where(n => n is not null).Select(n => n!).Distinct(StringComparer.Ordinal).ToList()   // a legacy and an encoded hold may coincide
+                // A holding folder is the mod's name or its HoldingName encoding; the key is the name, once per
+                // mod, the same way the turned-off listing reads it.
+                ? HoldingName.Listed(Directory.GetDirectories(ctx.DisabledRoot).Select(Path.GetFileName)
+                        .Where(n => n is not null).Select(n => n!))
+                    .Select(x => x.Name).ToList()
                 : Array.Empty<string>();
         }
         catch { return Array.Empty<string>(); }

@@ -413,6 +413,52 @@ public class NameAliasToggleTests : IDisposable
         Assert.Equal(new[] { "meta.json" }, Directory.GetFiles(dir).Select(Path.GetFileName));
         Assert.Equal(record, File.ReadAllText(Path.Combine(dir, "meta.json")));
     }
+
+    // An ORDINARY name opens its hold the way Windows does, without case. A stale record-only disabled/mymod
+    // receives MyMod's turn-off (Windows opens it for "MyMod"), and the turn-on must find it the same way.
+    [Fact]
+    public async Task An_ordinary_name_turns_on_from_a_hold_whose_folder_differs_in_case()
+    {
+        var stale = Path.Combine(Disabled, "mymod");
+        Directory.CreateDirectory(stale);
+        File.WriteAllText(Path.Combine(stale, "meta.json"),
+            "{\"location\":\"mods\",\"hadOnServer\":{},\"isFolder\":false}");
+        File.WriteAllText(Path.Combine(Mods, "MyMod_P.pak"), "MY MOD");
+        var before = GameHashes();
+
+        await Scanner.DisableModAsync("MyMod", Ctx());
+        Assert.Equal("MY MOD", File.ReadAllText(Path.Combine(stale, "MyMod_P.pak")));   // where Windows put it
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("MyMod", Ctx());
+
+        Assert.True(outcome.Enabled, outcome.Reason);
+        Assert.Equal(before, GameHashes());
+    }
+
+    // A legacy raw-named hold that differs only in case from a listed mod is that mod's leftover, not a second
+    // mod: one off row, and the turn-on restores the right bytes.
+    [Fact]
+    public async Task A_case_variant_legacy_hold_does_not_list_as_a_second_row()
+    {
+        var dir = LegacyHold("Aux", "Aux_P.pak", "OLD AUX");
+        if (dir is null) return;   // passing vacuously: this Windows refuses the name
+        File.Delete(Path.Combine(dir, "Aux_P.pak"));
+        File.WriteAllText(Path.Combine(Mods, "aux_P.pak"), "LOWER AUX");
+        var before = GameHashes();
+
+        await Scanner.DisableModAsync("aux", Ctx());
+
+        var off = (await Rows()).Where(m => string.Equals(m.Name, "aux", StringComparison.OrdinalIgnoreCase)).ToList();
+        var row = Assert.Single(off);
+        Assert.Equal("aux", row.Name);
+        Assert.False(row.Enabled);
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("aux", Ctx());
+
+        Assert.True(outcome.Enabled, outcome.Reason);
+        Assert.Equal(before, GameHashes());
+        Assert.Equal("LOWER AUX", File.ReadAllText(Path.Combine(Mods, "aux_P.pak")));
+    }
 }
 
 /// <summary>

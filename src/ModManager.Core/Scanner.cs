@@ -472,18 +472,12 @@ public static class Scanner
     private static IReadOnlyList<DisabledEntry> ListDisabled(GameContext c)
     {
         var result = new List<DisabledEntry>();
-        // Encoded holds first: when an older build's raw-named folder (disabled/Aux) and an encoded one both
-        // decode to the same mod, the encoded one is the hold turn-on uses, so it is the one listed. A name
-        // listed once is not listed again.
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var folder in SafeReadDirs(c.DisabledRoot)
-                     .OrderBy(f => HoldingName.ModName(f) == f ? 1 : 0))
+        // One entry per mod, the encoded hold winning over an older build's raw-named one (HoldingName.Listed).
+        foreach (var (folder, name) in HoldingName.Listed(SafeReadDirs(c.DisabledRoot)))
         {
-            if (!seen.Add(HoldingName.ModName(folder))) continue;
             // The folder is the mod's name, or its HoldingName encoding when Windows would not keep that name
             // as written. Any other folder (an older build's disabled/Aux, a hand-made ~626~ name) is listed by
             // its raw name, and turning it on reaches it through HoldingName.LegacyPath.
-            var name = HoldingName.ModName(folder);
             // By its real name: a folder only a \\?\-aware tool could make (Foo.) is read as itself.
             var dir = FolderNames.ExactPath(c.DisabledRoot, folder);
             var location = c.Locations.Count > 0 ? c.Locations[0].Name : "";
@@ -651,6 +645,8 @@ public static class Scanner
         // when Windows would not keep the name as written, so Foo. is never held in, or deleted from, Foo's).
         // Only when disabled/ lists an entry by that real name, so an 8.3 alias never reaches the long name.
         // By its exact real name, case included: "~626~466F6F2E" (another mod's raw folder) is not Foo.'s.
+        // Stricter than turn-on, which opens an ordinary name without case: a delete errs toward leaving a
+        // case-variant folder behind, a restore toward finding it.
         if (heldFolder is not null && FolderNames.HasEntryNamedExactly(c.DisabledRoot, heldFolder))
             DeletePath(Path.Combine(c.DisabledRoot, heldFolder));
         // A folder whose real name ends in a dot or space can only have been made by a \\?\-aware tool, never
@@ -1014,8 +1010,12 @@ public static class Scanner
         // the raw name (Windows 11 let a plain CreateDirectory make disabled/Aux). Read and torn down by its
         // exact real name. A name with no folder of either kind was never turned off.
         var srcFolder = HoldingName.Folder(name);
-        // Exactly, case included: Windows would open another mod's raw "~626~466F6F2E" for Foo.'s folder.
-        var src = srcFolder is null || !FolderNames.HasEntryNamedExactly(c.DisabledRoot, srcFolder) ? null
+        // An ordinary name opens its folder the way Windows does, without case: a turn-off of MyMod into a
+        // stale disabled/mymod lands there, and the turn-on must find it the same way. An ENCODED folder counts
+        // only by its exact name, case included: Windows would open another mod's raw "~626~466F6F2E" for
+        // Foo.'s "~626~466f6f2e". Same split as ModUninstall.HeldPresent.
+        var src = srcFolder is null
+                  || (srcFolder != name && !FolderNames.HasEntryNamedExactly(c.DisabledRoot, srcFolder)) ? null
             : Path.Combine(c.DisabledRoot, srcFolder);
         if ((src is null || !File.Exists(Path.Combine(src, "meta.json")))
             && HoldingName.LegacyPath(c.DisabledRoot, name) is { } legacySrc)
