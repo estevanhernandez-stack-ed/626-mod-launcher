@@ -854,7 +854,10 @@ public static class Scanner
     }
 
     /// <summary>Result of an enable attempt — lets bulk / Safe-Clear callers see WHY a mod didn't
-    /// re-enable instead of getting a silent no-op.</summary>
+    /// re-enable instead of getting a silent no-op.
+    /// <para><c>Enabled == true</c> with a non-null <c>Reason</c> is a WARNING, not a failure: the mod is on,
+    /// and the reason says files remain held in <c>disabled-trees/&lt;Mod&gt;</c> under a tree the game no
+    /// longer declares. A failure is <c>Enabled == false</c> (skipped) or a thrown exception.</para></summary>
     public sealed record EnableOutcome(string Name, bool Enabled, bool Skipped, string? Reason);
 
     private static EnableOutcome EnableMod(string name, GameContext c)
@@ -899,8 +902,29 @@ public static class Scanner
         var heldExtras = TreeHolding.Held(c, name, c.ExtraModTrees);
         string LiveFor(TreeHolding.HeldEntry x)
             => Path.Combine(c.GameRoot, Path.Combine(x.Tree.Split('/')), x.EntryName);
+        // A tree another tool took over while the mod was off is skipped like the main lane's owned target,
+        // and for the same reason: moving a held entry in would corrupt that tool's deployment. ReDeployed
+        // counts as owned here exactly as it does when turning off. Checked before any write, so the whole
+        // mod stays off and held rather than coming back with one tree missing.
+        foreach (var tree in heldExtras.Select(x => x.Tree).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var treeDir = Path.GetFullPath(Path.Combine(c.GameRoot, Path.Combine(tree.Split('/'))));
+            if (ToolOwnership.Resolve(treeDir, c.TakenOver).State is OwnershipState.Owned or OwnershipState.ReDeployed)
+                return new EnableOutcome(name, false, true, "target folder now owned by another tool");
+        }
         foreach (var x in heldExtras)
         {
+            // A FILE where a tree folder belongs (a stray "r6/tweaks" file) would only fail once the restore
+            // tried to recreate the folder, after the main copy was in. Refuse it here instead.
+            var segments = x.Tree.Split('/');
+            for (var i = 1; i <= segments.Length; i++)
+            {
+                var segPath = Path.Combine(c.GameRoot, Path.Combine(segments[..i]));
+                if (File.Exists(segPath))
+                    throw new InvalidOperationException(
+                        $"Couldn't enable \"{name}\" (\"{string.Join('/', segments[..i])}\" is a file at \"{segPath}\", "
+                        + "where a folder belongs — conflict.)");
+            }
             var dst = LiveFor(x);
             if (Directory.Exists(dst) || File.Exists(dst))
                 throw new InvalidOperationException(

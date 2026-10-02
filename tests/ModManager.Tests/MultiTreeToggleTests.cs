@@ -451,6 +451,51 @@ public class MultiTreeToggleTests : IDisposable
         Assert.False(Directory.Exists(HeldTrees));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_tree_another_tool_took_while_the_mod_was_off_skips_the_enable_with_nothing_written(bool redeployed)
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        // While the mod was off, Vortex deployed into r6/tweaks (or took it back after a takeover). Moving
+        // the held tweak in would write into that manager's deployment, the main lane's own skip rule.
+        var tweaks = Path.GetFullPath(Path.Combine(GameRoot, "r6", "tweaks"));
+        File.WriteAllText(Path.Combine(tweaks, "__folder_managed_by_vortex"), "");
+        if (redeployed) TakenOverStore.Add(DataDir, tweaks);
+        var game = Hashes(GameRoot);
+        var heldTrees = Hashes(HeldTrees);
+        var heldMain = Hashes(HeldMain);
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx());
+
+        Assert.False(outcome.Enabled);
+        Assert.True(outcome.Skipped);
+        Assert.Equal("target folder now owned by another tool", outcome.Reason);
+        Assert.Equal(game, Hashes(GameRoot));
+        Assert.Equal(heldTrees, Hashes(HeldTrees));
+        Assert.Equal(heldMain, Hashes(HeldMain));
+    }
+
+    [Fact]
+    public async Task A_file_where_a_tree_folder_belongs_refuses_before_anything_is_written()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        // r6/tweaks is now a FILE, so the tree folder cannot be recreated. Found by the pre-check, not
+        // halfway through the restore after the main file was already copied in.
+        Directory.Delete(Path.Combine(GameRoot, "r6", "tweaks"), recursive: true);
+        File.WriteAllText(Path.Combine(GameRoot, "r6", "tweaks"), "NOT-A-FOLDER");
+        var game = Hashes(GameRoot);
+        var heldTrees = Hashes(HeldTrees);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.EnableModAsync("CoolMod", Ctx()));
+
+        Assert.Contains("Couldn't enable \"CoolMod\"", e.Message);
+        Assert.Contains("\"r6/tweaks\"", e.Message);
+        Assert.Contains("conflict", e.Message);
+        Assert.Equal(game, Hashes(GameRoot));
+        Assert.Equal(heldTrees, Hashes(HeldTrees));
+    }
+
     [Fact]
     public async Task Files_held_under_a_tree_no_longer_declared_turn_on_with_a_warning_naming_the_folder()
     {
