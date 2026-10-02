@@ -1513,6 +1513,13 @@ public sealed partial class MainViewModel : ObservableObject
         finally { row.IsBusy = false; }
     }
 
+    // An uninstall's answer, plus a reload that failed after it: the uninstall did what its line says, and the
+    // list on screen may be stale, so both are said rather than one hiding the other.
+    private static string WithReloadFailure(string? status, Exception reloadFailure)
+        => status is null
+            ? ErrorRemedy.Describe(reloadFailure)
+            : $"{status} The list couldn't refresh: {ErrorRemedy.Describe(reloadFailure)}";
+
     // The family's variants as the listing reports them now, so the preview and the delete see the same mods.
     private static List<Mod> FamilyMembers(GameContext ctx, ModRowViewModel row)
     {
@@ -1567,7 +1574,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Reload whatever happened, so the rows show what is really on disk after a partial failure, and
             // first, because it resets the status line to the enabled count.
             try { await ReloadModsAsync(); }
-            catch (Exception e) { status ??= ErrorRemedy.Describe(e); }
+            catch (Exception e) { status = WithReloadFailure(status, e); }
             if (status is not null) StatusText = status;
             IsBusy = false;
         }
@@ -4448,7 +4455,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Reload whatever happened, so the row shows what is really on disk after a partial failure, and
             // first, because it resets the status line to the enabled count, which would replace the answer.
             try { await ReloadModsAsync(); }
-            catch (Exception e) { status ??= ErrorRemedy.Describe(e); }
+            catch (Exception e) { status = WithReloadFailure(status, e); }
             if (status is not null) StatusText = status;
             IsBusy = false;
         }

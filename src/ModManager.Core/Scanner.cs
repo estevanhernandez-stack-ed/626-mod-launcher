@@ -632,11 +632,15 @@ public static class Scanner
                 foreach (var manifest in ModInstallRegistry.ClaimsOn(c.DataDir, f))
                     ModInstallRegistry.Remove(c.DataDir, manifest.InstallId);
         }
-        // The turned-off copy, only when it is this mod's own: the name is one folder as written and
-        // disabled/ lists an entry by that real name. Otherwise there is no copy of this mod's to delete, and
-        // joining the name would reach a different mod's (Foo. opens Foo, an 8.3 alias opens the long name).
-        if (FolderNames.NamesOneFolder(name) && FolderNames.HasEntryNamed(c.DisabledRoot, name))
-            DeleteDir(Path.Combine(c.DisabledRoot, name));
+        // The turned-off copy, only when it is this mod's own: disabled/ lists an entry by that real name.
+        // Otherwise there is no copy of this mod's to delete, and joining the name would reach a different
+        // mod's (Foo. opens Foo, an 8.3 alias opens the long name). An entry whose real name ends in a dot or
+        // space (a \\?\-aware tool made it) is deleted through its exact path, so the real Foo. goes and its
+        // lookalike Foo never does. A name with a separator or ':' can't match a listed entry at all.
+        if (FolderNames.HasEntryNamed(c.DisabledRoot, name))
+            DeletePath(FolderNames.NamesOneFolder(name)
+                ? Path.Combine(c.DisabledRoot, name)
+                : FolderNames.ExactPath(c.DisabledRoot, name));
     }
 
     /// <summary>Delete one entry the scan enumerated under <paramref name="baseDir"/>, by its real relative

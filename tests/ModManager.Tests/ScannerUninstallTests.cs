@@ -151,6 +151,27 @@ public class ScannerUninstallTests
         Assert.Equal("X", File.ReadAllText(coolsCopy));
     }
 
+    // A turned-off copy whose REAL folder name ends in a dot (only a \\?\-aware tool makes one) is this mod's
+    // own: delete it exactly, and still never the lookalike Foo beside it.
+    [Fact]
+    public async Task A_turned_off_copy_whose_real_name_ends_in_a_dot_is_deleted_exactly_and_its_lookalike_survives()
+    {
+        var (_, _, c) = Setup();
+        var foo = Path.Combine(c.DisabledRoot, "Foo");
+        Directory.CreateDirectory(foo);
+        File.WriteAllText(Path.Combine(foo, "Foo.pak"), "FOO");
+        var odd = @"\\?\" + Path.Combine(c.DisabledRoot, "Foo.");
+        Directory.CreateDirectory(odd);
+        File.WriteAllText(odd + @"\odd.pak", "ODD");
+        Assert.Contains(await Scanner.BuildModListAsync(c), m => m.Name == "Foo."); // pre-condition: listed by its real name
+
+        await Scanner.UninstallModAsync("Foo.", c);
+
+        Assert.False(Directory.Exists(odd));
+        Assert.Equal("FOO", File.ReadAllText(Path.Combine(foo, "Foo.pak")));
+        Assert.DoesNotContain(await Scanner.BuildModListAsync(c), m => m.Name == "Foo.");
+    }
+
     // The live-file loop deletes entries the scan enumerated, by their real names. One whose name ends in a dot
     // or space (only a \\?\-aware tool can make one) must be deleted exactly, never the entry Windows would
     // normalise the path onto.
