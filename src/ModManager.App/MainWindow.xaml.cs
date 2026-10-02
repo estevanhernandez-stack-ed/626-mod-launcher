@@ -340,6 +340,20 @@ public sealed partial class MainWindow : Window
 
     private async Task HandleInterruptedClearAsync(Services.RestorePointService rp, ModManager.Core.RestorePoints.InterruptedClear ic)
     {
+        if (ic.NewerSchema)
+        {
+            // Sealed by a newer 626: complete, just unreadable here. Never offered for discard or restore.
+            var n = new ContentDialog
+            {
+                Title = "A reset didn't finish",
+                Content = ModManager.Core.RestorePoints.RestorePointOrchestrator.InterruptedNewerMessage,
+                CloseButtonText = "OK",
+                XamlRoot = Content.XamlRoot,
+            };
+            ModManager.App.Services.DialogTheming.Apply(n); // vibe-glow wave 1: popup-scope theme brushes
+            await n.ShowAsync();
+            return;
+        }
         if (ic.Sealed)
         {
             var d = new ContentDialog

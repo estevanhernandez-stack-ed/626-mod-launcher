@@ -25,6 +25,9 @@ public sealed class RestorePointOrchestrator
     private const string LockName = "safe-clear.lock";
     private const string SheetFileName = "626-launcher-how-to-launch.txt";
 
+    /// <summary>Tests only: runs just before the manifest rewrite that records a game's held copies.</summary>
+    internal Action? BeforeManifestRewriteForTests { get; set; }
+
     public RestorePointOrchestrator(string dataRoot, string restorePointsRoot, string launcherVersion,
         IGameProvider provider, INexusGate nexus, IGameRunningProbe probe)
     {
@@ -132,8 +135,11 @@ public sealed class RestorePointOrchestrator
                 // TotalBytes/FileCount include the planned vanilla-moved payload (moved after the seal).
                 long movedBytes = archives.Sum(a => a.MovedFiles.Sum(mf => mf.Bytes));
                 int movedCount = archives.Sum(a => a.MovedFiles.Count);
+                // Schema 2 only when a game carries the turn-off record; a modsActive-only point stays readable
+                // by builds that predate it.
+                var schema = archives.Any(a => a.TurnedOffByClear is not null) ? RestorePoint.SchemaVersion : 1;
                 var manifest = new RestorePointManifest(
-                    RestorePoint.SchemaVersion, _launcherVersion, timestamp,
+                    schema, _launcherVersion, timestamp,
                     Complete: true, opts.KeepNexus,
                     FileTally.ByteSize(rpDir) + movedBytes, FileTally.FileCount(rpDir) + movedCount, archives);
                 RestorePointManifestStore.WriteSealed(rpDir, manifest);   // THE SEAL — before any move (Law A)
@@ -190,8 +196,23 @@ public sealed class RestorePointOrchestrator
                             HeldCopies = copies,
                         }).ToList(),
                     };
-                    try { RestorePointManifestStore.WriteSealed(rpDir, next); current = next; }
-                    catch { /* best effort: the sealed manifest still restores from the data folder */ }
+                    try
+                    {
+                        BeforeManifestRewriteForTests?.Invoke();
+                        RestorePointManifestStore.WriteSealed(rpDir, next);
+                        current = next;
+                    }
+                    catch (Exception e)
+                    {
+                        // The sealed manifest still restores, from the data folder. Copies it doesn't describe go,
+                        // so the restore point holds only what its manifest says.
+                        try { var held = Path.Combine(gameArchiveDir, RestorePointEngine.HeldDirName); if (Directory.Exists(held)) Directory.Delete(held, recursive: true); } catch { }
+                        if (copies is { Count: > 0 })
+                            warnings.Add($"{g.GameName}: the restore point's record of the copied mods couldn't be saved ({e.Message}). "
+                                + $"They are still held in {ctx.DataDir}; keep that folder until you restore.");
+                        else
+                            warnings.Add($"{g.GameName}: the restore point's record couldn't be updated ({e.Message}).");
+                    }
                 }
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, SheetFileName));
@@ -284,6 +305,8 @@ public sealed class RestorePointOrchestrator
                 var replay = RestorePointEngine.ReplayGame(ga, Path.Combine(rpDir, "games", ga.Id), _provider.ContextFor(game));
                 // The mods the clear turned off that are not back on, grouped by reason so a 200-mod game
                 // that hit one cause reads as one line, not two hundred.
+                foreach (var rec in replay.Recovered)
+                    warnings.Add($"{ga.GameName}: \"{rec.Name}\" had stopped partway through turning off; it is back on now.");
                 foreach (var grp in replay.NotBackOn.GroupBy(n => n.Reason))
                 {
                     var names = grp.Select(n => $"\"{n.Name}\"").ToList();
@@ -331,16 +354,26 @@ public sealed class RestorePointOrchestrator
         try
         {
             var ts = File.ReadAllText(lockPath).Trim();
-            var sealed_ = RestorePointManifestStore.Validate(
-                RestorePointManifestStore.Read(Path.Combine(_restorePointsRoot, ts)),
-                RestorePoint.SchemaVersion).Ok;
+            var m = RestorePointManifestStore.Read(Path.Combine(_restorePointsRoot, ts));
+            // Sealed means complete, whoever wrote it. A complete manifest from a newer build is sealed too:
+            // reading it as "unsealed" would offer to discard a whole restore point this build just can't read.
+            if (m is { Complete: true } && m.SchemaVersion > RestorePoint.SchemaVersion)
+                return new InterruptedClear(ts, Sealed: true, NewerSchema: true);
+            var sealed_ = RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion).Ok;
             return new InterruptedClear(ts, sealed_);
         }
         catch { return null; }
     }
 
+    /// <summary>What to tell the user about an interrupted clear sealed by a newer 626.</summary>
+    public const string InterruptedNewerMessage =
+        "A reset made by a newer version of 626 didn't finish. Its restore point is complete, but this version "
+        + "can't read it. Update 626 to restore it; nothing has been discarded.";
+
     public void DiscardPartial(string timestamp)
     {
+        // Only ever a PARTIAL point: a complete manifest (any schema) is a restore point, never discarded here.
+        if (RestorePointManifestStore.Read(Path.Combine(_restorePointsRoot, timestamp)) is { Complete: true }) return;
         DeleteRestorePoint(timestamp);
         try { var p = Path.Combine(_dataRoot, LockName); if (File.Exists(p)) File.Delete(p); } catch { /* best effort */ }
     }

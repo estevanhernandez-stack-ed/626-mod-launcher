@@ -95,7 +95,7 @@ public class OffBoardingSheetTests
     {
         var r = Report() with
         {
-            TurnedOffCount = 12,
+            TurnedOffCount = 12, InDataFolder = 12,
             HeldInDataDir = @"D:\SteamLibrary\_626mods\elden-ring",
             TurnOffSkips = new[] { new ClearSkip("StubbornMod", "an earlier turned-off copy of it is already held") },
         };
@@ -117,13 +117,13 @@ public class OffBoardingSheetTests
     {
         var r = Report() with
         {
-            TurnedOffCount = 3,
+            TurnedOffCount = 3, InDataFolder = 3,
             HeldInDataDir = @"D:\SteamLibrary\_626mods\elden-ring",
-            TurnedOffModsCopied = true,
+            CopiedToRestorePoint = 3,
         };
         var s = OffBoardingSheet.Render(r);
 
-        Assert.Contains("copies of them are saved in your restore point", s, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("a copy of each of them is saved in your restore point", s, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("turns exactly those 3 back on", s);
         Assert.DoesNotContain("don't delete", s, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("keep that folder", s, StringComparison.OrdinalIgnoreCase);

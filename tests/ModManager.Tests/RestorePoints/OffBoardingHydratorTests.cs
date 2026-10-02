@@ -100,10 +100,11 @@ public class OffBoardingHydratorTests
         Assert.Equal(2, report.TurnedOffCount);
         Assert.Equal(@"D:\_626mods\t", report.HeldInDataDir);
         Assert.Equal("B", Assert.Single(report.TurnOffSkips!).Name);
-        Assert.False(report.TurnedOffModsCopied);   // no heldCopies record
+        Assert.Equal(0, report.CopiedToRestorePoint);   // no heldCopies record
 
         var copied = OffBoardingHydrator.Hydrate(ga with { HeldCopies = Array.Empty<HeldCopy>() }, "rp");
-        Assert.True(copied.TurnedOffModsCopied);
+        Assert.Equal(0, copied.CopiedToRestorePoint);   // an empty record copies nothing
+        Assert.Equal(2, copied.InDataFolder);
     }
 
     [Fact]

@@ -19,7 +19,23 @@ public static class OffBoardingHydrator
             TurnedOffCount: TurnedOffCount(ga),
             HeldInDataDir: ga.TurnedOffByClear is null ? null : ga.DataDir,
             TurnOffSkips: ga.TurnOffSkipped,
-            TurnedOffModsCopied: ga.HeldCopies is not null);
+            InDataFolder: TurnedOff(ga).Count(m => !IsProxy(m) && !IsConfig(m)),
+            Proxies: TurnedOff(ga).Count(IsProxy),
+            InConfig: TurnedOff(ga).Count(IsConfig),
+            CopiedToRestorePoint: TurnedOff(ga).Count(m => !IsProxy(m) && !IsConfig(m)
+                && (ga.HeldCopies ?? Array.Empty<HeldCopy>()).Any(h => string.Equals(h.Name, m.Name, StringComparison.OrdinalIgnoreCase))));
+
+    private static bool IsProxy(ClearedMod m) => m.Location == ProxyLoaderRows.LocationTag;
+    private static bool IsConfig(ClearedMod m) => m.Location == "mod engine 2";
+
+    // The sealed set minus the turn-offs that refused (those are still active).
+    private static IReadOnlyList<ClearedMod> TurnedOff(GameArchive ga)
+    {
+        if (ga.TurnedOffByClear is null) return Array.Empty<ClearedMod>();
+        var refused = new HashSet<string>((ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Select(s => s.Name),
+            StringComparer.OrdinalIgnoreCase);
+        return ga.TurnedOffByClear.Where(m => !refused.Contains(m.Name)).ToList();
+    }
 
     // What actually went off: the sealed set minus the turn-offs that refused (those are still active).
     private static int TurnedOffCount(GameArchive ga)

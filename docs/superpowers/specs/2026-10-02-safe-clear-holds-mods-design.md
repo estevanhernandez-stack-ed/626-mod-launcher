@@ -29,6 +29,7 @@ Left alone, each for a reason that already exists elsewhere:
 | Other `ReadOnly` rows (a library something needs, or whose need is unknown) | The listing already refuses to switch it. Same rule as Play vanilla's step-aside. |
 | UE4SS / BepInEx manifest mods | Already owned by the clear: captured in `loaderMods`, flipped off by the loader sweep, flipped back on Restore. One owner per mod. |
 | A row whose files sit at or under a sealed direct-inject move | Already moved to `vanilla-moved` by the existing step. Never double-moved. |
+| A row whose files are a registered framework's installed files (the DLL mod loader Elden Mod Loader installs, a proxy DLL a framework dropped) | The framework uninstall removes them and its captured state restores them. Turning the row off too held them twice and restored them twice (round 2, I1). |
 
 The direct-inject step is unchanged: same plan, same `vanilla-moved` folder in the archive, same
 restore. Existing restore points keep restoring. The new turn-offs cover what that step never reached,
@@ -57,7 +58,7 @@ re-detected.
 - `turnedOffByClear: []` is a vanilla game with nothing to turn off.
 
 The held files stay where every turn-off puts them, in the game's data dir (`disabled/`,
-`disabled-trees/`, `direct-disabled/`, `loose-disabled/`, or the play folder's `_626anilla-proxy`).
+`disabled-trees/`, `direct-disabled/`, `loose-disabled/`, or the play folder's `_626\vanilla-proxy`).
 Safe Clear never deletes the data dir, and leaves its `RESTORE-AVAILABLE.json` breadcrumb there; a game
 re-added without a restore shows those mods as turned off, which is true.
 
@@ -149,3 +150,38 @@ still active. *Return-to-vanilla honesty* in the phase-1 spec is updated to matc
 `modsActive`, what CAPTURE copies, the RESET step, the direct-inject `vanilla-moved` path, and the
 skip-archive rule (turn-offs still move to holding, never delete; with no restore point there is no
 record, and the mods show as turned off when the game is re-added).
+
+## Round 2 review fixes (2026-10-02)
+
+- **A mod the user already turned back on** between the clear and the restore is live. Restore reads the
+  listing before any put-back and never puts an archived copy into holding for a live row: that made a
+  second, phantom held copy (I2). The listing is read again after the put-backs, for the ban-risk check and
+  the turn-ons.
+- **No merged copies (I3).** If some of a mod's recorded held files are missing from the data folder, the
+  ones still there are hashed too. If any differs from the record, the data folder holds a different copy,
+  and Restore leaves the mod exactly as it is (writes nothing) and says so: "the data folder holds a
+  different copy than the restore point, so 626 left it as it is". With nothing missing, nothing changes.
+- **No partial files.** Put-back and copy-in each write a temp sibling, size- and SHA-check it, then move it
+  into place. Put-back tracks every destination before writing, so a failure partway removes all of them.
+  Copy-in replaces an earlier run's file by moving over it: there is no delete-then-copy window.
+- **Rooted paths.** A manifest path that is rooted or starts with a separator is refused before PathGate
+  (which trims a leading separator) at all three restore sites: vanilla-moved files, framework files, and
+  held copies.
+- **Exact-name files fail closed.** A held file whose real name ends in a dot or space can only be reached
+  by its exact name, so the copy into the restore point is refused up front. The game is warned and gets no
+  `heldCopies`, and Restore uses the data folder. (The scanner's own turn-on can't yet move such a file:
+  a plain disable/enable round trip fails the same way outside Safe Clear. Restore reports that mod rather
+  than claiming it.)
+- **Stranded refusals.** A refused turn-off whose rollback stranded files in holding lists as off. Restore
+  now tries it too, and reports it as recovered or as not back on.
+- **Pre-flight** counts each turn-off's extra-tree entries (the toggle's own `ExtraTreeRows` selection,
+  read once).
+- **Schema** is 2 only when a game carries `turnedOffByClear`. A modsActive-only point stays at 1.
+- **Interrupted, newer schema.** A complete manifest from a newer 626 reads as sealed (`NewerSchema`), is
+  never offered for discard (`DiscardPartial` refuses any complete manifest), and the App says "update 626
+  to restore it".
+- **A failed manifest rewrite** after the held copy warns, and the copies it would have described are
+  removed.
+- **The sheet** says where each lane's mods went: the data folder (scanner, direct-inject, loose-root), the
+  game's `_626\vanilla-proxy` (proxy loaders), or Mod Engine 2's config. It describes a copy in the restore
+  point only for the mods that actually have one.

@@ -44,14 +44,26 @@ public static class OffBoardingSheet
             if (r.TurnedOffCount > 0)
             {
                 var mods = r.TurnedOffCount == 1 ? "1 mod" : $"{r.TurnedOffCount} mods";
-                var them = r.TurnedOffCount == 1 ? "it" : "them";
-                sb.AppendLine($"  626 turned off {mods} and is holding {them} in its data folder:");
-                if (!string.IsNullOrEmpty(r.HeldInDataDir)) sb.AppendLine("    " + r.HeldInDataDir);
-                var back = r.TurnedOffCount == 1 ? "that 1 back on" : $"those {r.TurnedOffCount} back on";
-                sb.AppendLine(r.TurnedOffModsCopied
-                    ? $"  Copies of {them} are saved in your restore point too. Restoring this setup turns exactly {back}, "
-                      + "from that folder or, if it's gone, from the restore point."
-                    : $"  Keep that folder until you restore: it is where they are. Restoring this setup turns exactly {back}.");
+                sb.AppendLine($"  626 turned off {mods}.");
+                // Where each lane's mods went. Without per-lane counts (an older report) all are data-folder held.
+                var inData = r.InDataFolder + r.Proxies + r.InConfig == 0 ? r.TurnedOffCount : r.InDataFolder;
+                if (inData > 0)
+                {
+                    sb.AppendLine($"  {inData} held in its data folder:");
+                    if (!string.IsNullOrEmpty(r.HeldInDataDir)) sb.AppendLine("    " + r.HeldInDataDir);
+                    var copied = Math.Min(r.CopiedToRestorePoint, inData);
+                    sb.AppendLine(copied == inData
+                        ? "  A copy of each of them is saved in your restore point too, so restoring works from that folder or, if it's gone, from the restore point."
+                        : copied > 0
+                            ? $"  A copy of {copied} of them is saved in your restore point. Keep that folder until you restore: it is the only copy of the other {inData - copied}."
+                            : "  Keep that folder until you restore: it is where they are.");
+                }
+                if (r.Proxies > 0)
+                    sb.AppendLine($"  {r.Proxies} loader DLL{(r.Proxies == 1 ? "" : "s")} stepped aside into the game's _626\\vanilla-proxy folder.");
+                if (r.InConfig > 0)
+                    sb.AppendLine($"  {r.InConfig} switched off in Mod Engine 2's config.");
+                sb.AppendLine("  Restoring this setup turns exactly "
+                    + (r.TurnedOffCount == 1 ? "that 1 back on." : $"those {r.TurnedOffCount} back on."));
             }
             foreach (var s in skips)
                 sb.AppendLine($"  {s.Name} is still active: 626 couldn't turn it off. {s.Reason}");

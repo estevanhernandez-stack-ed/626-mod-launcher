@@ -21,9 +21,14 @@ public sealed record OffBoardingReport(
     int TurnedOffCount = 0,
     string? HeldInDataDir = null,
     IReadOnlyList<ClearSkip>? TurnOffSkips = null,
-    // True when the restore point carries copies of the turned-off mods (heldCopies), so the data folder is
-    // no longer the only copy and the sheet need not ask the user to keep it.
-    bool TurnedOffModsCopied = false);
+    // Where the turned-off mods went, per lane: held in the data folder (scanner, direct-inject, loose-root),
+    // stepped aside into the game's _626\vanilla-proxy (proxy loaders), or switched off in Mod Engine 2's config.
+    int InDataFolder = 0,
+    int Proxies = 0,
+    int InConfig = 0,
+    // How many of the data-folder ones have a copy in the restore point (heldCopies). Only those may be
+    // described as saved there; the rest are only in the data folder.
+    int CopiedToRestorePoint = 0);
 
 public sealed record OffBoardingOwnedMod(string Name, string ManagedBy);
 

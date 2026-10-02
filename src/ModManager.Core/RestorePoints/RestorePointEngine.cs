@@ -16,8 +16,9 @@ public sealed record EndStateResult(
 
 /// <summary>Result of <see cref="RestorePointEngine.ReplayGame"/>: the mods from the sealed turn-off set
 /// that are not on after Restore, each with the lane's reason when it gave one. Empty means every mod the
-/// clear turned off is back on (or the archive carried no turn-off record).</summary>
-public sealed record ReplayResult(IReadOnlyList<ClearSkip> NotBackOn);
+/// clear turned off is back on (or the archive carried no turn-off record).
+/// <para><c>Recovered</c>: turn-offs that had refused partway (their files stranded in holding) and are back on.</para></summary>
+public sealed record ReplayResult(IReadOnlyList<ClearSkip> NotBackOn, IReadOnlyList<ClearSkip> Recovered);
 
 /// <summary>
 /// The headless Safe Clear / Restore file engine. Takes explicit archive paths — no %APPDATA%
@@ -73,10 +74,17 @@ public static partial class RestorePointEngine
     {
         var moved = plannedMoves.Select(mf => FullNorm(Path.Combine(c.GameRoot, mf.Rel)))
             .Where(p => p is not null).Select(p => p!).ToList();
+        // A framework's installed files are the framework's: its uninstall removes them and its captured state
+        // puts them back. A row made of them (the DLL mod loader Elden Mod Loader installs, a proxy DLL a
+        // framework dropped) turned off as well would be held AND restored twice, so it is left to the framework.
+        var frameworkOwned = FrameworkRegistry.List(c.DataDir)
+            .SelectMany(fw => fw.InstalledFiles.Select(f => FullNorm(Path.Combine(fw.InstallPath, f))))
+            .Where(p => p is not null).Select(p => p!).ToList();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return ModListing.Resolve(c.Game)
             .Where(m => m.Enabled && !m.ReadOnly && m.Loader is not ("ue4ss" or "bepinex"))
             .Where(m => !CoveredByMoves(c, m, moved))
+            .Where(m => !CoveredByMoves(c, m, frameworkOwned))
             .Where(m => seen.Add(m.Location + "\u0000" + m.Name))
             .OrderBy(m => IsLoaderRow(m) ? 1 : 0)   // stable: listing order within each group
             .Select(m => new ClearedMod(m.Name, m.Location))
@@ -85,18 +93,27 @@ public static partial class RestorePointEngine
 
     /// <summary>
     /// Roughly how many bytes vanilla will copy into the restore point for this game: the main files of
-    /// every row it would turn off (folders summed whole). Extra-tree entries are not counted, so this runs
-    /// a little low on a Cyberpunk-shaped game; it is a pre-flight free-space estimate, read-only.
+    /// every row it would turn off (folders summed whole) plus the extra-tree entries each turn-off would move
+    /// (the same <see cref="ExtraTreeRows"/> selection the toggle uses). A pre-flight free-space estimate, read-only.
     /// </summary>
     public static long EstimateTurnOffBytes(GameContext c)
     {
         long total = 0;
         var rows = ModListing.Resolve(c.Game);
+        // The extra-tree selection, read once: what each row's turn-off would move out of the extra trees.
+        var extraRows = Scanner.ExtraTreeRowsFor(c);
         foreach (var cm in PlanVanillaTurnOffs(c, PlanVanillaMoves(c)))
         {
             var row = FindRow(rows, cm);
             var baseDir = row is null ? null : BaseDirFor(c, row);
             if (row is null || baseDir is null) continue;
+            try
+            {
+                foreach (var x in extraRows.MovesFor(row).Movable)
+                    total += File.Exists(x.AbsPath) ? new FileInfo(x.AbsPath).Length
+                           : Directory.Exists(x.AbsPath) ? FileTally.ByteSize(x.AbsPath) : 0;
+            }
+            catch { /* unreadable: an estimate */ }
             foreach (var f in row.Files)
             {
                 var abs = Path.Combine(baseDir, f);
@@ -224,42 +241,88 @@ public static partial class RestorePointEngine
     {
         var refused = new HashSet<string>(skips.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
         var heldRoot = Path.Combine(gameArchiveDir, HeldDirName);
-        var copies = new List<HeldCopy>();
+        var plan = new List<(string Mod, string Src, string Rel)>();
         foreach (var cm in turnedOff)
         {
             if (refused.Contains(cm.Name)) continue;
-            var files = new List<MovedFile>();
             foreach (var folder in HeldFoldersFor(c, cm))
                 foreach (var f in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+                    plan.Add((cm.Name, f, Path.GetRelativePath(c.DataDir, f)));
+        }
+
+        // Fail closed, before anything is copied: a name ending in a dot or a space only exists by its exact
+        // name, and a plain copy would read or write a DIFFERENT file Windows normalises it to. The caller
+        // records no copy and the data folder stays the source, which still restores.
+        foreach (var x in plan)
+            if (HasUncopyableSegment(x.Rel))
+                throw new IOException($"\"{x.Rel}\" has a name Windows can only reach exactly, so it can't be copied safely");
+
+        var copies = new List<HeldCopy>();
+        foreach (var grp in plan.GroupBy(x => x.Mod, StringComparer.OrdinalIgnoreCase))
+        {
+            var files = new List<MovedFile>();
+            foreach (var (_, src, rel) in grp)
+            {
+                var dest = Path.Combine(heldRoot, rel);
+                // Temp sibling, verified, then moved into place over whatever an interrupted earlier run left
+                // there: the final path is only ever a complete, checked copy, and never briefly absent.
+                var tmp = dest + ".rp-tmp";
+                if (File.Exists(tmp)) File.Delete(tmp);
+                SafeMove.CopyFileVerified(src, tmp);
+                var sha = FileTally.Sha256(tmp);
+                if (!string.Equals(sha, FileTally.Sha256(src), StringComparison.OrdinalIgnoreCase))
                 {
-                    var rel = Path.GetRelativePath(c.DataDir, f);
-                    var dest = Path.Combine(heldRoot, rel);
-                    // A rerun over a half-written held/ (an interrupted copy) replaces what is there: these are
-                    // the launcher's own copies inside its own archive, never the user's originals.
-                    if (File.Exists(dest)) File.Delete(dest);
-                    SafeMove.CopyFileVerified(f, dest);
-                    files.Add(new MovedFile(rel, new FileInfo(dest).Length, FileTally.Sha256(dest)));
+                    try { File.Delete(tmp); } catch { }
+                    throw new IOException($"checksum mismatch copying \"{rel}\" into the restore point");
                 }
-            if (files.Count > 0) copies.Add(new HeldCopy(cm.Name, files));
+                var bytes = new FileInfo(tmp).Length;
+                File.Move(tmp, dest, overwrite: true);
+                files.Add(new MovedFile(rel, bytes, sha));
+            }
+            if (files.Count > 0) copies.Add(new HeldCopy(grp.Key, files));
         }
         return copies;
     }
 
-    // Put a mod's archived copy back into the data dir when its held files are gone from there: every
-    // archived file checked against its recorded SHA-256 FIRST (a damaged copy refuses the whole mod and
-    // writes nothing), every destination gated against the data dir (Law B), only MISSING files written
-    // (never over a file the data dir still has), each verified after the write (Law C).
+    // A path segment ending in "." or " " (other than "." / ".." themselves): reachable only by exact name.
+    private static bool HasUncopyableSegment(string rel)
+        => rel.Split('\\', '/').Any(s => s.Length > 0 && s is not ("." or "..") && (s.EndsWith('.') || s.EndsWith(' ')));
+
+    // A manifest path must be relative. PathGate trims a leading separator (a backslash-led path reads as
+    // relative), so a rooted or separator-led path is refused here first, at every restore site.
+    private static bool IsRooted(string rel)
+        => string.IsNullOrEmpty(rel) || Path.IsPathRooted(rel) || rel[0] is '\\' or '/';
+
+    /// <summary>Tests only: called with each data-folder destination a held put-back is about to write.
+    /// Thread-static like the scanner's hooks: ReplayGame runs synchronously on the caller's thread.</summary>
+    [ThreadStatic] internal static Action<string>? BeforeHeldPutBackFileForTests;
+
+    // Put a mod's archived copy back into the data dir when some of its held files are gone from there.
+    //  - Nothing missing: usable as is (today's behaviour), enable from the data folder.
+    //  - Something missing: every PRESENT recorded file is hashed too; one that differs from the record means
+    //    the data folder holds a different copy, and the mod is left exactly as it is (no merge).
+    //  - Every path is refused if rooted or escaping (Law B), and every missing file's archived copy is
+    //    SHA-checked, before anything is written. A damaged copy refuses the whole mod and writes nothing.
+    //  - Each file goes to a temp sibling, is size- and SHA-checked, then moved into place: no partial file ever
+    //    sits on a final path. Destinations are tracked BEFORE writing, so a failure rolls all of them back.
     // Returns null when the mod's holding is usable, or the reason it is not.
     private static string? PutBackHeldCopy(HeldCopy h, string gameArchiveDir, GameContext liveCtx)
     {
         var dataDirFull = Path.GetFullPath(liveCtx.DataDir);
+        foreach (var f in h.Files)
+            if (IsRooted(f.Rel) || !PathGate.IsContained(f.Rel, dataDirFull))
+                return $"its copy in the restore point names a path outside the data folder (\"{f.Rel}\"); nothing was restored for it";
+
         var missing = h.Files.Where(f => !File.Exists(Path.Combine(liveCtx.DataDir, f.Rel))).ToList();
         if (missing.Count == 0) return null;   // still held in the data folder: enable from there, as before
 
+        foreach (var f in h.Files.Except(missing))
+            if (f.Sha256 is not null
+                && !string.Equals(FileTally.Sha256(Path.Combine(liveCtx.DataDir, f.Rel)), f.Sha256, StringComparison.OrdinalIgnoreCase))
+                return DifferentCopy;
+
         foreach (var f in missing)
         {
-            if (!PathGate.IsContained(f.Rel, dataDirFull))
-                return $"its copy in the restore point names a path outside the data folder (\"{f.Rel}\"); nothing was restored for it";
             var src = Path.Combine(gameArchiveDir, HeldDirName, f.Rel);
             if (!File.Exists(src))
                 return $"its copy in the restore point is missing \"{f.Rel}\"; nothing was restored for it";
@@ -267,26 +330,34 @@ public static partial class RestorePointEngine
                 return $"its copy in the restore point is damaged (checksum mismatch on \"{f.Rel}\"); nothing was restored for it";
         }
 
-        var written = new List<string>();
+        var touched = new List<string>();   // every path this call may create: temps AND finals
         try
         {
             foreach (var f in missing)
             {
                 var dest = Path.Combine(liveCtx.DataDir, f.Rel);
-                SafeMove.CopyFileVerified(Path.Combine(gameArchiveDir, HeldDirName, f.Rel), dest);
-                written.Add(dest);
-                if (f.Sha256 is not null && !string.Equals(FileTally.Sha256(dest), f.Sha256, StringComparison.OrdinalIgnoreCase))
+                var tmp = dest + ".rp-tmp";
+                touched.Add(tmp);
+                touched.Add(dest);
+                BeforeHeldPutBackFileForTests?.Invoke(dest);
+                SafeMove.CopyFileVerified(Path.Combine(gameArchiveDir, HeldDirName, f.Rel), tmp);
+                if (f.Sha256 is not null && !string.Equals(FileTally.Sha256(tmp), f.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new IOException($"checksum mismatch after copying \"{f.Rel}\" back");
+                File.Move(tmp, dest);   // dest was missing: never over a file the data folder has
             }
             return null;
         }
         catch (Exception e)
         {
             // Take back only what this call wrote: copies of the archive's files, the archive keeps its own.
-            foreach (var w in written) try { File.Delete(w); } catch { }
-            return $"its copy couldn't be put back into the data folder ({e.Message})";
+            foreach (var w in touched) try { if (File.Exists(w)) File.Delete(w); } catch { }
+            return $"its copy couldn't be put back into the data folder ({e.Message}); nothing was restored for it";
         }
     }
+
+    /// <summary>Why Restore left a mod whose data-folder copy differs from the restore point's.</summary>
+    public const string DifferentCopy =
+        "the data folder holds a different copy than the restore point, so 626 left it as it is";
 
     private static IReadOnlyList<Scanner.EnableOutcome> ReEnableAll(GameContext c)
     {
@@ -397,7 +468,7 @@ public static partial class RestorePointEngine
         foreach (var mf in ga.MovedFiles)
         {
             // Law B: gate every destination against the game root.
-            if (!PathGate.IsContained(mf.Rel, gameRootFull))
+            if (IsRooted(mf.Rel) || !PathGate.IsContained(mf.Rel, gameRootFull))
                 throw new InvalidOperationException($"Restore refused: \"{mf.Rel}\" escapes the game folder.");
 
             var srcAbs = Path.Combine(gameArchiveDir, "vanilla-moved", mf.Rel);
@@ -433,7 +504,7 @@ public static partial class RestorePointEngine
             var installFull = Path.GetFullPath(fw.InstallPath);
             foreach (var rel in fw.InstalledFiles)
             {
-                if (!PathGate.IsContained(rel, installFull))
+                if (IsRooted(rel) || !PathGate.IsContained(rel, installFull))
                     throw new InvalidOperationException($"Restore refused: framework file \"{rel}\" escapes the install root.");
                 var srcAbs = Path.Combine(capturedAbs, rel);
                 if (!File.Exists(srcAbs)) continue;
@@ -463,7 +534,7 @@ public static partial class RestorePointEngine
 
         // 5. Turn back on exactly what the vanilla clear turned off (null = an archive from before the
         //    record: nothing to do, as before). Last, so the files and loaders those mods need are back.
-        var notBackOn = TurnBackOn(ga, gameArchiveDir, liveCtx);
+        var (notBackOn, recovered) = TurnBackOn(ga, gameArchiveDir, liveCtx);
 
         // 6. Remove the launcher-authored off-boarding sheet if present.
         // Law B: gate the manifest-supplied path against the game root before deleting.
@@ -472,7 +543,7 @@ public static partial class RestorePointEngine
             && File.Exists(ga.OffboardingSheetGameFolderPath))
             try { File.Delete(ga.OffboardingSheetGameFolderPath); } catch { /* best effort */ }
 
-        return new ReplayResult(notBackOn);
+        return new ReplayResult(notBackOn, recovered);
     }
 
     /// <summary>Why Restore left a ban-risk game's mods held.</summary>
@@ -480,32 +551,39 @@ public static partial class RestorePointEngine
         "this game carries a ban risk, so 626 won't turn mods on without your say-so. "
         + "Turn them on from the launcher, which asks first.";
 
-    // Turn the sealed set back on through ModToggle, loader rows first (the reverse of the turn-off order),
-    // minus the turn-offs that refused (they never went off). Then reconcile against ONE listing: whatever
-    // is not on is reported, with the lane's reason when it gave one. Judging by the final listing, not by
-    // each call, is what lets a restore point from a clear that died partway finish cleanly: a mod MUTATE
-    // never reached is still on, and is not reported.
-    private static IReadOnlyList<ClearSkip> TurnBackOn(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
+    // Turn the sealed set back on through ModToggle, loader rows first (the reverse of the turn-off order).
+    // Then reconcile against ONE listing: whatever is not on is reported, with the lane's reason when it
+    // gave one. Judging by the final listing, not by each call, is what lets a restore point from a clear
+    // that died partway finish cleanly: a mod MUTATE never reached is still on, and is not reported.
+    // A turn-off that refused is included too: usually it is still live and nothing happens, but one whose
+    // rollback stranded its files in holding lists as off, and is turned back on and reported as recovered.
+    private static (IReadOnlyList<ClearSkip> NotBack, IReadOnlyList<ClearSkip> Recovered) TurnBackOn(
+        GameArchive ga, string gameArchiveDir, GameContext liveCtx)
     {
+        var none = ((IReadOnlyList<ClearSkip>)Array.Empty<ClearSkip>(), (IReadOnlyList<ClearSkip>)Array.Empty<ClearSkip>());
         if (ga.TurnedOffByClear is not { Count: > 0 } set
             || !string.Equals(ga.EndState, "vanilla", StringComparison.OrdinalIgnoreCase))
-            return Array.Empty<ClearSkip>();
+            return none;
         var refused = new HashSet<string>((ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Select(s => s.Name),
             StringComparer.OrdinalIgnoreCase);
-        var wanted = set.Where(cm => !refused.Contains(cm.Name)).Reverse().ToList();
-        if (wanted.Count == 0) return Array.Empty<ClearSkip>();
+        var wanted = set.AsEnumerable().Reverse().ToList();
 
         var game = liveCtx.Game;
         var notBack = new List<ClearSkip>();
 
+        // Read BEFORE any put-back: a mod the user already turned back on by hand (from the data folder) is
+        // live, and putting its archived copy into holding would make a second, phantom held copy (I2).
+        var rowsBefore = ModListing.Resolve(game);
+
         // Where the data folder lost a mod's held files, put the restore point's copy back first, so every
-        // mod below is turned on the one way: from the data folder, through the toggle path. A damaged or
-        // incomplete copy refuses that mod alone (reported, nothing written); the others carry on.
+        // mod below is turned on the one way: from the data folder, through the toggle path. A damaged,
+        // incomplete or conflicting copy refuses that mod alone (reported, nothing written); the rest go on.
         var copies = (ga.HeldCopies ?? Array.Empty<HeldCopy>())
             .GroupBy(h => h.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => new HeldCopy(g.Key, g.SelectMany(h => h.Files).ToList()), StringComparer.OrdinalIgnoreCase);
         foreach (var cm in wanted.ToList())
         {
+            if (FindRow(rowsBefore, cm) is { Enabled: true }) continue;   // already live: nothing to put back
             if (!copies.TryGetValue(cm.Name, out var h)) continue;
             if (PutBackHeldCopy(h, gameArchiveDir, liveCtx) is { } why)
             {
@@ -513,24 +591,27 @@ public static partial class RestorePointEngine
                 wanted.Remove(cm);
             }
         }
-        if (wanted.Count == 0) return notBack;
+        if (wanted.Count == 0) return (notBack, Array.Empty<ClearSkip>());
 
+        // Re-read after the put-backs: the restored holds now list as turned off.
         var rows = ModListing.Resolve(game);
 
         // Never enable on a ban-risk game without its acknowledgment. The ack lives in the data dir, which
         // step 1 has just put back, so a game acknowledged before the clear is acknowledged now. The held
         // copies are back in the data folder, so the mods list as turned off, ready for the user to switch on.
         if (BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(game), BanRiskAckStore.IsAcked(liveCtx.DataDir, game.Id ?? "")))
-            return notBack.Concat(wanted.Where(cm => FindRow(rows, cm) is not { Enabled: true })
-                .Select(cm => new ClearSkip(cm.Name, BanRiskLeftOff))).ToList();
+            return (notBack.Concat(wanted.Where(cm => FindRow(rows, cm) is not { Enabled: true })
+                .Select(cm => new ClearSkip(cm.Name, BanRiskLeftOff))).ToList(), Array.Empty<ClearSkip>());
 
         // One scope for every turn-on, so the scanner's lane lists the game once, not once per mod.
         var scope = new Scanner.BulkScope(liveCtx);
         var reasons = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var strandedTried = new List<string>();
         foreach (var cm in wanted)
         {
             var found = FindRow(rows, cm);
-            if (found is { Enabled: true }) continue;   // never went off (a clear that died partway): already back
+            if (found is { Enabled: true }) continue;   // never went off, or turned on by hand: already back
+            if (refused.Contains(cm.Name)) strandedTried.Add(cm.Name);
             var row = found ?? new Mod { Name = cm.Name, Location = cm.Location };
             try
             {
@@ -539,9 +620,12 @@ public static partial class RestorePointEngine
             }
             catch (Exception e) { reasons[cm.Name] = e.Message; }
         }
-        return notBack.Concat(ModToggle.NotApplied(game, wanted.Select(cm => (cm.Name, true)))
-            .Select(n => new ClearSkip(n, reasons.GetValueOrDefault(n) ?? "it didn't come back on")))
-            .ToList();
+        var notOn = ModToggle.NotApplied(game, wanted.Select(cm => (cm.Name, true)));
+        var notOnSet = new HashSet<string>(notOn, StringComparer.OrdinalIgnoreCase);
+        var recovered = strandedTried.Where(n => !notOnSet.Contains(n))
+            .Select(n => new ClearSkip(n, "it had stopped partway through turning off; it is back on")).ToList();
+        return (notBack.Concat(notOn
+            .Select(n => new ClearSkip(n, reasons.GetValueOrDefault(n) ?? "it didn't come back on"))).ToList(), recovered);
     }
 
     // Verified copy that OVERWRITES existing files (restore replays over a known layout — NOT a
