@@ -70,11 +70,16 @@ public class AdoptionReviewTextTests
     public void Both_review_dialogs_read_the_one_spelling(string file)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "ModManager.App"))) dir = dir.Parent!;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "ModManager.App"))) dir = dir.Parent;
+        Assert.True(dir is not null, "could not find src/ModManager.App above the test output");
         var src = File.ReadAllText(Path.Combine(dir!.FullName, "src", "ModManager.App", file));
 
         Assert.Contains("AdoptionReviewText.Headline(", src);
         Assert.Contains("AdoptionReviewText.Detail(", src);
-        Assert.DoesNotContain("by file hash", src);
+        Assert.Contains("AdoptionReviewText.PreChecked(", src);
+        Assert.Contains("AdoptionReviewText.WillWrite(", src);
+        // No second spelling of any line the class owns.
+        foreach (var owned in new[] { "by file hash", "Matched by name", "manage it anyway", "mod loader\"", "not identified\"" })
+            Assert.DoesNotContain(owned, src);
     }
 }

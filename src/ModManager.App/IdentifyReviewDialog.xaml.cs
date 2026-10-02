@@ -29,47 +29,43 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this);
 
-        // One mod, one row (C5): a name match for a key an adoption will already write folds into
-        // that adoption's row instead of standing as a second pre-checked change. The apply would drop
-        // it anyway (LooseIdentify.ExcludeKeys); the dialog now says so rather than counting it.
-        var covered = IdentifyReviewOverlap.CoveredKeys(newToList);
-        var alsoNamed = nowIdentified
-            .Where(i => covered.ContainsKey(i.ModKey))
-            .GroupBy(i => covered[i.ModKey])
-            .ToDictionary(g => g.Key, g => g.Where(i => i.Match is not null).Select(i => i.Match!.Name).ToList());
+        // One mod found twice (C5): a name match for a mod an approved-by-default adoption already
+        // names is linked to it, starts unticked, and counts only if that adoption is unticked
+        // (IdentifyReviewOverlap). Both choices stay on screen.
+        // A list, not a dictionary: two identical proposals are possible and must not throw.
+        var matches = nowIdentified.Select(i => (Proposal: i, By: IdentifyReviewOverlap.Coverer(newToList, i.ModKey))).ToList();
 
         foreach (var p in newToList)
         {
-            var identified = p.Evidence != AdoptionEvidence.None;
-            // See DiscoveryReviewDialog: a downloaded archive that was never installed has
-            // nothing for adoption to attach metadata to. Both review surfaces read the one Core
-            // rule so they cannot drift (A14).
-            var inert = p.Reach == AdoptionReach.NothingToNameYet;
-            var named = p.Reach == AdoptionReach.AlreadyNamed;
+            // Pre-check, will-write and wording are all AdoptionReviewText's: one rule for both
+            // review surfaces, so they cannot drift (A14, C4).
             _new.Add(new IdentifyReviewRow
             {
                 Adoption = p,
-                WillWrite = p.Reach is null or AdoptionReach.NamesAMod,
+                WillWrite = AdoptionReviewText.WillWrite(p),
                 // One spelling for both review surfaces (AdoptionReviewText), so they cannot drift.
                 Headline = AdoptionReviewText.Headline(p),
                 Detail = AdoptionReviewText.Detail(p)
-                         + (alsoNamed.TryGetValue(p, out var names) ? AdoptionReviewText.AlsoNamed(names) : ""),
-                Approve = identified && !inert && !named,
+                         + AdoptionReviewText.NameSearchAlso(p, matches
+                             .Where(m => m.Proposal.Match is not null && ReferenceEquals(m.By, p)).Select(m => m.Proposal.Match!.Name)),
+                Approve = AdoptionReviewText.PreChecked(p),
             });
         }
 
-        foreach (var p in nowIdentified.Where(i => !covered.ContainsKey(i.ModKey)))
+        foreach (var (p, by) in matches)
         {
+            // "No confident match" for a mod an adoption already names is not news; leave it out.
+            if (p.Match is null && by is not null) continue;
             _identified.Add(p.Match is null
                 ? new IdentifyReviewRow { ModKey = p.ModKey, Headline = $"{p.CleanQuery} — no confident match" }
                 : new IdentifyReviewRow
                 {
                     ModKey = p.ModKey,
                     Hit = p.Match,
-                    Approve = true,
+                    Approve = by is null,
                     Headline = $"{p.CleanQuery} → {p.Match.Name}"
                                + (string.IsNullOrWhiteSpace(p.Match.Author) ? "" : $" · by {p.Match.Author}"),
-                    Detail = TrimSummary(p.Match.Summary),
+                    Detail = by is null ? TrimSummary(p.Match.Summary) : AdoptionReviewText.CoveredNameMatch(by),
                 });
         }
 
@@ -91,8 +87,12 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
     public IReadOnlyList<AdoptionProposal> ApprovedAdoptions()
         => _new.Where(r => r.Approve && r.WillWrite && r.Adoption is not null).Select(r => r.Adoption!).ToList();
 
+    // Only the name matches that will land: one whose mod an approved adoption names is dropped here,
+    // as the apply would drop it (LooseIdentify.ExcludeKeys), so the button counts what is written.
     public IReadOnlyList<(string ModKey, SourceSearchHit Hit)> ApprovedIdentifications()
-        => _identified.Where(r => r.Approve && r.Hit is not null).Select(r => (r.ModKey, r.Hit!)).ToList();
+        => IdentifyReviewOverlap.Effective(
+            _identified.Where(r => r.Approve && r.Hit is not null).Select(r => (r.ModKey, r.Hit!)).ToList(),
+            ApprovedAdoptions());
 
     // No PrimaryButtonClick handler on purpose. DiscoveryReviewDialog needs one because it exposes
     // its result as a PROPERTY that has to be snapshotted before the dialog closes; this dialog

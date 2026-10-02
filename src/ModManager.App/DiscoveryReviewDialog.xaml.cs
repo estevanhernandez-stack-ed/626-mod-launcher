@@ -41,20 +41,18 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
 
         foreach (var proposal in proposals)
         {
-            var identified = proposal.Evidence != AdoptionEvidence.None;
             // Adoption attaches metadata to mods that ARE installed. A downloaded archive that has
             // never been deployed has nothing to attach to, and saying otherwise is how thirteen
             // Fluffy downloads on a game with no natives/ folder came to sit under a heading
             // reading "Mods already installed" (A14).
             var inert = proposal.Reach == AdoptionReach.NothingToNameYet;
-            var named = proposal.Reach == AdoptionReach.AlreadyNamed;
             _rows.Add(new DiscoveryReviewRow
             {
                 Proposal = proposal,
                 // Only a row adoption can actually write for counts toward "Adopt N mods". An
                 // unresolved reach (null) keeps the old optimistic assumption rather than hiding
                 // a row we simply failed to check.
-                WillWrite = proposal.Reach is null or AdoptionReach.NamesAMod,
+                WillWrite = AdoptionReviewText.WillWrite(proposal),
                 // Only a real archive can be handed back to intake. An inert row of any other kind
                 // is not a file we could drop on ourselves, so it gets the honest copy and no offer.
                 CanInstall = inert && proposal.Candidate.Kind == DiscoveryKind.Archive,
@@ -63,7 +61,7 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
                 Detail = AdoptionReviewText.Detail(proposal),
                 // Never pre-check a row the apply cannot write for. Checked-by-default is a
                 // recommendation, and recommending a no-op is how the count got to thirteen.
-                Approve = identified && !inert && !named,
+                Approve = AdoptionReviewText.PreChecked(proposal),
             });
         }
 

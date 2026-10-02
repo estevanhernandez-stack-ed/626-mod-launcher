@@ -3387,7 +3387,9 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var p in approved)
         {
             var meta = p.ToMeta();
-            var keys = await DiscoveryWriteKeysAsync(p, ctx);
+            // The keys the review showed (resolved with its reach), so the dialog and the write agree
+            // and the archive is not read twice. Unresolved there: resolve here, as before.
+            var keys = p.WriteKeys ?? await DiscoveryWriteKeysAsync(p, ctx);
             if (keys.Count == 0) { anyZeroKeyProposal = true; continue; }
             foreach (var key in keys)
             {
