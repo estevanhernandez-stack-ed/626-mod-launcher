@@ -829,6 +829,7 @@ public sealed partial class MainViewModel : ObservableObject
             // everything else is a filesystem scan via the proven Scanner pipeline.
             var directInject = DirectInjectBacked;
             var looseRoot = LooseRootBacked;
+            var listingLane = ModListing.MechanismFor(_ctx!.Game, _ctx);   // once per list, for every row's uninstall rule
             // Scanner-world only: migrate the data dir, then list, then persist the auto-seeded
             // classification — exactly the two writes the old scanner branch did. The shared
             // read-only resolver (used by the agent-access MCP too) performs neither. Loose-root
@@ -970,7 +971,7 @@ public sealed partial class MainViewModel : ObservableObject
                     canToggle: !unrestorable && (looseRow
                         ? !rep.ReadOnly
                         : rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex"),
-                    canUninstall: !directInject && !looseRoot && !rep.ReadOnly)
+                    canUninstall: ModUninstall.Refusal(listingLane, rep) is null)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
@@ -4386,10 +4387,12 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            if (ConfigBacked) _me2.Remove(_ctx.Game, row.Mod.Name);
-            else await Scanner.UninstallModAsync(row.Mod.Name, _ctx);
-            StatusText = $"Uninstalled {row.DisplayName}.";
+            // The same rule and the same deletes as the agent's uninstall_mod (ModUninstall).
+            var ctx = _ctx;
+            await Task.Run(() => ModUninstall.Run(ctx, row.Mod));
+            // Reload first: it resets the status line to the enabled count, which would replace this.
             await ReloadModsAsync();
+            StatusText = $"Uninstalled {row.DisplayName}.";
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }

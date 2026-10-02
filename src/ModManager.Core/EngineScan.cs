@@ -1,7 +1,6 @@
 using System.IO;
-using ModManager.Core;
 
-namespace ModManager.App.Services;
+namespace ModManager.Core;
 
 /// <summary>
 /// Scans a game folder for engine signatures and asks Core to guess the engine. The IO lives

@@ -86,81 +86,12 @@ public sealed class LauncherService
     /// see <see cref="Registry.FindRegistered"/>. All four add lanes come through here, so this covers
     /// Steam quick-add, batch add, the manual form, and the library's not-added-yet list.</para></summary>
     public GameEntry AddGame(GameInput input, out bool alreadyRegistered)
-    {
-        // Detection walks the game folder, so it runs OUTSIDE the registry lock: holding games.json for
-        // a slow drive would stall every other writer. Only the check, the id and the upsert need it.
-        var detection = Detect(EnginePresets.BuildGameEntry(input, Array.Empty<string>()));
-
-        // The already-registered check and the add are one locked step: two adds of one install racing
-        // each other cannot both pass the check and register it twice.
-        var (entry, existed) = UpdateRegistry(reg =>
-        {
-            var existing = Registry.FindRegistered(reg, input.GameRoot, input.SteamAppId);
-            if (existing is not null)
-            {
-                reg.ActiveGameId = existing.Id;
-                return (reg, (existing, true));
-            }
-
-            var added = EnginePresets.BuildGameEntry(input, reg.Games.Select(g => g.Id));
-            Apply(detection, added);
-            reg = Registry.UpsertGame(reg, added);
-            reg.ActiveGameId = added.Id; // a newly added game becomes active
-            return (reg, (added, false));
-        });
-
-        alreadyRegistered = existed;
-        if (!existed) SeedModFolder(entry);
-        return entry; // save folder is detected (Ludusavi-first) by the caller, async
-    }
-
-    /// <summary>Create the declared mod folder when the manifest named it and it is not there yet
-    /// (A20). The decision is Core's and pure (<see cref="ModFolderSeed.PathToCreate"/>) - only the
-    /// write lives here, because a read path must never create anything and Scanner is a read path.
-    ///
-    /// <para>Best-effort by design: a game folder we cannot write to is a real situation (Program
-    /// Files without elevation, a read-only mount), and the launcher already handles an absent mod
-    /// folder gracefully. Failing the ADD over it would turn a cosmetic improvement into a blocker.</para></summary>
-    private static void SeedModFolder(GameEntry entry)
-    {
-        var path = ModFolderSeed.PathToCreate(entry);
-        if (path is null) return;
-        try { Directory.CreateDirectory(path); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-    }
+        => GameRegistration.Add(DataRoot, input, out alreadyRegistered);   // save folder is detected (Ludusavi-first) by the caller, async
 
     /// <summary>Re-run mod-location + launcher detection for an existing game (e.g. after Mod
-    /// Engine 2 is installed, or for a game added before detection existed). Persists + returns it.</summary>
-    public GameEntry? Redetect(string gameId)
-    {
-        // Detect from the entry as it is now, outside the lock (it walks the game folder); apply inside,
-        // to the entry as it is THEN, so a concurrent change to anything else is kept.
-        var before = LoadRegistry().Games.FirstOrDefault(x => x.Id == gameId);
-        if (before is null) return null;
-        var detection = Detect(before);
-        return UpdateRegistry(reg =>
-        {
-            var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
-            if (g is not null) Apply(detection, g);
-            return (reg, g);
-        });
-    }
-
-    // Where a game's mods actually live (existing/sideloaded folders, or the correct Unreal project
-    // subfolder) and how to launch with mods (Mod Engine 2 / Seamless Co-op). Detect reads the disk;
-    // Apply only assigns, so it can run inside the registry lock.
-    private sealed record Detection(IReadOnlyList<ModLocation> ModLocations, LaunchDetection Launch);
-
-    private static Detection Detect(GameEntry g)
-        => new(ModLocator.Detect(g.GameRoot, g.Engine), LaunchScan.Detect(g.GameRoot, g.Engine, g.SteamAppId));
-
-    private static void Apply(Detection d, GameEntry g)
-    {
-        if (d.ModLocations.Count > 0) g.ModLocations = d.ModLocations;
-        if (d.Launch.Targets.Count > 0) g.LaunchTargets = d.Launch.Targets;
-        if (d.Launch.ModEngineConfig is not null) g.ModEngineConfig = d.Launch.ModEngineConfig;
-    }
+    /// Engine 2 is installed, or for a game added before detection existed). Persists + returns it.
+    /// Core's, so an agent's intake re-detects the same way.</summary>
+    public GameEntry? Redetect(string gameId) => GameRegistration.Redetect(DataRoot, gameId);
 
     /// <summary>The launch target run by the primary Launch button (explicit default, else first).</summary>
     public static LaunchTarget? DefaultTarget(GameEntry game)

@@ -27,6 +27,26 @@ public static class ModEngine2Writer
         });
 
     /// <summary>One-time backup so the user can always recover Mod Engine 2's original config.</summary>
+    /// <summary>Uninstall one ME2 mod: delete its folder (when the config names one) and drop it from the
+    /// config, keeping a one-time backup of the config. The app's uninstall and the agent's uninstall_mod
+    /// both come here. A delete that fails throws, and the config is left as it was.</summary>
+    public static void RemoveMod(GameEntry game, string name)
+    {
+        var path = game.ModEngineConfig;
+        var toml = ModEngine2Listing.ReadConfig(game);
+        if (path is null || toml is null) return;
+        var mods = ModEngine2Config.ParseMods(toml);
+        var target = mods.FirstOrDefault(m => m.Name == name);
+        if (target is not null && !string.IsNullOrEmpty(target.Path))
+        {
+            var me2Dir = Path.GetDirectoryName(path)!;
+            var folder = Path.IsPathRooted(target.Path) ? target.Path : Path.Combine(me2Dir, target.Path);
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); // may throw -> surfaced
+        }
+        BackupOnce(path);
+        AtomicJson.WriteTextAtomic(path, ModEngine2Config.WriteMods(toml, mods.Where(m => m.Name != name).ToList()));
+    }
+
     public static void BackupOnce(string configPath)
     {
         var bak = configPath + ".626bak";
