@@ -1,3 +1,5 @@
+using ModManager.Core.Manifest;
+
 namespace ModManager.Core.Loaders;
 
 /// <summary>A mod loader with a DISTINCT launcher exe the launcher can detect in the game's play
@@ -16,29 +18,56 @@ public sealed record KnownLoader(
     bool BanSafe,
     bool EditsSaves = false);
 
+/// <summary>
+/// The loaders this binary knows: the manifest's <c>loaders</c> list, embedded snapshot overlaid with
+/// the signed feed.
+///
+/// <para>These used to be compiled in, which meant a game newly flagged as ban-risk got the warning the
+/// day the feed said so but no safe loader to point at until a release added one. They now live in the
+/// embedded <c>games-manifest.json</c> (the offline baseline, unchanged from the compiled list) and the
+/// feed can add a loader or correct one. See
+/// <c>docs/superpowers/specs/2026-10-01-safe-loaders-in-the-feed-design.md</c>.</para>
+///
+/// <para>Every entry here has already passed <see cref="ManifestValidator"/>, so the identity fields are
+/// present and every exe name is a bare <c>*.exe</c> filename. The projection is cached by
+/// <see cref="EffectiveManifest.Generation"/>, so a feed applied at startup is picked up on the next
+/// read.</para>
+/// </summary>
 public static class KnownLoaderCatalog
 {
-    public static IReadOnlyList<KnownLoader> Catalog { get; } = new[]
+    // The same lock-and-generation cache every other manifest facade uses (KnownEngines, NexusDomains,
+    // BanRiskCatalog), so there is one reviewed pattern rather than a second, lock-free one.
+    private static IReadOnlyList<KnownLoader>? _catalog;
+    private static int _catalogGen = -1;
+    private static readonly object _gate = new();
+
+    public static IReadOnlyList<KnownLoader> Catalog
     {
-        new KnownLoader(
-            LoaderId: "mod-engine-2",
-            DisplayName: "Mod Engine 2",
-            Engine: "fromsoft",
-            SteamAppId: null,                               // engine-wide: ME2 is the standard FromSoft loader
-                                                            // (ER, DS3, Sekiro, AC6, Nightreign) — detection keys
-                                                            // off modengine2_launcher.exe being present
-            LauncherExeNames: new[] { "modengine2_launcher.exe" },
-            GetUrl: "https://github.com/soulsmods/ModEngine2/releases",
-            Author: "soulsmods (ModEngine2)",
-            BanSafe: true),                                  // loads mods without touching EAC
-        new KnownLoader(
-            LoaderId: "seamless-coop",
-            DisplayName: "Seamless Co-op",
-            Engine: "fromsoft",
-            SteamAppId: "1245620",
-            LauncherExeNames: new[] { "launch_elden_ring_seamlesscoop.exe", "ersc_launcher.exe" },
-            GetUrl: "https://www.nexusmods.com/eldenring/mods/510",
-            Author: "LukeYui",
-            BanSafe: true),                                  // ships its own MP, bypasses EAC
-    };
+        get
+        {
+            lock (_gate)
+            {
+                var gen = EffectiveManifest.Generation;
+                if (_catalog is null || _catalogGen != gen)
+                {
+                    _catalog = EffectiveManifest.Current.Loaders.Select(ToKnownLoader).ToList();
+                    _catalogGen = gen;
+                }
+                return _catalog;
+            }
+        }
+    }
+
+    // The validator guarantees Id, DisplayName, Engine, a non-empty exe list and an https GetUrl; the
+    // fallbacks below exist only to satisfy the compiler, never to paper over a missing field.
+    private static KnownLoader ToKnownLoader(LoaderManifestEntry l) => new(
+        LoaderId: l.Id,
+        DisplayName: l.DisplayName ?? l.Id,
+        Engine: l.Engine ?? "",
+        SteamAppId: l.SteamAppId,
+        LauncherExeNames: l.LauncherExeNames ?? Array.Empty<string>(),
+        GetUrl: l.GetUrl ?? "",
+        Author: l.Author ?? "",
+        BanSafe: l.BanSafe == true,
+        EditsSaves: l.EditsSaves == true);
 }

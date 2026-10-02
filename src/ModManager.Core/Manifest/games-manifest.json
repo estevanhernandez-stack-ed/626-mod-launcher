@@ -296,5 +296,31 @@
         "status": "curated"
       }
     }
+  ],
+  "loaders": [
+    {
+      "id": "mod-engine-2",
+      "displayName": "Mod Engine 2",
+      "engine": "fromsoft",
+      "launcherExeNames": [
+        "modengine2_launcher.exe"
+      ],
+      "getUrl": "https://github.com/soulsmods/ModEngine2/releases",
+      "author": "soulsmods (ModEngine2)",
+      "banSafe": true
+    },
+    {
+      "id": "seamless-coop",
+      "displayName": "Seamless Co-op",
+      "engine": "fromsoft",
+      "steamAppId": "1245620",
+      "launcherExeNames": [
+        "launch_elden_ring_seamlesscoop.exe",
+        "ersc_launcher.exe"
+      ],
+      "getUrl": "https://www.nexusmods.com/eldenring/mods/510",
+      "author": "LukeYui",
+      "banSafe": true
+    }
   ]
 }

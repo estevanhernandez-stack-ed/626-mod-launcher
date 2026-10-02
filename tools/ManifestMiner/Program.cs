@@ -142,9 +142,28 @@ if (args.Contains("--with-overrides"))
         return 1;
     }
 
+    // Curated loaders (overrides/loaders/*.json). Same rule as game keys: a duplicate id stops the run.
+    var loaders = LoaderOverrides.Load(overridesDir);
+    var loaderProblems = LoaderOverrides.Check(loaders);
+    if (loaderProblems.Count > 0)
+    {
+        Console.Error.WriteLine($"Loader overrides: {loaderProblems.Count} problem(s) - refusing to merge.");
+        foreach (var p in loaderProblems) Console.Error.WriteLine($"  {p.Message}");
+        return 1;
+    }
+    // Reported, not fatal: the shared gate below drops a refused loader from the draft either way, and
+    // saying so here is what keeps a curator from wondering where their loader went.
+    foreach (var r in LoaderOverrides.Rejections(loaders))
+        Console.Error.WriteLine($"  loader refused by the launcher's gate: {r}");
+
     var mergeResult = OverridesMerge.ApplyReporting(current, overrides);
-    var validatedCurated = ManifestValidator.Validate(mergeResult.Manifest, EnginePresets.Presets.Keys.ToHashSet());
+    var validatedCurated = ManifestValidator.Validate(
+        LoaderOverrides.Apply(mergeResult.Manifest, loaders), EnginePresets.Presets.Keys.ToHashSet());
     current = validatedCurated.Manifest;
+    // A loader whose engine this binary does not know is SKIPPED, not rejected, so the gate above says
+    // nothing about it. A typo such as "FromSoft" would otherwise vanish from the draft in silence.
+    foreach (var id in validatedCurated.SkippedLoaders)
+        Console.Error.WriteLine($"  loader '{id}' skipped: its engine is not one this launcher knows");
 
     File.WriteAllText(Path.Combine(outDir, "manifest-draft.json"),
         JsonSerializer.Serialize(current, ManifestJson.Options));
@@ -153,7 +172,8 @@ if (args.Contains("--with-overrides"))
     var withEngine = current.Games.Count(g => g.Engine is not null);
     Console.WriteLine(
         $"Overrides: {overrides.Count} loaded, {mergeResult.MatchedIds.Count} matched, "
-        + $"{mergeResult.AddedIds.Count} added, {curatedCount} curated entries, {withEngine} total with engine -> out/manifest-draft.json");
+        + $"{mergeResult.AddedIds.Count} added, {curatedCount} curated entries, {withEngine} total with engine, "
+        + $"{current.Loaders.Count} loader(s) -> out/manifest-draft.json");
     // A curator seeing a game they know is already mined show up here has slug drift: the override's
     // slug didn't match the mined id, so it added a near-duplicate row instead of updating it.
     if (mergeResult.AddedIds.Count > 0)

@@ -77,13 +77,63 @@ public sealed record GameManifestEntry
     public ManifestProvenance Provenance { get; init; } = new();
 }
 
-/// <summary>The on-disk / embedded manifest: a schema version plus the game list.</summary>
+/// <summary>
+/// One mod loader with a launcher exe of its own, the runtime <c>KnownLoader</c> as the feed carries it.
+///
+/// <para><b>Descriptive, like everything else here.</b> It names the exe a loader ships, where to get
+/// it, and whether its modding path avoids the game's anti-cheat. Looking for the exe and launching it
+/// stay compiled (<c>LoaderScan</c>, the tools-row launcher), so the feed cannot add a new kind of
+/// action, and the ban-risk gate still asks before anything is enabled.</para>
+///
+/// <para><b><see cref="LauncherExeNames"/> is trust-sensitive</b>, because the app launches whatever
+/// file has that name in the game folder. <see cref="ManifestValidator"/> rejects anything that is not
+/// a bare <c>*.exe</c> filename, on the embedded and the remote path alike.</para>
+///
+/// <para>Fields are nullable so a malformed entry deserializes and is rejected by name, rather than
+/// failing the whole manifest's deserialization. The validator, not the type, requires the identity
+/// fields, the exe names and the URL, so every loader that survives is complete; a feed loader
+/// REPLACES the built-in with the same id (see <see cref="EffectiveManifest"/>).</para>
+///
+/// <para>Scoped like <c>KnownLoader</c>: <see cref="Engine"/>, plus <see cref="SteamAppId"/> to pin it
+/// to one game (null = every game on that engine).</para>
+/// </summary>
+public sealed record LoaderManifestEntry
+{
+    public string Id { get; init; } = "";
+    public string? DisplayName { get; init; }
+    public string? Engine { get; init; }
+    public string? SteamAppId { get; init; }
+    public IReadOnlyList<string>? LauncherExeNames { get; init; }
+    public string? GetUrl { get; init; }
+    public string? Author { get; init; }
+
+    /// <summary>The loader's modding path avoids the game's anti-cheat, so the ban-risk gate may offer
+    /// it as the safe way to mod. Null means unclaimed, which reads as not safe.</summary>
+    public bool? BanSafe { get; init; }
+
+    /// <summary>
+    /// The loader writes to saves. Carried so the runtime <c>KnownLoader</c> can say so, but NOT yet
+    /// acted on: launching a loader does not snapshot saves today (tools do; loaders never needed it,
+    /// since no shipped loader sets this). Honouring it is a launcher change, not a feed one; until
+    /// then a curator should not rely on it.
+    /// </summary>
+    public bool? EditsSaves { get; init; }
+}
+
+/// <summary>The on-disk / embedded manifest: a schema version, the game list, and the loaders.</summary>
 public sealed record GameManifest
 {
     public int SchemaVersion { get; init; } = 1;
     public string? GeneratedUtc { get; init; }
     public string? MinBinaryVersion { get; init; }
     public IReadOnlyList<GameManifestEntry> Games { get; init; } = Array.Empty<GameManifestEntry>();
+
+    /// <summary>
+    /// Mod loaders with launcher exes of their own, the ban-safe ones included. Top-level rather than
+    /// per game because a loader can be engine-wide (Mod Engine 2 serves every FromSoft game, listed or
+    /// not). Added without a schema bump: an older binary ignores the key and keeps its own list.
+    /// </summary>
+    public IReadOnlyList<LoaderManifestEntry> Loaders { get; init; } = Array.Empty<LoaderManifestEntry>();
 }
 
 /// <summary>Provenance source tags. Phase 0 uses the legacy-array names so the facades can

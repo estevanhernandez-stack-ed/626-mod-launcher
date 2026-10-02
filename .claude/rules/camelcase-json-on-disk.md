@@ -72,4 +72,8 @@ The string-contains assertion is what protects you — without it, the round-tri
   `<dataDir>/installs/<installId>.json` via `AtomicJson`; what an intake actually placed, so a row can
   say which files are its own)
 
+- Game manifest `loaders` list (`src/ModManager.Core/Manifest/GameManifest.cs` — `LoaderManifestEntry`,
+  serialized with `ManifestJson.Options`; written by the miner to `games-manifest.json`, curated in
+  `overrides/loaders/*.json`; covered by `ManifestLoadersTests.Loaders_round_trip_as_camelCase`)
+
 If you're adding a new on-disk shape and it isn't in this list, add it.
