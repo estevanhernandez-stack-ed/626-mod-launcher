@@ -70,6 +70,17 @@ public sealed record ModTreesText(string Line, string Tooltip)
         return new ModTreesText("Also has files in " + string.Join(", ", trees), tooltip);
     }
 
+    /// <summary>This text with <c>Some files are held in &lt;path&gt;.</c> after the line, for a live row whose
+    /// <c>disabled-trees/&lt;Mod&gt;</c> folder still holds files. The tooltip gains the unknown-held sentence, so
+    /// a row that said nothing before still explains itself.</summary>
+    public ModTreesText WithHeldLeftover(string path)
+    {
+        var held = $"Some files are held in {path}.";
+        return new ModTreesText(
+            Line.Length == 0 ? held : EndSentence(Line) + " " + held,
+            Join(new[] { Tooltip, UnknownHeldTooltip }));
+    }
+
     /// <summary>The status line after a turn-on that may have left files in <c>disabled-trees/&lt;Mod&gt;</c>.
     /// The mod is on; the user is told where the rest is, or that 626 couldn't look.</summary>
     public static string LeftoverStatus(string modName, TreeLeftover leftover)

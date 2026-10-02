@@ -257,4 +257,52 @@ public class MultiTreeToggleRowTests : IDisposable
         Assert.False(leftover!.Readable);
         Assert.Equal(Path.GetFullPath(HeldTrees), Path.GetFullPath(leftover.Path));
     }
+
+    // Final review F6: a LIVE row whose disabled-trees folder still holds files (left under a tree the game no
+    // longer declares, say) says so, or the user finds out only when the next turn-off refuses on them.
+    private async Task<GameContext> LiveWithLeftoverAsync()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        var stray = Path.Combine(HeldTrees, "old", "tree", "CoolMod.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(stray)!);
+        File.WriteAllText(stray, "STRAY");
+        await Scanner.EnableModAsync("CoolMod", Ctx());
+        return Ctx();
+    }
+
+    [Fact]
+    public async Task A_live_row_with_held_leftovers_names_the_folder_after_its_line()
+    {
+        var ctx = await LiveWithLeftoverAsync();
+        var row = await Row(ctx, "CoolMod");
+        Assert.True(row.Enabled);
+
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(row);
+
+        Assert.Equal($"Also has files in r6/scripts, r6/tweaks, {Cet}. Some files are held in {TreeHoldingDir(ctx)}.",
+            text.Line);
+        Assert.StartsWith("626 turns these on and off with the mod.", text.Tooltip);
+    }
+
+    [Fact]
+    public async Task A_live_row_with_only_held_leftovers_still_says_where_they_are()
+    {
+        await LiveWithLeftoverAsync();
+        var ctx = Ctx(new[] { "red4ext/plugins" });   // no tree with CoolMod's name any more
+        var row = await Row(ctx, "CoolMod");
+
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(row);
+
+        Assert.Equal($"Some files are held in {TreeHoldingDir(ctx)}.", text.Line);
+        Assert.True(text.Visible);
+    }
+
+    [Fact]
+    public async Task A_live_row_with_nothing_held_is_unchanged()
+    {
+        var ctx = Ctx();
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(await Row(ctx, "CoolMod"));
+
+        Assert.DoesNotContain("held in", text.Line);
+    }
 }

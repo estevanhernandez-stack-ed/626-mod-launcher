@@ -77,7 +77,15 @@ public sealed class ExtraTreeRows
         if (_ctx is null) return ModTreesText.None;
         var moves = MovesFor(row);
         var moving = moves.Movable.Select(e => e.Tree);
-        if (row.Enabled) return ModTreesText.For(moving, moves.Held, Array.Empty<string>());
+        if (row.Enabled)
+        {
+            var live = ModTreesText.For(moving, moves.Held, Array.Empty<string>());
+            // A live mod can still have files in disabled-trees/<Mod> (left under a tree the game no longer
+            // declares, or a turn-on that could not move one back). Said on the row, or the user learns of
+            // them only when the next turn-off refuses on them. An unreadable folder says nothing here: it is
+            // not known to hold files, and a live row's line never claims it does.
+            return HeldWhileLive(row.Name) is { } dir ? live.WithHeldLeftover(dir) : live;
+        }
 
         var held = Held(row.Name);
         return ModTreesText.For(Array.Empty<string>(), moves.Held,
@@ -98,6 +106,13 @@ public sealed class ExtraTreeRows
             return (entries, TreeHolding.HoldsFiles(_ctx, modName) ? new TreeLeftover(dir, Readable: true) : null);
         }
         catch { return (Array.Empty<TreeHolding.HeldEntry>(), new TreeLeftover(dir, Readable: false)); }
+    }
+
+    private string? HeldWhileLive(string modName)
+    {
+        if (_ctx is null || string.IsNullOrEmpty(modName)) return null;
+        try { return TreeHolding.HoldsFiles(_ctx, modName) ? TreeHolding.ModDir(_ctx, modName) : null; }
+        catch { return null; }
     }
 
     private bool MovesExtras(Mod row)
