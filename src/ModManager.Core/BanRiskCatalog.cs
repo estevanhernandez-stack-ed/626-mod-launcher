@@ -36,6 +36,17 @@ public static class BanRiskCatalog
             ["3940610"] = GameBanRisk.High, // Madden NFL 27
         };
 
+    // The same floor by EA app content id, so it holds for an EA install whatever its registration id
+    // is: a second store copy is renamed "<id>-2", and with no feed the embedded snapshot has no entry
+    // to map the content id to. Content ids as read from both installs' installerdata.xml (EA football
+    // grand plan, K3).
+    private static readonly IReadOnlyDictionary<string, GameBanRisk> FloorByEaContentId =
+        new Dictionary<string, GameBanRisk>(StringComparer.Ordinal)
+        {
+            ["16425899"] = GameBanRisk.High, // EA Sports College Football 27
+            ["16425895"] = GameBanRisk.High, // Madden NFL 27
+        };
+
     private static Maps Current
     {
         get
@@ -72,10 +83,18 @@ public static class BanRiskCatalog
     public static GameBanRisk ByAppId(string? steamAppId)
         => !string.IsNullOrEmpty(steamAppId) && Current.ByAppId.TryGetValue(steamAppId, out var r) ? r : GameBanRisk.None;
 
-    /// <summary>The ban risk the launcher acts on for this game: the highest of what the feed says by
-    /// Steam app id, what it says by manifest id, and the compiled floor. Highest wins, so no single
-    /// source can lower another. A game with no Steam id resolves when it was registered under its
-    /// manifest id - picked from the curated list, or set by a detector that assigns it.</summary>
+    /// <summary>
+    /// The ban risk the launcher acts on for this game: the highest of what the feed says by Steam app
+    /// id, what it says by manifest id, and the compiled floor (by manifest id, Steam app id and EA
+    /// content id). Highest wins, so no single source can lower another.
+    ///
+    /// <para><b>Manifest id means every id the registration resolves to</b>
+    /// (<see cref="ManifestIdLookup.IdsFor"/>), not just its own. A second store copy of a game the
+    /// user already has is registered as <c>&lt;id&gt;-2</c>, so the EA copy of a dual-store ban-risk
+    /// game used to read None: no warning, no prompt, and an agent free to enable mods. It still carries
+    /// its EA content id, and that names the game. Nothing here trims a suffix: a registration with no
+    /// store identity matches only by its own id.</para>
+    /// </summary>
     public static GameBanRisk Effective(GameEntry game)
     {
         // One snapshot of Current for the whole call, so a concurrent feed update (generation bump)
@@ -84,13 +103,15 @@ public static class BanRiskCatalog
         var level = !string.IsNullOrEmpty(game.SteamAppId) && maps.ByAppId.TryGetValue(game.SteamAppId, out var byApp)
             ? byApp
             : GameBanRisk.None;
-        if (!string.IsNullOrEmpty(game.Id))
+        foreach (var id in ManifestIdLookup.IdsFor(game))
         {
-            if (maps.ById.TryGetValue(game.Id, out var byId)) level = BanRiskRules.Max(level, byId);
-            if (FloorById.TryGetValue(game.Id, out var floorId)) level = BanRiskRules.Max(level, floorId);
+            if (maps.ById.TryGetValue(id, out var byId)) level = BanRiskRules.Max(level, byId);
+            if (FloorById.TryGetValue(id, out var floorId)) level = BanRiskRules.Max(level, floorId);
         }
         if (!string.IsNullOrEmpty(game.SteamAppId) && FloorByAppId.TryGetValue(game.SteamAppId, out var floorApp))
             level = BanRiskRules.Max(level, floorApp);
+        if (!string.IsNullOrEmpty(game.EaContentId) && FloorByEaContentId.TryGetValue(game.EaContentId, out var floorEa))
+            level = BanRiskRules.Max(level, floorEa);
         return level;
     }
 }

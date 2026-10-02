@@ -273,3 +273,24 @@ directory.
 - **Legacy duplicate ids** such as a `-2` suffix from before duplicate registration was refused. A
   duplicate with no Steam id still misses the id lookup. New duplicates are already refused
   (`Registry.cs:39`, `LauncherService.cs:76`), and none of the high-risk games are affected today.
+
+## Addendum 2026-10-02: the second store copy
+
+Found while building store-neutral loader pins (#356). `Effective` matched the registration's **own**
+id against the manifest, but a second store copy of a game the user already owns is registered as
+`<id>-2` by `EnginePresets.UniqueId`. So the EA copy of a dual-store ban-risk game read `None`: no
+warning, no chip, no enable prompt, no save-write gate, and an agent free to enable mods. With no
+feed, the same was true of the two EA titles the compiled floor exists for.
+
+The fix has two parts:
+
+- **Resolve, don't compare.** The feed's per-id risk and the id floor are checked against every
+  manifest id the registration resolves to (`ManifestIdLookup.IdsFor`): its own id, the entry claiming
+  its Steam app id, and the entry claiming its EA content id.
+- **A floor by EA content id.** `FloorByEaContentId` holds College Football 27 (`16425899`) and Madden
+  NFL 27 (`16425895`), as read from both installs (grand plan K3), so the floor holds for an EA install
+  with no feed whatever its registration id.
+
+Nothing trims a `-N` suffix. A registration with no store identity still matches only by its own id,
+as `Id_matching_ignores_case_and_does_not_match_a_prefix` continues to assert. The typed-by-name case
+in Out of scope above is unchanged.
