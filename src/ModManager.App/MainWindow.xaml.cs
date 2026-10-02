@@ -1920,12 +1920,16 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not ModRowViewModel row) return;
         if (!await EnsureNotVortexOwnedAsync(row)) return;
+        // What it will delete, held folders included (B4: disabled-trees/<Mod>). Este, 2026-10-02: say what
+        // it's going to do and let them cancel or proceed. One directory walk before a modal, so inline.
+        if (ViewModel.PreviewUninstall(row) is not { } preview) return;
         var (title, content) = row.HasVariantOptions
             ? ("Uninstall family?",
                $"Permanently delete \"{row.DisplayName}\" and all {row.VariantOptions.Count} variants? " +
                "This removes every variant's files and can't be undone.")
             : ("Uninstall mod?",
                $"Permanently delete \"{row.DisplayName}\"? This removes the mod's files and can't be undone.");
+        if (preview.HeldSentence() is { } held) content += " " + held;
         var dialog = new ContentDialog
         {
             Title = title,

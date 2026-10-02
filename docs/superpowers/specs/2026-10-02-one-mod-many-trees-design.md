@@ -244,19 +244,79 @@ The App row text is checked with a Debug build and a UIA walk on Este's Cyberpun
 trees out of the game. Turning it back on left 2,527 files across the six folders byte-identical to
 before. The row text was verified by a UIA walk in both states.
 
+## Uninstall says what it will delete, held folders included
+
+The first cut refused to uninstall a mod with files in `disabled-trees/<Mod>`, because the delete knew only
+the main files and would have orphaned them. Este, 2026-10-02: *"let them know what it's going to do and
+let them choose to cancel or to proceed."* So the refusal (`UninstallBlock.HeldInOtherFolders`) is gone.
+A turned-off mod's held extras and a live mod's leftovers both go with the mod, after the user has been
+told.
+
+**The preview.** `ModUninstall.Preview(ctx, mods)` is read-only. It returns an `UninstallPreview`: each
+mod's name and files (`mod.Files`), and `HeldFolders`, one per mod whose `disabled-trees/<Mod>` holds
+anything, with its absolute path and the declared trees it holds entries under (`TreeHolding.Held`). It
+reads by the delete's rule: a link counts as something held, but nothing behind it is read, so no tree is
+named from a link's target. A folder whose files fit no declared tree, or whose only content is links, is
+listed with no trees. A folder that can't be read is listed with `Unreadable = true` rather than guessed
+about. The app's confirm dialog and the agent's `uninstall_mod` both read it.
+
+- **App.** The dialog keeps its first sentence and its buttons (Uninstall, Cancel, default Cancel), and
+  adds sentences when something is held. Trees: `626 is also holding some of its files in r6/scripts,
+  r6/tweaks, and will delete those too.` A folder with no trees gets its own sentence, never spliced into
+  the tree list: `626 is also holding files for it in <path> and will delete those too.` An unreadable
+  folder: `626 couldn't read <path> to see what it's holding for it; anything there will be deleted too.`
+  A family's variants are merged, each tree once, and read "their" and "them".
+- **MCP.** Without `confirm: true` the message lists the main files as before, plus `and the files 626 is
+  holding for it in <path> (r6/scripts, r6/tweaks)` per held folder. With it, the tool checks the held
+  folder is gone as well as the listing, and returns the paths as `deletedHeld`. When a held folder can't
+  be fully deleted the result is `ok: false` with the core message, `modRemoved` from a real listing check,
+  `heldLeft` and `deletedHeld`.
+
+**The delete, and its rails.** `Run`/`RunAll` delete each mod's `disabled-trees/<Mod>` right after that
+mod's own uninstall succeeds. A failure in the main uninstall leaves the held extras intact and the mod
+still listed; a later family member's failure leaves no orphan behind.
+
+- **Containment.** Checked for every mod before anything is deleted, with three outcomes.
+  - **Refused (throws, nothing deleted).** A genuine escape, where the name resolves outside
+    `TreeHolding.Root(ctx)` (`..`, `.`, `..\x`). Refused rather than let through, because the main
+    uninstall would misbehave on the same name: it deletes `disabled/<name>` recursively, and for `..`
+    that is the whole data folder. Also refused: a root that isn't strictly under the data folder, or is a
+    link.
+  - **Nothing held.** A name that stays inside but can't name one folder there as written: a trailing dot
+    or space (Windows strips them, so `Foo.` would land on `Foo`), `:` or another invalid character, or a
+    separator (`x\..\Foo`). No preview line and no delete. The uninstall goes ahead exactly as it did before
+    held folders existed. Refusing these instead made such Mod Engine 2 mods impossible to uninstall.
+  - **The folder.** Any other name. The check is textual on purpose: `Path.GetFullPath` expands an existing
+    folder's 8.3 alias, so comparing the resolved name would misread a mod named `OTHERL~1`.
+- **Real names only.** The folder is touched only when the root lists an entry with the mod's real name
+  (enumerated without a search pattern). A mod literally named `OTHERL~1` never reaches `Other Long Name
+  Mod`, although opening that path would.
+- **The same guards on the main uninstall.** `Scanner.UninstallMod` had the same alias hole in its delete of
+  `disabled/<name>`: uninstalling `Foo.` (from `Foo..archive`), `Foo ` or an 8.3 alias recursively deleted
+  `Foo`'s turned-off copy, and `..` reached the data folder. It now shares `FolderNames` with the held-folder
+  delete. A name that leads outside `disabled` is refused before anything is deleted. The turned-off copy is
+  deleted only when the name is one folder as written and `disabled` lists it by that real name; otherwise
+  there is no copy of this mod's, and the rest of the uninstall proceeds. The live-file loop deletes each
+  scanned entry by its exact name (`\\?\` when a segment ends in a dot or space).
+- **No following links.** `LinkSafeDelete` walks the tree without descending into a reparse point. A
+  junction or symlink is removed as the link (`Directory.Delete(path)` non-recursively, after clearing a
+  read-only flag on the link itself, or `File.Delete`), and its target is never touched; that includes a
+  held folder that is itself a link.
+- **Files, then folders.** Files are deleted one by one, then folders deepest first, each non-recursively.
+  No `Directory.Delete(recursive)`.
+- **Verified, and a failure doesn't stop the run.** A held folder that throws (a file in use, a
+  permission) or still holds a file or a link afterwards is recorded, and the run carries on. At the end
+  one `HeldFolderLeftException` names every folder left, with the first cause inside: `<Mod> was
+  uninstalled, but 626 couldn't delete everything it was holding for it in <path>. Close anything using
+  those files and delete the folder, or try again.` The app reloads after an uninstall whatever happened,
+  so the rows show what is really on disk.
+
 ## Follow-ups
 
 - **Safe Clear and extra trees.** Replaying a restore point used to copy the archived `disabled-trees`
   back after a mods-active end state, holding a second copy of entries that were live again (fixed: the
   replay skips it, as it skips `disabled`). What is still open: Safe Clear's vanilla move doesn't know
   extra trees, so a mod's entries there stay in the game.
-- **Uninstall with held extras is refused.** A mod with files in `disabled-trees/<Mod>` can't be
-  uninstalled, because the delete knows only the main files and would orphan them. The message depends on
-  whether the mod is on. Turned off: `Turn "<Mod>" on first: some of its files are held in other folders.`
-  Already on, so the files are leftovers (the manifest dropped a tree while it was off) and turning it on
-  would not clear them: `Move or remove the files held in <path> first: 626 can't tell where they belong.`,
-  with `<path>` the `disabled-trees/<Mod>` folder. Pending Este's call on whether uninstall should delete
-  them.
 - **The cross-volume fallback is untested on real hardware.** `SafeMove`'s copy-then-delete is covered by
   unit tests, not by a real two-drive install (smoke entry "B4 cross-volume").
 - **Bulk disable cost is O(n²) on tree games.** Each `DisableEntry` builds the mod list to find claimants.

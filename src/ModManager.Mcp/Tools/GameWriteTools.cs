@@ -129,9 +129,11 @@ public static class GameWriteTools
     }
 
     [McpServerTool(Name = "uninstall_mod")]
-    [Description("Permanently delete a mod: its files in every mod location and mirror, any held (turned-off) copy, and "
-                 + "626's record of it; for a Mod Engine 2 game, its folder and its line in the config. Cannot be undone, "
-                 + "so it refuses without confirm: true and then lists what it would delete. Never deletes loose files in "
+    [Description("Permanently delete a mod: its files in every mod location and mirror, any held (turned-off) copy, "
+                 + "626's record of it, and the folder where 626 holds its files from the game's other mod folders "
+                 + "(disabled-trees/<Mod>: a turned-off mod's extras, or a live mod's leftovers); for a Mod Engine 2 game, "
+                 + "its folder and its line in the config. Cannot be undone, so it refuses without confirm: true and then "
+                 + "lists what it would delete, held folders included. Never deletes loose files in "
                  + "the game folder (direct-inject, loose-root: turn those off instead) or a mod another tool manages. "
                  + "Recorded in the game's agent-log.jsonl.")]
     public static object UninstallMod(
@@ -155,13 +157,36 @@ public static class GameWriteTools
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args,
                 why.Kind == UninstallBlock.ManagedByAnotherTool ? AgentRefusal.ManagedByAnotherTool : AgentRefusal.None, why.Message);
 
+        // What it will delete, from the same preview the app's confirm dialog reads. A name that would resolve
+        // outside the holding folder is refused here, before anything is deleted.
+        UninstallPreview preview;
+        try { preview = ModUninstall.Preview(ctx, mod); }
+        catch (InvalidOperationException e)
+        {
+            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, e.Message);
+        }
+
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
                 $"Uninstalling {mod.Name} deletes {mod.Files.Count} file(s): {string.Join(", ", mod.Files.Take(10))}"
-                + (mod.Files.Count > 10 ? ", …" : "") + ". It cannot be undone; turning it off is reversible. "
+                + (mod.Files.Count > 10 ? ", …" : "") + HeldText(preview) + ". It cannot be undone; turning it off is reversible. "
                 + "Call again with confirm: true to delete.");
 
-        try { ModUninstall.Run(ctx, mod); }
+        IReadOnlyList<string> deletedHeld;
+        try { deletedHeld = ModUninstall.Run(ctx, mod); }
+        catch (HeldFolderLeftException left)
+        {
+            // The mod's own uninstall ran; a held folder could not be fully deleted. Not ok, but say truthfully
+            // which half happened: whether the listing still shows the mod is checked, not assumed.
+            var removed = !ModListing.Resolve(game).Any(m => string.Equals(m.Name, mod.Name, StringComparison.OrdinalIgnoreCase));
+            var detail = removed ? left.Message : left.Message + $" The mod list still shows {mod.Name}, though.";
+            AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "error", detail));
+            return new
+            {
+                ok = false, refusal = "error", gameId, modName = mod.Name, modRemoved = removed,
+                deleted = removed ? mod.Files : new List<string>(), deletedHeld = left.Deleted, heldLeft = left.Left, detail,
+            };
+        }
         catch (Exception e)
         {
             var detail = ErrorRemedy.Describe(e);
@@ -169,15 +194,28 @@ public static class GameWriteTools
             return new { ok = false, refusal = "error", detail };
         }
 
-        // Check, don't assume: the mod must be gone from the listing.
-        if (ModListing.Resolve(game).Any(m => string.Equals(m.Name, mod.Name, StringComparison.OrdinalIgnoreCase)))
+        // Check, don't assume: the mod must be gone from the listing, and its held folder from the disk.
+        var stillHeld = preview.HeldFolders.Select(h => h.Path).Where(p => Directory.Exists(p) || File.Exists(p)).ToList();
+        if (ModListing.Resolve(game).Any(m => string.Equals(m.Name, mod.Name, StringComparison.OrdinalIgnoreCase))
+            || stillHeld.Count > 0)
         {
-            var notApplied = $"Tried to uninstall {mod.Name}, but the mod list still shows it.";
+            var notApplied = stillHeld.Count > 0
+                ? $"Tried to uninstall {mod.Name}, but {string.Join(", ", stillHeld)} is still there."
+                : $"Tried to uninstall {mod.Name}, but the mod list still shows it.";
             AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "not_applied", notApplied));
             return new { ok = false, refusal = "not_applied", detail = notApplied };
         }
 
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "ok", $"Uninstalled {mod.Name}."));
-        return new { ok = true, gameId, modName = mod.Name, deleted = mod.Files, detail = $"Uninstalled {mod.Name}." };
+        return new { ok = true, gameId, modName = mod.Name, deleted = mod.Files, deletedHeld, detail = $"Uninstalled {mod.Name}." };
     }
+
+    // ", and the files 626 is holding for it in <path> (r6/scripts, r6/tweaks)" per held folder; nothing when
+    // none. An unreadable folder is named as such rather than given trees it may not hold.
+    private static string HeldText(UninstallPreview preview)
+        => string.Concat(preview.HeldFolders.Select(h =>
+            h.Unreadable
+                ? $", and whatever 626 is holding for it in {h.Path} (626 couldn't read that folder)"
+                : $", and the files 626 is holding for it in {h.Path}"
+                  + (h.Trees.Count > 0 ? $" ({string.Join(", ", h.Trees)})" : "")));
 }
