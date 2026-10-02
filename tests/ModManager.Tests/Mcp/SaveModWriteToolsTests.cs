@@ -297,11 +297,33 @@ public class SaveModWriteToolsTests : IDisposable
 
         var r = Json(SaveModTools.InstallSaveMod(g.Id, Zip("SaveHub.zip", ($"{World}/000123.sst", "FRESH"))));
 
-        Assert.Equal("already_installed", r.GetProperty("refusal").GetString());
+        Assert.Equal("world_exists", r.GetProperty("refusal").GetString());
         Assert.Contains("played", r.GetProperty("detail").GetString());
         Assert.DoesNotContain("reset_save_mod", r.GetProperty("detail").GetString());
         Assert.False(Directory.Exists(WorldDir));
         Assert.Equal("PROGRESS", File.ReadAllText(Path.Combine(played, "000123.sst")));
+    }
+
+    // #380 review: Reset discards progress on purpose, so a world the game holds is not refused, but the result says
+    // the game keeps its own copy, which a reset of 626's copy may not replace.
+    [Fact]
+    public void Reset_of_a_world_the_game_holds_goes_ahead_and_says_the_game_keeps_its_own_copy()
+    {
+        var registered = Path.Combine(Profiles, "76561198000000000", "RocksDB_v2");
+        var g = Game(registeredSaveDir: registered);
+        Directory.CreateDirectory(Path.Combine(registered, "0.10.0"));
+        SaveModTools.InstallSaveMod(g.Id, WorldZip());
+        var played = Path.Combine(registered, "0.10.0", "Worlds", World);   // the game imported it
+        Directory.CreateDirectory(played);
+        File.WriteAllText(Path.Combine(played, "level.db"), "PROGRESS");
+
+        var ask = Json(SaveModTools.ResetSaveMod(g.Id, World)).GetProperty("detail").GetString();
+        var r = Json(SaveModTools.ResetSaveMod(g.Id, World, confirm: true));
+
+        Assert.Contains("The game also holds this world", ask);
+        Assert.True(r.GetProperty("ok").GetBoolean(), r.ToString());
+        Assert.Contains("The game also holds this world", r.GetProperty("detail").GetString());
+        Assert.Equal("PROGRESS", File.ReadAllText(Path.Combine(played, "level.db")));   // 626 never writes the game's copy
     }
 
     [Fact]

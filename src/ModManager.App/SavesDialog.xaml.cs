@@ -529,7 +529,8 @@ public sealed partial class SavesDialog : ContentDialog
         {
             SaveModInstaller.ResetWorld(_saveDir, _savesDir, keptZip,
                 row.Entry.Guid, _saveModPath, _saveModForbidden);
-            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}.";
+            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}."
+                + GameCopyNote(row.Entry.Guid);
             Refresh();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
@@ -561,6 +562,19 @@ public sealed partial class SavesDialog : ContentDialog
         {
             return SaveModSnapshots.OutsideSavesList(_saveDir!, _savesDir, _saveModPath, _saveModForbidden, worldGuid) is { } dir
                 ? $" (in {dir}, not in this list)"
+                : "";
+        }
+        catch { return ""; }
+    }
+
+    // The game imports a world into its own store and plays it there (Windrose: RocksDB_v2). Reset replaces only the
+    // copy 626 installed, so say when the game holds its own. Core decides; this only says it.
+    private string GameCopyNote(string worldGuid)
+    {
+        try
+        {
+            return SaveModInstallerQueries.WorldInGameSave(_saveDir!, _saveModPath, worldGuid) is { } held
+                ? $" The game also holds this world ({held}); if the reset doesn't show in-game, delete the world in-game too."
                 : "";
         }
         catch { return ""; }

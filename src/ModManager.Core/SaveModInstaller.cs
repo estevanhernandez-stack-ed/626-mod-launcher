@@ -36,9 +36,15 @@ public static partial class SaveModInstaller
     /// </summary>
     public static string ResolveWorldsTarget(string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden,
                                              bool create = true)
+        => Resolve(saveProfilesDir, saveModPath, forbidden, create).Target;
+
+    // The profile, the store folder's name (the save-mod path's first segment) and the Worlds target, in one lookup.
+    private static (string Profile, string StoreRoot, string Target) Resolve(
+        string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden, bool create)
     {
         var relTemplate = string.IsNullOrWhiteSpace(saveModPath) ? DefaultSaveModPath : saveModPath!;
-        var profile = SingleProfileDir(saveProfilesDir, StoreRootName(relTemplate));
+        var storeRoot = StoreRootName(relTemplate);
+        var profile = SingleProfileDir(saveProfilesDir, storeRoot);
 
         // Guard the TEMPLATE segments first — a forbidden literal (e.g. "RocksDB_v2") must refuse
         // before we touch the disk or create any directory. {version} is not yet substituted, so
@@ -55,6 +61,31 @@ public static partial class SaveModInstaller
         GuardSegments(target.Split(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar), forbidSet);
 
         if (create) Directory.CreateDirectory(target);   // a lookup (WorldDirFor) never writes the save tree
+        return (profile, storeRoot, target);
+    }
+
+    /// <summary>
+    /// Whether this world may be installed, decided before anything is written: the install itself runs it, and the
+    /// app's drop runs it before asking the ban-risk question, so nobody is asked to accept a risk for an install
+    /// that would then be refused. Read-only. Returns the Worlds target, or throws:
+    /// <list type="bullet">
+    /// <item><see cref="WorldInGameSaveException"/>: the world is in the game's own store. The game imports a world
+    /// from the Worlds target into its own store (Windrose: RocksDB_v2 and its _Backups) and plays it there, so it
+    /// has been played, and installing it again could be imported over that progress. Checked first: it is the
+    /// stronger reason, and a world in both places must not get "move that folder" advice.</item>
+    /// <item><see cref="WorldAlreadyPresentException"/>: the world is in the Worlds target (either spelling of
+    /// its id). Installing over it would mix two versions.</item>
+    /// </list>
+    /// Also throws as <see cref="ResolveWorldsTarget"/> does, and when the game's store can't be read to check.
+    /// </summary>
+    public static string PreflightInstall(string saveProfilesDir, string? saveModPath, IReadOnlyList<string>? forbidden, string worldGuid)
+    {
+        RequireSafeGuid(worldGuid);
+        var (profile, storeRoot, target) = Resolve(saveProfilesDir, saveModPath, forbidden, create: false);
+        if (FindInGameStore(profile, storeRoot, worldGuid) is { } played)
+            throw new WorldInGameSaveException(worldGuid, played);
+        if (FindWorld(target, worldGuid) is { } present && Directory.EnumerateFileSystemEntries(present).Any())
+            throw new WorldAlreadyPresentException(worldGuid, present);
         return target;
     }
 
@@ -68,20 +99,11 @@ public static partial class SaveModInstaller
                                       string zipPath, string worldGuid, string? saveModPath, IReadOnlyList<string>? forbidden)
     {
         RequireSafeGuid(worldGuid); // refuse a traversal worldGuid BEFORE touching the save tree
-        var target = ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden); // guarded
+        // Guarded, and refuses a world that is already there or already in the game's own store, before anything
+        // is written. Installing over a world that was there extracted until the first file that existed and then
+        // threw, leaving a mix of the two.
+        var target = PreflightInstall(saveProfilesDir, saveModPath, forbidden, worldGuid);
         var worldDir = SafeWorldDir(target, worldGuid);
-
-        // Installing over a world that is already there extracted until the first file that existed and then
-        // threw, leaving a mix of the two. Refused before the snapshot, so nothing is written.
-        if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
-            throw new WorldAlreadyPresentException(worldGuid, worldDir);
-
-        // The game imports a world from here into its own store and plays it there (Windrose copies
-        // RocksDB\<version>\Worlds\<id> into RocksDB_v2 and its _Backups). A world already in the game's own
-        // store has been played: installing it again could be imported over that progress. Refused, also before
-        // anything is written, wherever in the profile's other store folders it turns up.
-        if (WorldInGameSave(saveProfilesDir, saveModPath, worldGuid, target) is { } played)
-            throw new WorldInGameSaveException(worldGuid, played);
 
         // Keep a copy of the zip for reset, in a folder of this world's own (the download can be deleted, and two
         // worlds' zips can share a file name), BEFORE the world goes in: a copy that fails afterwards would leave a
@@ -256,31 +278,48 @@ public static partial class SaveModInstaller
         return dirs[0];
     }
 
-    /// <summary>The world's folder in one of the profile's OTHER store folders (the game's own: RocksDB_v2, its
-    /// _Backups), or null. Looked for at the store's Worlds and one version level below it, so a stray copy nested
-    /// deeper (a profile restored inside RocksDB_v2) doesn't count. Read-only.</summary>
-    public static string? WorldInGameSave(string saveProfilesDir, string? saveModPath, string worldGuid, string worldsTarget)
+    /// <summary>The world's folder in the game's own store, or null: a store folder with a suffix (RocksDB_v2,
+    /// RocksDB_v2_Backups), never the save-mod store itself (RocksDB, any version), where 626 and the mod authors
+    /// install. Looked for at the store's Worlds and one version level below it, so a stray copy nested deeper (a
+    /// profile restored inside RocksDB_v2) doesn't count. Either spelling of the id matches. Read-only.</summary>
+    public static string? WorldInGameSave(string saveProfilesDir, string? saveModPath, string worldGuid)
     {
         RequireSafeGuid(worldGuid);
-        var relTemplate = string.IsNullOrWhiteSpace(saveModPath) ? DefaultSaveModPath : saveModPath!;
-        var storeRoot = StoreRootName(relTemplate);
-        var profile = SingleProfileDir(saveProfilesDir, storeRoot);
-        var target = System.IO.Path.GetFullPath(worldsTarget);
+        var (profile, storeRoot, _) = Resolve(saveProfilesDir, saveModPath, null, create: false);
+        return FindInGameStore(profile, storeRoot, worldGuid);
+    }
+
+    private static string? FindInGameStore(string profile, string storeRoot, string worldGuid)
+    {
         foreach (var store in Directory.EnumerateDirectories(profile))
         {
-            if (!IsStoreFolder(System.IO.Path.GetFileName(store), storeRoot)) continue;
-            // <store>\Worlds\<id> (Windrose's _Backups) and <store>\<version>\Worlds\<id>.
-            var worldsDirs = new[] { System.IO.Path.Combine(store, "Worlds") }
-                .Concat(Directory.EnumerateDirectories(store).Select(v => System.IO.Path.Combine(v, "Worlds")));
-            foreach (var worlds in worldsDirs)
+            if (!System.IO.Path.GetFileName(store).StartsWith(storeRoot + "_", StringComparison.OrdinalIgnoreCase)) continue;
+            try
             {
-                if (!Directory.Exists(worlds) || RegistrationRefresh.SamePath(System.IO.Path.GetFullPath(worlds), target)) continue;
-                var hit = Directory.EnumerateDirectories(worlds)
-                    .FirstOrDefault(d => string.Equals(System.IO.Path.GetFileName(d), worldGuid, StringComparison.OrdinalIgnoreCase));
-                if (hit is not null) return hit;
+                // <store>\Worlds\<id> (Windrose's _Backups) and <store>\<version>\Worlds\<id>.
+                var worldsDirs = new[] { System.IO.Path.Combine(store, "Worlds") }
+                    .Concat(Directory.EnumerateDirectories(store).Select(v => System.IO.Path.Combine(v, "Worlds")));
+                foreach (var worlds in worldsDirs)
+                    if (FindWorld(worlds, worldGuid) is { } hit) return hit;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Not knowing is not "not there": an install that can't check could be imported over progress.
+                throw new InvalidOperationException(
+                    $"626 couldn't read {store} to check whether this world has already been played there, so it won't "
+                    + "install it. Nothing was changed.", e);
             }
         }
         return null;
+    }
+
+    // The world's folder in a Worlds folder, under either spelling of its id (32 hex, or dashed).
+    private static string? FindWorld(string worldsDir, string worldGuid)
+    {
+        if (!Directory.Exists(worldsDir)) return null;
+        var want = worldGuid.Replace("-", "");
+        return Directory.EnumerateDirectories(worldsDir)
+            .FirstOrDefault(d => string.Equals(System.IO.Path.GetFileName(d).Replace("-", ""), want, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsStoreFolder(string name, string storeRoot)
@@ -461,8 +500,17 @@ public static class SaveModSnapshots
 public sealed class WorldInGameSaveException(string worldGuid, string foundAt)
     : InvalidOperationException($"World {worldGuid} is already in the game's own saves ({foundAt}), so it has been "
                                 + "played. Installing it again could replace that progress when the game next imports "
-                                + "it. Nothing was changed.")
+                                + "it, so 626 won't. Nothing was changed.")
 {
     public string WorldGuid { get; } = worldGuid;
     public string FoundAt { get; } = foundAt;
+}
+
+/// <summary>Read-only questions about a game's save-mod folders, for callers that must not look like they write
+/// (the app's save-write call-site check flags any SaveModInstaller call without the write policy).</summary>
+public static class SaveModInstallerQueries
+{
+    /// <summary>See <see cref="SaveModInstaller.WorldInGameSave(string, string?, string)"/>.</summary>
+    public static string? WorldInGameSave(string saveDir, string? saveModPath, string worldGuid)
+        => SaveModInstaller.WorldInGameSave(saveDir, saveModPath, worldGuid);
 }

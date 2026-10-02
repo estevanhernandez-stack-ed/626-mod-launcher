@@ -501,6 +501,46 @@ public class SaveModTests : IDisposable
         Assert.False(File.Exists(SaveModInstaller.KeptZipPath(Store, Guid32, zip)));
     }
 
+    // #380 review: the save-mod store itself (RocksDB, any version) is where 626 and mod authors install, not the
+    // game's own; a world in an older version folder there hasn't been "played" in the game's store.
+    [Fact]
+    public void A_world_in_an_older_version_of_the_install_folder_is_not_the_games_own()
+    {
+        var prof = MakeWindroseTree();
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB", "0.9.0", "Worlds", Guid32));
+
+        Assert.Null(SaveModInstaller.WorldInGameSave(Path.Combine(prof, "RocksDB_v2"), null, Guid32));
+    }
+
+    // #380 review: both spellings of a world id are accepted, so both match.
+    [Fact]
+    public void Either_spelling_of_the_world_id_matches_the_games_copy()
+    {
+        var prof = MakeWindroseTree();
+        var played = Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds", Guid32);
+        Directory.CreateDirectory(played);
+        const string dashed = "5391A30D-5D70-487C-9486-B8E60428ED3B";
+
+        Assert.Equal(played, SaveModInstaller.WorldInGameSave(Path.Combine(prof, "RocksDB_v2"), null, dashed));
+        Assert.Throws<WorldInGameSaveException>(() => SaveModInstaller.InstallWorld(Path.Combine(prof, "RocksDB_v2"), Snaps, Store,
+            MakeZip("world.zip", ($"{dashed}/level.db", "W")), dashed, null, null));
+    }
+
+    // Este's Save Hub exactly: hand-installed into RocksDB in spring, imported and played in RocksDB_v2. "Played" wins
+    // over "already there": the other reason would advise moving the folder, which is his world.
+    [Fact]
+    public void A_world_in_both_the_install_folder_and_the_games_store_is_refused_as_played()
+    {
+        var prof = MakeWindroseTree();
+        var handInstalled = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32);
+        Directory.CreateDirectory(handInstalled);
+        File.WriteAllText(Path.Combine(handInstalled, "000123.sst"), "SPRING");
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds", Guid32));
+
+        Assert.Throws<WorldInGameSaveException>(() =>
+            SaveModInstaller.PreflightInstall(Path.Combine(prof, "RocksDB_v2"), null, null, Guid32));
+    }
+
     [Fact]
     public void A_stray_copy_nested_deeper_in_the_games_store_does_not_count()
     {

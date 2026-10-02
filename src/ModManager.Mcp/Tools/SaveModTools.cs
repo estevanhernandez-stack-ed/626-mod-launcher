@@ -72,8 +72,9 @@ public static class SaveModTools
     [Description("Install one save/world mod zip (a Worlds/<id> package) into the game's save folder, as dropping "
                  + "it on the app does: what it can lose is snapshotted first, game-managed folders are never "
                  + "written, and a copy of the zip is kept so the world can be reset later. Refuses a zip that "
-                 + "isn't a save mod (use intake for regular mods), a world that is already installed (use "
-                 + "reset_save_mod), and a game whose saves 626 may not write or whose ban-risk acknowledgment the "
+                 + "isn't a save mod (use intake for regular mods), a world 626 already installed (already_installed: "
+                 + "use reset_save_mod), a world that is there but not 626's or that the game already holds in its own "
+                 + "saves, i.e. has been played (world_exists), and a game whose saves 626 may not write or whose ban-risk acknowledgment the "
                  + "user hasn't given. Not idempotent: a second call for the same world is refused. Audited.")]
     public static object InstallSaveMod(
         [Description("The game id, from list_games.")] string gameId,
@@ -107,13 +108,13 @@ public static class SaveModTools
             saveProfilesDir: ctx.SaveDir!, snapshotsDir: ctx.SavesDir, dataDir: ctx.DataDir,
             saveModPath: game.SaveModPath, forbidden: game.SaveModForbidden,
             writeAllowed: true, writeRefusal: null).Single();
+        // already_installed: 626 installed it, so reset_save_mod and remove_save_mod reach it. world_exists: the world
+        // is there but not 626's, or the game already holds it (it has been played); neither tool is the answer.
         if (v.Outcome == SaveModDropOutcome.AlreadyInstalled)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, "already_installed",
-                (v.Reason ?? "")
-                // Only a world 626 installed can be reset or removed through it.
-                + (SaveModStore.Load(ctx.DataDir).Any(e => string.Equals(e.Guid, v.WorldGuid, StringComparison.OrdinalIgnoreCase))
-                    ? " (Agent tools: reset_save_mod, remove_save_mod.)"
-                    : ""));
+                (v.Reason ?? "") + " (Agent tools: reset_save_mod, remove_save_mod.)");
+        if (v.Outcome == SaveModDropOutcome.WorldExists)
+            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, "world_exists", v.Reason ?? "");
         if (v.Outcome != SaveModDropOutcome.Installed)
             return Error(tool, ctx, gameId, args, v.Reason ?? v.Outcome.ToString());
 
@@ -140,7 +141,9 @@ public static class SaveModTools
     [Description("Start an installed save/world mod over: its world folder is replaced with a fresh copy from the zip "
                  + "kept at install, as the Saves dialog's Reset does. Progress in that world is lost, so it refuses "
                  + "without confirm: true (then it says what it would do). It is snapshotted first, and the result says "
-                 + "where that snapshot is. Refuses when the kept zip is gone, and where install_save_mod would. "
+                 + "where that snapshot is. Refuses when the kept zip is gone, an EA game, no save folder, and an "
+                 + "unacknowledged high ban-risk game. Discarding progress is what it is for, so a world the game "
+                 + "already holds is not refused; the result says so, since the game keeps its own copy. "
                  + "Audited.")]
     public static object ResetSaveMod(
         [Description("The game id, from list_games.")] string gameId,
@@ -157,10 +160,11 @@ public static class SaveModTools
                 $"{entry.Name} can't be reset: the zip it was installed from is gone. Nothing was changed.");
         if (WorldDir(tool, ctx, game, gameId, args, entry.Guid, out var worldDir) is { } noFolder) return noFolder;
 
+        var gameCopy = GameCopyNote(ctx, game, entry.Guid);
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
                 $"Resetting {entry.Name} deletes {worldDir} and extracts a fresh copy from {kept}. Progress in that world "
-                + "is lost. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false)
+                + "is lost. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false) + gameCopy
                 + " Call again with confirm: true to reset.");
 
         try { SaveModInstaller.ResetWorld(ctx.SaveDir!, ctx.SavesDir, kept, entry.Guid, game.SaveModPath, game.SaveModForbidden); }
@@ -170,7 +174,8 @@ public static class SaveModTools
             return Error(tool, ctx, gameId, args, $"Reset {entry.Name}, but its world folder {worldDir} is empty afterwards. "
                                                  + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false));
 
-        var done = $"Reset {entry.Name} (world {entry.Guid}) from its kept zip. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false);
+        var done = $"Reset {entry.Name} (world {entry.Guid}) from its kept zip. " + SnapshotNote(ctx, game, worldDir, entry.Guid, newWorld: false)
+                   + gameCopy;
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "ok", done));
         return new { ok = true, gameId, worldId = entry.Guid, name = entry.Name, worldDir, resetFrom = kept, detail = done };
     }
@@ -284,6 +289,21 @@ public static class SaveModTools
             return "It is a new world, so there was nothing to snapshot; remove_save_mod undoes it.";
         return $"626 snapshots this world first, into {dir}. Saves doesn't list those: to undo, unzip the newest one "
                + $"into {worldDir}.";
+    }
+
+    // The game imports a world into its own store and plays it there (Windrose: RocksDB_v2). Reset replaces only the
+    // copy 626 installed, so say when the game holds its own; whether it picks the fresh copy up isn't known.
+    private static string GameCopyNote(GameContext ctx, GameEntry game, string worldGuid)
+    {
+        try
+        {
+            return SaveModInstaller.WorldInGameSave(ctx.SaveDir!, game.SaveModPath, worldGuid) is { } held
+                ? $" The game also holds this world in {held} (it has been played there). Reset replaces only 626's copy; "
+                  + "whether the game picks up the fresh copy over its own isn't known, and the mod's own reset steps "
+                  + "also delete the world in-game."
+                : "";
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException) { return ""; }
     }
 
     private static object Error(string tool, GameContext ctx, string gameId, Dictionary<string, string> args, string detail)
