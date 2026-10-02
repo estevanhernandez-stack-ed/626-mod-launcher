@@ -96,7 +96,9 @@ public static class Scanner
     /// <param name="effectiveSaveDir">The save folder the context should use when it differs from the
     /// stored one (<see cref="SaveDirRefresh"/>). The stored entry is never changed: <c>Game</c> stays
     /// exactly what is on disk, so nothing that writes the registry back can persist the override.</param>
-    public static GameContext GameContext(GameEntry? game, string? effectiveSaveDir = null)
+    /// <param name="extraModTrees">Supplies the extra trees directly, for tests that have no feed; null
+    /// reads them from the game's manifest entry.</param>
+    public static GameContext GameContext(GameEntry? game, string? effectiveSaveDir = null, IReadOnlyList<string>? extraModTrees = null)
     {
         game ??= new GameEntry();
         var gameRoot = Path.GetFullPath(string.IsNullOrEmpty(game.GameRoot) ? "." : game.GameRoot);
@@ -196,6 +198,7 @@ public static class Scanner
             GroupingRule = string.IsNullOrEmpty(groupingRule) ? "filename_no_ext" : groupingRule,
             ScanSubfolders = string.IsNullOrEmpty(game.ScanSubfolders) ? "warn" : game.ScanSubfolders,
             HasGame = !string.IsNullOrEmpty(game.Id),
+            ExtraModTrees = extraModTrees ?? manifestEntry?.ExtraModTrees,
         };
     }
 
