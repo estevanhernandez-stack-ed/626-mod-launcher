@@ -125,6 +125,33 @@ public static class ManifestIdLookup
             ?? (!string.IsNullOrEmpty(game.Id) && snap.ById.TryGetValue(game.Id, out var own) ? own : null);
     }
 
+    /// <summary>
+    /// <see cref="EntryFor"/>, failing closed: the own-id fallback is refused when that entry claims a
+    /// different id on a store the registration also carries. For facts that point at the user's own
+    /// data (the save folder, its layout, its character seam), where the wrong game's answer is a
+    /// folder backed up and restored over, not a scan that finds nothing.
+    ///
+    /// <para><see cref="EntryFor"/> deliberately accepts that case, because for a manifest correction
+    /// the cost of a stale store id (a feed that corrected an app id) is every correction lost. Here the
+    /// cost runs the other way: a slug like "doom" on a Doom Eternal registration must not hand it Doom's
+    /// save folder. A store match is never second-guessed; only the own-id guess is.</para>
+    /// </summary>
+    public static GameManifestEntry? ConfirmedEntryFor(GameEntry? game)
+    {
+        if (game is null) return null;
+        var snap = Maps();
+        if ((StoreEntry(snap.Steam, game.SteamAppId) ?? StoreEntry(snap.Ea, game.EaContentId)) is { } byStore)
+            return byStore;
+        if (string.IsNullOrEmpty(game.Id) || !snap.ById.TryGetValue(game.Id, out var own)) return null;
+        return Contradicts(game.SteamAppId, own.Stores.SteamAppId) || Contradicts(game.EaContentId, own.Stores.EaContentId)
+            ? null
+            : own;
+    }
+
+    private static bool Contradicts(string? registered, string? claimed)
+        => !string.IsNullOrWhiteSpace(registered) && !string.IsNullOrWhiteSpace(claimed)
+           && !string.Equals(registered, claimed, StringComparison.Ordinal);
+
     /// <summary>The manifest entry claiming this Steam app id, or null. What <c>KnownModPaths</c> reads,
     /// so the add path and the scan path break a tie the same way.</summary>
     public static GameManifestEntry? EntryBySteamAppId(string? steamAppId) => StoreEntry(Maps().Steam, steamAppId);

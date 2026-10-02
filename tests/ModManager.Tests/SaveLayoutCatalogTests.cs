@@ -35,8 +35,8 @@ public class SaveLayoutCatalogTests
     {
         // Offline, first launch, no cached feed. The embedded snapshot has to carry it or the panel
         // silently reverts to whole-folder behaviour for the one game this was all built on.
-        Assert.Equal(SaveLayout.Worlds, SaveLayoutCatalog.ByAppId("1623730"));
-        Assert.Equal(SaveLayout.Worlds, GameSaveTypesCatalog.Resolve("ue-pak", "1623730").Layout);
+        Assert.Equal(SaveLayout.Worlds, SaveLayoutCatalog.For(SaveTestGames.Steam("1623730")));
+        Assert.Equal(SaveLayout.Worlds, GameSaveTypesCatalog.Resolve(SaveTestGames.Steam("1623730", "ue-pak")).Layout);
     }
 
     [Fact]
@@ -45,9 +45,9 @@ public class SaveLayoutCatalogTests
         // Null in the manifest means "nobody looked", which matters to a curator. At runtime it must
         // collapse to what every game does today - whole-folder backup and restore - rather than
         // becoming a third state the UI has to explain.
-        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.ByAppId("1245620"));   // Elden Ring
-        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.ByAppId("0"));
-        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.ByAppId(null));
-        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.ByAppId(""));
+        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.For(SaveTestGames.Steam("1245620")));   // Elden Ring
+        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.For(SaveTestGames.Steam("0")));
+        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.For(SaveTestGames.Steam(null)));
+        Assert.Equal(SaveLayout.TypedFiles, SaveLayoutCatalog.For(SaveTestGames.Steam("")));
     }
 }

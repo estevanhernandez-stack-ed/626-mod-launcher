@@ -24,6 +24,22 @@ namespace ModManager.Core.Characters;
 /// </summary>
 public static class CyberpunkCharacters
 {
+    /// <summary>Cyberpunk 2077's Steam app id: the identity the reader dispatches on.</summary>
+    public const string SteamAppId = "1091500";
+
+    /// <summary>
+    /// Whether this reader applies to the game. Keyed on the Steam app id, never on the engine (four
+    /// ue-pak games on one machine have four unrelated save shapes) and never on a manifest id, which
+    /// the feed can rename (the Skyrim SE merge kept the feed's id). Either the registration carries the
+    /// id, or the manifest entry it resolves to does, so a copy from another store (no Steam id of its
+    /// own, joined by its manifest id) reads too.
+    /// </summary>
+    public static bool AppliesTo(GameEntry? game)
+        => game is not null
+           && (string.Equals(game.SteamAppId, SteamAppId, StringComparison.Ordinal)
+               || string.Equals(ModManager.Core.ManifestIdLookup.ConfirmedEntryFor(game)?.Stores.SteamAppId,
+                   SteamAppId, StringComparison.Ordinal));
+
     public const string MetadataGlob = "metadata.*.json";
     public const string PayloadName = "sav.dat";
     public const string ThumbnailName = "screenshot.png";

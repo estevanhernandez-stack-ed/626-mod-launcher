@@ -15,8 +15,8 @@ public class SaveSeamCatalogTests
         // may be absent locally, so assert the SHAPE rather than demanding the data be present.
         foreach (var appId in new[] { "1623730", "3041230" })
         {
-            var seam = SaveSeamCatalog.ByAppId(appId);
-            Assert.Equal(seam.Count > 0, SaveSeamCatalog.CanShare(appId));
+            var seam = SaveSeamCatalog.For(SaveTestGames.Steam(appId));
+            Assert.Equal(seam.Count > 0, SaveSeamCatalog.CanShareFor(SaveTestGames.Steam(appId)));
             Assert.All(seam, p => Assert.False(string.IsNullOrWhiteSpace(p)));
         }
     }
@@ -26,10 +26,10 @@ public class SaveSeamCatalogTests
     {
         // Cyberpunk has no world half; a game nobody has looked at has an unknown one. The panel must
         // not ask the user to tell those apart - it just does not offer to share either.
-        Assert.False(SaveSeamCatalog.CanShare("1091500"));    // Cyberpunk 2077
-        Assert.False(SaveSeamCatalog.CanShare("1245620"));    // Elden Ring
-        Assert.False(SaveSeamCatalog.CanShare("0"));
-        Assert.False(SaveSeamCatalog.CanShare(null));
-        Assert.Empty(SaveSeamCatalog.ByAppId(null));
+        Assert.False(SaveSeamCatalog.CanShareFor(SaveTestGames.Steam("1091500")));    // Cyberpunk 2077
+        Assert.False(SaveSeamCatalog.CanShareFor(SaveTestGames.Steam("1245620")));    // Elden Ring
+        Assert.False(SaveSeamCatalog.CanShareFor(SaveTestGames.Steam("0")));
+        Assert.False(SaveSeamCatalog.CanShareFor(SaveTestGames.Steam(null)));
+        Assert.Empty(SaveSeamCatalog.For(SaveTestGames.Steam(null)));
     }
 }

@@ -3,7 +3,7 @@ using ModManager.Core.Manifest;
 namespace ModManager.Core;
 
 /// <summary>
-/// The curated save-folder hint for a Steam app id — a facade over <see cref="EffectiveManifest"/>
+/// The curated save-folder hint for a game — a facade over <see cref="EffectiveManifest"/>
 /// (twin of <see cref="BanRiskCatalog"/> and <see cref="SaveLayoutCatalog"/>).
 ///
 /// <para><b>This is what makes the hint load-bearing.</b> Until now nothing read
@@ -17,36 +17,17 @@ namespace ModManager.Core;
 /// </summary>
 public static class SaveDirHints
 {
-    private static IReadOnlyDictionary<string, string>? _map;
-    private static int _mapGen = -1;
-    private static readonly object _gate = new();
-
-    private static IReadOnlyDictionary<string, string> Map
-    {
-        get
-        {
-            lock (_gate)
-            {
-                var gen = EffectiveManifest.Generation;
-                if (_map is null || _mapGen != gen) { _map = Build(); _mapGen = gen; }
-                return _map;
-            }
-        }
-    }
-
-    private static IReadOnlyDictionary<string, string> Build()
-    {
-        var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var g in EffectiveManifest.Current.Games)
-        {
-            if (string.IsNullOrWhiteSpace(g.SaveDirHint)) continue;
-            if (g.Stores.SteamAppId is { Length: > 0 } appId) map[appId] = g.SaveDirHint!;
-        }
-        return map;
-    }
-
     /// <summary>The curated hint, still holding its <c>&lt;winDocuments&gt;</c>-style placeholders, or
     /// null when the feed says nothing.</summary>
     public static string? ByAppId(string? steamAppId)
-        => !string.IsNullOrEmpty(steamAppId) && Map.TryGetValue(steamAppId!, out var h) ? h : null;
+        => Hint(ManifestIdLookup.EntryBySteamAppId(steamAppId));
+
+    /// <summary>The curated hint for a registered game, resolved through every identity it carries
+    /// (<see cref="ManifestIdLookup.ConfirmedEntryFor"/>). An EA app game has no Steam id at all, and a
+    /// second store copy has an <c>&lt;id&gt;-2</c> id; both still name their manifest entry.</summary>
+    public static string? For(GameEntry? game)
+        => Hint(ManifestIdLookup.ConfirmedEntryFor(game));
+
+    private static string? Hint(GameManifestEntry? entry)
+        => string.IsNullOrWhiteSpace(entry?.SaveDirHint) ? null : entry!.SaveDirHint;
 }

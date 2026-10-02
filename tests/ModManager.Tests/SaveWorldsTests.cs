@@ -106,9 +106,9 @@ public class SaveWorldsTests
         // Per-GAME, not per-engine. Palworld and Windrose are both ue-pak and arrange saves entirely
         // differently — worlds in folders versus a RocksDB database — so keying this on engine would
         // have been wrong for one of them whichever way it went.
-        Assert.Equal(SaveLayout.Worlds, GameSaveTypesCatalog.Resolve("ue-pak", "1623730").Layout);
-        Assert.Equal(SaveLayout.TypedFiles, GameSaveTypesCatalog.Resolve("ue-pak", "999999").Layout);
-        Assert.Equal(SaveLayout.TypedFiles, GameSaveTypesCatalog.Resolve("fromsoft", "1245620").Layout);
+        Assert.Equal(SaveLayout.Worlds, GameSaveTypesCatalog.Resolve(SaveTestGames.Steam("1623730", "ue-pak")).Layout);
+        Assert.Equal(SaveLayout.TypedFiles, GameSaveTypesCatalog.Resolve(SaveTestGames.Steam("999999", "ue-pak")).Layout);
+        Assert.Equal(SaveLayout.TypedFiles, GameSaveTypesCatalog.Resolve(SaveTestGames.Steam("1245620", "fromsoft")).Layout);
     }
 }
 

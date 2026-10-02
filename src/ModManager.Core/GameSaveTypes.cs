@@ -45,9 +45,10 @@ public static class GameSaveTypesCatalog
     // completely differently - worlds in folders versus a RocksDB database - so keying this on engine
     // would have been wrong for one of them whichever way it went.
     /// <summary>Layout comes from the signed game manifest, so a folder-per-save game is a data PR
-    /// rather than an app release. See <see cref="SaveLayoutCatalog"/>.</summary>
-    public static GameSaveTypes Resolve(string? engine, string? steamAppId)
-        => new(engine ?? "", SaveTypesFor(engine), SaveLayoutCatalog.ByAppId(steamAppId));
+    /// rather than an app release. See <see cref="SaveLayoutCatalog"/>. Resolved through every identity
+    /// the game carries, so an EA app game (no Steam id) and a second store copy get their entry's.</summary>
+    public static GameSaveTypes Resolve(GameEntry game)
+        => new(game.Engine ?? "", SaveTypesFor(game.Engine), SaveLayoutCatalog.For(game));
 
     private static IReadOnlyList<SaveType> SaveTypesFor(string? engine) => engine switch
     {

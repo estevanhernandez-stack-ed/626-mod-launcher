@@ -258,3 +258,32 @@ signals any process. No change.
 - Merging a game detected in both stores into one row. No copy on this machine is in both.
 - Anything that writes to an EA game, its saves or its folders. The launcher reads here and hands Play
   to the EA app.
+
+## Addendum, 2026-10-02: the save lookups resolve by game
+
+Groundwork for the save-snapshot slice, built ahead of it. The saves panel asked `SaveDirHints`,
+`SaveLayoutCatalog`, `SaveSeamCatalog` and `GameSaveTypesCatalog` by Steam app id only, so a registered EA
+game could never get a curated save folder, layout or seam, whatever the feed said. Each now resolves the
+whole game through `ManifestIdLookup.ConfirmedEntryFor` (Steam id, then EA content id, then own id, as
+A30's join, but refusing an own-id match whose entry claims a different store id than the game carries:
+a save fact points at the user's data, so it fails closed). The Steam-id-only forms are gone, as in #356,
+so no caller can quietly stay Steam-only. The saves panel, the save-file drop path and `SaveLocator` use
+the by-game forms, and the Cyberpunk character reader keys on the Steam id the game or its entry carries,
+never on a manifest id the feed can rename.
+
+`EffectiveManifest.Merge` now folds a feed rename by EA content id as well as Steam id. Without it, an
+EA-only game the feed renamed would sit in the merged manifest twice, and every by-store lookup would take
+the snapshot's stale entry. So the `saveDirHint` data PR above
+now reaches these games the day it merges, with no launcher release.
+
+Two boundary fixes rode along in `SaveLocator`, on the path an EA add already took:
+
+- An EA game's save detection no longer lists its install folder, and `<base>` is not resolved for it.
+  The heuristic's project-name discovery did the first, and a `<base>` hint would have done the second,
+  which this spec rules out ("no read beyond installerdata.xml"). A game added through the AI-define flow
+  carries no EA identity and is out of reach of this rule; that flow probes its browsed folder by design.
+- The signed-in Steam user is passed only for a game with a Steam id, so a `<storeUserId>` hint never
+  resolves to a Steam folder for an EA game.
+
+Still out of scope: name-pattern save types, which need the save listing to match names as well as
+extensions.

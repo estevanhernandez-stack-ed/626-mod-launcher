@@ -3828,7 +3828,7 @@ public sealed partial class MainViewModel : ObservableObject
             var saveSkipReasons = new List<string>();
             if (!string.IsNullOrEmpty(_ctx.SaveDir))
             {
-                var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game.Engine, _ctx.Game.SteamAppId)
+                var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game)
                     .SaveTypes.Select(t => t.Extension).ToList();
                 var saveRisk = BanRiskCatalog.Effective(_ctx.Game);
                 var saveWritesAcked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
@@ -4257,7 +4257,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Prefer the wizard's already-resolved save folder; else find it (Ludusavi by Steam id, then heuristics).
             var saveDir = !string.IsNullOrEmpty(resolvedSaveDir)
                 ? resolvedSaveDir
-                : await SaveLocator.DetectAsync(_ludu, entry.GameName, entry.Engine, entry.GameRoot, entry.SteamAppId, _steam.CurrentUserId64());
+                : await SaveLocator.DetectAsync(_ludu, entry, _steam.CurrentUserId64());
             if (saveDir is not null) _svc.SetSaveDir(entry.Id, saveDir);
             await LoadAsync();
             StatusText = $"Added {entry.GameName}.";
