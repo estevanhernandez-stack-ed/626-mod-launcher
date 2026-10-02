@@ -24,7 +24,16 @@ namespace ModManager.Core;
 public static class ModToggle
 {
     public static async Task SetEnabledAsync(GameContext ctx, Mod mod, bool enabled)
-        => await DispatchAsync(ctx, mod, enabled);
+        => await DispatchAsync(ctx, mod, enabled, scope: null);
+
+    /// <summary>
+    /// <see cref="SetEnabledAsync(GameContext, Mod, bool)"/> for one change of a bulk operation (a profile
+    /// load): the same dispatch, handing the scanner's lane the operation's <see cref="Scanner.BulkScope"/> so
+    /// it reads the mod list and the extra-tree selection once per operation instead of once per change.
+    /// Internal so the public signature the MCP calls stays as it is; still the one lane chooser.
+    /// </summary>
+    internal static async Task SetEnabledAsync(GameContext ctx, Mod mod, bool enabled, Scanner.BulkScope scope)
+        => await DispatchAsync(ctx, mod, enabled, scope);
 
     /// <summary>
     /// <see cref="SetEnabledAsync"/>, reporting whether the change took and, when it can say, why not. A
@@ -42,13 +51,14 @@ public static class ModToggle
     /// </summary>
     public static async Task<ToggleOutcome> SetEnabledWithOutcomeAsync(GameContext ctx, Mod mod, bool enabled)
     {
-        var outcome = await DispatchAsync(ctx, mod, enabled);
+        var outcome = await DispatchAsync(ctx, mod, enabled, scope: null);
         if (outcome is not null) return new ToggleOutcome(outcome.Enabled, outcome.Reason);
         return new ToggleOutcome(IsApplied(ctx.Game, mod.Name, enabled), null);
     }
 
     // The one lane chooser. Returns the scanner's enable outcome when the change went through it, else null.
-    private static async Task<Scanner.EnableOutcome?> DispatchAsync(GameContext ctx, Mod mod, bool enabled)
+    // A bulk operation's scope rides through to the scanner's lane only; the other lanes never read it.
+    private static async Task<Scanner.EnableOutcome?> DispatchAsync(GameContext ctx, Mod mod, bool enabled, Scanner.BulkScope? scope)
     {
         var game = ctx.Game;
 
@@ -69,7 +79,7 @@ public static class ModToggle
         // would silently do nothing. The row itself goes over.
         if (mod.Class == "library")
         {
-            await Scanner.SetAppendedRowEnabledAsync(mod, enabled, ctx);
+            await Scanner.SetAppendedRowEnabledAsync(mod, enabled, ctx, scope);
             return null;
         }
 
@@ -85,7 +95,7 @@ public static class ModToggle
                 SetLooseRootEnabled(game, mod.Name, enabled);
                 return null;
             default:
-                return await Scanner.SetLoaderModEnabledWithOutcomeAsync(mod.Name, enabled, ctx);
+                return await Scanner.SetLoaderModEnabledWithOutcomeAsync(mod.Name, enabled, ctx, scope);
         }
     }
 
