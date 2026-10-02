@@ -409,18 +409,24 @@ public class DataDirMoveExecuteTests
         var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
         var seen = new List<(int Copied, int Total)>();
 
-        var result = DataDirMove.Execute(forced, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+        // In order, on the calling thread. Progress<T> posts each report to the thread pool when there is
+        // no synchronization context, so three reports can land in any order and an exact-order assert
+        // flaked under full-suite load. What Execute REPORTS is the subject here, not how Progress<T>
+        // dispatches it.
+        var result = DataDirMove.Execute(forced, new InlineProgress<(int, int)>(seen.Add));
 
         Assert.True(result.Moved);
-        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
-                    "progress callbacks did not arrive within 5s");
-        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
+        Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
     }
 
-    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies. A
-    // bare Assert.Empty right after Execute returns would pass even against an implementation that DID
-    // tick on the rename path, since Progress<T> dispatch is asynchronous — give it a drain window
-    // first so the test can actually fail against the behaviour it exists to forbid.
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
+    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies.
+    // Reported inline, so an empty list right after Execute is conclusive: with Progress<T> it needed a
+    // drain window, because its dispatch is asynchronous and a bare assert would pass against a tick.
     [Fact]
     public void A_rename_reports_no_progress()
     {
@@ -428,11 +434,10 @@ public class DataDirMoveExecuteTests
         var to = Path.Combine(Path.GetDirectoryName(from)!, "renamed-" + Guid.NewGuid().ToString("N"));
         var seen = new List<(int, int)>();
 
-        var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+        var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new InlineProgress<(int, int)>(seen.Add));
 
         Assert.True(result.Moved);
-        SpinWait.SpinUntil(() => { lock (seen) return seen.Count > 0; }, TimeSpan.FromSeconds(1));
-        lock (seen) Assert.Empty(seen);
+        Assert.Empty(seen);
     }
 
     // The plan is taken before the dialog and before the confirm; the copy runs afterwards. If a file
@@ -448,12 +453,11 @@ public class DataDirMoveExecuteTests
         var stale = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete, FileCount = 99 };
         var seen = new List<(int Copied, int Total)>();
 
-        var result = DataDirMove.Execute(stale, new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+        // In order, on the calling thread: see A_copy_move_reports_progress_for_every_file.
+        var result = DataDirMove.Execute(stale, new InlineProgress<(int, int)>(seen.Add));
 
         Assert.True(result.Moved);
-        Assert.True(SpinWait.SpinUntil(() => { lock (seen) return seen.Count == 3; }, TimeSpan.FromSeconds(5)),
-                    "progress callbacks did not arrive within 5s");
-        lock (seen) Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
+        Assert.Equal(new[] { (1, 3), (2, 3), (3, 3) }, seen);
     }
 
     // The default keeps every existing call site and all current tests compiling unchanged.

@@ -1047,7 +1047,9 @@ public sealed partial class MainWindow : Window
         var ctx = svc.ActiveContext();
         if (ctx is null) return;
 
-        // Find the save folder (Ludusavi by Steam id, then heuristics) if it's unset or stale.
+        // Find the save folder (Ludusavi by Steam id, then heuristics) if it's unset or stale. A stored
+        // guess one level above the curated folder is already corrected in the context
+        // (SaveLocator.EffectiveSaveDir), so it is not re-detected here.
         if (string.IsNullOrEmpty(ctx.SaveDir) || !System.IO.Directory.Exists(ctx.SaveDir))
         {
             var ludu = App.AppHost.Services.GetRequiredService<Services.LudusaviService>();

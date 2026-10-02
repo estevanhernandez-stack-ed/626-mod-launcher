@@ -133,6 +133,9 @@ public sealed class GameEntry
     public const string UserSetGroupingRule = "groupingRule";
     public const string UserSetModLocations = "modLocations";
     public const string UserSetGameRoot = "gameRoot";
+    /// <summary>The save folder was picked by the user (Saves, Change…), so no curated folder replaces
+    /// it (<see cref="SaveDirRefresh"/>). A detected folder carries no marker.</summary>
+    public const string UserSetSaveDir = "saveDir";
 
     // Field names for changes that are real but carry no pin — see RegistrationChangePlan.OtherChanges.
     // The UserSet* constants above are field names too; they are the PINNABLE subset, and they carry

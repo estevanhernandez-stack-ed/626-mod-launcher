@@ -93,7 +93,10 @@ public static class Scanner
         return modLocations;
     }
 
-    public static GameContext GameContext(GameEntry? game)
+    /// <param name="effectiveSaveDir">The save folder the context should use when it differs from the
+    /// stored one (<see cref="SaveDirRefresh"/>). The stored entry is never changed: <c>Game</c> stays
+    /// exactly what is on disk, so nothing that writes the registry back can persist the override.</param>
+    public static GameContext GameContext(GameEntry? game, string? effectiveSaveDir = null)
     {
         game ??= new GameEntry();
         var gameRoot = Path.GetFullPath(string.IsNullOrEmpty(game.GameRoot) ? "." : game.GameRoot);
@@ -183,7 +186,8 @@ public static class Scanner
             ClassificationPath = Path.Combine(dataDir, "classification.json"),
             MetadataPath = Path.Combine(dataDir, "metadata.json"),
             LoadOrderPath = Path.Combine(dataDir, "loadorder.json"),
-            SaveDir = string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
+            SaveDir = !string.IsNullOrEmpty(effectiveSaveDir) ? effectiveSaveDir
+                : string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
             DeclaredExts = scanExts,
             Exts = exts,
             FileRe = fileRe,

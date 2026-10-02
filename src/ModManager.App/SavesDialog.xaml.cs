@@ -613,7 +613,7 @@ public sealed partial class SavesDialog : ContentDialog
         if (folder is null) return;
         _saveDir = folder.Path;
         FolderBox.Text = _saveDir;
-        _svc.SetSaveDir(_gameId, _saveDir);
+        _svc.SetSaveDir(_gameId, _saveDir, userChosen: true);   // a choice: no curated folder replaces it
         Refresh();
         RefreshSaveFiles();
         RefreshWorlds();

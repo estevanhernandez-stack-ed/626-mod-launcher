@@ -39,14 +39,15 @@ public sealed class ProfileArchiveBuilder
             onProgress?.Invoke(game.GameName ?? game.Id);
 
             GameContext ctx;
-            try { ctx = Scanner.GameContext(game); }
+            try { ctx = Scanner.GameContext(game, SaveLocator.EffectiveSaveDir(game)); }
             catch { continue; }   // a game whose context will not resolve is skipped, not fatal
 
             var (modFiles, mods) = CollectMods(ctx);
 
             sources.Add(new ProfileGameSource(
                 new BundleGame(game.Id, game.SteamAppId, game.GameName),
-                Directory.Exists(game.SaveDir ?? "") ? game.SaveDir : null,
+                // The folder the game uses, so a backup holds the saves rather than their parent.
+                Directory.Exists(ctx.SaveDir ?? "") ? ctx.SaveDir : null,
                 modFiles,
                 mods,
                 Directory.Exists(ctx.DataDir) ? ctx.DataDir : null)

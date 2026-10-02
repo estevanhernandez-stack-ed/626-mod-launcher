@@ -314,3 +314,16 @@ The save-snapshot slice, read side only.
 
 So the `saveDirHint` data PR can merge after this one: the hint then lights up listing and backups, and
 nothing else.
+
+### And games added before the hint reach it
+
+Found reviewing the `saveDirHint` data PR (626-game-manifest#26). A game added before the feed named
+its save folder fell back to the folder guess, which stores `Documents\<title>`: the parent of `saves`.
+That folder exists, so it was never detected again, and the top-level listing showed no saves.
+
+`SaveDirRefresh` corrects this **at read time**: the context (and the machine backup) use the curated
+folder, and the registry keeps what it had, so nothing is permanent. Every condition must hold: the
+launcher never writes this game's saves (a game that can restore would bring an old parent-rooted
+snapshot back as `saves\saves`); the user did not pick the stored folder (Saves, Change… now marks it);
+the hint names no store account; the stored folder is the curated folder's direct parent; and the
+curated folder exists.
