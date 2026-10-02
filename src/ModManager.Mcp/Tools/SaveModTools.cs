@@ -109,7 +109,11 @@ public static class SaveModTools
             writeAllowed: true, writeRefusal: null).Single();
         if (v.Outcome == SaveModDropOutcome.AlreadyInstalled)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, "already_installed",
-                (v.Reason ?? "") + " (Agent tools: reset_save_mod, remove_save_mod.)");
+                (v.Reason ?? "")
+                // Only a world 626 installed can be reset or removed through it.
+                + (SaveModStore.Load(ctx.DataDir).Any(e => string.Equals(e.Guid, v.WorldGuid, StringComparison.OrdinalIgnoreCase))
+                    ? " (Agent tools: reset_save_mod, remove_save_mod.)"
+                    : ""));
         if (v.Outcome != SaveModDropOutcome.Installed)
             return Error(tool, ctx, gameId, args, v.Reason ?? v.Outcome.ToString());
 

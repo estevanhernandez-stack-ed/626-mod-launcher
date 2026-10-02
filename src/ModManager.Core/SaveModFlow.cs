@@ -4,7 +4,8 @@ namespace ModManager.Core;
 
 /// <summary>Outcome of a single archive drop through the save-mod fast-path. NeedsAcknowledgment:
 /// it is a save mod for a game whose save writes are gated, and nothing was written. AlreadyInstalled: its
-/// world is already in the save folder, and nothing was written (the reason says what the user can do).</summary>
+/// world is already in the save folder or in the game's own store, and nothing was written (the reason says what
+/// the user can do).</summary>
 public enum SaveModDropOutcome { Installed, NotASaveMod, Failed, NeedsAcknowledgment, AlreadyInstalled }
 
 /// <summary>One archive's verdict + the world GUID (when installed) + a reason (when failed).</summary>
@@ -96,6 +97,10 @@ public static class SaveModFlow
             SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name,
                 SaveModInstaller.KeptZipPath(dataDir, verdict.WorldGuid!, path), DateTime.UtcNow));
             return new SaveModDropVerdict(path, SaveModDropOutcome.Installed, verdict.WorldGuid, null);
+        }
+        catch (WorldInGameSaveException e)
+        {
+            return new SaveModDropVerdict(path, SaveModDropOutcome.AlreadyInstalled, verdict.WorldGuid, e.Message);
         }
         catch (WorldAlreadyPresentException e)
         {

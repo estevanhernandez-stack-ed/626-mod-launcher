@@ -477,6 +477,42 @@ public class SaveModTests : IDisposable
         Assert.Equal(Path.GetFullPath(Profiles), SaveManager.SourceOf(SaveManager.ListSnapshots(Snaps).Single().Path));
     }
 
+    // #380: the game imports a world from RocksDB\<ver>\Worlds into its own store (RocksDB_v2, its _Backups) and plays
+    // it there. Este's Save Hub (#209) sat in all three. A world already in the game's store has been played, so
+    // installing it again is refused before anything is written. The zip is #209's shape: <GUID>/ at the top.
+    [Theory]
+    [InlineData("RocksDB_v2/0.10.0/Worlds")]
+    [InlineData("RocksDB_v2_Backups/Worlds")]
+    public void A_world_already_in_the_games_own_store_is_refused_before_anything_is_written(string where)
+    {
+        var prof = MakeWindroseTree();
+        var played = Path.Combine(prof, where.Replace('/', Path.DirectorySeparatorChar), Guid32);
+        Directory.CreateDirectory(played);
+        File.WriteAllText(Path.Combine(played, "000123.sst"), "PROGRESS");
+        var zip = MakeZip("save-hub.zip", ($"{Guid32}/000123.sst", "FRESH"));
+
+        var e = Assert.Throws<WorldInGameSaveException>(() =>
+            SaveModInstaller.InstallWorld(Path.Combine(prof, "RocksDB_v2"), Snaps, Store, zip, Guid32, null, null));
+
+        Assert.Equal(played, e.FoundAt);
+        Assert.Equal("PROGRESS", File.ReadAllText(Path.Combine(played, "000123.sst")));
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32)));
+        Assert.False(Directory.Exists(Snaps));
+        Assert.False(File.Exists(SaveModInstaller.KeptZipPath(Store, Guid32, zip)));
+    }
+
+    [Fact]
+    public void A_stray_copy_nested_deeper_in_the_games_store_does_not_count()
+    {
+        var prof = MakeWindroseTree();   // holds RocksDB_v2\<id>\RocksDB, the old restore bug's leftover
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "76561198000000000", "RocksDB", "0.10.0", "Worlds", Guid32));
+
+        SaveModInstaller.InstallWorld(Path.Combine(prof, "RocksDB_v2"), Snaps, Store,
+            MakeZip("world.zip", ($"{Guid32}/level.db", "W")), Guid32, null, null);
+
+        Assert.True(File.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32, "level.db")));
+    }
+
     // ---------------- RemoveWorld ----------------
 
     [Fact]

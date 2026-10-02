@@ -76,6 +76,13 @@ public static partial class SaveModInstaller
         if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
             throw new WorldAlreadyPresentException(worldGuid, worldDir);
 
+        // The game imports a world from here into its own store and plays it there (Windrose copies
+        // RocksDB\<version>\Worlds\<id> into RocksDB_v2 and its _Backups). A world already in the game's own
+        // store has been played: installing it again could be imported over that progress. Refused, also before
+        // anything is written, wherever in the profile's other store folders it turns up.
+        if (WorldInGameSave(saveProfilesDir, saveModPath, worldGuid, target) is { } played)
+            throw new WorldInGameSaveException(worldGuid, played);
+
         // Keep a copy of the zip for reset, in a folder of this world's own (the download can be deleted, and two
         // worlds' zips can share a file name), BEFORE the world goes in: a copy that fails afterwards would leave a
         // world with no record, which the already-present check would then refuse to reinstall over.
@@ -249,6 +256,33 @@ public static partial class SaveModInstaller
         return dirs[0];
     }
 
+    /// <summary>The world's folder in one of the profile's OTHER store folders (the game's own: RocksDB_v2, its
+    /// _Backups), or null. Looked for at the store's Worlds and one version level below it, so a stray copy nested
+    /// deeper (a profile restored inside RocksDB_v2) doesn't count. Read-only.</summary>
+    public static string? WorldInGameSave(string saveProfilesDir, string? saveModPath, string worldGuid, string worldsTarget)
+    {
+        RequireSafeGuid(worldGuid);
+        var relTemplate = string.IsNullOrWhiteSpace(saveModPath) ? DefaultSaveModPath : saveModPath!;
+        var storeRoot = StoreRootName(relTemplate);
+        var profile = SingleProfileDir(saveProfilesDir, storeRoot);
+        var target = System.IO.Path.GetFullPath(worldsTarget);
+        foreach (var store in Directory.EnumerateDirectories(profile))
+        {
+            if (!IsStoreFolder(System.IO.Path.GetFileName(store), storeRoot)) continue;
+            // <store>\Worlds\<id> (Windrose's _Backups) and <store>\<version>\Worlds\<id>.
+            var worldsDirs = new[] { System.IO.Path.Combine(store, "Worlds") }
+                .Concat(Directory.EnumerateDirectories(store).Select(v => System.IO.Path.Combine(v, "Worlds")));
+            foreach (var worlds in worldsDirs)
+            {
+                if (!Directory.Exists(worlds) || RegistrationRefresh.SamePath(System.IO.Path.GetFullPath(worlds), target)) continue;
+                var hit = Directory.EnumerateDirectories(worlds)
+                    .FirstOrDefault(d => string.Equals(System.IO.Path.GetFileName(d), worldGuid, StringComparison.OrdinalIgnoreCase));
+                if (hit is not null) return hit;
+            }
+        }
+        return null;
+    }
+
     private static bool IsStoreFolder(string name, string storeRoot)
         => name.Equals(storeRoot, StringComparison.OrdinalIgnoreCase)
            || name.StartsWith(storeRoot + "_", StringComparison.OrdinalIgnoreCase);
@@ -420,4 +454,15 @@ public static class SaveModSnapshots
             ? null
             : SaveModInstaller.SaveModSnapshotsFor(snapshotsDir, worldGuid);
     }
+}
+
+/// <summary>The world is already in the game's own save store (it has been imported and played), so installing it
+/// again could be imported over that progress. Refused before anything is written.</summary>
+public sealed class WorldInGameSaveException(string worldGuid, string foundAt)
+    : InvalidOperationException($"World {worldGuid} is already in the game's own saves ({foundAt}), so it has been "
+                                + "played. Installing it again could replace that progress when the game next imports "
+                                + "it. Nothing was changed.")
+{
+    public string WorldGuid { get; } = worldGuid;
+    public string FoundAt { get; } = foundAt;
 }

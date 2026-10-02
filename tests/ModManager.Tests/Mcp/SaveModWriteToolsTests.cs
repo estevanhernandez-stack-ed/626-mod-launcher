@@ -287,6 +287,24 @@ public class SaveModWriteToolsTests : IDisposable
     }
 
     [Fact]
+    public void A_world_the_game_already_imported_is_refused_without_pointing_at_reset_or_remove()
+    {
+        var registered = Path.Combine(Profiles, "76561198000000000", "RocksDB_v2");
+        var g = Game(registeredSaveDir: registered);
+        var played = Path.Combine(registered, "0.10.0", "Worlds", World);
+        Directory.CreateDirectory(played);
+        File.WriteAllText(Path.Combine(played, "000123.sst"), "PROGRESS");
+
+        var r = Json(SaveModTools.InstallSaveMod(g.Id, Zip("SaveHub.zip", ($"{World}/000123.sst", "FRESH"))));
+
+        Assert.Equal("already_installed", r.GetProperty("refusal").GetString());
+        Assert.Contains("played", r.GetProperty("detail").GetString());
+        Assert.DoesNotContain("reset_save_mod", r.GetProperty("detail").GetString());
+        Assert.False(Directory.Exists(WorldDir));
+        Assert.Equal("PROGRESS", File.ReadAllText(Path.Combine(played, "000123.sst")));
+    }
+
+    [Fact]
     public void An_unknown_world_is_not_found_for_reset_and_remove()
     {
         var g = Game();
