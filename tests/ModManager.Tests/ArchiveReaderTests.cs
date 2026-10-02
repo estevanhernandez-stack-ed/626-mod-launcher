@@ -44,12 +44,14 @@ public class ArchiveReaderTests
         // StaleLoaders can compare it with the game's build instead of seeing today's install time.
         var dir = TestSupport.TempDir("arc-zip-date-");
         var zip = Path.Combine(dir, "dated.zip");
-        var released = new DateTimeOffset(2025, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var released = new DateTime(2025, 3, 10, 12, 0, 0);
+        // Zip (DOS) times are wall-clock with no zone: written as 12:00 and read back as 12:00 LOCAL, as
+        // Explorer does. So the comparison is in local time, which holds in any time zone.
         using (var stream = File.Create(zip))
         using (var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
         {
             var entry = archive.CreateEntry("dinput8.dll");
-            entry.LastWriteTime = released;
+            entry.LastWriteTime = new DateTimeOffset(released, TimeSpan.Zero);
             using var es = entry.Open();
             es.WriteByte(1);
         }
@@ -58,8 +60,8 @@ public class ArchiveReaderTests
         using (var h = Reader.Open(zip))
             h.Extract("dinput8.dll", dest, overwrite: true);
 
-        var written = File.GetLastWriteTimeUtc(dest);
-        Assert.True(Math.Abs((written - released.UtcDateTime).TotalSeconds) <= 2, $"stamped {written:O}");
+        var written = File.GetLastWriteTime(dest);
+        Assert.True(Math.Abs((written - released).TotalSeconds) <= 2, $"stamped {written:O}");
     }
 
     [Fact]
