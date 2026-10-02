@@ -1656,11 +1656,13 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            // Saves only where the launcher may write them (EA cloud sync, SaveWritePolicy).
             var request = new ModManager.Core.Transport.RestoreRequest(
                 game.Id,
-                ModManager.Core.Transport.RestoreParts.Saves
+                ModManager.Core.SaveWritePolicy.Permitted(game,
+                    ModManager.Core.Transport.RestoreParts.Saves
                     | ModManager.Core.Transport.RestoreParts.Mods
-                    | ModManager.Core.Transport.RestoreParts.Settings,
+                    | ModManager.Core.Transport.RestoreParts.Settings),
                 SaveDir: string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
                 ModDir: ctx.Locations.Count > 0 ? ctx.Locations[0].Abs : null,
                 DataDir: ctx.DataDir,

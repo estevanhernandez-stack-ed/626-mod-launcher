@@ -32,6 +32,20 @@ public static partial class SaveManager
             .ToList();
     }
 
+    /// <summary>Save files recognised by name (<see cref="SaveFileKind"/>), labeled by the first kind
+    /// that matches. Top level only, like <see cref="ListSaveFiles"/>.</summary>
+    public static IReadOnlyList<SaveFile> ListNamedSaveFiles(string saveDir, IReadOnlyList<SaveFileKind> kinds)
+    {
+        if (kinds.Count == 0 || !Directory.Exists(saveDir)) return Array.Empty<SaveFile>();
+        return Directory.GetFiles(saveDir)
+            .Select(f => (Path: f, Name: System.IO.Path.GetFileName(f)))
+            .Select(f => (f.Path, f.Name, Kind: kinds.FirstOrDefault(k => k.Matches(f.Name))))
+            .Where(f => f.Kind is not null)
+            .Select(f => new SaveFile(f.Name, System.IO.Path.GetExtension(f.Path), f.Kind!.Label))
+            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Working on ONE world. See docs/superpowers/specs/2026-08-19-world-level-saves-design.md.
     //

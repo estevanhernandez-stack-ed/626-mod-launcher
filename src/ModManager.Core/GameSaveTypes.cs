@@ -32,6 +32,43 @@ public sealed record GameSaveTypes(string Engine, IReadOnlyList<SaveType> SaveTy
     SaveLayout Layout = SaveLayout.TypedFiles);
 
 /// <summary>
+/// One kind of save a game names rather than types: every file whose name starts with
+/// <see cref="Prefix"/>. EA's football saves carry no extension at all (<c>RTG-E</c>,
+/// <c>ROSTER-Official</c>, <c>PROFILE-COLLEGE</c>), so an extension-keyed <see cref="SaveType"/> can
+/// never see them.
+///
+/// <para><b>For listing only.</b> A <see cref="SaveType"/> also switches on clone, per-type restore and
+/// the FromSoft character reader, all of which assume one save in several formats. A named kind is a
+/// label on a file, nothing more.</para>
+/// </summary>
+public sealed record SaveFileKind(string Prefix, string Label)
+{
+    public bool Matches(string fileName) => fileName.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Which named save kinds a game's engine declares. Engine-level, like
+/// <see cref="GameSaveTypesCatalog"/>'s types: a prefix that never occurs in a folder matches nothing.</summary>
+public static class SaveFileKindsCatalog
+{
+    // Frostbite, as EA SPORTS College Football 27 and Madden NFL 27 write it (VERIFIED on the owner's
+    // machine, docs/superpowers/plans/2026-09-13-ea-football-grand-plan.md). Order is the order a
+    // player thinks in: their careers, then the league, then the profile that indexes the careers.
+    private static readonly SaveFileKind[] Frostbite =
+    {
+        new("RTG-", "Road to Glory career"),
+        new("CAREER-", "Franchise career"),
+        new("ROSTER-", "Roster"),
+        new("PROFILE-", "Profile"),
+    };
+
+    public static IReadOnlyList<SaveFileKind> For(GameEntry game) => game.Engine switch
+    {
+        "frostbite" => Frostbite,
+        _ => Array.Empty<SaveFileKind>(),
+    };
+}
+
+/// <summary>
 /// Resolves a <see cref="GameSaveTypes"/> for a game — engine-level defaults, with a per-App-ID
 /// override hook for future game-specifics. Repeatable: adding a game/engine's save types is a
 /// one-line catalog entry. Unknown games resolve to no declared save types — the save manager's

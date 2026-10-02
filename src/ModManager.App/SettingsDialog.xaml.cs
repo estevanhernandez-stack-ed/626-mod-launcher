@@ -568,7 +568,7 @@ public sealed partial class SettingsDialog : ContentDialog
 
             requests.Add(new RestoreRequest(
                 id,
-                parts,
+                SaveWritePolicy.Permitted(game, parts),   // never saves the launcher may not write (EA cloud sync)
                 SaveDir: string.IsNullOrEmpty(game.SaveDir) ? null : game.SaveDir,
                 ModDir: ctx.Locations.Count > 0 ? ctx.Locations[0].Abs : null,
                 DataDir: ctx.DataDir,

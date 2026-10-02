@@ -124,6 +124,8 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
+    private readonly IReadOnlyList<SaveFileKind> _saveKinds;   // named kinds (EA football): listing only
+    private readonly string? _writeRefusal;                    // non-null: nothing writes into this save folder
     private readonly string? _saveModPath;
     private readonly IReadOnlyList<string>? _saveModForbidden;
     private string? _saveDir;
@@ -144,11 +146,14 @@ public sealed partial class SavesDialog : ContentDialog
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
         _saveTypes = GameSaveTypesCatalog.Resolve(_game).SaveTypes;
+        _saveKinds = SaveFileKindsCatalog.For(_game);
+        _writeRefusal = SaveWritePolicy.Refusal(_game);
         _saveModPath = ctx.Game.SaveModPath;
         _saveModForbidden = ctx.Game.SaveModForbidden;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
         KeepBox.Value = ctx.Game.SaveAutoKeep ?? 25;
         if (!string.IsNullOrEmpty(_saveDir)) StatusText.Text = "Save folder ready.";
+        if (SaveWritePolicy.Notice(_game) is { } notice) StatusText.Text = notice;
         FolderBox.Text = _saveDir ?? "";
         Refresh();
         RefreshSaveFiles();
@@ -173,16 +178,22 @@ public sealed partial class SavesDialog : ContentDialog
     // Save files in the folder, each with a "Clone to…" menu of the game's other declared save types.
     private void RefreshSaveFiles()
     {
-        var rows = (string.IsNullOrEmpty(_saveDir) ? Array.Empty<SaveFile>() : SaveManager.ListSaveFiles(_saveDir, _saveTypes))
+        // Clone is a write, and only means something between typed formats of one save, so a named
+        // file (and any file when writes are refused) gets no clone targets.
+        var typed = (string.IsNullOrEmpty(_saveDir) ? Array.Empty<SaveFile>() : SaveManager.ListSaveFiles(_saveDir, _saveTypes))
             .Select(f => new SaveFileRow(f.Name, f.TypeLabel,
-                _saveTypes.Where(t => !string.Equals(t.Extension, f.Extension, StringComparison.OrdinalIgnoreCase))
-                          .Select(t => new SaveCloneTarget(t.Label, t.Extension)).ToList()))
-            .ToList();
+                _writeRefusal is not null
+                    ? new List<SaveCloneTarget>()
+                    : _saveTypes.Where(t => !string.Equals(t.Extension, f.Extension, StringComparison.OrdinalIgnoreCase))
+                          .Select(t => new SaveCloneTarget(t.Label, t.Extension)).ToList()));
+        var named = (string.IsNullOrEmpty(_saveDir) ? Array.Empty<SaveFile>() : SaveManager.ListNamedSaveFiles(_saveDir, _saveKinds))
+            .Select(f => new SaveFileRow(f.Name, f.TypeLabel, new List<SaveCloneTarget>()));
+        var rows = typed.Concat(named).ToList();
         SaveFileList.ItemsSource = rows;
         // Which of the two empty states this is - the app not knowing the game's layout, or the
         // folder being wrong - decides what the user should do next, so the rule lives in Core.
         SaveFilesEmpty.Text = SaveListingEmptyState.MessageFor(
-            folderSet: !string.IsNullOrEmpty(_saveDir), declaresTypes: _saveTypes.Count > 0);
+            folderSet: !string.IsNullOrEmpty(_saveDir), declaresTypes: _saveTypes.Count > 0 || _saveKinds.Count > 0);
         SaveFilesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -227,6 +238,16 @@ public sealed partial class SavesDialog : ContentDialog
         SaveFileList.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>True when this game's saves are not the launcher's to write (<see cref="SaveWritePolicy"/>),
+    /// having said so on the status line. The first line of every handler that writes into the save
+    /// folder, so a control that slipped through the template still changes nothing.</summary>
+    private bool WritesRefused()
+    {
+        if (_writeRefusal is null) return false;
+        StatusText.Text = _writeRefusal;
+        return true;
+    }
+
     private void OnCloneMenuOpening(object sender, object e)
     {
         if (sender is not MenuFlyout menu || menu.Target?.DataContext is not SaveFileRow row) return;
@@ -250,6 +271,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void OnCloneTo(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not MenuFlyoutItem { Tag: ValueTuple<string, string, bool> t }) return;
         var (name, ext, replace) = t;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
@@ -413,6 +435,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private async void OnEditCharacter(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not Microsoft.UI.Xaml.FrameworkElement fe || fe.DataContext is not CharacterRow row) return;
 
         // WinUI 3 only allows one ContentDialog at a time per XamlRoot. SavesDialog is itself a
@@ -480,6 +503,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void OnSaveModReset(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveModRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
         try
@@ -494,6 +518,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void OnSaveModRemove(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveModRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
         try
@@ -514,6 +539,11 @@ public sealed partial class SavesDialog : ContentDialog
     {
         if (sender is not MenuFlyout menu || menu.Target?.DataContext is not SaveRow row) return;
         menu.Items.Clear();
+        if (_writeRefusal is not null)
+        {
+            menu.Items.Add(new MenuFlyoutItem { Text = "Restoring is off for this game", IsEnabled = false });
+            return;
+        }
         foreach (var t in SaveManager.TypesInSnapshot(row.Snap.Path, _saveTypes))
         {
             var item = new MenuFlyoutItem { Text = "Restore only " + t.Label, Tag = (row.Snap.Path, t.Extension) };
@@ -525,6 +555,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void OnRestoreType(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not MenuFlyoutItem { Tag: ValueTuple<string, string> pair }) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
         try
@@ -589,6 +620,7 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void OnRestore(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 
@@ -734,6 +766,7 @@ public sealed partial class SavesDialog : ContentDialog
     /// </summary>
     private async void OnImportBundle(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
         try
         {
@@ -1037,6 +1070,7 @@ public sealed partial class SavesDialog : ContentDialog
     /// </summary>
     private void OnRenameWorld(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 
@@ -1111,6 +1145,7 @@ public sealed partial class SavesDialog : ContentDialog
     /// </summary>
     private void OnDuplicateWorld(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 
@@ -1208,6 +1243,7 @@ public sealed partial class SavesDialog : ContentDialog
     /// </summary>
     private void OnRestoreWorld(object sender, RoutedEventArgs e)
     {
+        if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 

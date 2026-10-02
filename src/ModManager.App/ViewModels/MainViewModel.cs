@@ -3826,7 +3826,9 @@ public sealed partial class MainViewModel : ObservableObject
             var remaining = paths.ToList();
             var savedCount = 0;
             var saveSkipReasons = new List<string>();
-            if (!string.IsNullOrEmpty(_ctx.SaveDir))
+            // A save mod writes into the save folder, so a game whose saves are not the launcher's to
+            // write (EA cloud sync, SaveWritePolicy) never routes a drop there.
+            if (!string.IsNullOrEmpty(_ctx.SaveDir) && SaveWritePolicy.Refusal(_ctx.Game) is null)
             {
                 var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game)
                     .SaveTypes.Select(t => t.Extension).ToList();
