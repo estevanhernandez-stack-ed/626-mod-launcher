@@ -106,7 +106,7 @@ Start-Sleep -Seconds 2
 # is selected, the whole file is snapshotted here, with the app closed, and written back byte for byte
 # in the finally at the end of the run - activeGameId included, as the user had it before the run.
 $gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
-$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy')
+$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy', 'save-mod-reset-and-remove-from-saves-dialog')
 $script:GamesSnapshot = $null
 $script:GamesHashAfterHarness = $null
 $gamesSnapshotPath = Join-Path $OutDir 'games.json.run-start'
@@ -1377,6 +1377,144 @@ Case 'old-loader-ue4ss-needs-its-proxy' 'A17 / #383 - OLD LOADER chip' {
         if ($id -and (Test-Path -LiteralPath (Join-Path $dd $id))) { Remove-Item -LiteralPath (Join-Path $dd $id) -Recurse -Force -EA SilentlyContinue }
         if ((Test-Path -LiteralPath $dd) -and -not (Get-ChildItem -LiteralPath $dd -Force)) { Remove-Item -LiteralPath $dd -Force }
         if ((Test-Path -LiteralPath $loaderFixtureRoot) -and -not (Get-ChildItem -LiteralPath $loaderFixtureRoot -Force)) { Remove-Item -LiteralPath $loaderFixtureRoot -Force }
+    }
+}
+
+Write-Host ''
+Write-Host '  -- save mods: Reset and Remove from the Saves dialog (#380) --' -ForegroundColor White
+
+# Windrose's REAL save tree is written here, so the case is wrapped: Windrose must not be running, the
+# whole SaveProfiles tree is copied and hashed first, the only world touched is a throwaway id no game
+# makes (00000000000000000000000000C0FFEE), and the finally removes exactly what this case added. It
+# then compares the tree with the pre-run hash. It never copies the backup over the real saves on its
+# own: a mismatch is reported loudly with the backup's path, because overwriting a save tree is a
+# decision for a person.
+$smWorld = '00000000000000000000000000C0FFEE'
+$smName = 'SmokeCoffeeWorld'
+$smProfiles = Join-Path $env:LOCALAPPDATA 'R5\Saved\SaveProfiles'
+
+function Get-TreeManifest([string]$Root) {
+    if (-not (Test-Path -LiteralPath $Root)) { return @() }
+    $files = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File | Sort-Object FullName | ForEach-Object {
+        "F|{0}|{1}" -f $_.FullName.Substring($Root.Length), (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash })
+    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory | Sort-Object FullName | ForEach-Object {
+        "D|{0}" -f $_.FullName.Substring($Root.Length) })
+    return @($files + $dirs)
+}
+
+function Test-SamePath([string]$A, [string]$B) {
+    [string]::Equals([System.IO.Path]::GetFullPath($A).TrimEnd('\'), [System.IO.Path]::GetFullPath($B).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+Case 'save-mod-reset-and-remove-from-saves-dialog' '#380 - Windrose save mods' {
+    if (Get-Process | Where-Object { $_.ProcessName -match '^(R5|Windrose)' }) { throw "SKIP: Windrose is running - this case writes its save tree" }
+    if (-not (Test-Path -LiteralPath $smProfiles)) { throw "SKIP: no Windrose SaveProfiles on this machine" }
+    $wrEntry = (Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq 'windrose'
+    if (-not $wrEntry) { throw "SKIP: Windrose is not registered" }
+    $listed0 = Invoke-McpTool 'list_save_mods' @{ gameId = 'windrose' }
+    if (@($listed0.saveMods | Where-Object worldId -eq $smWorld).Count -gt 0) { throw "a $smWorld world is already listed - a previous run left it; remove it before running this case" }
+
+    $work = Join-Path $OutDir 'save-mod-fixture'
+    $backup = Join-Path $work 'SaveProfiles.backup'
+    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $pre = Get-TreeManifest $smProfiles
+    $null = robocopy $smProfiles $backup /E /COPY:DAT /DCOPY:T /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+    Assert-True (@(Compare-Object $pre (Get-TreeManifest $backup)).Count -eq 0) "the SaveProfiles backup does not match the tree - not starting"
+
+    $savesTop0 = @(Get-ChildItem -LiteralPath (Join-Path $wrData 'saves') -Force -File | ForEach-Object Name | Sort-Object)
+    $hadSnapRoot = Test-Path -LiteralPath (Join-Path $wrData 'saves\save-mods')
+    $hadKeptRoot = Test-Path -LiteralPath (Join-Path $wrData 'save-mods')
+    $installed = $false
+    $worldDir = $null
+    try {
+        $src = Join-Path $work "src\Worlds\$smWorld"
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        Set-Content -LiteralPath (Join-Path $src 'level.db') -Value 'SMOKE626 throwaway world, inert' -Encoding ascii
+        $zip = Join-Path $work "$smName.zip"
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $work 'src'), $zip)
+
+        $r = Invoke-McpTool 'install_save_mod' @{ gameId = 'windrose'; zipPath = $zip }
+        Assert-True ($r.ok) "install_save_mod refused: $($r | ConvertTo-Json -Compress)"
+        $installed = $true
+        $worldDir = $r.installedTo
+        $snapDir = Join-Path $wrData "saves\save-mods\worlds\$smWorld"
+
+        Open-GameById 'windrose'
+        Invoke-Node (Find-ById (Get-Tree $root) 'SavesButton'); Wait-Idle 3500
+        $list = Find-ById (Get-Tree $root) 'SaveModList'
+        Assert-True ($null -ne $list) "no SaveModList in the Saves dialog"
+        $snapList = Find-ById (Get-Tree $root) 'SnapshotList'
+        $snaps0 = if ($snapList) { Get-ItemCount $snapList } else { 0 }
+
+        # The row by its bound id, and its names: the list item reads the title, not a record dump.
+        $null = Test-RowPresent (Get-Tree $list) "SaveModRow.$smWorld"
+        $label = Find-ById (Get-Tree $list) "SaveModRow.$smWorld"
+        Assert-True ($null -ne $label) "no SaveModRow.$smWorld in the save-mod list"
+        Assert-True ((Get-Text $label) -eq $smName) "the row label reads '$(Get-Text $label)'"
+        $item = $label
+        while ($item -and $item.Current.ControlType.ProgrammaticName -ne 'ControlType.ListItem') {
+            $item = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($item)
+        }
+        Assert-True ($null -ne $item) "the row label has no ListItem above it"
+        Assert-True ((Get-Text $item) -eq $smName) "the list item's UIA name is '$(Get-Text $item)', not the title"
+
+        # Reset, by its bound name.
+        $reset = Find-ByName (Get-Tree $list) "Reset $smName"
+        Assert-True ($null -ne $reset) "no 'Reset $smName' button"
+        Invoke-Node $reset; Wait-Idle 3000
+        $said = Get-Text (Find-ById (Get-Tree $root) 'StatusText')
+        $want = '^Reset ' + [regex]::Escape($smName) + '\. 626 snapshots this world first, into (.+)\. Saves doesn''t list those: to undo, unzip the newest one into (.+)\.$'
+        Assert-True ($said -match $want) "Reset said '$said'"
+        Assert-True (Test-SamePath $Matches[1] $snapDir) "the note's snapshot folder is '$($Matches[1])', expected '$snapDir'"
+        Assert-True (Test-SamePath $Matches[2] $worldDir) "the note's world folder is '$($Matches[2])', expected '$worldDir'"
+        $taken = @(Get-ChildItem -LiteralPath $snapDir -File)
+        Assert-True ($taken.Count -eq 1) "$($taken.Count) snapshot(s) in $snapDir, expected exactly 1"
+        Assert-True ($taken[0].Name -like '*before-savemod-reset.zip') "the snapshot is '$($taken[0].Name)'"
+        $savesTop1 = @(Get-ChildItem -LiteralPath (Join-Path $wrData 'saves') -Force -File | ForEach-Object Name | Sort-Object)
+        Assert-True (($savesTop1 -join '|') -eq ($savesTop0 -join '|')) "the top-level Saves zips changed: $($savesTop1 -join ', ')"
+        $snapList = Find-ById (Get-Tree $root) 'SnapshotList'
+        $snaps1 = if ($snapList) { Get-ItemCount $snapList } else { 0 }
+        Assert-True ($snaps1 -eq $snaps0) "the Saves list went from $snaps0 to $snaps1 rows"
+        Assert-True (Test-Path -LiteralPath (Join-Path $worldDir 'level.db')) "the world is not there after Reset"
+
+        # Remove, by its bound name.
+        $list = Find-ById (Get-Tree $root) 'SaveModList'
+        $remove = Find-ByName (Get-Tree $list) "Remove $smName"
+        Assert-True ($null -ne $remove) "no 'Remove $smName' button"
+        Invoke-Node $remove; Wait-Idle 3000
+        $saidRemove = Get-Text (Find-ById (Get-Tree $root) 'StatusText')
+        Assert-True (-not (Test-Path -LiteralPath $worldDir)) "the world survived Remove"
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $wrData "save-mods\$smWorld"))) "the kept zip folder save-mods\$smWorld survived Remove"
+        $installed = $false
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) "SaveModRow.$smWorld")) "the row is still listed after Remove"
+        "row SaveModRow.$smWorld named '$smName'; Reset said '$said'; one snapshot, Saves list unchanged at $snaps0; Remove said '$saidRemove' and deleted the world and save-mods\$smWorld"
+    }
+    finally {
+        try { $c = Find-ById (Get-Tree $root) 'CloseButton'; if ($c) { Invoke-Node $c; Wait-Idle 1500 } } catch {}
+        # Exactly what this case added, nothing else.
+        if ($installed) { try { $null = Invoke-McpTool 'remove_save_mod' @{ gameId = 'windrose'; worldId = $smWorld; confirm = $true } } catch {} }
+        if ($worldDir -and (Test-Path -LiteralPath $worldDir) -and (Split-Path -Leaf $worldDir) -eq $smWorld) { Remove-Item -LiteralPath $worldDir -Recurse -Force }
+        $kept = Join-Path $wrData "save-mods\$smWorld"
+        if (Test-Path -LiteralPath $kept) { Remove-Item -LiteralPath $kept -Recurse -Force }
+        if (-not $hadKeptRoot -and (Test-Path -LiteralPath (Join-Path $wrData 'save-mods')) -and -not (Get-ChildItem -LiteralPath (Join-Path $wrData 'save-mods') -Force)) {
+            Remove-Item -LiteralPath (Join-Path $wrData 'save-mods') -Force
+        }
+        $snapWorld = Join-Path $wrData "saves\save-mods\worlds\$smWorld"
+        if (Test-Path -LiteralPath $snapWorld) { Remove-Item -LiteralPath $snapWorld -Recurse -Force }
+        if (-not $hadSnapRoot -and (Test-Path -LiteralPath (Join-Path $wrData 'saves\save-mods'))) {
+            if (-not (Get-ChildItem -LiteralPath (Join-Path $wrData 'saves\save-mods') -Recurse -Force -File)) { Remove-Item -LiteralPath (Join-Path $wrData 'saves\save-mods') -Recurse -Force }
+        }
+        $post = Get-TreeManifest $smProfiles
+        $diff = @(Compare-Object $pre $post)
+        if ($diff.Count -eq 0) {
+            Remove-Item -LiteralPath $work -Recurse -Force -EA SilentlyContinue
+        } else {
+            Write-Host "  !! Windrose SaveProfiles differs from before the case ($($diff.Count) line(s)). NOT restored automatically; the backup is $backup" -ForegroundColor Red
+            $diff | Select-Object -First 10 | ForEach-Object { Write-Host "     $($_.SideIndicator) $($_.InputObject)" -ForegroundColor Red }
+            throw "SaveProfiles is not hash-identical after the case - backup kept at $backup"
+        }
     }
 }
 

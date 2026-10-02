@@ -2324,20 +2324,19 @@
    "id": "save-mod-reset-and-remove-from-saves-dialog",
    "title": "Saves dialog: a save mod's Reset and Remove snapshot first, outside the Saves list",
    "surface": "#380 - Windrose save mods",
-   "coverage": "agentable",
-   "status": "pending",
-   "lastVerified": null,
-   "steps": [
-    "Back up and hash %LOCALAPPDATA%\\R5\\Saved\\SaveProfiles. Windrose not running.",
-    "Install a throwaway Worlds/00000000000000000000000000C0FFEE/level.db zip through install_save_mod (or + Add mods).",
-    "Saves (SavesButton): on the save-mod row press Reset. Read the dialog's status line. Check <dataDir>\\saves.",
-    "Press the row's Remove save mod. Check the world and <dataDir>\\save-mods\\<guid>.",
-    "Delete <dataDir>\\saves\\save-mods and compare the SaveProfiles hash."
-   ],
-   "source": "docs/smoke-tests/pending.md",
-   "action": "Drive a throwaway world's Reset and Remove through the App's Saves dialog.",
-   "expect": "Reset leaves exactly one snapshot in <dataDir>\\saves\\save-mods\\worlds\\<guid>, none in the Saves list, and a note naming that folder and how to undo (unzip the newest one into the world folder). Remove deletes the world and its kept zip folder. Afterwards SaveProfiles hashes as before.",
-   "note": "Run 2026-10-02 (v0.23.0 build of 6925ad8), agent: every file outcome PASSED. One before-savemod-reset snapshot under saves\\save-mods\\worlds\\<guid>; the two top-level zips unchanged and still the only Saves rows; Remove deleted the world and save-mods\\<guid>; SaveProfiles 779 files and its directory tree identical afterwards. The NOTE did not match: the App says 'Reset SmokeCoffeeWorld - previous state snapshotted first (in ...\\saves\\save-mods\\worlds\\00000000000000000000000000C0FFEE, not in this list).' It names the folder but not how to undo; 'to undo, unzip the newest one into <world folder>' exists only in the MCP's reset_save_mod text. Also: the row's Reset and Remove buttons carry no AutomationId and no per-row name (two rows would both read 'Reset'), and the row's ListItem name is the SaveModRow record's ToString(). Left pending for Este to call the copy."
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of 4d08078",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS via smoke-run.ps1 -Only after 4d08078. The row was found by SaveModRow.00000000000000000000000000C0FFEE; the label and the ListItem both read 'SmokeCoffeeWorld'. Pressing 'Reset SmokeCoffeeWorld' made StatusText read 'Reset SmokeCoffeeWorld. 626 snapshots this world first, into c:/program files (x86)/steam\\_626mods\\windrose\\saves\\save-mods\\worlds\\00000000000000000000000000C0FFEE. Saves doesn't list those: to undo, unzip the newest one into C:\\Users\\estev\\AppData\\Local\\R5\\Saved\\SaveProfiles\\76561197969211145\\RocksDB\\0.10.0\\Worlds\\00000000000000000000000000C0FFEE.' That left one before-savemod-reset snapshot, the Saves list unchanged at 2 rows and the top-level zips unchanged. 'Remove SmokeCoffeeWorld' deleted the world and save-mods\\<guid>. SaveProfiles afterwards: 779 files and the directory tree identical. The first run on 6925ad8 failed on the note (no undo instruction) and on row addressability; both are fixed in 4d08078."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Windrose not running. Copy and hash the whole SaveProfiles tree, build a throwaway Worlds/00000000000000000000000000C0FFEE/level.db zip and install it with install_save_mod. Open Windrose's Saves, find the row by SaveModRow.<guid>, press 'Reset <title>', read StatusText, then press 'Remove <title>'. The finally removes only what the case added and compares the tree with the pre-run hash; on a mismatch it keeps the backup and fails rather than copying it over the real saves.",
+   "expect": "The row label and its list item read the title. Reset says 'Reset <name>. 626 snapshots this world first, into <dataDir>\\saves\\save-mods\\worlds\\<guid>. Saves doesn't list those: to undo, unzip the newest one into <world folder>.' with the real paths, leaves exactly one snapshot there, and adds nothing to the Saves list or the top-level zips. Remove deletes the world and <dataDir>\\save-mods\\<guid>. Afterwards SaveProfiles is hash-identical, files and folders.",
+   "note": "Writes Windrose's real save tree, wrapped: Windrose must be closed, the only world touched is a throwaway id, and the case refuses to start if that id is already listed."
   },
   {
    "id": "multi-tree-toggle-cross-volume",

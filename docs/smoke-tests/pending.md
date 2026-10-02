@@ -2637,3 +2637,16 @@ in this list).` The `to undo, unzip the newest one into <world folder>` sentence
 `reset_save_mod` result. Repro: steps 1 to 3 above, read the dialog's `StatusText`. Also found: the row's
 Reset and Remove buttons have no AutomationId and no per-row name, so two save mods would give two
 identical `Reset` buttons, and the row's ListItem name is the `SaveModRow` record's `ToString()`.
+
+**Verified 2026-10-02 by the agent sweep after `4d08078` (v0.23.0 build): PASS.** Now the harness case
+`save-mod-reset-and-remove-from-saves-dialog`. It refuses to run while Windrose is open, copies and hashes
+SaveProfiles first, removes only what it added, and fails without copying the backup over the real saves
+if the tree differs. The row was found by `SaveModRow.00000000000000000000000000C0FFEE`; its label and its
+ListItem both read `SmokeCoffeeWorld`. `Reset SmokeCoffeeWorld` made `StatusText` read: `Reset
+SmokeCoffeeWorld. 626 snapshots this world first, into c:/program files
+(x86)/steam\_626mods\windrose\saves\save-mods\worlds\00000000000000000000000000C0FFEE. Saves doesn't list
+those: to undo, unzip the newest one into
+C:\Users\estev\AppData\Local\R5\Saved\SaveProfiles\76561197969211145\RocksDB\0.10.0\Worlds\00000000000000000000000000C0FFEE.`
+That left one snapshot there, the Saves list unchanged at 2 rows, and the top-level zips unchanged.
+`Remove SmokeCoffeeWorld` deleted the world and `save-mods\<guid>`. SaveProfiles afterwards: 779 files and
+the directory tree identical.
