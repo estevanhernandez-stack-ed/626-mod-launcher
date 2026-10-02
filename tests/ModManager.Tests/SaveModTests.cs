@@ -200,8 +200,9 @@ public class SaveModTests : IDisposable
         // (a) a snapshot zip was taken (snapshot-first)
         Assert.NotEmpty(SaveManager.ListSnapshots(Snaps));
 
-        // (c) the original zip copied into the store dir
-        Assert.True(File.Exists(Path.Combine(Store, Path.GetFileName(zip))));
+        // (c) a copy of the zip kept in this world's own folder in the store
+        Assert.True(File.Exists(Path.Combine(Store, "save-mods", Guid32, Path.GetFileName(zip))));
+        Assert.Equal(Path.Combine(Store, "save-mods", Guid32, "world.zip"), SaveModInstaller.KeptZipPath(Store, Guid32, zip));
 
         // (d) RocksDB_v2 untouched
         Assert.Equal("GAME-OWNED", File.ReadAllText(Path.Combine(prof, "RocksDB_v2", "sacred.db")));
@@ -235,13 +236,321 @@ public class SaveModTests : IDisposable
         var worldDir = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32);
         var levelDb = Path.Combine(worldDir, "level.db");
         File.WriteAllText(levelDb, "MUTATED");                 // user/game mutated the world
-        var keptZip = Path.Combine(Store, Path.GetFileName(zip));
+        var keptZip = SaveModInstaller.KeptZipPath(Store, Guid32, zip);
 
         var snapsBefore = SaveManager.ListSnapshots(Snaps).Count;
         SaveModInstaller.ResetWorld(Profiles, Snaps, keptZip, Guid32, null, null);
 
         Assert.Equal("ORIGINAL", File.ReadAllText(levelDb));   // restored from kept zip
         Assert.True(SaveManager.ListSnapshots(Snaps).Count > snapsBefore); // fresh snapshot taken first
+    }
+
+    // ---------------- E1 seventh slice: the kept zip, and a world that is already there ----------------
+
+    [Fact]
+    public void Installing_a_world_that_is_already_there_is_refused_before_anything_is_written()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        SaveModInstaller.InstallWorld(Profiles, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "PLAYED")), Guid32, null, null);
+        var levelDb = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32, "level.db");
+        var snapsBefore = SaveManager.ListSnapshots(Snaps).Count;
+        // A newer version of the same world: it used to extract until the first file that existed, then throw.
+        var v2 = MakeZip("world-v2.zip", ($"Worlds/{Guid32}/aaa-new.db", "NEW"), ($"Worlds/{Guid32}/level.db", "V2"));
+
+        var e = Assert.Throws<WorldAlreadyPresentException>(() =>
+            SaveModInstaller.InstallWorld(Profiles, Snaps, Store, v2, Guid32, null, null));
+
+        Assert.Equal(Guid32, e.WorldGuid);
+        Assert.Equal("PLAYED", File.ReadAllText(levelDb));
+        Assert.False(File.Exists(Path.Combine(Path.GetDirectoryName(levelDb)!, "aaa-new.db")));
+        Assert.Equal(snapsBefore, SaveManager.ListSnapshots(Snaps).Count);   // refused before the snapshot
+        Assert.False(File.Exists(SaveModInstaller.KeptZipPath(Store, Guid32, v2)));
+    }
+
+    [Fact]
+    public void An_empty_world_folder_does_not_block_an_install()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32));
+
+        SaveModInstaller.InstallWorld(Profiles, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "X")), Guid32, null, null);
+
+        Assert.True(File.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32, "level.db")));
+    }
+
+    [Fact]
+    public void Two_worlds_whose_zips_share_a_file_name_each_keep_their_own()
+    {
+        MakeSaveTree();
+        const string other = "0123456789ABCDEF0123456789ABCDEF";
+        var a = MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "A"));
+        SaveModInstaller.InstallWorld(Profiles, Snaps, Store, a, Guid32, null, null);
+        var b = Path.Combine(_root, "b", "world.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(b)!);
+        using (var zip = ZipFile.Open(b, ZipArchiveMode.Create))
+        using (var w = new StreamWriter(zip.CreateEntry($"Worlds/{other}/level.db").Open())) w.Write("B");
+        SaveModInstaller.InstallWorld(Profiles, Snaps, Store, b, other, null, null);
+
+        Assert.True(SaveModInstaller.ZipHoldsWorld(SaveModInstaller.KeptZipPath(Store, Guid32, a), Guid32));
+        Assert.True(SaveModInstaller.ZipHoldsWorld(SaveModInstaller.KeptZipPath(Store, other, b), other));
+    }
+
+    [Fact]
+    public void KeptZip_reads_the_recorded_copy_then_an_older_builds_copy_that_still_holds_the_world()
+    {
+        Directory.CreateDirectory(Data);
+        // An older build: SourceZip named the download, and the copy sat in the data folder under its file name.
+        var legacy = Path.Combine(Data, "world.zip");
+        using (var zip = ZipFile.Open(legacy, ZipArchiveMode.Create))
+        using (var w = new StreamWriter(zip.CreateEntry($"Worlds/{Guid32}/level.db").Open())) w.Write("X");
+        var entry = new SaveModEntry(Guid32, "World", Path.Combine(_root, "Downloads", "world.zip"), DateTime.UtcNow);
+
+        Assert.Equal(legacy, SaveModStore.KeptZip(Data, entry));
+        Assert.Null(SaveModStore.KeptZip(Data, entry with { Guid = "0123456789ABCDEF0123456789ABCDEF" }));   // it holds another world
+        Assert.Null(SaveModStore.KeptZip(Data, entry with { SourceZip = Path.Combine(_root, "gone.zip") }));
+        Assert.Null(SaveModStore.KeptZip(Data, entry with { SourceZip = "" }));
+    }
+
+    // Review on #379: the kept copy goes in first, and a failed install takes back what it put in, so a failure
+    // never leaves a world with no record (which the already-present check would then refuse to reinstall over).
+    [Fact]
+    public void A_kept_copy_that_cannot_be_written_leaves_the_save_tree_untouched()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        Directory.CreateDirectory(Path.Combine(Store, "save-mods"));
+        File.WriteAllText(Path.Combine(Store, "save-mods", Guid32), "a file where the folder goes");
+
+        Assert.ThrowsAny<IOException>(() => SaveModInstaller.InstallWorld(
+            Profiles, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "X")), Guid32, null, null));
+
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32)));
+        Assert.False(Directory.Exists(Snaps) && SaveManager.ListSnapshots(Snaps).Count > 0);
+    }
+
+    [Fact]
+    public void An_install_that_fails_while_extracting_takes_back_the_world_and_the_kept_copy()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        var notAZip = Path.Combine(_root, "broken.zip");
+        File.WriteAllText(notAZip, "not a zip");
+
+        Assert.ThrowsAny<Exception>(() => SaveModInstaller.InstallWorld(Profiles, Snaps, Store, notAZip, Guid32, null, null));
+
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32)));
+        Assert.False(File.Exists(SaveModInstaller.KeptZipPath(Store, Guid32, notAZip)));
+    }
+
+    [Fact]
+    public void KeptZip_finds_the_copy_in_a_moved_data_folder()
+    {
+        // Recorded under the data folder as it was; the folder has since moved to Data.
+        var entry = new SaveModEntry(Guid32, "World",
+            Path.Combine(_root, "old-data", "save-mods", Guid32, "world.zip"), DateTime.UtcNow);
+        var moved = SaveModInstaller.KeptZipPath(Data, Guid32, "world.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(moved)!);
+        using (var zip = ZipFile.Open(moved, ZipArchiveMode.Create))
+            zip.CreateEntry($"Worlds/{Guid32}/level.db");
+
+        Assert.Equal(moved, SaveModStore.KeptZip(Data, entry));
+        Assert.Null(SaveModStore.KeptZip(Data, entry with { Guid = "not-a-guid" }));   // a hand-edited id: no kept folder, no throw
+    }
+
+    [Fact]
+    public void Forget_unlists_the_world_and_deletes_its_kept_copy_but_not_an_older_builds_copy()
+    {
+        Directory.CreateDirectory(Data);
+        var kept = SaveModInstaller.KeptZipPath(Data, Guid32, "world.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
+        File.WriteAllText(kept, "zip");
+        var legacy = Path.Combine(Data, "world.zip");
+        File.WriteAllText(legacy, "maybe another world's");
+        SaveModStore.Upsert(Data, new SaveModEntry(Guid32, "World", kept, DateTime.UtcNow));
+
+        SaveModStore.Forget(Data, Guid32);
+
+        Assert.Empty(SaveModStore.Load(Data));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(kept)));
+        Assert.True(File.Exists(legacy));
+    }
+
+    // ---------------- A save folder registered inside the profile (Windrose: ...\<id>\RocksDB_v2) ----------------
+
+    // Windrose's curated hint names the store the game writes now; worlds still install into the profile's
+    // RocksDB\<version>\Worlds, beside it. Este's tree, with the game's own <id>_Backups beside the profile and a
+    // stray profile nested inside RocksDB_v2 (the old restore bug) that must not count as a second profile.
+    private string MakeWindroseTree()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        Directory.CreateDirectory(Path.Combine(Profiles, "76561198000000000_Backups"));
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds"));
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "76561198000000000", "RocksDB"));
+        return prof;
+    }
+
+    [Fact]
+    public void A_save_folder_inside_the_profile_installs_into_that_profiles_worlds()
+    {
+        var prof = MakeWindroseTree();
+        var registered = Path.Combine(prof, "RocksDB_v2");
+
+        SaveModInstaller.InstallWorld(registered, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+
+        Assert.Equal("W", File.ReadAllText(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32, "level.db")));
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds", Guid32)));   // never the live store
+        Assert.Equal("GAME-OWNED", File.ReadAllText(Path.Combine(prof, "RocksDB_v2", "sacred.db")));
+    }
+
+    [Fact]
+    public void The_games_own_backups_folder_beside_the_profile_is_not_a_second_profile()
+    {
+        var prof = MakeWindroseTree();
+
+        Assert.Equal(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds"), SaveModInstaller.ResolveWorldsTarget(Profiles, null, null));
+    }
+
+    [Fact]
+    public void Writing_outside_the_registered_folder_snapshots_only_that_world_apart_from_the_saves_list()
+    {
+        var prof = MakeWindroseTree();
+        var registered = Path.Combine(prof, "RocksDB_v2");
+        var worldDir = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32);
+
+        // A new world has nothing to lose: no snapshot. Removing it then snapshots that world alone.
+        SaveModInstaller.InstallWorld(registered, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+        Assert.Empty(SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsFor(Snaps, Guid32)));
+        SaveModInstaller.RemoveWorld(registered, Snaps, Guid32, null, null);
+
+        Assert.Empty(SaveManager.ListSnapshots(Snaps));   // nothing the Saves dialog would restore into RocksDB_v2
+        var kept = SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsFor(Snaps, Guid32)).Single();
+        Assert.Equal(worldDir, SaveManager.SourceOf(kept.Path));
+        using (var zip = ZipFile.OpenRead(kept.Path))
+            Assert.Equal(new[] { "level.db" }, zip.Entries.Select(e => e.FullName));   // the one world, not every world
+        Assert.Throws<InvalidOperationException>(() => SaveManager.Restore(kept.Path, registered, Snaps));
+    }
+
+    [Fact]
+    public void Snapshots_kept_outside_the_saves_list_are_pruned_to_the_newest()
+    {
+        var prof = MakeWindroseTree();
+        var registered = Path.Combine(prof, "RocksDB_v2");
+        var zip = MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W"));
+        SaveModInstaller.InstallWorld(registered, Snaps, Store, zip, Guid32, null, null);
+
+        for (var i = 0; i < SaveModInstaller.SaveModSnapshotsKept + 3; i++)
+            SaveModInstaller.ResetWorld(registered, Snaps, zip, Guid32, null, null);
+
+        Assert.Equal(SaveModInstaller.SaveModSnapshotsKept,
+            SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsFor(Snaps, Guid32)).Count);
+    }
+
+    // Review on #380: the registered folder can BE the Worlds folder; that is inside, and Saves can restore it.
+    [Fact]
+    public void A_registered_folder_that_is_the_worlds_folder_snapshots_into_the_saves_list()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        var worlds = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds");
+
+        Assert.True(SaveModInstaller.WritesInsideSaveFolder(worlds, worlds));
+        Assert.True(SaveModInstaller.WritesInsideSaveFolder(Profiles, worlds));
+        Assert.False(SaveModInstaller.WritesInsideSaveFolder(Path.Combine(prof, "RocksDB_v2"), worlds));
+    }
+
+    // Review on #380: the store folder's name comes from the game's save-mod path, not a hard-coded one.
+    [Fact]
+    public void The_store_folder_name_comes_from_the_save_mod_path()
+    {
+        var prof = Path.Combine(Profiles, "player");
+        Directory.CreateDirectory(Path.Combine(prof, "Store", "2.0", "Worlds"));
+        Directory.CreateDirectory(Path.Combine(prof, "Store_live"));
+
+        Assert.Equal(Path.Combine(prof, "Store", "2.0", "Worlds"),
+            SaveModInstaller.ResolveWorldsTarget(Path.Combine(prof, "Store_live"), "Store/{version}/Worlds", null));
+    }
+
+    [Fact]
+    public void Writing_inside_the_registered_folder_snapshots_it_into_the_saves_list_as_before()
+    {
+        MakeSaveTree(version: "0.10.0");
+
+        SaveModInstaller.InstallWorld(Profiles, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+
+        Assert.Equal(Path.GetFullPath(Profiles), SaveManager.SourceOf(SaveManager.ListSnapshots(Snaps).Single().Path));
+    }
+
+    // #380: the game imports a world from RocksDB\<ver>\Worlds into its own store (RocksDB_v2, its _Backups) and plays
+    // it there. Este's Save Hub (#209) sat in all three. A world already in the game's store has been played, so
+    // installing it again is refused before anything is written. The zip is #209's shape: <GUID>/ at the top.
+    [Theory]
+    [InlineData("RocksDB_v2/0.10.0/Worlds")]
+    [InlineData("RocksDB_v2_Backups/Worlds")]
+    public void A_world_already_in_the_games_own_store_is_refused_before_anything_is_written(string where)
+    {
+        var prof = MakeWindroseTree();
+        var played = Path.Combine(prof, where.Replace('/', Path.DirectorySeparatorChar), Guid32);
+        Directory.CreateDirectory(played);
+        File.WriteAllText(Path.Combine(played, "000123.sst"), "PROGRESS");
+        var zip = MakeZip("save-hub.zip", ($"{Guid32}/000123.sst", "FRESH"));
+
+        var e = Assert.Throws<WorldInGameSaveException>(() =>
+            SaveModInstaller.InstallWorld(Path.Combine(prof, "RocksDB_v2"), Snaps, Store, zip, Guid32, null, null));
+
+        Assert.Equal(played, e.FoundAt);
+        Assert.Equal("PROGRESS", File.ReadAllText(Path.Combine(played, "000123.sst")));
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32)));
+        Assert.False(Directory.Exists(Snaps));
+        Assert.False(File.Exists(SaveModInstaller.KeptZipPath(Store, Guid32, zip)));
+    }
+
+    // #380 review: the save-mod store itself (RocksDB, any version) is where 626 and mod authors install, not the
+    // game's own; a world in an older version folder there hasn't been "played" in the game's store.
+    [Fact]
+    public void A_world_in_an_older_version_of_the_install_folder_is_not_the_games_own()
+    {
+        var prof = MakeWindroseTree();
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB", "0.9.0", "Worlds", Guid32));
+
+        Assert.Null(SaveModInstaller.WorldInGameSave(Path.Combine(prof, "RocksDB_v2"), null, Guid32));
+    }
+
+    // #380 review: both spellings of a world id are accepted, so both match.
+    [Fact]
+    public void Either_spelling_of_the_world_id_matches_the_games_copy()
+    {
+        var prof = MakeWindroseTree();
+        var played = Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds", Guid32);
+        Directory.CreateDirectory(played);
+        const string dashed = "5391A30D-5D70-487C-9486-B8E60428ED3B";
+
+        Assert.Equal(played, SaveModInstaller.WorldInGameSave(Path.Combine(prof, "RocksDB_v2"), null, dashed));
+        Assert.Throws<WorldInGameSaveException>(() => SaveModInstaller.InstallWorld(Path.Combine(prof, "RocksDB_v2"), Snaps, Store,
+            MakeZip("world.zip", ($"{dashed}/level.db", "W")), dashed, null, null));
+    }
+
+    // Este's Save Hub exactly: hand-installed into RocksDB in spring, imported and played in RocksDB_v2. "Played" wins
+    // over "already there": the other reason would advise moving the folder, which is his world.
+    [Fact]
+    public void A_world_in_both_the_install_folder_and_the_games_store_is_refused_as_played()
+    {
+        var prof = MakeWindroseTree();
+        var handInstalled = Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32);
+        Directory.CreateDirectory(handInstalled);
+        File.WriteAllText(Path.Combine(handInstalled, "000123.sst"), "SPRING");
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds", Guid32));
+
+        Assert.Throws<WorldInGameSaveException>(() =>
+            SaveModInstaller.PreflightInstall(Path.Combine(prof, "RocksDB_v2"), null, null, Guid32));
+    }
+
+    [Fact]
+    public void A_stray_copy_nested_deeper_in_the_games_store_does_not_count()
+    {
+        var prof = MakeWindroseTree();   // holds RocksDB_v2\<id>\RocksDB, the old restore bug's leftover
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "76561198000000000", "RocksDB", "0.10.0", "Worlds", Guid32));
+
+        SaveModInstaller.InstallWorld(Path.Combine(prof, "RocksDB_v2"), Snaps, Store,
+            MakeZip("world.zip", ($"{Guid32}/level.db", "W")), Guid32, null, null);
+
+        Assert.True(File.Exists(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32, "level.db")));
     }
 
     // ---------------- RemoveWorld ----------------

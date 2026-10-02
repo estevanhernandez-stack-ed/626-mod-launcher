@@ -362,8 +362,10 @@ public class AppStateToolsTests : IDisposable
     public void Save_mods_list_newest_first_and_say_whether_each_can_be_reset()
     {
         var game = Register("pal", saveDir: Path.Combine(_root, "saves"));
+        // A kept zip counts only while it still holds its world (E1 seventh slice).
         var kept = Path.Combine(_root, "kept.zip");
-        File.WriteAllText(kept, "zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(kept, System.IO.Compression.ZipArchiveMode.Create))
+            zip.CreateEntry("bbbb/level.db");
         SaveModStore.Upsert(game.DataDir!, new SaveModEntry("aaaa", "Old World", Path.Combine(_root, "gone.zip"), new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
         SaveModStore.Upsert(game.DataDir!, new SaveModEntry("bbbb", "New World", kept, new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc)));
 

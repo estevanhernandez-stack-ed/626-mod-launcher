@@ -3,8 +3,11 @@ using System.IO.Compression;
 namespace ModManager.Core;
 
 /// <summary>Outcome of a single archive drop through the save-mod fast-path. NeedsAcknowledgment:
-/// it is a save mod for a game whose save writes are gated, and nothing was written.</summary>
-public enum SaveModDropOutcome { Installed, NotASaveMod, Failed, NeedsAcknowledgment }
+/// it is a save mod for a game whose save writes are gated, and nothing was written. AlreadyInstalled: 626
+/// installed this world and it is still there (reset or remove it). WorldExists: the world is there but 626 didn't
+/// install it, or the game already holds it in its own store (it has been played). Nothing was written for either;
+/// the reason says what the user can do.</summary>
+public enum SaveModDropOutcome { Installed, NotASaveMod, Failed, NeedsAcknowledgment, AlreadyInstalled, WorldExists }
 
 /// <summary>One archive's verdict + the world GUID (when installed) + a reason (when failed).</summary>
 public sealed record SaveModDropVerdict(
@@ -82,6 +85,18 @@ public static class SaveModFlow
             return new SaveModDropVerdict(path, SaveModDropOutcome.Failed, null,
                 "Save mod detected but no world GUID - only Worlds/<GUID> packages auto-install for now.");
 
+        // Before the ban-risk question: nobody is asked to accept a risk for an install that would be refused. A drop
+        // the router only classifies (no save folder given) skips this; the install below runs it again anyway.
+        if (!string.IsNullOrEmpty(saveProfilesDir))
+        {
+            try { SaveModInstaller.PreflightInstall(saveProfilesDir, saveModPath, forbidden, verdict.WorldGuid!); }
+            catch (Exception e) when (ExistingWorld(e, dataDir, verdict.WorldGuid!, path) is { } existing) { return existing; }
+            catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                return new SaveModDropVerdict(path, SaveModDropOutcome.Failed, verdict.WorldGuid, e.Message);
+            }
+        }
+
         if (!writeAllowed)
             return new SaveModDropVerdict(path, SaveModDropOutcome.NeedsAcknowledgment, verdict.WorldGuid, null);
 
@@ -91,14 +106,44 @@ public static class SaveModFlow
                 saveProfilesDir, snapshotsDir, dataDir,
                 path, verdict.WorldGuid!, saveModPath, forbidden);
             var name = System.IO.Path.GetFileNameWithoutExtension(path);
-            SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name, path, DateTime.UtcNow));
+            // The record points at the kept copy, which reset reads: the download may be deleted.
+            SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name,
+                SaveModInstaller.KeptZipPath(dataDir, verdict.WorldGuid!, path), DateTime.UtcNow));
             return new SaveModDropVerdict(path, SaveModDropOutcome.Installed, verdict.WorldGuid, null);
+        }
+        catch (Exception e) when (ExistingWorld(e, dataDir, verdict.WorldGuid!, path) is { } existing)
+        {
+            return existing;
         }
         catch (Exception e)
         {
             return new SaveModDropVerdict(path, SaveModDropOutcome.Failed, verdict.WorldGuid, e.Message);
         }
     }
+
+    // The verdict for a world that is already there: in the game's own store (played), or in the save-mod folder,
+    // installed by 626 (reset or remove it) or not (626 won't write over it). Null for any other failure.
+    private static SaveModDropVerdict? ExistingWorld(Exception e, string dataDir, string worldGuid, string path) => e switch
+    {
+        WorldInGameSaveException => new SaveModDropVerdict(path, SaveModDropOutcome.WorldExists, worldGuid, e.Message),
+        WorldAlreadyPresentException p => new SaveModDropVerdict(path,
+            Installed626(dataDir, worldGuid) ? SaveModDropOutcome.AlreadyInstalled : SaveModDropOutcome.WorldExists,
+            worldGuid, AlreadyInstalledReason(dataDir, worldGuid, p.WorldDir)),
+        _ => null,
+    };
+
+    private static bool Installed626(string dataDir, string worldGuid)
+        => !string.IsNullOrEmpty(dataDir)
+           && SaveModStore.Load(dataDir).Any(e => string.Equals(e.Guid, worldGuid, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Why a world that is already in the save folder wasn't installed, and what to do: reset or remove it
+    /// when 626 installed it (it is in the Saves list), else move the folder away, since 626 has no record of it.</summary>
+    public static string AlreadyInstalledReason(string dataDir, string worldGuid, string worldDir)
+        => Installed626(dataDir, worldGuid)
+            ? $"World {worldGuid} is already installed. Nothing was changed. Reset it to start it over from its kept zip, "
+              + "or remove it first to install this one."
+            : $"A world with id {worldGuid} is already in the save folder ({worldDir}), and 626 didn't install it, so it "
+              + "won't write over it. Nothing was changed. Move that folder somewhere else first to install this one.";
 
     private static bool IsArchive(string p)
     {

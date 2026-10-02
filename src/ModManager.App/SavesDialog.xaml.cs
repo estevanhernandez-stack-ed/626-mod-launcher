@@ -519,11 +519,18 @@ public sealed partial class SavesDialog : ContentDialog
         if (WritesRefused()) return;   // EA cloud-synced saves: see SaveWritePolicy
         if (sender is not FrameworkElement fe || fe.DataContext is not SaveModRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
+        // The kept copy, or an older build's copy that still holds this world (Core decides, as for the agent).
+        if (SaveModStore.KeptZip(_dataDir, row.Entry) is not { } keptZip)
+        {
+            StatusText.Text = $"{row.Entry.Name} can't be reset: the zip it was installed from is gone. Nothing was changed.";
+            return;
+        }
         try
         {
-            SaveModInstaller.ResetWorld(_saveDir, _savesDir, row.Entry.SourceZip,
+            SaveModInstaller.ResetWorld(_saveDir, _savesDir, keptZip,
                 row.Entry.Guid, _saveModPath, _saveModForbidden);
-            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first.";
+            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}."
+                + GameCopyNote(row.Entry.Guid);
             Refresh();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
@@ -538,12 +545,39 @@ public sealed partial class SavesDialog : ContentDialog
         {
             SaveModInstaller.RemoveWorld(_saveDir, _savesDir, row.Entry.Guid,
                 _saveModPath, _saveModForbidden);
-            SaveModStore.Remove(_dataDir, row.Entry.Guid);
-            StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first.";
+            SaveModStore.Forget(_dataDir, row.Entry.Guid);   // unlisted, and its kept zip with it
+            StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}.";
             Refresh();
             RefreshSaveMods();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
+    }
+
+    // Where a save-mod reset or remove put its snapshot, when it isn't in this dialog's list: a world outside the
+    // registered save folder (Windrose's worlds, beside its RocksDB_v2) is snapshotted on its own, kept apart so it
+    // can never be restored into this folder. Core decides; this only says where.
+    private string SaveModSnapshotNote(string worldGuid)
+    {
+        try
+        {
+            return SaveModSnapshots.OutsideSavesList(_saveDir!, _savesDir, _saveModPath, _saveModForbidden, worldGuid) is { } dir
+                ? $" (in {dir}, not in this list)"
+                : "";
+        }
+        catch { return ""; }
+    }
+
+    // The game imports a world into its own store and plays it there (Windrose: RocksDB_v2). Reset replaces only the
+    // copy 626 installed, so say when the game holds its own. Core decides; this only says it.
+    private string GameCopyNote(string worldGuid)
+    {
+        try
+        {
+            return SaveModInstallerQueries.WorldInGameSave(_saveDir!, _saveModPath, worldGuid) is { } held
+                ? $" The game also holds this world ({held}); if the reset doesn't show in-game, delete the world in-game too."
+                : "";
+        }
+        catch { return ""; }
     }
 
     private static string Short(string g) => g.Length <= 8 ? g : g[..8] + "…";
