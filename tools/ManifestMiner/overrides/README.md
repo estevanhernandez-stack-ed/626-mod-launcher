@@ -53,9 +53,18 @@ game.
 - **Write the whole loader, every time.** A feed loader replaces the launcher's built-in loader with
   the same `id`, so a file that only says `"banSafe": false` is rejected, not merged. To correct one
   field, copy the loader and change that field.
-- **`steamAppId`** pins the loader to one game, and must be the numeric Steam id. Leave it out
-  entirely for an engine-wide loader (Mod Engine 2 serves every FromSoft game); an empty string is
-  rejected, because it would pin the loader to nothing.
+- **Pinning to games.** Leave both pins out for an engine-wide loader (Mod Engine 2 serves every
+  FromSoft game). Otherwise use either, or both:
+  - **`gameIds`**: manifest ids, such as `["madden-nfl-27"]`. Prefer this. It reaches the game on
+    every store, including EA app installs, which have no Steam id. The launcher resolves each
+    registration to its manifest id through its Steam id and EA content id too, so a second store copy
+    (registered as `madden-nfl-27-2`) or an older install registered under a name slug still matches.
+    Each id must be a game in the feed, or the run stops.
+  - **`steamAppId`**: one numeric Steam id. It reaches the Steam copy only, never an EA install of the
+    same game.
+
+  An empty `steamAppId` or an empty `gameIds` list is rejected, because each would pin the loader to
+  nothing.
 - **`launcherExeNames`** are bare `*.exe` filenames found in the game's play folder: no directories,
   no drive, no `..`. The launcher runs whatever file has that name, so the gate is strict.
 - **`getUrl`** must be an absolute `https` link. The binary is never bundled; this is where the user
@@ -64,7 +73,8 @@ game.
 - **`banSafe`** is a claim that the loader's modding path avoids the game's anti-cheat. Only set it with
   evidence. `"banSafe": false` withdraws a claim the launcher shipped with.
 
-A duplicate `id` across two files stops the run. A loader the launcher's gate would refuse is named in
+A duplicate `id` across two files stops the run, and so does a field the launcher doesn't know
+(usually a typo such as `gameId` for `gameIds`). A loader the launcher's gate would refuse is named in
 the run's output and left out of the draft.
 
 The launcher already ships Mod Engine 2 and Seamless Co-op in its embedded manifest, so they need no

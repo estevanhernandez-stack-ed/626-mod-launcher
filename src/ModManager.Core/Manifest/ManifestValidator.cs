@@ -60,6 +60,9 @@ public static class ManifestValidator
             // Same order as games: an engine this binary does not know is SKIPPED before anything else
             // is judged, so a newer feed's loader lands in the forward-compat bucket, not the unsafe one.
             if (!string.IsNullOrWhiteSpace(l.Engine) && !knownEngines.Contains(l.Engine)) { skippedLoaders.Add(l.Id); continue; }
+            // A field this binary does not know may be a pin it cannot honour, so the loader is
+            // skipped, not used as if unpinned. Forward-compat bucket, the same as an unknown engine.
+            if (l.UnknownFields is { Count: > 0 }) { skippedLoaders.Add(l.Id); continue; }
             if (LoaderProblem(l) is not null) { rejectedLoaders.Add(l.Id); continue; }
             // One loader per id. The ban-risk gate keys a dictionary on the id, so a duplicate would
             // throw there; the first one wins, as the miner's own duplicate check would have demanded.
@@ -98,6 +101,16 @@ public static class ManifestValidator
         // and make it vanish from every game without a word.
         if (loader.SteamAppId is { } app && !IsSteamAppId(app))
             return $"loader '{loader.Id}' steamAppId '{app}' is not a Steam app id; leave it out for an engine-wide loader";
+        // Manifest ids are lowercase kebab, so any other spelling could never match a game. An empty
+        // list is refused for the reason an empty steamAppId is: leave the field out for engine-wide.
+        if (loader.GameIds is { } gameIds)
+        {
+            if (gameIds.Count == 0)
+                return $"loader '{loader.Id}' has an empty gameIds list; leave it out for an engine-wide loader";
+            foreach (var gameId in gameIds)
+                if (gameId is null || !IsLoaderId(gameId))
+                    return $"loader '{loader.Id}' gameIds entry '{gameId}' is not a lowercase kebab-case manifest id";
+        }
         if (loader.LauncherExeNames is not { Count: > 0 } exes) return $"loader '{loader.Id}' names no launcher exe";
         foreach (var exe in exes)
             if (!IsBareExeName(exe)) return $"loader '{loader.Id}' launcher name '{exe}' is not a bare .exe filename";

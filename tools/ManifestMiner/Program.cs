@@ -144,7 +144,11 @@ if (args.Contains("--with-overrides"))
 
     // Curated loaders (overrides/loaders/*.json). Same rule as game keys: a duplicate id stops the run.
     var loaders = LoaderOverrides.Load(overridesDir);
-    var loaderProblems = LoaderOverrides.Check(loaders);
+    // Pins are checked against the games this run will publish, curated additions included. The merge
+    // writes nothing, so running it here, before the loader gate, costs one pass and decides nothing.
+    var mergeResult = OverridesMerge.ApplyReporting(current, overrides);
+    var draftGameIds = mergeResult.Manifest.Games.Select(g => g.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var loaderProblems = LoaderOverrides.Check(loaders, draftGameIds);
     if (loaderProblems.Count > 0)
     {
         Console.Error.WriteLine($"Loader overrides: {loaderProblems.Count} problem(s) - refusing to merge.");
@@ -156,7 +160,6 @@ if (args.Contains("--with-overrides"))
     foreach (var r in LoaderOverrides.Rejections(loaders))
         Console.Error.WriteLine($"  loader refused by the launcher's gate: {r}");
 
-    var mergeResult = OverridesMerge.ApplyReporting(current, overrides);
     var validatedCurated = ManifestValidator.Validate(
         LoaderOverrides.Apply(mergeResult.Manifest, loaders), EnginePresets.Presets.Keys.ToHashSet());
     current = validatedCurated.Manifest;

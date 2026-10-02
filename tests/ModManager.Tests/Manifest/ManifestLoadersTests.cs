@@ -106,6 +106,32 @@ public class ManifestLoadersTests
     public void A_loader_id_that_is_not_lowercase_kebab_is_rejected(string id)
         => Assert.Single(Validate(Loader(id: id)).RejectedLoaders);
 
+    // gameIds pins by manifest id, and manifest ids are lowercase kebab, so anything else can never match.
+    [Theory]
+    [InlineData("Madden-NFL-27")]
+    [InlineData("madden nfl 27")]
+    [InlineData("")]
+    public void A_game_id_that_is_not_lowercase_kebab_rejects_the_loader(string gameId)
+        => Assert.Equal(new[] { "test-loader" }, Validate(Loader() with { GameIds = new[] { gameId } }).RejectedLoaders);
+
+    // An empty list would read as "pinned" to some code and "engine-wide" to other code. Like an empty
+    // steamAppId, it is refused: leave the field out for engine-wide.
+    [Fact]
+    public void An_empty_game_id_list_rejects_the_loader()
+        => Assert.Equal(new[] { "test-loader" }, Validate(Loader() with { GameIds = Array.Empty<string>() }).RejectedLoaders);
+
+    [Fact]
+    public void Game_ids_survive_validation_and_round_trip_as_camelCase()
+    {
+        var kept = Assert.Single(Validate(Loader() with { GameIds = new[] { "madden-nfl-27", "college-football-27" } }).Manifest.Loaders);
+        Assert.Equal(new[] { "madden-nfl-27", "college-football-27" }, kept.GameIds);
+
+        var json = JsonSerializer.Serialize(new GameManifest { Loaders = new[] { kept } }, ManifestJson.Options);
+        Assert.Contains("\"gameIds\"", json);
+        Assert.DoesNotContain("\"GameIds\"", json);
+        Assert.Equal(kept.GameIds, JsonSerializer.Deserialize<GameManifest>(json, ManifestJson.Options)!.Loaders[0].GameIds);
+    }
+
     // An empty pin passes a null check, pins the loader to no game, and makes it vanish everywhere.
     [Theory]
     [InlineData("")]

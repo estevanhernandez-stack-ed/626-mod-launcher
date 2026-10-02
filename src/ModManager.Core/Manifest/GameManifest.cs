@@ -94,8 +94,8 @@ public sealed record GameManifestEntry
 /// fields, the exe names and the URL, so every loader that survives is complete; a feed loader
 /// REPLACES the built-in with the same id (see <see cref="EffectiveManifest"/>).</para>
 ///
-/// <para>Scoped like <c>KnownLoader</c>: <see cref="Engine"/>, plus <see cref="SteamAppId"/> to pin it
-/// to one game (null = every game on that engine).</para>
+/// <para>Scoped by <see cref="Engine"/>, and optionally pinned to particular games by
+/// <see cref="SteamAppId"/>, <see cref="GameIds"/>, or both. With neither, it is engine-wide.</para>
 /// </summary>
 public sealed record LoaderManifestEntry
 {
@@ -103,6 +103,16 @@ public sealed record LoaderManifestEntry
     public string? DisplayName { get; init; }
     public string? Engine { get; init; }
     public string? SteamAppId { get; init; }
+
+    /// <summary>
+    /// Manifest game ids this loader is pinned to: the store-neutral pin. A Steam app id names a game
+    /// only on Steam, so a loader pinned that way can never reach an EA app game (registered with no
+    /// Steam id on purpose) or the EA copy of a game sold on both stores. Every registration carries a
+    /// manifest id, so this reaches them all, the same lesson <c>BanRiskCatalog.Effective</c> learned.
+    /// Either pin is enough when a loader carries both.
+    /// </summary>
+    public IReadOnlyList<string>? GameIds { get; init; }
+
     public IReadOnlyList<string>? LauncherExeNames { get; init; }
     public string? GetUrl { get; init; }
     public string? Author { get; init; }
@@ -110,6 +120,15 @@ public sealed record LoaderManifestEntry
     /// <summary>The loader's modding path avoids the game's anti-cheat, so the ban-risk gate may offer
     /// it as the safe way to mod. Null means unclaimed, which reads as not safe.</summary>
     public bool? BanSafe { get; init; }
+
+    /// <summary>
+    /// Any property this binary does not know. A loader carrying one is SKIPPED by the validator, never
+    /// used. Pins fail closed: a newer feed might scope a loader by a field this binary cannot read, and
+    /// ignoring that field would turn a game-specific loader into an engine-wide one, offered as the
+    /// safe path on every game on the engine.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, JsonElement>? UnknownFields { get; init; }
 
     /// <summary>
     /// The loader writes to saves. Carried so the runtime <c>KnownLoader</c> can say so, but NOT yet

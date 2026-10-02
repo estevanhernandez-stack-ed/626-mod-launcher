@@ -105,4 +105,31 @@ public class LoaderOverridesTests : IDisposable
 
         Assert.Single(PublishManifest.ForPublish(draft).Loaders);
     }
+
+    // Review on #356: the miner is built from the launcher's own source, so a field it does not know is
+    // a typo, and the launcher would skip the loader for carrying it. That stops the run.
+    [Fact]
+    public void A_loader_file_with_an_unknown_field_is_a_problem()
+    {
+        Write("typo.json", """
+            { "id": "typo", "displayName": "Typo", "engine": "frostbite", "gameId": ["madden-nfl-27"],
+              "launcherExeNames": ["t.exe"], "getUrl": "https://example.com/t" }
+            """);
+
+        var p = Assert.Single(LoaderOverrides.Check(LoaderOverrides.Load(_dir)));
+        Assert.Contains("gameId", p.Message);
+    }
+
+    // Review on #356: a pin to a game the feed does not carry pins the loader to nothing.
+    [Fact]
+    public void A_pin_to_a_game_the_feed_does_not_have_is_a_problem()
+    {
+        var loaders = new[] { new LoaderManifestEntry { Id = "pinned", GameIds = new[] { "madden-nfl-26" } } };
+        var games = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "madden-nfl-27" };
+
+        var p = Assert.Single(LoaderOverrides.Check(loaders, games));
+        Assert.Contains("madden-nfl-26", p.Message);
+        Assert.Empty(LoaderOverrides.Check(
+            new[] { new LoaderManifestEntry { Id = "pinned", GameIds = new[] { "madden-nfl-27" } } }, games));
+    }
 }
