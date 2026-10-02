@@ -8,6 +8,15 @@ public sealed record ModLocationCtx(string Name, string Label, string Abs, IRead
     // Resolved form ("files" | "folders") and the managing tool ("vortex"/...), if any.
     public string Form { get; init; } = "files";
     public string? Managed { get; init; }
+
+    /// <summary>The path the REGISTRATION stores for this location, exactly as stored. Null for a
+    /// location the launcher appended (the UE4SS mods folder), which the registration does not name.
+    /// Set by <c>Scanner.GameContext</c>, which knows the two lists line up one to one.</summary>
+    public string? StoredPath { get; init; }
+
+    /// <summary>The relative path the scanner actually resolves for this location: <see cref="StoredPath"/>
+    /// with any game-definition correction applied. Null for an appended location.</summary>
+    public string? DeclaredPath { get; init; }
 }
 
 /// <summary>

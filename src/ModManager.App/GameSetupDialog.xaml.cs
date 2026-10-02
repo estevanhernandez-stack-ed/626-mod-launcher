@@ -89,10 +89,15 @@ public sealed partial class GameSetupDialog : ContentDialog
             ? string.Join(", ", _shape.DeclaredLocations.Select(Describe))
             : "None declared.";
 
+        // A location the game's definition corrected is still the registration's own: it shows the
+        // path the launcher actually looks in, and says what the registration stored (B1 - it used to
+        // read as "added by the launcher", which it never was).
         static string Describe(DeclaredLocation d)
         {
-            var suffix = d.Exists ? "" : "  (this folder doesn't exist)";
-            return d.Declared ? d.Path + suffix : $"{d.Path} (added by the launcher, not declared){suffix}";
+            var text = d.Declared ? d.Path : $"{d.Path} (added by the launcher, not declared)";
+            if (d.Declared && d.CorrectedFrom is { } was) text += $" (corrected from {was} by the game's definition)";
+            if (!d.Exists) text += " (this folder doesn't exist)";
+            return text;
         }
 
         // Rendered verbatim: GameShape already states whether drift is a problem, and re-wording it

@@ -128,19 +128,37 @@ public sealed record GameShape
     /// missed every one of them, so the location read as launcher-derived and the banner went silent
     /// on the one shape it exists for: nothing found, and the folder the registration names is not on
     /// disk. Both sides resolve through <c>Scanner.LocationAbs</c> so they cannot disagree.</para>
+    ///
+    /// <para>NOT MATCHED ON THE CORRECTED PATH EITHER (B1). The context's path is the one AFTER a
+    /// game-definition correction, so matching it against the stored list missed every corrected
+    /// location: Elden Ring stores <c>mod</c>, the definition says <c>mods</c>, and the registration's
+    /// own folder read as launcher-added - which also silenced the SETUP chip, since only declared
+    /// entries count. <c>Scanner.GameContext</c> now tags each registration location with both
+    /// spellings, so declared means "came from the registration's list", corrected or not. The path
+    /// match stays only as the fallback for a context built without those tags.</para>
     /// </summary>
     private static List<DeclaredLocation> DeclaredFor(GameContext ctx)
         => ctx.Locations.Select(l =>
         {
-            var stored = ctx.Game.ModLocations.FirstOrDefault(
-                m => PathEquals(Scanner.LocationAbs(ctx.GameRoot, m.Path), l.Abs));
+            var effective = l.DeclaredPath;
+            var stored = l.StoredPath;
+            if (effective is null)
+            {
+                var match = ctx.Game.ModLocations.FirstOrDefault(
+                    m => PathEquals(Scanner.LocationAbs(ctx.GameRoot, m.Path), l.Abs));
+                effective = stored = match?.Path;
+            }
+            var declared = effective is not null;
             return new DeclaredLocation
             {
                 Name = l.Name,
-                Path = stored?.Path ?? l.Abs,
+                Path = effective ?? l.Abs,
                 Absolute = l.Abs,
                 Exists = !string.IsNullOrEmpty(l.Abs) && Directory.Exists(l.Abs),
-                Declared = stored is not null,
+                Declared = declared,
+                CorrectedFrom = declared && stored is not null && !RegistrationRefresh.SamePath(stored, effective)
+                    ? stored
+                    : null,
             };
         }).ToList();
 
@@ -248,6 +266,7 @@ public sealed record GameShape
         foreach (var d in declared.Where(d => !d.Exists))
             notes.Add(d.Declared
                 ? $"Declared mod location '{d.Path}' does not exist on disk ({d.Absolute})."
+                  + (d.CorrectedFrom is { } was ? $" The game's definition corrected it from '{was}'." : "")
                 : $"The launcher's own '{d.Name}' folder is not on disk ({d.Absolute}) — the "
                   + "registration does not declare it and does not need to.");
 
@@ -353,9 +372,10 @@ public sealed record DeclaredLocation
 {
     public required string Name { get; init; }
 
-    /// <summary>The relative path as stored in the registration (e.g. <c>mod</c>) when
-    /// <see cref="Declared"/>; the absolute path otherwise, since a derived location has no stored
-    /// path and rendering its NAME in a path slot presents a label as a folder.</summary>
+    /// <summary>The relative path the scanner uses when <see cref="Declared"/>: the registration's
+    /// stored path, or the game definition's correction of it (see <see cref="CorrectedFrom"/>). The
+    /// absolute path otherwise, since a derived location has no stored path and rendering its NAME in
+    /// a path slot presents a label as a folder.</summary>
     public required string Path { get; init; }
 
     public required string Absolute { get; init; }
@@ -366,6 +386,12 @@ public sealed record DeclaredLocation
     /// launcher owns a UE4SS install. A reader must not attribute a derived entry to the user's
     /// registration: there is no field for it, and no edit that could change it.</summary>
     public bool Declared { get; init; } = true;
+
+    /// <summary>What the registration itself stores for this location when the game's definition
+    /// corrected it (Elden Ring stores <c>mod</c>, the definition says <c>mods</c>), so a reader can
+    /// say both. Null when the stored path is the one the scanner uses, and always null for a derived
+    /// location.</summary>
+    public string? CorrectedFrom { get; init; }
 }
 
 /// <summary>A directory mods were actually found in.</summary>
