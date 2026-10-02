@@ -614,7 +614,7 @@ public sealed partial class MainViewModel : ObservableObject
         // user chose it, and a transiently unreadable user theme must not overwrite a good saved
         // id with the fallback (B4.5 review catch). Only real picks save.
         _restoringTheme = true;
-        try { SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == appSettings.ThemeId) ?? themes.Default; }
+        try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, appSettings.ThemeId).Active; }
         finally { _restoringTheme = false; }
     }
 
@@ -713,7 +713,7 @@ public sealed partial class MainViewModel : ObservableObject
         // is unchanged — gate it like the startup restore or every Settings close re-persists and
         // re-warns as if the user picked a theme (B5-B8 review, S3).
         _restoringTheme = true;
-        try { SelectedTheme = ThemeOptions.FirstOrDefault(t => t.Id == SelectedTheme?.Id) ?? _themes.Default; }
+        try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, SelectedTheme?.Id).Active; }
         finally { _restoringTheme = false; }
     }
 
@@ -1357,9 +1357,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task<bool> GateSaveWriteAsync()
     {
         if (_ctx is null) return false;
-        var level = BanRiskCatalog.Effective(_ctx.Game);
-        var acked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
-        if (!BanRiskRules.ShouldGateSaveWrite(level, acked)) return true;
+        if (!SaveWritePolicy.NeedsAcknowledgment(_ctx.Game, _ctx.DataDir)) return true;
         if (ConfirmSaveWrite is null) return false; // unwired -> nothing is written
 
         var (proceed, dontAsk) = await ConfirmSaveWrite(_ctx.Game.GameName);
@@ -3896,8 +3894,6 @@ public sealed partial class MainViewModel : ObservableObject
                 var saveWriteRefusal = SaveWritePolicy.Refusal(_ctx.Game);
                 var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game)
                     .SaveTypes.Select(t => t.Extension).ToList();
-                var saveRisk = BanRiskCatalog.Effective(_ctx.Game);
-                var saveWritesAcked = BanRiskAckStore.IsAcked(_ctx.DataDir, _ctx.Game.Id, BanRiskAck.WriteSaves);
                 IReadOnlyList<SaveModDropVerdict> verdicts = SaveModFlow.TryHandleDrops(
                     remaining, saveTypeExts,
                     saveProfilesDir: _ctx.SaveDir!,
@@ -3905,7 +3901,7 @@ public sealed partial class MainViewModel : ObservableObject
                     dataDir: _ctx.DataDir,
                     saveModPath: _ctx.Game.SaveModPath,
                     forbidden: _ctx.Game.SaveModForbidden,
-                    writeAllowed: !BanRiskRules.ShouldGateSaveWrite(saveRisk, saveWritesAcked),
+                    writeAllowed: !SaveWritePolicy.NeedsAcknowledgment(_ctx.Game, _ctx.DataDir),
                     writeRefusal: saveWriteRefusal);
 
                 var needAck = verdicts.Where(v => v.Outcome == SaveModDropOutcome.NeedsAcknowledgment).ToList();

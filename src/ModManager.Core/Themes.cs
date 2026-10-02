@@ -216,27 +216,41 @@ public static class Themes
     }
 
     /// <summary>The theme a first run opens on, a cleared setting falls back to, and a deleted user
-    /// theme falls back to. The app's ThemeService and the agent's list_themes both resolve through
-    /// <see cref="PickActive"/>, so the two never disagree about which theme is showing.</summary>
+    /// theme falls back to. The app (its startup restore, its Settings reload and ThemeService.Default)
+    /// and the agent's list_themes all resolve through <see cref="PickActive"/>.</summary>
     public const string DefaultThemeId = "626-labs";
 
-    /// <summary>What <see cref="LoadUserThemes"/> read: the parsed themes by id (the file name,
-    /// lowercased) and the files it could not parse, which the list silently leaves out.</summary>
-    public sealed record UserThemeLoad(IReadOnlyList<(string Id, RawTheme Data)> Themes, IReadOnlyList<string> Unreadable);
+    /// <summary>A user theme file the picker leaves out, and why: it is not theme JSON, or it is
+    /// missing required colors (which ones).</summary>
+    public sealed record UnusableThemeFile(string File, string Reason);
 
-    /// <summary>Every <c>*.json</c> in the user-theme folder, parsed. A missing folder is no themes; a
-    /// file that is not theme JSON is skipped and named in <see cref="UserThemeLoad.Unreadable"/>.</summary>
+    /// <summary>What <see cref="LoadUserThemes"/> read: the usable themes by id (the file name,
+    /// lowercased) and every file the picker will not offer, with the reason.</summary>
+    public sealed record UserThemeLoad(IReadOnlyList<(string Id, RawTheme Data)> Themes, IReadOnlyList<UnusableThemeFile> Unusable);
+
+    /// <summary>Every <c>*.json</c> in the user-theme folder. A missing folder is no themes. A file that
+    /// is not theme JSON, or that <see cref="NormalizeTheme"/> would drop for missing required colors,
+    /// is left out and named in <see cref="UserThemeLoad.Unusable"/> with the reason, so "why isn't my
+    /// theme offered" has an answer.</summary>
     public static UserThemeLoad LoadUserThemes(string dir)
     {
         var themes = new List<(string, RawTheme)>();
-        var unreadable = new List<string>();
-        if (!Directory.Exists(dir)) return new UserThemeLoad(themes, unreadable);
+        var unusable = new List<UnusableThemeFile>();
+        if (!Directory.Exists(dir)) return new UserThemeLoad(themes, unusable);
         foreach (var f in Directory.GetFiles(dir, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
-            try { themes.Add((Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), ParseRawTheme(File.ReadAllText(f)))); }
-            catch { unreadable.Add(Path.GetFileName(f)); }
+            RawTheme raw;
+            try { raw = ParseRawTheme(File.ReadAllText(f)); }
+            catch { unusable.Add(new UnusableThemeFile(Path.GetFileName(f), "not theme JSON")); continue; }
+            var missing = RequiredFields.Where(r => !raw.Tokens.ContainsKey(r)).ToList();
+            if (missing.Count > 0)
+            {
+                unusable.Add(new UnusableThemeFile(Path.GetFileName(f), "missing required colors: " + string.Join(", ", missing)));
+                continue;
+            }
+            themes.Add((Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), raw));
         }
-        return new UserThemeLoad(themes, unreadable);
+        return new UserThemeLoad(themes, unusable);
     }
 
     /// <summary>The theme showing for a saved pick: the saved id when it is in the list, else

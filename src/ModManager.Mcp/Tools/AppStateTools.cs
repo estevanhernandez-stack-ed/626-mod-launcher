@@ -18,10 +18,11 @@ namespace ModManager.Mcp.Tools;
 public static class AppStateTools
 {
     [McpServerTool(Name = "list_themes")]
-    [Description("The themes the Settings theme picker offers (built-in and user/agent themes) and which one "
-                 + "is showing. If the saved pick is gone, savedThemeMissing is true and the default is "
-                 + "showing instead. Also lists user theme files that could not be parsed (and so are not "
-                 + "offered), and each theme's contrast warnings.")]
+    [Description("The themes the Settings theme picker offers (built-in and user/agent themes) and the active "
+                 + "one, resolved from what is on disk the way the app resolves it at start and when Settings "
+                 + "closes. If the saved pick is gone, savedThemeMissing is true and the default is active "
+                 + "instead. Also lists user theme files the picker leaves out, with the reason, and each "
+                 + "theme's contrast warnings.")]
     public static object ListThemes()
     {
         var userLoad = CoreThemes.LoadUserThemes(Path.Combine(McpConfig.DataRoot, "themes"));
@@ -47,9 +48,11 @@ public static class AppStateTools
                 active = t.Id == active.Id,
                 contrastWarnings = CoreThemes.ContrastReport(t),
             }).ToArray(),
-            unreadableUserThemeFiles = userLoad.Unreadable,
-            hint = "A user theme with the same id as a built-in replaces it. A file listed in "
-                   + "unreadableUserThemeFiles is not offered in the picker at all.",
+            unusableUserThemeFiles = userLoad.Unusable.Select(u => new { file = u.File, reason = u.Reason }).ToArray(),
+            hint = "A user theme with the same id as a built-in replaces it. A file in unusableUserThemeFiles is "
+                   + "not offered at all. This reads the disk: a window that is already open keeps the theme it "
+                   + "loaded until Settings reloads the list, so a theme file changed under a running app shows "
+                   + "here first.",
         };
     }
 
@@ -88,8 +91,10 @@ public static class AppStateTools
                 unreadable = nexus?.Unreadable ?? false,
                 fileState = nexus is null ? "missing" : nexus.Unreadable ? "unreadable" : "ok",
             },
-            hint = "A key listed in `defaulted` was absent or the wrong type in app-settings.json and reads as "
-                   + "its default. Premium status is not stored on disk; the app learns it at sign-in.",
+            hint = "A key listed in `defaulted` was absent, the wrong type or a value the app doesn't know in "
+                   + "app-settings.json, and reads as its default. nexus.tokensStored means a sign-in is on file, "
+                   + "not that it still works: if the app can't open it (expired, revoked, another Windows user), "
+                   + "the app shows signed out. Premium status is not stored on disk; the app learns it at sign-in.",
         };
     }
 }

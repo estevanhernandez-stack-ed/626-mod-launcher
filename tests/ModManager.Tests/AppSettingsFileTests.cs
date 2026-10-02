@@ -49,14 +49,27 @@ public class AppSettingsFileTests : IDisposable
         Assert.True(s.CloseToTray);
         Assert.True(s.KeepPluginsUpdated);   // 0 is not a bool
         Assert.Null(s.ThemeId);              // blank is no pick
-        Assert.Equal(new[] { "autoUpdateDefinitions", "autoCheckModUpdates", "keepPluginsUpdated" }, s.Defaulted);
+        Assert.Equal(new[] { "autoUpdateDefinitions", "autoCheckModUpdates", "keepPluginsUpdated", "themeId" }, s.Defaulted);
     }
 
     [Fact]
     public void An_unknown_backdrop_reads_as_solid()
     {
         File.WriteAllText(FilePath, """{ "backdrop": "glass" }""");
-        Assert.Equal("solid", AppSettingsFile.Read(FilePath).Backdrop);
+
+        var s = AppSettingsFile.Read(FilePath);
+
+        Assert.Equal("solid", s.Backdrop);
+        Assert.Contains("backdrop", s.Defaulted);   // review on #371: say why it is solid
+    }
+
+    [Fact]
+    public void A_recognised_value_is_not_reported_as_defaulted()
+    {
+        File.WriteAllText(FilePath, """{ "backdrop": "solid", "themeId": "forge" }""");
+        var d = AppSettingsFile.Read(FilePath).Defaulted;
+        Assert.DoesNotContain("backdrop", d);
+        Assert.DoesNotContain("themeId", d);
     }
 
     // ---- themes ----
@@ -75,13 +88,18 @@ public class AppSettingsFileTests : IDisposable
     [Fact]
     public void Loading_user_themes_names_the_files_it_could_not_read()
     {
-        File.WriteAllText(Path.Combine(_dir, "Good.json"), """{ "name": "Good" }""");
+        var full = new Dictionary<string, string>(Themes.BuiltinThemes[Themes.DefaultThemeId].Tokens) { ["name"] = "Good" };
+        File.WriteAllText(Path.Combine(_dir, "Good.json"), System.Text.Json.JsonSerializer.Serialize(full));
         File.WriteAllText(Path.Combine(_dir, "bad.json"), "{ nope");
+        File.WriteAllText(Path.Combine(_dir, "partial.json"), """{ "name": "Partial" }""");
 
         var load = Themes.LoadUserThemes(_dir);
 
         Assert.Equal("good", Assert.Single(load.Themes).Id);
-        Assert.Equal("bad.json", Assert.Single(load.Unreadable));
+        Assert.Equal(new[] { ("bad.json", "not theme JSON") },
+            load.Unusable.Where(u => u.File == "bad.json").Select(u => (u.File, u.Reason)));
+        var partial = load.Unusable.Single(u => u.File == "partial.json");
+        Assert.Contains("bg", partial.Reason);
         Assert.Empty(Themes.LoadUserThemes(Path.Combine(_dir, "no-such-folder")).Themes);
     }
 
@@ -97,5 +115,7 @@ public class AppSettingsFileTests : IDisposable
             NexusTokenStore.Describe(NexusTokenStore.Serialize(null, "Este", _ => "unused")));
         Assert.Equal(new NexusTokenStore.StoreSummary(false, null, true, false), NexusTokenStore.Describe("""{ "apiKey": "k" }"""));
         Assert.Equal(new NexusTokenStore.StoreSummary(false, null, false, true), NexusTokenStore.Describe("{ broken"));
+        Assert.Equal(new NexusTokenStore.StoreSummary(false, null, false, true), NexusTokenStore.Describe("""{ "tokensProtected": 42 }"""));
+        Assert.Equal(new NexusTokenStore.StoreSummary(false, null, false, true), NexusTokenStore.Describe("""{ "connectedUser": { } }"""));
     }
 }

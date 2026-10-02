@@ -23,27 +23,27 @@ public static class SaveModTools
     {
         var game = ModTools.Find(gameId);
         if (game is null) return ModTools.UnknownGame(gameId);
-        // The app narrows an EA game's save folder (SaveLocator, App-side); for every game whose saves
-        // it may write, the folder is game.SaveDir, which is what this context carries. EA games refuse
-        // the install either way, and installBlocked says so.
+        // For every game whose saves the app may write, the folder is game.SaveDir, which this context
+        // carries (the app's SaveLocator returns it unchanged for those games).
         var ctx = Scanner.GameContext(game);
 
+        // The EA refusal first: setting a save folder would not make those saves writable.
         var refusal = SaveWritePolicy.Refusal(game);
-        var gated = BanRiskRules.ShouldGateSaveWrite(
-            BanRiskCatalog.Effective(game), BanRiskAckStore.IsAcked(ctx.DataDir, game.Id, BanRiskAck.WriteSaves));
-        string? installBlocked =
-            string.IsNullOrEmpty(ctx.SaveDir) ? "626 doesn't know this game's save folder, so a save mod has nowhere to go."
-            : refusal;
+        string? installBlocked = refusal
+            ?? (string.IsNullOrEmpty(ctx.SaveDir) ? "626 doesn't know this game's save folder, so a save mod has nowhere to go." : null);
 
         return new
         {
             ok = true,
             gameId = game.Id,
             saveDir = ctx.SaveDir,
+            // The Saves dialog narrows an EA game's folder from its curated hint (App-side SaveLocator);
+            // the registry value here can be the parent of it. Such a game refuses save writes anyway.
+            saveDirNote = refusal is null ? null : "For an EA app game the Saves dialog can show a narrower folder than this registered one.",
             installBlocked,
             // Only meaningful when nothing blocks the install: a high ban-risk game asks before writing
             // a new save mod until the user ticks "don't ask again" in the app. An agent cannot give it.
-            installNeedsAcknowledgment = installBlocked is null && gated,
+            installNeedsAcknowledgment = installBlocked is null && SaveWritePolicy.NeedsAcknowledgment(game, ctx.DataDir),
             saveMods = SaveModStore.Load(ctx.DataDir)
                 .OrderByDescending(e => e.InstalledUtc)
                 .Select(e => new

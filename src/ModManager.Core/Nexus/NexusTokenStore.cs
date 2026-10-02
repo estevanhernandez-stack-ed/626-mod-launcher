@@ -50,6 +50,10 @@ public static class NexusTokenStore
     /// may have expired or been revoked, and only the app's next refresh finds that out.</summary>
     public sealed record StoreSummary(bool TokensStored, string? ConnectedUser, bool LegacyKey, bool Unreadable);
 
+    // The old api-key shape. One check, shared by Load and Describe, so they never disagree about it.
+    private static bool IsLegacyKeyFile(JsonElement root)
+        => root.TryGetProperty("apiKey", out _) || root.TryGetProperty("apiKeyProtected", out _);
+
     public static StoreSummary Describe(string rawJson)
     {
         try
@@ -57,12 +61,16 @@ public static class NexusTokenStore
             using var doc = JsonDocument.Parse(rawJson);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return new StoreSummary(false, null, false, true);
-            if (root.TryGetProperty("apiKey", out _) || root.TryGetProperty("apiKeyProtected", out _))
-                return new StoreSummary(false, null, true, false);
-            var stored = root.TryGetProperty("tokensProtected", out var t) && t.ValueKind == JsonValueKind.String
-                         && !string.IsNullOrEmpty(t.GetString());
-            var user = root.TryGetProperty("connectedUser", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
-            return new StoreSummary(stored, user, false, false);
+            if (IsLegacyKeyFile(root)) return new StoreSummary(false, null, true, false);
+            // Load deserializes these as strings; any other shape fails there and reads as disconnected
+            // with no user, so it must read as unreadable here too, never as a named sign-in.
+            var hasBlob = root.TryGetProperty("tokensProtected", out var t);
+            var hasUser = root.TryGetProperty("connectedUser", out var u);
+            if ((hasBlob && t.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                || (hasUser && u.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)))
+                return new StoreSummary(false, null, false, true);
+            var stored = hasBlob && t.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(t.GetString());
+            return new StoreSummary(stored, hasUser && u.ValueKind == JsonValueKind.String ? u.GetString() : null, false, false);
         }
         catch { return new StoreSummary(false, null, false, true); }
     }
@@ -79,8 +87,7 @@ public static class NexusTokenStore
             using (var doc = JsonDocument.Parse(rawJson))
             {
                 var root = doc.RootElement;
-                if (root.ValueKind == JsonValueKind.Object &&
-                    (root.TryGetProperty("apiKey", out _) || root.TryGetProperty("apiKeyProtected", out _)))
+                if (root.ValueKind == JsonValueKind.Object && IsLegacyKeyFile(root))
                 {
                     // Old api-key file — keys are non-compliant under OAuth. Discard, never migrate.
                     return new LoadResult(null, null, LegacyKeyDiscarded: true);

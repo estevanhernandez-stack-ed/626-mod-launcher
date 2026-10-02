@@ -64,17 +64,23 @@ public static class AppSettingsFile
                 return null;
             }
 
-            var backdrop = Str("backdrop")?.ToLowerInvariant() switch
+            var rawBackdrop = Str("backdrop")?.ToLowerInvariant();
+            var backdrop = rawBackdrop switch
             {
                 "mica" => "mica",
                 "acrylic" => "acrylic",
-                _ => "solid",
+                "solid" => "solid",
+                _ => null,
             };
+            if (backdrop is null && rawBackdrop is not null) defaulted.Add("backdrop");   // a value the app doesn't know
+            backdrop ??= "solid";
             var auto = Bool("autoUpdateDefinitions", true);
             var check = Bool("autoCheckModUpdates", true);
             var plugins = Bool("keepPluginsUpdated", true);
             var tray = Bool("closeToTray", false);
-            var theme = Str("themeId") is { } id && !string.IsNullOrWhiteSpace(id) ? id : null;   // no saved pick
+            var rawTheme = Str("themeId");
+            var theme = string.IsNullOrWhiteSpace(rawTheme) ? null : rawTheme;   // blank is no saved pick
+            if (theme is null && rawTheme is not null) defaulted.Add("themeId");
 
             return new AppSettingsSnapshot(backdrop, auto, check, plugins, tray, theme, state, defaulted);
         }

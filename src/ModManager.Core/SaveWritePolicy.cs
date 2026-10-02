@@ -38,6 +38,14 @@ public static class SaveWritePolicy
     /// <summary>What a refused write says. Same sentence, plus the fact the player needs most.</summary>
     public const string EaRefusal = EaNotice + " Nothing was changed.";
 
+    /// <summary>Whether a new save write for this game must ask first: it is high ban-risk and the
+    /// write-saves acknowledgment has not been given. The one check every save-write path consults (the
+    /// drop path, the Saves dialog, the agent's list_save_mods), so none can drift on the risk level or
+    /// the ack file.</summary>
+    public static bool NeedsAcknowledgment(GameEntry game, string dataDir)
+        => BanRiskRules.ShouldGateSaveWrite(BanRiskCatalog.Effective(game),
+            BanRiskAckStore.IsAcked(dataDir, game.Id, BanRiskAck.WriteSaves));
+
     /// <summary>The up-front notice for this game, or null when its saves are writable.</summary>
     public static string? Notice(GameEntry? game) => Refusal(game) is null ? null : EaNotice;
 

@@ -89,8 +89,28 @@ public class AppStateToolsTests : IDisposable
 
         var r = Json(AppStateTools.ListThemes());
 
-        Assert.Equal("half-written.json", Assert.Single(r.GetProperty("unreadableUserThemeFiles").EnumerateArray()).GetString());
+        var u = Assert.Single(r.GetProperty("unusableUserThemeFiles").EnumerateArray());
+        Assert.Equal("half-written.json", u.GetProperty("file").GetString());
+        Assert.Equal("not theme JSON", u.GetProperty("reason").GetString());
         Assert.DoesNotContain(r.GetProperty("themes").EnumerateArray(), t => t.GetProperty("id").GetString() == "half-written");
+    }
+
+    // Review on #371: a file that parses but lacks colors was dropped by the list yet still counted as a
+    // user theme, so a built-in it never replaced read as overridden.
+    [Fact]
+    public void A_theme_file_missing_colors_is_named_with_why_and_never_replaces_a_builtin()
+    {
+        Directory.CreateDirectory(Path.Combine(DataRoot, "themes"));
+        File.WriteAllText(Path.Combine(DataRoot, "themes", "forge.json"), """{ "name": "My Forge", "bg": "#000000" }""");
+
+        var r = Json(AppStateTools.ListThemes());
+
+        var u = Assert.Single(r.GetProperty("unusableUserThemeFiles").EnumerateArray());
+        Assert.Equal("forge.json", u.GetProperty("file").GetString());
+        Assert.StartsWith("missing required colors: ", u.GetProperty("reason").GetString());
+        var forge = r.GetProperty("themes").EnumerateArray().Single(t => t.GetProperty("id").GetString() == "forge");
+        Assert.Equal("builtin", forge.GetProperty("source").GetString());
+        Assert.False(forge.GetProperty("overridesBuiltin").GetBoolean());
     }
 
     [Fact]
@@ -153,6 +173,20 @@ public class AppStateToolsTests : IDisposable
         Assert.Equal("Este", nexus.GetProperty("connectedUser").GetString());
         Assert.DoesNotContain(blob, raw);
         Assert.DoesNotContain("secret", raw);
+    }
+
+    // Review on #371: the app's Load reads a non-string blob as signed out with no user, so the agent
+    // must not report a named sign-in for it.
+    [Fact]
+    public void A_sign_in_file_the_app_cannot_read_is_unreadable_not_a_named_user()
+    {
+        File.WriteAllText(Path.Combine(DataRoot, "nexus.json"), """{ "tokensProtected": 42, "connectedUser": "Este" }""");
+
+        var nexus = Json(AppStateTools.GetAppSettings()).GetProperty("nexus");
+
+        Assert.True(nexus.GetProperty("unreadable").GetBoolean());
+        Assert.False(nexus.GetProperty("tokensStored").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, nexus.GetProperty("connectedUser").ValueKind);
     }
 
     [Fact]
@@ -237,6 +271,16 @@ public class AppStateToolsTests : IDisposable
 
         Assert.Equal(JsonValueKind.Null, r.GetProperty("installBlocked").ValueKind);
         Assert.Equal(needsAck, r.GetProperty("installNeedsAcknowledgment").GetBoolean());
+    }
+
+    // Review on #371: setting a folder would not make an EA game's saves writable, so the EA refusal is
+    // the reason given, not the missing folder.
+    [Fact]
+    public void An_ea_game_with_no_save_folder_is_given_the_ea_reason()
+    {
+        Register("ea-nosave", saveDir: null, eaContentId: "Origin.OFR.50.0002");
+
+        Assert.Equal(SaveWritePolicy.EaRefusal, Json(SaveModTools.ListSaveMods("ea-nosave")).GetProperty("installBlocked").GetString());
     }
 
     [Fact]
