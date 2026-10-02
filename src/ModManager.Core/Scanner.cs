@@ -338,6 +338,7 @@ public static class Scanner
 
     private static IReadOnlyList<Mod> BuildModList(GameContext c)
     {
+        ScanCostProbe.CountModList();
         var outMap = new Dictionary<string, Mod>();
         // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
