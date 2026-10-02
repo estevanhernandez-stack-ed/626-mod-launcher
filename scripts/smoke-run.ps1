@@ -106,7 +106,7 @@ Start-Sleep -Seconds 2
 # is selected, the whole file is snapshotted here, with the app closed, and written back byte for byte
 # in the finally at the end of the run - activeGameId included, as the user had it before the run.
 $gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
-$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating')
+$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy', 'save-mod-reset-and-remove-from-saves-dialog')
 $script:GamesSnapshot = $null
 $script:GamesHashAfterHarness = $null
 $gamesSnapshotPath = Join-Path $OutDir 'games.json.run-start'
@@ -1012,6 +1012,18 @@ function Invoke-McpTool([string]$Tool, [hashtable]$Arguments) {
     finally { try { $p.StandardInput.Close() } catch {}; if (-not $p.WaitForExit(5000)) { $p.Kill() } }
 }
 
+# The app does not watch games.json: the library re-reads it when it is SHOWN, not while it sits on
+# screen. A run that starts on the home (any -Only run) never leaves it, so a game registered after
+# launch never gets a row. Leave the home through a game; the next time the home shows it re-reads.
+# Windrose, as everywhere in this script; opening a game is read-only. Call after registering a fixture.
+function Sync-LibraryWithGamesJson {
+    if (-not (Find-ById (Get-Tree $root) 'HomeButton')) {
+        $wr = Find-ById (Get-Tree $root) 'GameRow.windrose'
+        if (-not $wr) { $wr = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.') | Select-Object -First 1 }
+        if ($wr) { Invoke-Node $wr; Wait-Idle 4000; Set-HarnessOwnedGames }
+    }
+}
+
 function New-RepairFixture {
     Remove-RepairFixtureFiles
     $mods = Join-Path $fixtureRoot 'FixtureGame\FixtureGame\Content\Paks\~mods'
@@ -1020,6 +1032,7 @@ function New-RepairFixture {
     $r = Invoke-McpTool 'register_game' @{ name = 'Repair Harness Fixture'; gameRoot = (Join-Path $fixtureRoot 'FixtureGame'); engine = 'ue-pak' }
     Set-HarnessOwnedGames   # the register, if it wrote anything, was ours
     Assert-True ($r.ok -and $r.gameId -eq $fixtureId) "fixture registration failed: $($r | ConvertTo-Json -Compress)"
+    Sync-LibraryWithGamesJson   # a run that starts on the home never sees the row otherwise
     Open-GameById $fixtureId
 }
 
@@ -1171,6 +1184,338 @@ Case 'repair-save-gating' 'PR (feat/registration-repair-ui) step 3' {
         "off unchanged; off + reason for a blank folder and a blank mod folder; off when restored; on for a real change"
     }
     finally { Remove-RepairFixture }
+}
+
+Write-Host ''
+Write-Host '  -- OLD LOADER chip (A17, #383) --' -ForegroundColor White
+
+# Two throwaway games built to StaleLoaders' own rules, registered through register_game and removed by
+# the app's Remove this game. They live under $OutDir, so a run pointed at a scratch folder keeps them
+# out of the repo; their _626mods data folder sits beside them and goes with them.
+#   - REFramework is recognised by its proxy-plus-sibling pair: dinput8.dll beside a reframework\ folder.
+#     The date compared is the proxy's.
+#   - UE4SS by its two components: Binaries/Win64/ue4ss/UE4SS.dll (whose date is compared) only while
+#     the dwmapi.dll that loads it is there.
+#   - The game's build is the LARGEST exe in a probe root or its Binaries/Win64 (newest among those within
+#     10% of it), so a small, older exe beside it must not be the one named.
+$loaderFixtureRoot = Join-Path $OutDir 'old-loader-fixture'
+$reUrl = 'https://github.com/praydog/REFramework/releases'
+
+function New-SizedFile([string]$Path, [int]$Bytes, [datetime]$WhenUtc) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $Path) | Out-Null
+    [System.IO.File]::WriteAllBytes($Path, (New-Object byte[] $Bytes))
+    (Get-Item -LiteralPath $Path).LastWriteTimeUtc = $WhenUtc
+}
+
+function Get-LocalDay([datetime]$Utc) {
+    [DateTime]::SpecifyKind($Utc, [DateTimeKind]::Utc).ToLocalTime().ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+# Each game entry's raw JSON by id, so "nothing else changed" is a byte comparison, not a re-serialise.
+function Get-GameEntriesRaw {
+    $doc = [System.Text.Json.JsonDocument]::Parse([System.IO.File]::ReadAllText($gamesJson))
+    $map = @{}
+    foreach ($g in $doc.RootElement.GetProperty('games').EnumerateArray()) { $map[$g.GetProperty('id').GetString()] = $g.GetRawText() }
+    $doc.Dispose()
+    return $map
+}
+
+function Get-ShapeNotes([string]$Id) {
+    $s = Invoke-McpTool 'get_game_shape' @{ gameId = $Id }
+    return @($s.notes)
+}
+
+# Select a chip so ITS sentence is the one on show, then read it.
+function Open-StateChip([string]$ChipId) {
+    $chip = Find-ById (Get-Tree $root) "StateChip.$ChipId"
+    if (-not $chip) { return $null }
+    Invoke-Node $chip; Wait-Idle 1200
+    return Find-ById (Get-Tree $root) 'StateChipDetail'
+}
+
+function Register-LoaderFixture([string]$Name, [string]$GameRoot, [string]$Engine) {
+    $r = Invoke-McpTool 'register_game' @{ name = $Name; gameRoot = $GameRoot; engine = $Engine }
+    Set-HarnessOwnedGames
+    Assert-True ($r.ok -and -not $r.alreadyRegistered) "fixture registration failed: $($r | ConvertTo-Json -Compress)"
+    Sync-LibraryWithGamesJson
+    return $r.gameId
+}
+
+function Remove-LoaderFixture([string]$Id) {
+    try {
+        if (Test-ModalOpen $root) { Close-SetupDialog }
+        $h = Find-ById (Get-Tree $root) 'HomeButton'
+        if ($h) { Invoke-Node $h; Wait-Idle 2500; Set-HarnessOwnedGames }
+        $null = Test-RowPresent (Get-Tree $root) "GameRow.$Id"
+        $row = Find-ById (Get-Tree $root) "GameRow.$Id"
+        if ($row) {
+            Invoke-Node $row; Wait-Idle 4000; Set-HarnessOwnedGames
+            $opts = Find-ById (Get-Tree $root) 'GameOptionsButton'
+            try { Expand-Node $opts } catch { Invoke-Node $opts }
+            Wait-Idle 1200
+            Invoke-Node (Find-ById (Get-Tree $root) 'MenuRemoveGame'); Wait-Idle 1500
+            $d = Get-ContentDialog $root 'Remove game?' -ButtonName 'Remove'
+            $rb = @(Get-Tree $d | Where-Object { try { $_.Current.Name -eq 'Remove' } catch { $false } })[0]
+            Invoke-Node $rb; Wait-Idle 3000; Set-HarnessOwnedGames
+        }
+    }
+    finally {
+        $still = ((Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq $Id)
+        if ($still) { Write-Host "  !! $Id is still registered - remove it with More > Remove this game" -ForegroundColor Red }
+    }
+}
+
+Case 'old-loader-chip-round-trip' 'A17 / #383 - OLD LOADER chip' {
+    $id = $null
+    $game = Join-Path $loaderFixtureRoot 'OldLoaderGame'
+    try {
+        if (Test-Path -LiteralPath $loaderFixtureRoot) { Remove-Item -LiteralPath $loaderFixtureRoot -Recurse -Force }
+        $now = [DateTime]::UtcNow
+        $yearAgo = $now.AddDays(-365)
+        $exe = Join-Path $game 'OldLoaderGame.exe'
+        New-SizedFile $exe (4MB) $now
+        New-SizedFile (Join-Path $game 'CrashReporter.exe') (64KB) $now.AddDays(-700)   # small and old: never the build
+        New-SizedFile (Join-Path $game 'dinput8.dll') (32KB) $yearAgo
+        New-SizedFile (Join-Path $game 'reframework\plugins\inert.txt') 16 $yearAgo
+        (Get-Item -LiteralPath (Join-Path $game 'reframework')).LastWriteTimeUtc = $yearAgo
+        $exeUtc = (Get-Item -LiteralPath $exe).LastWriteTimeUtc
+
+        $id = Register-LoaderFixture 'Old Loader Smoke Fixture' $game 'custom'
+        $sentence = "REFramework (dinput8.dll, $(Get-LocalDay $yearAgo)) is older than the game's executable " +
+                    "(OldLoaderGame.exe, $(Get-LocalDay $exeUtc)). REFramework usually needs a new release after a game " +
+                    "patch; if the game has been patched since you installed it, update it before launching ($reUrl)."
+
+        # (e) the agent reads the same sentence, unmarked.
+        $notes = Get-ShapeNotes $id
+        Assert-True ($notes -contains $sentence) "get_game_shape does not carry the chip's sentence: $($notes -join ' / ')"
+
+        # (a) the chip, its sentence, and that the sentence can be selected and copied.
+        Open-GameById $id
+        $detail = Open-StateChip 'stale-loader'
+        Assert-True ($null -ne $detail) "no StateChip.stale-loader on a fixture whose REFramework predates its exe by a year"
+        $said = Get-Text $detail
+        Assert-True ($said -eq $sentence) "the chip reads '$said', expected '$sentence'"
+        $tp = $null
+        Assert-True ($detail.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$tp)) "StateChipDetail exposes no TextPattern"
+        $tp.DocumentRange.Select()
+        $sel = (@($tp.GetSelection()) | ForEach-Object { $_.GetText(-1) }) -join ''
+        Assert-True ($sel -eq $sentence) "selecting the whole sentence through TextPattern returned '$sel'"
+        $action = Find-ById (Get-Tree $root) 'StateChipAction'
+        Assert-True ((Get-Text $action) -eq 'Mark as checked') "StateChipAction reads '$(Get-Text $action)'"
+
+        # (b) Mark as checked: the chip goes, games.json records the exe for the fixture ONLY.
+        $before = Get-GameEntriesRaw
+        Invoke-Node $action; Wait-Idle 2500
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.stale-loader')) "the chip survived Mark as checked"
+        $after = Get-GameEntriesRaw
+        $changed = @($after.Keys | Where-Object { $_ -ne $id -and $after[$_] -ne $before[$_] })
+        Assert-True ($changed.Count -eq 0) "Mark as checked changed other games: $($changed -join ', ')"
+        Assert-True (@($before.Keys).Count -eq @($after.Keys).Count) "the number of games changed"
+        # A regex on the raw entry, not JsonElement.TryGetProperty: PowerShell cannot pick between its
+        # string and span overloads.
+        Assert-True ($after[$id] -match '"loaderCheckedExeUtc"\s*:\s*"([^"]+)"') "the fixture has no loaderCheckedExeUtc"
+        $stamp = [DateTime]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+        Assert-True ($stamp.ToUniversalTime() -eq $exeUtc) "loaderCheckedExeUtc is $($Matches[1]), the exe is $($exeUtc.ToString('o'))"
+        Assert-True ($before[$id] -notmatch '"loaderCheckedExeUtc"\s*:\s*"') "the fixture already carried a loaderCheckedExeUtc before the click"
+
+        Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 4000
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.stale-loader')) "the chip came back after a reload"
+        Open-GameById $id
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.stale-loader')) "the chip came back after leaving and reopening the game"
+
+        $notes = Get-ShapeNotes $id
+        Assert-True ($notes -contains "$sentence The user marked loaders as checked against this build.") "get_game_shape does not say it was marked: $($notes -join ' / ')"
+
+        # (c) a patch rewrites the exe: the chip is back.
+        (Get-Item -LiteralPath $exe).LastWriteTimeUtc = $exeUtc.AddHours(2)
+        Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 4000
+        $detail = Open-StateChip 'stale-loader'
+        Assert-True ($null -ne $detail) "the chip did not come back after the exe moved forward"
+        $notes = Get-ShapeNotes $id
+        Assert-True (-not ($notes | Where-Object { $_ -like '*marked loaders as checked*' })) "get_game_shape still says checked after the exe moved"
+
+        "chip, detail (selectable via TextPattern) and get_game_shape agree; Mark as checked wrote loaderCheckedExeUtc on '$id' only and held through a reload and a reopen; the chip came back when the exe moved forward"
+    }
+    finally {
+        if ($id) { Remove-LoaderFixture $id }
+        if (Test-Path -LiteralPath (Join-Path $loaderFixtureRoot 'OldLoaderGame')) { Remove-Item -LiteralPath $game -Recurse -Force -EA SilentlyContinue }
+        $dd = Join-Path $loaderFixtureRoot '_626mods'
+        if ($id -and (Test-Path -LiteralPath (Join-Path $dd $id))) { Remove-Item -LiteralPath (Join-Path $dd $id) -Recurse -Force -EA SilentlyContinue }
+    }
+}
+
+Case 'old-loader-ue4ss-needs-its-proxy' 'A17 / #383 - OLD LOADER chip' {
+    # A UE4SS runtime with no dwmapi.dll loads nothing, so it is not a loader to warn about.
+    $id = $null
+    $game = Join-Path $loaderFixtureRoot 'UeLoaderGame'
+    try {
+        if (Test-Path -LiteralPath $game) { Remove-Item -LiteralPath $game -Recurse -Force }
+        $now = [DateTime]::UtcNow
+        $yearAgo = $now.AddDays(-365)
+        $win64 = Join-Path $game 'UeLoaderGame\Binaries\Win64'
+        New-SizedFile (Join-Path $win64 'UeLoaderGame-Win64-Shipping.exe') (4MB) $now
+        New-SizedFile (Join-Path $win64 'ue4ss\UE4SS.dll') (32KB) $yearAgo
+        New-SizedFile (Join-Path $game 'UeLoaderGame\Content\Paks\~mods\UeLoaderInert_P.pak') 16 $now
+        $id = Register-LoaderFixture 'UE Loader Smoke Fixture' $game 'ue-pak'
+
+        Open-GameById $id
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.stale-loader')) "OLD LOADER shows for a UE4SS runtime with no dwmapi.dll"
+        Assert-True (-not (Get-ShapeNotes $id | Where-Object { $_ -like 'UE4SS (*' })) "get_game_shape names UE4SS with no dwmapi.dll"
+
+        New-SizedFile (Join-Path $win64 'dwmapi.dll') (16KB) $yearAgo
+        Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 4000
+        $detail = Open-StateChip 'stale-loader'
+        Assert-True ($null -ne $detail) "no OLD LOADER once dwmapi.dll is beside the UE4SS runtime"
+        $said = Get-Text $detail
+        Assert-True ($said -like "UE4SS (UE4SS.dll, $(Get-LocalDay $yearAgo)) is older than the game's executable (UeLoaderGame-Win64-Shipping.exe, *") "the chip reads '$said'"
+        "no chip with the runtime alone; with dwmapi.dll: '$said'"
+    }
+    finally {
+        if ($id) { Remove-LoaderFixture $id }
+        if (Test-Path -LiteralPath $game) { Remove-Item -LiteralPath $game -Recurse -Force -EA SilentlyContinue }
+        $dd = Join-Path $loaderFixtureRoot '_626mods'
+        if ($id -and (Test-Path -LiteralPath (Join-Path $dd $id))) { Remove-Item -LiteralPath (Join-Path $dd $id) -Recurse -Force -EA SilentlyContinue }
+        if ((Test-Path -LiteralPath $dd) -and -not (Get-ChildItem -LiteralPath $dd -Force)) { Remove-Item -LiteralPath $dd -Force }
+        if ((Test-Path -LiteralPath $loaderFixtureRoot) -and -not (Get-ChildItem -LiteralPath $loaderFixtureRoot -Force)) { Remove-Item -LiteralPath $loaderFixtureRoot -Force }
+    }
+}
+
+Write-Host ''
+Write-Host '  -- save mods: Reset and Remove from the Saves dialog (#380) --' -ForegroundColor White
+
+# Windrose's REAL save tree is written here, so the case is wrapped: Windrose must not be running, the
+# whole SaveProfiles tree is copied and hashed first, the only world touched is a throwaway id no game
+# makes (00000000000000000000000000C0FFEE), and the finally removes exactly what this case added. It
+# then compares the tree with the pre-run hash. It never copies the backup over the real saves on its
+# own: a mismatch is reported loudly with the backup's path, because overwriting a save tree is a
+# decision for a person.
+$smWorld = '00000000000000000000000000C0FFEE'
+$smName = 'SmokeCoffeeWorld'
+$smProfiles = Join-Path $env:LOCALAPPDATA 'R5\Saved\SaveProfiles'
+
+function Get-TreeManifest([string]$Root) {
+    if (-not (Test-Path -LiteralPath $Root)) { return @() }
+    $files = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File | Sort-Object FullName | ForEach-Object {
+        "F|{0}|{1}" -f $_.FullName.Substring($Root.Length), (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash })
+    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory | Sort-Object FullName | ForEach-Object {
+        "D|{0}" -f $_.FullName.Substring($Root.Length) })
+    return @($files + $dirs)
+}
+
+function Test-SamePath([string]$A, [string]$B) {
+    [string]::Equals([System.IO.Path]::GetFullPath($A).TrimEnd('\'), [System.IO.Path]::GetFullPath($B).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+Case 'save-mod-reset-and-remove-from-saves-dialog' '#380 - Windrose save mods' {
+    if (Get-Process | Where-Object { $_.ProcessName -match '^(R5|Windrose)' }) { throw "SKIP: Windrose is running - this case writes its save tree" }
+    if (-not (Test-Path -LiteralPath $smProfiles)) { throw "SKIP: no Windrose SaveProfiles on this machine" }
+    $wrEntry = (Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq 'windrose'
+    if (-not $wrEntry) { throw "SKIP: Windrose is not registered" }
+    $listed0 = Invoke-McpTool 'list_save_mods' @{ gameId = 'windrose' }
+    if (@($listed0.saveMods | Where-Object worldId -eq $smWorld).Count -gt 0) { throw "a $smWorld world is already listed - a previous run left it; remove it before running this case" }
+
+    $work = Join-Path $OutDir 'save-mod-fixture'
+    $backup = Join-Path $work 'SaveProfiles.backup'
+    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $pre = Get-TreeManifest $smProfiles
+    $null = robocopy $smProfiles $backup /E /COPY:DAT /DCOPY:T /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+    Assert-True (@(Compare-Object $pre (Get-TreeManifest $backup)).Count -eq 0) "the SaveProfiles backup does not match the tree - not starting"
+
+    $savesTop0 = @(Get-ChildItem -LiteralPath (Join-Path $wrData 'saves') -Force -File | ForEach-Object Name | Sort-Object)
+    $hadSnapRoot = Test-Path -LiteralPath (Join-Path $wrData 'saves\save-mods')
+    $hadKeptRoot = Test-Path -LiteralPath (Join-Path $wrData 'save-mods')
+    $installed = $false
+    $worldDir = $null
+    try {
+        $src = Join-Path $work "src\Worlds\$smWorld"
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        Set-Content -LiteralPath (Join-Path $src 'level.db') -Value 'SMOKE626 throwaway world, inert' -Encoding ascii
+        $zip = Join-Path $work "$smName.zip"
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $work 'src'), $zip)
+
+        $r = Invoke-McpTool 'install_save_mod' @{ gameId = 'windrose'; zipPath = $zip }
+        Assert-True ($r.ok) "install_save_mod refused: $($r | ConvertTo-Json -Compress)"
+        $installed = $true
+        $worldDir = $r.installedTo
+        $snapDir = Join-Path $wrData "saves\save-mods\worlds\$smWorld"
+
+        Open-GameById 'windrose'
+        Invoke-Node (Find-ById (Get-Tree $root) 'SavesButton'); Wait-Idle 3500
+        $list = Find-ById (Get-Tree $root) 'SaveModList'
+        Assert-True ($null -ne $list) "no SaveModList in the Saves dialog"
+        $snapList = Find-ById (Get-Tree $root) 'SnapshotList'
+        $snaps0 = if ($snapList) { Get-ItemCount $snapList } else { 0 }
+
+        # The row by its bound id, and its names: the list item reads the title, not a record dump.
+        $null = Test-RowPresent (Get-Tree $list) "SaveModRow.$smWorld"
+        $label = Find-ById (Get-Tree $list) "SaveModRow.$smWorld"
+        Assert-True ($null -ne $label) "no SaveModRow.$smWorld in the save-mod list"
+        Assert-True ((Get-Text $label) -eq $smName) "the row label reads '$(Get-Text $label)'"
+        $item = $label
+        while ($item -and $item.Current.ControlType.ProgrammaticName -ne 'ControlType.ListItem') {
+            $item = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($item)
+        }
+        Assert-True ($null -ne $item) "the row label has no ListItem above it"
+        Assert-True ((Get-Text $item) -eq $smName) "the list item's UIA name is '$(Get-Text $item)', not the title"
+
+        # Reset, by its bound name.
+        $reset = Find-ByName (Get-Tree $list) "Reset $smName"
+        Assert-True ($null -ne $reset) "no 'Reset $smName' button"
+        Invoke-Node $reset; Wait-Idle 3000
+        $said = Get-Text (Find-ById (Get-Tree $root) 'StatusText')
+        $want = '^Reset ' + [regex]::Escape($smName) + '\. 626 snapshots this world first, into (.+)\. Saves doesn''t list those: to undo, unzip the newest one into (.+)\.$'
+        Assert-True ($said -match $want) "Reset said '$said'"
+        Assert-True (Test-SamePath $Matches[1] $snapDir) "the note's snapshot folder is '$($Matches[1])', expected '$snapDir'"
+        Assert-True (Test-SamePath $Matches[2] $worldDir) "the note's world folder is '$($Matches[2])', expected '$worldDir'"
+        $taken = @(Get-ChildItem -LiteralPath $snapDir -File)
+        Assert-True ($taken.Count -eq 1) "$($taken.Count) snapshot(s) in $snapDir, expected exactly 1"
+        Assert-True ($taken[0].Name -like '*before-savemod-reset.zip') "the snapshot is '$($taken[0].Name)'"
+        $savesTop1 = @(Get-ChildItem -LiteralPath (Join-Path $wrData 'saves') -Force -File | ForEach-Object Name | Sort-Object)
+        Assert-True (($savesTop1 -join '|') -eq ($savesTop0 -join '|')) "the top-level Saves zips changed: $($savesTop1 -join ', ')"
+        $snapList = Find-ById (Get-Tree $root) 'SnapshotList'
+        $snaps1 = if ($snapList) { Get-ItemCount $snapList } else { 0 }
+        Assert-True ($snaps1 -eq $snaps0) "the Saves list went from $snaps0 to $snaps1 rows"
+        Assert-True (Test-Path -LiteralPath (Join-Path $worldDir 'level.db')) "the world is not there after Reset"
+
+        # Remove, by its bound name.
+        $list = Find-ById (Get-Tree $root) 'SaveModList'
+        $remove = Find-ByName (Get-Tree $list) "Remove $smName"
+        Assert-True ($null -ne $remove) "no 'Remove $smName' button"
+        Invoke-Node $remove; Wait-Idle 3000
+        $saidRemove = Get-Text (Find-ById (Get-Tree $root) 'StatusText')
+        Assert-True (-not (Test-Path -LiteralPath $worldDir)) "the world survived Remove"
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $wrData "save-mods\$smWorld"))) "the kept zip folder save-mods\$smWorld survived Remove"
+        $installed = $false
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) "SaveModRow.$smWorld")) "the row is still listed after Remove"
+        "row SaveModRow.$smWorld named '$smName'; Reset said '$said'; one snapshot, Saves list unchanged at $snaps0; Remove said '$saidRemove' and deleted the world and save-mods\$smWorld"
+    }
+    finally {
+        try { $c = Find-ById (Get-Tree $root) 'CloseButton'; if ($c) { Invoke-Node $c; Wait-Idle 1500 } } catch {}
+        # Exactly what this case added, nothing else.
+        if ($installed) { try { $null = Invoke-McpTool 'remove_save_mod' @{ gameId = 'windrose'; worldId = $smWorld; confirm = $true } } catch {} }
+        if ($worldDir -and (Test-Path -LiteralPath $worldDir) -and (Split-Path -Leaf $worldDir) -eq $smWorld) { Remove-Item -LiteralPath $worldDir -Recurse -Force }
+        $kept = Join-Path $wrData "save-mods\$smWorld"
+        if (Test-Path -LiteralPath $kept) { Remove-Item -LiteralPath $kept -Recurse -Force }
+        if (-not $hadKeptRoot -and (Test-Path -LiteralPath (Join-Path $wrData 'save-mods')) -and -not (Get-ChildItem -LiteralPath (Join-Path $wrData 'save-mods') -Force)) {
+            Remove-Item -LiteralPath (Join-Path $wrData 'save-mods') -Force
+        }
+        $snapWorld = Join-Path $wrData "saves\save-mods\worlds\$smWorld"
+        if (Test-Path -LiteralPath $snapWorld) { Remove-Item -LiteralPath $snapWorld -Recurse -Force }
+        if (-not $hadSnapRoot -and (Test-Path -LiteralPath (Join-Path $wrData 'saves\save-mods'))) {
+            if (-not (Get-ChildItem -LiteralPath (Join-Path $wrData 'saves\save-mods') -Recurse -Force -File)) { Remove-Item -LiteralPath (Join-Path $wrData 'saves\save-mods') -Recurse -Force }
+        }
+        $post = Get-TreeManifest $smProfiles
+        $diff = @(Compare-Object $pre $post)
+        if ($diff.Count -eq 0) {
+            Remove-Item -LiteralPath $work -Recurse -Force -EA SilentlyContinue
+        } else {
+            Write-Host "  !! Windrose SaveProfiles differs from before the case ($($diff.Count) line(s)). NOT restored automatically; the backup is $backup" -ForegroundColor Red
+            $diff | Select-Object -First 10 | ForEach-Object { Write-Host "     $($_.SideIndicator) $($_.InputObject)" -ForegroundColor Red }
+            throw "SaveProfiles is not hash-identical after the case - backup kept at $backup"
+        }
+    }
 }
 
 # ---------------------------------------------------------------- what a harness cannot do

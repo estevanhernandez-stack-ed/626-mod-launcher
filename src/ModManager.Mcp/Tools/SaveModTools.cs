@@ -287,8 +287,7 @@ public static class SaveModTools
             return "626 snapshots the save folder first, so it can be restored from Saves.";
         if (newWorld)
             return "It is a new world, so there was nothing to snapshot; remove_save_mod undoes it.";
-        return $"626 snapshots this world first, into {dir}. Saves doesn't list those: to undo, unzip the newest one "
-               + $"into {worldDir}.";
+        return SaveModSnapshots.UndoNote(dir, worldDir);
     }
 
     // The game imports a world into its own store and plays it there (Windrose: RocksDB_v2). Reset replaces only the

@@ -201,19 +201,21 @@
         <ListView AutomationProperties.AutomationId="SaveModList" AutomationProperties.Name="Installed save mods" x:Name="SaveModList" MaxHeight="200" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SaveModRow">
-                    <Grid ColumnSpacing="8" Padding="0,6">
+                    <Grid ColumnSpacing="8" Padding="0,6" AutomationProperties.Name="{x:Bind Title}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Foreground="{StaticResource ThemeInk}" Text="{x:Bind Title}" FontWeight="SemiBold" />
+                            <TextBlock AutomationProperties.AutomationId="{x:Bind RowAutomationId}"
+                                       Foreground="{StaticResource ThemeInk}" Text="{x:Bind Title}" FontWeight="SemiBold" />
                             <TextBlock Text="{x:Bind Detail}" Foreground="{StaticResource ThemeInkDim}" FontSize="{StaticResource BodyFontSize}" TextWrapping="Wrap" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Reset" Click="OnSaveModReset" VerticalAlignment="Center"
+                        <Button Grid.Column="1" Content="Reset" AutomationProperties.Name="{x:Bind ResetAutomationName}"
+                                Click="OnSaveModReset" VerticalAlignment="Center"
                                 ToolTipService.ToolTip="Re-install from the kept source zip — snapshots first" />
-                        <Button Grid.Column="2" AutomationProperties.Name="Remove save mod" Click="OnSaveModRemove" VerticalAlignment="Center"
+                        <Button Grid.Column="2" AutomationProperties.Name="{x:Bind RemoveAutomationName}" Click="OnSaveModRemove" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0"
                                 ToolTipService.ToolTip="Remove from the save tree — snapshots first">
                             <FontIcon Glyph="&#xE74D;" FontSize="{StaticResource RowTitleFontSize}" Foreground="{StaticResource ThemeDanger}" />

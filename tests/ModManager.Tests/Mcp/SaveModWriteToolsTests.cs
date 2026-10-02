@@ -279,6 +279,7 @@ public class SaveModWriteToolsTests : IDisposable
         var ask = Json(SaveModTools.ResetSaveMod(g.Id, World)).GetProperty("detail").GetString();
         var outside = SaveModInstaller.SaveModSnapshotsFor(Scanner.GameContext(g).SavesDir, World);
         Assert.Contains(outside, ask);
+        Assert.Contains($"to undo, unzip the newest one into {WorldDir}.", ask);
         Assert.DoesNotContain("restored from Saves", ask);
 
         Assert.True(Json(SaveModTools.RemoveSaveMod(g.Id, World, confirm: true)).GetProperty("ok").GetBoolean());
