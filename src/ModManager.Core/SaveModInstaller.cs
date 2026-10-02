@@ -493,6 +493,20 @@ public static class SaveModSnapshots
             ? null
             : SaveModInstaller.SaveModSnapshotsFor(snapshotsDir, worldGuid);
     }
+
+    /// <summary>The sentence that says where a world's snapshots went and how to undo from them, for a snapshot
+    /// Saves doesn't list. One copy, said by the agent and by the Saves dialog alike.</summary>
+    public static string UndoNote(string snapshotDir, string worldDir) =>
+        $"626 snapshots this world first, into {snapshotDir}. Saves doesn't list those: to undo, unzip the newest one "
+        + $"into {worldDir}.";
+
+    /// <summary>The <see cref="UndoNote"/> for this world, or null when the save folder holds it and Saves lists
+    /// its snapshots. Writes nothing.</summary>
+    public static string? UndoNoteFor(string saveDir, string snapshotsDir, string? saveModPath,
+                                      IReadOnlyList<string>? forbidden, string worldGuid) =>
+        OutsideSavesList(saveDir, snapshotsDir, saveModPath, forbidden, worldGuid) is { } dir
+            ? UndoNote(dir, SaveModInstaller.WorldDirFor(saveDir, saveModPath, forbidden, worldGuid))
+            : null;
 }
 
 /// <summary>The world is already in the game's own save store (it has been imported and played), so installing it

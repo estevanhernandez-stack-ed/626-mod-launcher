@@ -99,8 +99,13 @@
    "title": "Installed games 626 doesn't manage are rows in the one library list",
    "surface": "B6 one list",
    "coverage": "harness",
-   "status": "pending",
-   "lastVerified": null,
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of master 6925ad8",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS: 10 UnmanagedGame.steam.* rows and 17 GameRow.* rows realised under the same parent in the ALL GAMES section, interleaved by recency. A separate UIA walk found no LibraryDiscoveryExpander and no AutomationId containing 'Discovery'."
+   },
    "steps": [],
    "source": "scripts/smoke-run.ps1",
    "action": "On the library home, walk the list for UnmanagedGame.* rows beside the GameRow.* rows.",
@@ -112,8 +117,13 @@
    "title": "An unmanaged row offers Start managing and Play, and no mod state",
    "surface": "B6 one list",
    "coverage": "harness",
-   "status": "pending",
-   "lastVerified": null,
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of master 6925ad8",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS, read only, nothing pressed: UnmanagedGame.steam.300 (Day of Defeat: Source) reads 'Not managed by 626' with exactly one 'Start managing Day of Defeat: Source' and one 'Play Day of Defeat: Source', and no 'N mods' text."
+   },
    "steps": [],
    "source": "scripts/smoke-run.ps1",
    "action": "Read the first UnmanagedGame.* row's subtree.",
@@ -2261,13 +2271,95 @@
    "title": "Two mods Windows would read as one folder are held apart and come back intact",
    "surface": "fix/toggle-name-alias - holding-folder names Windows can't alias",
    "coverage": "harness",
-   "status": "pending",
-   "lastVerified": null,
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of master 6925ad8",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS via smoke-run.ps1 -Only on this build: held apart in disabled\\B4AliasProbe and disabled\\~626~4234416c69617350726f626520, both back byte-identical, both holding folders gone. Fifth green run (three on the fix branch, one on master's predecessor). Windrose ~mods afterwards: 36 files, every hash as before the run."
+   },
    "steps": [],
    "source": "scripts/smoke-run.ps1",
    "action": "Write inert probes B4AliasProbe_P.pak and 'B4AliasProbe _P.pak' into Windrose's ~mods, reload, turn each off through its row toggle, then turn both back on. The probes and any held leftovers for those two names are removed in a finally.",
    "expect": "Two rows, ModRow.B4AliasProbe and 'ModRow.B4AliasProbe ' (trailing space). Turned off, the data folder holds disabled/B4AliasProbe and disabled/~626~4234416c69617350726f626520 as separate folders, each with its own probe. Turned on, both probes are back with their original hashes and both holding folders are gone.",
    "note": "Before the fix 'B4AliasProbe ' was held in disabled/B4AliasProbe (Windows strips the trailing space), so the second turn-off collided with the first. Probes are written straight into ~mods, not through intake, so no install record is made."
+  },
+  {
+   "id": "old-loader-chip-round-trip",
+   "title": "OLD LOADER names both dates, can be marked checked, and comes back after a patch",
+   "surface": "A17 / #383 - OLD LOADER chip",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of master 6925ad8",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS on a fixture (custom engine, 4 MB OldLoaderGame.exe dated now, a 64 KB CrashReporter.exe dated two years ago, dinput8.dll and reframework\\ dated a year ago). The chip read the same sentence as get_game_shape, naming dinput8.dll 2025-10-02, OldLoaderGame.exe 2026-10-02 and the REFramework releases URL. StateChipDetail exposes TextPattern with SupportedTextSelection=Single, and DocumentRange.Select() then GetSelection() returned the whole sentence; the control, AppStatusText, reports None and throws on Select. Mark as checked wrote loaderCheckedExeUtc on the fixture only (every other entry byte-identical), and the chip stayed gone after Refresh and after leaving and reopening the game; get_game_shape then appended the checked line. Moving the exe two hours forward brought the chip back."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Build a fixture with a large exe dated now, a small older exe, and REFramework (dinput8.dll + reframework\\) dated a year ago; register it through register_game. Read get_game_shape, open the game, select StateChip.stale-loader, read and select StateChipDetail, press StateChipAction, reload and reopen, read get_game_shape again, move the exe's date forward and reload. The fixture is removed through the app in a finally.",
+   "expect": "The chip's sentence equals get_game_shape's and names dinput8.dll's date, the LARGEST exe's date and the REFramework releases URL. The sentence is selectable (TextPattern selection returns it). Mark as checked removes the chip, writes loaderCheckedExeUtc equal to the exe's write time on the fixture only, and holds through a reload and a reopen; get_game_shape then adds 'The user marked loaders as checked against this build.' Moving the exe forward brings the chip back.",
+   "note": "Fixtures live under -OutDir (artifacts/smoke by default), so a run pointed at a scratch folder keeps them out of the repo."
+  },
+  {
+   "id": "old-loader-ue4ss-needs-its-proxy",
+   "title": "A UE4SS runtime with no dwmapi.dll is not an old loader",
+   "surface": "A17 / #383 - OLD LOADER chip",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of master 6925ad8",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS on a ue-pak fixture: Binaries/Win64/ue4ss/UE4SS.dll dated a year ago and no dwmapi.dll showed no chip and no UE4SS sentence in get_game_shape. With dwmapi.dll added and a Refresh, the chip read 'UE4SS (UE4SS.dll, 2025-10-02) is older than the game's executable (UeLoaderGame-Win64-Shipping.exe, 2026-10-02). ... (https://github.com/UE4SS-RE/RE-UE4SS/releases).'"
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Build a ue-pak fixture with a -Shipping.exe dated now in Binaries/Win64 and ue4ss/UE4SS.dll dated a year ago, register it, open it. Then add Binaries/Win64/dwmapi.dll and Refresh.",
+   "expect": "No StateChip.stale-loader and no UE4SS sentence while the proxy is missing; with dwmapi.dll present the chip shows and names UE4SS.dll's date and the -Shipping.exe's.",
+   "note": "Version-locked loaders are recognised the way the rest of the launcher recognises them: UE4SS by its two components, the date read from the runtime."
+  },
+  {
+   "id": "save-mod-reset-and-remove-from-saves-dialog",
+   "title": "Saves dialog: a save mod's Reset and Remove snapshot first, outside the Saves list",
+   "surface": "#380 - Windrose save mods",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of 4d08078",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "PASS via smoke-run.ps1 -Only after 4d08078. The row was found by SaveModRow.00000000000000000000000000C0FFEE; the label and the ListItem both read 'SmokeCoffeeWorld'. Pressing 'Reset SmokeCoffeeWorld' made StatusText read 'Reset SmokeCoffeeWorld. 626 snapshots this world first, into c:/program files (x86)/steam\\_626mods\\windrose\\saves\\save-mods\\worlds\\00000000000000000000000000C0FFEE. Saves doesn't list those: to undo, unzip the newest one into C:\\Users\\estev\\AppData\\Local\\R5\\Saved\\SaveProfiles\\76561197969211145\\RocksDB\\0.10.0\\Worlds\\00000000000000000000000000C0FFEE.' That left one before-savemod-reset snapshot, the Saves list unchanged at 2 rows and the top-level zips unchanged. 'Remove SmokeCoffeeWorld' deleted the world and save-mods\\<guid>. SaveProfiles afterwards: 779 files and the directory tree identical. The first run on 6925ad8 failed on the note (no undo instruction) and on row addressability; both are fixed in 4d08078."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Windrose not running. Copy and hash the whole SaveProfiles tree, build a throwaway Worlds/00000000000000000000000000C0FFEE/level.db zip and install it with install_save_mod. Open Windrose's Saves, find the row by SaveModRow.<guid>, press 'Reset <title>', read StatusText, then press 'Remove <title>'. The finally removes only what the case added and compares the tree with the pre-run hash; on a mismatch it keeps the backup and fails rather than copying it over the real saves.",
+   "expect": "The row label and its list item read the title. Reset says 'Reset <name>. 626 snapshots this world first, into <dataDir>\\saves\\save-mods\\worlds\\<guid>. Saves doesn't list those: to undo, unzip the newest one into <world folder>.' with the real paths, leaves exactly one snapshot there, and adds nothing to the Saves list or the top-level zips. Remove deletes the world and <dataDir>\\save-mods\\<guid>. Afterwards SaveProfiles is hash-identical, files and folders.",
+   "note": "Writes Windrose's real save tree, wrapped: Windrose must be closed, the only world touched is a throwaway id, and the case refuses to start if that id is already listed."
+  },
+  {
+   "id": "multi-tree-toggle-cross-volume",
+   "title": "A multi-tree mod round-trips when 626's data folder is on another drive",
+   "surface": "B4 cross-volume",
+   "coverage": "agentable",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of master 6925ad8",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "Fixture only: G:\\626-smoke-fixtures\\XVolGame laid out like Cyberpunk (archive/pc/mod with XVolModA/XVolModB.archive, r6/scripts/XVolModA with a nested file, r6/tweaks/XVolModA, plus an unrelated r6/scripts/OtherScript), dataDir on C: under the session scratchpad, joined to the cyberpunk-2077 manifest entry by manifestId (no Steam id, so no collision with the real registration). Off through the row toggle: the row read 'Also turned off in r6/scripts, r6/tweaks', the game kept 3 files (XVolModB, the exe, OtherScript), and C: held disabled\\XVolModA\\XVolModA.archive plus disabled-trees\\XVolModA\\r6\\scripts\\XVolModA\\{main.reds,sub\\helper.reds} and r6\\tweaks\\XVolModA\\tweak.yaml. On: the row read 'Also has files in r6/scripts, r6/tweaks' again, all 7 files back with identical relative paths and SHA-256, disabled\\XVolModA and disabled-trees\\XVolModA gone."
+   },
+   "steps": [
+    "Lay out a Cyberpunk-shaped fixture on one drive and give its registration a dataDir on another, joined to the cyberpunk-2077 manifest entry by manifestId.",
+    "Hash every file under the fixture.",
+    "Turn a mod with r6/scripts and r6/tweaks folders off, then on, through its row.",
+    "Compare every relative path and hash."
+   ],
+   "source": "docs/smoke-tests/pending.md",
+   "action": "Toggle a multi-tree mod off and on across volumes, fixture only.",
+   "expect": "Held entries land on the data folder's drive while off, and the round trip is byte-identical with both holding folders gone.",
+   "note": "Covers the SafeMove copy-then-delete fallback on a real two-drive machine. A real Cyberpunk install was not used."
   },
   {
    "id": "launch-verification",

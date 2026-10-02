@@ -93,7 +93,19 @@ public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<Sa
 }
 
 /// <summary>One installed-save-mod row: friendly title + when/source detail.</summary>
-public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail);
+public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail, string? WorldTag = null)
+{
+    // Row identity for an agent (automation-ids rule): a stable key off the world's id, never the display name.
+    public string RowAutomationId => $"SaveModRow.{Entry.Guid}";
+    // Two worlds can share a title (both installed from a World.zip). Then the names carry the short
+    // world id too, so pressing "Reset <title>" can never reach the other world.
+    public string ResetAutomationName => $"Reset {ButtonSubject}";
+    public string RemoveAutomationName => $"Remove {ButtonSubject}";
+    private string ButtonSubject => WorldTag is null ? Title : $"{Title} (world {WorldTag})";
+
+    // The list item's UIA name falls back to this, and the record's own would be the whole kept-zip path.
+    public override string ToString() => Title;
+}
 
 /// <summary>One character-row for the editor. Bridges the Core CharacterSlot to the
 /// data-template's two-line display.</summary>
@@ -310,9 +322,13 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void RefreshSaveMods()
     {
-        var rows = SaveModStore.Load(_dataDir)
+        var entries = SaveModStore.Load(_dataDir);
+        var sharedTitles = entries.GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rows = entries
             .Select(e => new SaveModRow(e, e.Name,
-                $"{e.InstalledUtc.ToLocalTime():g}  ·  world {Short(e.Guid)}  ·  {System.IO.Path.GetFileName(e.SourceZip)}"))
+                $"{e.InstalledUtc.ToLocalTime():g}  ·  world {Short(e.Guid)}  ·  {System.IO.Path.GetFileName(e.SourceZip)}",
+                sharedTitles.Contains(e.Name) ? Short(e.Guid) : null))
             .OrderByDescending(r => r.Entry.InstalledUtc)
             .ToList();
         SaveModList.ItemsSource = rows;
@@ -529,7 +545,7 @@ public sealed partial class SavesDialog : ContentDialog
         {
             SaveModInstaller.ResetWorld(_saveDir, _savesDir, keptZip,
                 row.Entry.Guid, _saveModPath, _saveModForbidden);
-            StatusText.Text = $"Reset {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}."
+            StatusText.Text = $"Reset {row.Entry.Name}. {SaveModSnapshotNote(row.Entry.Guid)}"
                 + GameCopyNote(row.Entry.Guid);
             Refresh();
         }
@@ -546,25 +562,25 @@ public sealed partial class SavesDialog : ContentDialog
             SaveModInstaller.RemoveWorld(_saveDir, _savesDir, row.Entry.Guid,
                 _saveModPath, _saveModForbidden);
             SaveModStore.Forget(_dataDir, row.Entry.Guid);   // unlisted, and its kept zip with it
-            StatusText.Text = $"Removed {row.Entry.Name} — previous state snapshotted first{SaveModSnapshotNote(row.Entry.Guid)}.";
+            StatusText.Text = $"Removed {row.Entry.Name}. {SaveModSnapshotNote(row.Entry.Guid)}";
             Refresh();
             RefreshSaveMods();
         }
         catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
-    // Where a save-mod reset or remove put its snapshot, when it isn't in this dialog's list: a world outside the
-    // registered save folder (Windrose's worlds, beside its RocksDB_v2) is snapshotted on its own, kept apart so it
-    // can never be restored into this folder. Core decides; this only says where.
+    // Where a save-mod reset or remove put its snapshot, and how to undo from it. A world outside the registered
+    // save folder (Windrose's worlds, beside its RocksDB_v2) is snapshotted on its own, kept apart so it can never
+    // be restored into this folder, and Saves doesn't list it. Core words that (the agent says the same sentence);
+    // when Saves lists the snapshot, it is just said to exist.
     private string SaveModSnapshotNote(string worldGuid)
     {
         try
         {
-            return SaveModSnapshots.OutsideSavesList(_saveDir!, _savesDir, _saveModPath, _saveModForbidden, worldGuid) is { } dir
-                ? $" (in {dir}, not in this list)"
-                : "";
+            return SaveModSnapshots.UndoNoteFor(_saveDir!, _savesDir, _saveModPath, _saveModForbidden, worldGuid)
+                   ?? "Previous state snapshotted first.";
         }
-        catch { return ""; }
+        catch { return "Previous state snapshotted first."; }
     }
 
     // The game imports a world into its own store and plays it there (Windrose: RocksDB_v2). Reset replaces only the
