@@ -314,3 +314,13 @@ The save-snapshot slice, read side only.
 
 So the `saveDirHint` data PR can merge after this one: the hint then lights up listing and backups, and
 nothing else.
+
+### And games added before the hint reach it
+
+Found reviewing the `saveDirHint` data PR (626-game-manifest#26). A game added before the feed named
+its save folder fell back to the folder guess, which stores `Documents\<title>`: the parent of `saves`.
+That folder exists, so it was never detected again, and the top-level listing showed no saves. When the
+Saves panel opens, `SaveDirRefresh` moves a stored folder to the curated one when the stored folder
+contains it, and only for a game whose saves the launcher never writes. A game that can restore keeps
+its folder, because an old snapshot rooted at the parent would come back one level down as
+`saves\saves`.

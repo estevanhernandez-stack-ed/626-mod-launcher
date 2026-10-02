@@ -1048,12 +1048,20 @@ public sealed partial class MainWindow : Window
         if (ctx is null) return;
 
         // Find the save folder (Ludusavi by Steam id, then heuristics) if it's unset or stale.
+        var steam = App.AppHost.Services.GetRequiredService<Services.SteamService>();
         if (string.IsNullOrEmpty(ctx.SaveDir) || !System.IO.Directory.Exists(ctx.SaveDir))
         {
             var ludu = App.AppHost.Services.GetRequiredService<Services.LudusaviService>();
-            var steam = App.AppHost.Services.GetRequiredService<Services.SteamService>();
             var dir = await Services.SaveLocator.DetectAsync(ludu, ctx.Game, steam.CurrentUserId64());
             if (dir is not null) { svc.SetSaveDir(ctx.Game.Id, dir); ctx = svc.ActiveContext()!; }
+        }
+        // A stored folder that a guess stopped one level above the curated one (EA's Documents\<title>
+        // above saves) gives way to it. SaveDirRefresh says when that is safe.
+        else if (ModManager.Core.SaveDirRefresh.Narrowed(ctx.Game,
+                     Services.SaveLocator.CuratedFolder(ctx.Game, steam.CurrentUserId64())) is { } narrower)
+        {
+            svc.SetSaveDir(ctx.Game.Id, narrower);
+            ctx = svc.ActiveContext()!;
         }
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);

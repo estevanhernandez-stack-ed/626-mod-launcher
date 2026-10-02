@@ -18,14 +18,28 @@ public static class SaveLocator
     /// </summary>
     public static Task<string?> DetectAsync(LudusaviService ludusavi, GameEntry game, string? steamUserId = null)
         => DetectAsync(ludusavi, game.GameName, game.Engine, game.GameRoot, game.SteamAppId,
-            SaveDirHints.For(game),
-            // The signed-in Steam user names a Steam game's save subfolder and nothing else's. Handing it
-            // to a game with no Steam id would resolve a <storeUserId> hint to a folder that is not its.
-            string.IsNullOrEmpty(game.SteamAppId) ? null : steamUserId,
-            // An EA app install lives under Program Files\EA Games, which gets no read beyond
-            // installerdata.xml (EA slice one). The heuristic's project-name discovery lists the install
-            // folder and <base> resolves into it, so an EA game gets neither.
-            listInstallFolder: string.IsNullOrEmpty(game.EaContentId));
+            SaveDirHints.For(game), SteamUserFor(game, steamUserId), ListsInstallFolder(game));
+
+    /// <summary>The game's curated save folder resolved to a real path, or null when the feed names none
+    /// or a token cannot be resolved. Existence is the caller's question. Same token rules as detection,
+    /// so the folder a stored path is compared with is the folder detection would have found.</summary>
+    public static string? CuratedFolder(GameEntry game, string? steamUserId = null)
+    {
+        var hint = SaveDirHints.For(game);
+        if (hint is null) return null;
+        var tokens = WindowsTokens(ListsInstallFolder(game) ? game.GameRoot : null, SteamUserFor(game, steamUserId));
+        return LudusaviPaths.Resolve(hint, tokens);
+    }
+
+    // The signed-in Steam user names a Steam game's save subfolder and nothing else's. Handing it to a
+    // game with no Steam id would resolve a <storeUserId> hint to a folder that is not its.
+    private static string? SteamUserFor(GameEntry game, string? steamUserId)
+        => string.IsNullOrEmpty(game.SteamAppId) ? null : steamUserId;
+
+    // An EA app install lives under Program Files\EA Games, which gets no read beyond installerdata.xml
+    // (EA slice one). The heuristic's project-name discovery lists the install folder and <base>
+    // resolves into it, so an EA game gets neither.
+    private static bool ListsInstallFolder(GameEntry game) => string.IsNullOrEmpty(game.EaContentId);
 
     /// <summary>
     /// Authoritative-first: resolve the Ludusavi save templates for the Steam app id, then fall
