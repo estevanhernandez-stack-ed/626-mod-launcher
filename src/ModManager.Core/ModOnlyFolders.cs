@@ -88,6 +88,8 @@ public static class ModOnlyFolders
     {
         "Data", "Data Files", "Modules", "GameData", "ovldata", "nativePC", "natives", "Vampire",
         "CookedPC", "Resources", "flatlist", "Content",
+        // Executable folders (review r5, m-d): a game's exe and engine DLLs live here.
+        "bin", "Binaries", "x64", "Win64",
     };
 
     /// <summary>
@@ -99,7 +101,9 @@ public static class ModOnlyFolders
     public static string? ModOnlyFlagProblem(string? modPath)
     {
         if (string.IsNullOrWhiteSpace(modPath)) return "it names no modPath";
-        var rel = string.Join('/', Normalise(modPath).Split('/').Where(s => s.Length > 0 && s != "."));
+        // Each segment the way Windows opens it: "Data." and " Data " name Data.
+        var rel = string.Join('/', Normalise(modPath).Split('/').Select(s => s.Trim(' ').TrimEnd('.', ' '))
+            .Where(s => s.Length > 0 && s != "."));
         if (rel.Length == 0) return "its modPath is the game root";
         var last = rel.Split('/')[^1];
         if (BaseContentNames.Contains(last) || BaseContentNames.Contains(rel))

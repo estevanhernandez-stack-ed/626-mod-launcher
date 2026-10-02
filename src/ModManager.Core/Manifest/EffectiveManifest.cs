@@ -121,6 +121,13 @@ public static class EffectiveManifest
     /// and a curated status is never downgraded to auto. Prevents an auto-mined feed entry from
     /// silently wiping a curated built-in out of a facade (the Stardew quick-pick regression).
     /// </summary>
+    // Two spellings of one relative mod path: separators, surrounding slashes and case don't matter.
+    private static bool SameModPath(string? a, string? b)
+    {
+        static string N(string? p) => (p ?? "").Replace('\\', '/').Trim('/');
+        return a is not null && b is not null && string.Equals(N(a), N(b), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static GameManifestEntry MergeEntry(GameManifestEntry embedded, GameManifestEntry remote)
     {
         // Union provenance sources, embedded order first, then any new from remote.
@@ -142,10 +149,13 @@ public static class EffectiveManifest
             CurseforgeGameId = remote.CurseforgeGameId ?? embedded.CurseforgeGameId,
             ModPath = remote.ModPath ?? embedded.ModPath,
             ExtraModTrees = remote.ExtraModTrees ?? embedded.ExtraModTrees,
-            // Bound to the path it describes: the flag comes from whichever side supplies ModPath. A feed
-            // that corrects the path without restating the flag drops it, and a feed that sends only the
-            // flag can't attach it to the snapshot's path (review r4, I-1).
-            ModPathModOnly = remote.ModPath is not null ? remote.ModPathModOnly : embedded.ModPathModOnly,
+            // Bound to the path it describes (review r4, I-1; r5, I-A). A flag-only remote can't attach to the
+            // snapshot's path. A remote that names a path brings its own flag when it states one (false
+            // overrides); when it states none, the snapshot's flag survives only if the remote RESTATES the
+            // same path (the live feed restates Cyberpunk's archive/pc/mod without the flag). A corrected
+            // path drops an inherited true.
+            ModPathModOnly = remote.ModPath is null ? embedded.ModPathModOnly
+                : remote.ModPathModOnly ?? (SameModPath(remote.ModPath, embedded.ModPath) ? embedded.ModPathModOnly : null),
             SaveDirHint = remote.SaveDirHint ?? embedded.SaveDirHint,
             FileExtensions = remote.FileExtensions ?? embedded.FileExtensions,
             GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,

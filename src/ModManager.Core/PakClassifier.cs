@@ -13,8 +13,10 @@ public static class PakClassifier
 {
     // UE packaged-game convention. UE4: pakchunk<N>[optional]-WindowsNoEditor.pak.
     // UE5: pakchunk<N>[optional]-Windows.pak (and -WindowsClient/-WindowsServer). Case-insensitive.
+    // UE4's default non-chunked build: <Project>-WindowsNoEditor.pak (also -Windows/-WindowsClient/
+    // -WindowsServer), with no _P mod suffix (review r5, m-e).
     private static readonly Regex ShippingPakName =
-        new(@"^pakchunk\d+.*-Windows[A-Za-z]*\.pak$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"^(?:pakchunk\d+.*-Windows[A-Za-z]*|[^_]+-Windows(?:NoEditor|Client|Server)?)\.pak$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>A pak no real mod reaches — above this it's treated as base game even if the name doesn't
     /// match the shipping convention. Well above any real mod pak, below the multi-GB base chunks.</summary>

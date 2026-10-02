@@ -172,27 +172,149 @@ public static partial class RestorePointEngine
             return true;
         var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
         if (loc is null || !string.IsNullOrEmpty(loc.Managed)) return false;
+        // A system folder (a drive root, the profile, Windows, Program Files, an ancestor of the game) is never
+        // a mod folder, whatever a location says: no turn-offs there at all (review r5, I-C).
+        if (SystemFolderReason(c, loc.Abs) is not null) return false;
         if (ModOnlyFolders.WhyModOnly(c, loc) is not null) return true;
         if (loc.Form == "paks-root") return true;
-        var full = FullNorm(loc.Abs);
-        var root = FullNorm(c.GameRoot);
-        if (full is not null && root is not null && !string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
-            && ModOnlyFolders.RelativeToRoot(c.GameRoot, loc.Abs) is null)
-            return true;   // outside the game folder
-        return PlacedBy626(m, installed);
+        if (IsOutsideGame(c, loc.Abs)) return true;
+        return PlacedBy626(c, m, loc, installed);
     }
 
-    // Every one of the row's files is in an install record for its location: 626 wrote them.
-    private static bool PlacedBy626(Mod m, IReadOnlyList<ModInstallManifest> installed)
+    /// <summary>
+    /// Why <paramref name="folder"/> is a system folder vanilla never touches, or null. A location set to one
+    /// of these is a mistake, and acting on it would hit the game itself or Windows: an ancestor of the game
+    /// folder (a <c>steamapps\common</c> holds the game), a drive root, the user profile or its AppData,
+    /// Documents or Desktop themselves, Windows, Program Files or ProgramData (review r5, I-C).
+    /// </summary>
+    internal static string? SystemFolderReason(GameContext c, string folder)
+    {
+        var full = FullNorm(folder);
+        var root = FullNorm(c.GameRoot);
+        if (full is null) return null;
+        if (root is not null && IsUnder(root, full)) return "it contains the game folder itself";
+        try { if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? ""), full, StringComparison.OrdinalIgnoreCase)) return "it is a whole drive"; }
+        catch { }
+        foreach (var (sf, what) in SystemFolders)
+        {
+            string? p;
+            try { p = Environment.GetFolderPath(sf); } catch { continue; }
+            if (string.IsNullOrEmpty(p) || FullNorm(p) is not { } sys) continue;
+            if (string.Equals(sys, full, StringComparison.OrdinalIgnoreCase)) return $"it is {what}";
+        }
+        return null;
+    }
+
+    private static readonly (Environment.SpecialFolder Folder, string What)[] SystemFolders =
+    {
+        (Environment.SpecialFolder.UserProfile, "your user profile folder"),
+        (Environment.SpecialFolder.ApplicationData, "your AppData folder"),
+        (Environment.SpecialFolder.LocalApplicationData, "your AppData folder"),
+        (Environment.SpecialFolder.MyDocuments, "your Documents folder"),
+        (Environment.SpecialFolder.DesktopDirectory, "your Desktop folder"),
+        (Environment.SpecialFolder.Desktop, "your Desktop folder"),
+        (Environment.SpecialFolder.Windows, "the Windows folder"),
+        (Environment.SpecialFolder.System, "the Windows system folder"),
+        (Environment.SpecialFolder.ProgramFiles, "the Program Files folder"),
+        (Environment.SpecialFolder.ProgramFilesX86, "the Program Files folder"),
+        (Environment.SpecialFolder.CommonApplicationData, "the ProgramData folder"),
+    };
+
+    // A location outside the game folder that isn't a system folder (Documents\...\The Sims 4\Mods).
+    private static bool IsOutsideGame(GameContext c, string folder)
+    {
+        var full = FullNorm(folder);
+        var root = FullNorm(c.GameRoot);
+        return full is not null && root is not null && !string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
+               && ModOnlyFolders.RelativeToRoot(c.GameRoot, folder) is null
+               && SystemFolderReason(c, folder) is null;
+    }
+
+    /// <summary>The note for a row vanilla leaves on because 626 replaced one of the game's own files with it.</summary>
+    public const string ReplacedGameFileNote =
+        "still active: 626 replaced a game file here; turning it off would leave the game without it";
+
+    // Every file 626 replaced (ReplacedStore batch manifests under <dataDir>\replaced), by full path. Turning
+    // such a row off would move the mod's copy to holding and leave the game with neither file (review r5, I-B).
+    internal static HashSet<string> ReplacedGameFiles(GameContext c)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var root = Path.Combine(c.DataDir, "replaced");
+        if (!Directory.Exists(root)) return set;
+        IEnumerable<string> manifests;
+        try { manifests = Directory.EnumerateFiles(root, "__626replaced.json", SearchOption.AllDirectories).ToList(); }
+        catch { return set; }
+        foreach (var mf in manifests)
+        {
+            try
+            {
+                var entries = System.Text.Json.JsonSerializer.Deserialize<List<ReplacedStore.ReplacedEntry>>(File.ReadAllText(mf),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                foreach (var e in entries ?? new List<ReplacedStore.ReplacedEntry>())
+                    if (!string.IsNullOrEmpty(e.OriginalPath) && FullNorm(e.OriginalPath) is { } p) set.Add(p);
+            }
+            catch { /* a torn record: nothing known from it */ }
+        }
+        return set;
+    }
+
+    // True when any of the row's files (or, for a folder row, any file under it) is one 626 replaced.
+    internal static bool ReplacedAGameFile(GameContext c, Mod m, HashSet<string> replaced)
+    {
+        if (replaced.Count == 0 || BaseDirFor(c, m) is not { } baseDir) return false;
+        foreach (var f in m.Files)
+        {
+            if (FullNorm(Path.Combine(baseDir, f)) is not { } p) continue;
+            if (replaced.Contains(p) || replaced.Any(r => IsUnder(r, p))) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The row is a mod by evidence: an install record for its location lists every one of its files, so 626
+    /// wrote those bytes. A file row: each of its files is recorded and exists as a file. A folder row: every
+    /// file under the folder (links not followed) is recorded under the folder's prefix, and at least one is.
+    ///
+    /// <para>Never a row with a file 626 REPLACED (I-B): the record claims it, but the original was the game's.
+    /// Record entries that are rooted or climb with <c>..</c> are ignored, and a file changed after the install
+    /// (written later than the record, beyond a small slack) doesn't count.</para>
+    ///
+    /// <para>Names only, otherwise: <see cref="ModInstallManifest"/> carries no per-file size or hash today, so
+    /// there is nothing to compare content against. When it gains them, compare them here.</para>
+    /// </summary>
+    private static bool PlacedBy626(GameContext c, Mod m, ModLocationCtx loc, IReadOnlyList<ModInstallManifest> installed)
     {
         if (m.Files.Count == 0) return false;
-        var recorded = new HashSet<string>(
-            installed.Where(i => string.Equals(i.Location, m.Location, StringComparison.OrdinalIgnoreCase))
-                .SelectMany(i => i.Files).Select(f => f.Replace(Path.DirectorySeparatorChar, '/').Trim('/')),
-            StringComparer.OrdinalIgnoreCase);
-        return m.Files.All(f => recorded.Contains(f.Replace(Path.DirectorySeparatorChar, '/').Trim('/')));
-    }
+        if (ReplacedAGameFile(c, m, ReplacedGameFiles(c))) return false;
+        static string Norm(string f) => f.Replace(Path.DirectorySeparatorChar, '/').Trim('/');
+        var records = installed.Where(i => string.Equals(i.Location, m.Location, StringComparison.OrdinalIgnoreCase)).ToList();
+        var recorded = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in records)
+            foreach (var f in r.Files)
+            {
+                if (string.IsNullOrWhiteSpace(f) || IsRooted(f) || f.Replace('\\', '/').Split('/').Contains("..")) continue;
+                var key = Norm(f.Replace('\\', '/'));
+                if (!recorded.TryGetValue(key, out var at) || r.InstalledUtc > at) recorded[key] = r.InstalledUtc;
+            }
 
+        bool Placed(string rel)
+        {
+            if (!recorded.TryGetValue(Norm(rel.Replace('\\', '/')), out var installedUtc)) return false;
+            var abs = Path.Combine(loc.Abs, rel);
+            if (!File.Exists(abs)) return false;   // a folder or nothing: never matched as a placed file
+            try { return File.GetLastWriteTimeUtc(abs) <= installedUtc.ToUniversalTime().AddMinutes(10); }
+            catch { return false; }
+        }
+
+        if (m.IsFolder)
+        {
+            var folder = Path.Combine(loc.Abs, m.Files[0]);
+            if (!Directory.Exists(folder) || IsLink(folder)) return false;
+            var files = FilesNoLinks(folder, folder, null).ToList();
+            return files.Count > 0 && files.All(f => Placed(Path.GetRelativePath(loc.Abs, f)));
+        }
+        return m.Files.All(Placed);
+    }
     // A row with a file that looks like the base game's own pak is never turned off by vanilla, in any form
     // (GuardNoBasePakMove only guards paks-root). Named on the sheet as still active (review r4, m2).
     private static bool HasBaseGamePak(GameContext c, Mod m)

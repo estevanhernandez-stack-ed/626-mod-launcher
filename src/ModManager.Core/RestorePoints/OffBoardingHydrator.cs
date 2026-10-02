@@ -95,19 +95,30 @@ public static class OffBoardingHydrator
     public static string WhatHappened(GameArchive ga)
     {
         var off = TurnedOff(ga).Count;
-        var active = (ga.LeftInPlace ?? Array.Empty<InPlaceNote>()).Count(n => n.Reason.StartsWith("still active", StringComparison.Ordinal))
-                     + (ga.TurnOffSkipped?.Count ?? 0);
+        var notes = ga.LeftInPlace ?? Array.Empty<InPlaceNote>();
+        // Mods still active: named mods 626 left on (it replaced a game file), and turn-offs that refused.
+        // Everything else left on is an ITEM 626 can't tell from the game's own files (a row in Data, a base
+        // pak): never called a mod, and each name counted once (review r5, m-c).
+        var activeMods = notes.Where(n => n.Reason == RestorePointEngine.ReplacedGameFileNote).Select(n => n.Path)
+            .Concat((ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Select(s => s.Name))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var items = notes.Where(n => n.Reason.StartsWith(RestorePointEngine.CantTellRowPrefix, StringComparison.Ordinal)
+                                     || n.Reason == RestorePointEngine.BasePakRowNote)
+            .Select(n => n.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count();
         var moved = ga.VanillaRemainder?.Count ?? 0;
         static string Mods(int n) => n == 1 ? "1 mod" : $"{n} mods";
         static string IsAre(int n) => n == 1 ? "is" : "are";
 
         var head = off == 0
-            ? (active == 0 ? "626 didn't turn off any mods here" : $"626 didn't turn off any mods here: {Mods(active)} {IsAre(active)} still active")
-            : active == 0
+            ? (activeMods == 0 ? "626 didn't turn off any mods here" : $"626 didn't turn off any mods here: {Mods(activeMods)} {IsAre(activeMods)} still active")
+            : activeMods == 0
                 ? $"626 turned off all {Mods(off)} it found"
-                : $"626 turned off {off} of {off + active} mods; {active} {IsAre(active)} still active";
+                : $"626 turned off {off} of {off + activeMods} mods; {activeMods} {IsAre(activeMods)} still active";
         var sweep = moved > 0 ? $", and moved {moved} other file{(moved == 1 ? "" : "s")} from the mod folders into your restore point" : "";
-        return head + sweep + ". Some files are still in place (listed under STILL IN PLACE), so the game may not be fully vanilla. "
+        var unknown = items > 0
+            ? $". {items} item{(items == 1 ? "" : "s")} 626 can't tell from the game's own files {IsAre(items)} still in place"
+            : "";
+        return head + sweep + unknown + ". Some files are still in place (listed under STILL IN PLACE), so the game may not be fully vanilla. "
             + "Launch it the way you normally would (e.g. from Steam).";
     }
 

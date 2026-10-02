@@ -21,6 +21,15 @@ public static partial class RestorePointEngine
     /// <summary>The words for a folder the launcher can't sweep. {0} is the folder, {1} the file count.</summary>
     public const string CantTellNote = "626 can't tell the game's own files from mods in {0}; {1} files no mod claims are still in place";
 
+    /// <summary>How a row left on in a folder 626 can't read starts: an item, not necessarily a mod.</summary>
+    public const string CantTellRowPrefix = "still active: it sits in ";
+
+    /// <summary>How a row left on because it holds a base-game pak reads.</summary>
+    public const string BasePakRowNote = "still active: it looks like the base game's own pak, so 626 left it on";
+
+    /// <summary>How a system folder location starts on the sheet.</summary>
+    public const string SystemFolderPrefix = "not a mod folder: ";
+
     /// <summary>Tests only: called with each game-folder file the remainder sweep is about to move.
     /// Thread-static like the scanner's hooks: the sweep runs synchronously on the caller's thread.</summary>
     [ThreadStatic] internal static Action<string>? BeforeRemainderMoveForTests;
@@ -65,7 +74,7 @@ public static partial class RestorePointEngine
         // stay with it, and it is named as still active.
         var basePakRows = rows.Where(m => m.Enabled && HasBaseGamePak(c, m)).ToList();
         foreach (var m in basePakRows)
-            left.Add(new InPlaceNote(m.Name, "still active: it looks like the base game's own pak, so 626 left it on"));
+            left.Add(new InPlaceNote(m.Name, BasePakRowNote));
         var basePakPaths = basePakRows.SelectMany(m => BaseDirFor(c, m) is { } bd
                 ? m.Files.Select(f => FullNorm(Path.Combine(bd, f))) : Enumerable.Empty<string?>())
             .Where(p => p is not null).Select(p => p!).ToList();
@@ -164,15 +173,26 @@ public static partial class RestorePointEngine
                 left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {owned.Owner} — clean it up there"));
                 continue;
             }
+            // A system folder (an ancestor of the game, a drive, the profile, Windows, Program Files): named
+            // once, never walked, counted or listed row by row (review r5, I-C).
+            if (SystemFolderReason(c, full) is { } sysWhy)
+            {
+                left.Add(new InPlaceNote(full, $"{SystemFolderPrefix}{sysWhy}, so 626 left it alone"));
+                continue;
+            }
             // Not a folder the launcher knows holds only mods: the game root, a base-content folder (Data,
             // data, Content/Paks), a user's own path, a folder outside the game. Named, never swept.
             var where = !inside ? (string.Equals(full, gameRoot, StringComparison.OrdinalIgnoreCase) ? "the game folder itself" : full)
                                 : Rel(gameRoot, full);
+            var replaced = ReplacedGameFiles(c);
             var active = (rows ?? Array.Empty<Mod>())
                 .Where(m => m.Enabled && string.Equals(m.Location, loc.Name, StringComparison.Ordinal))
+                .Where(m => !HasBaseGamePak(c, m))   // named once, by the base-pak note
                 .ToList();
             foreach (var m in active)
-                left.Add(new InPlaceNote(m.Name, $"still active: it sits in {where}, where 626 can't tell the game's own files from mods"));
+                left.Add(new InPlaceNote(m.Name, ReplacedAGameFile(c, m, replaced)
+                    ? ReplacedGameFileNote
+                    : $"{CantTellRowPrefix}{where}, where 626 can't tell the game's own files from mods"));
             left.Add(new InPlaceNote(where, string.Format(CantTellNote, where, inside ? UnclaimedCount(c, full, rows) : "any")));
         }
         foreach (var tree in c.ExtraModTrees ?? Array.Empty<string>())

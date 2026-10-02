@@ -269,7 +269,8 @@ public class SafeClearRound5Tests : IDisposable
         Array.Empty<MovedFile>(), Array.Empty<ArchivedMod>(), null,
         TurnedOffByClear: Enumerable.Range(0, off).Select(i => new ClearedMod("Off" + i, "mods")).ToList(),
         VanillaRemainder: Enumerable.Range(0, moved).Select(i => new MovedFile("mods/f" + i, 1, "x")).ToList(),
-        LeftInPlace: Enumerable.Range(0, stillActive).Select(i => new InPlaceNote("On" + i, "still active: it sits in Data, where 626 can't tell"))
+        // Mods still active (round 6 counts only rows that are mods: here, ones that replaced a game file).
+        LeftInPlace: Enumerable.Range(0, stillActive).Select(i => new InPlaceNote("On" + i, RestorePointEngine.ReplacedGameFileNote))
             .Append(new InPlaceNote("Data", "626 can't tell the game's own files from mods in Data; 3 files no mod claims are still in place"))
             .ToList());
 

@@ -361,3 +361,46 @@ mods and cleared its mod folders" when it didn't.
   and refuses a write through a junction planted after the clear.
 - m4: a remainder file Restore won't place says where it is in the restore point.
 - m5: the pre-flight adds every hold that comes from outside a swept folder, proxy loaders included.
+
+## Round 6: the live feed, replaced files, system folders (review r5)
+
+**The live feed (I-A).** The published feed restates Cyberpunk's `modPath: "archive/pc/mod"` without
+the flag. The merge was binding the flag to whichever side supplied the path, so the feed silently
+switched off the one flagged game. The merge now keeps the snapshot's flag when the remote restates the
+SAME path, compared with case, separators and surrounding slashes normalised. A remote that states the
+flag wins, and `false` overrides. A remote that changes the path still drops an inherited `true`, and a
+flag-only remote still attaches to nothing. The field is `bool?`, so an absent flag reads as null and
+`false` reads as false.
+
+**Replaced files (I-B).** An intake that replaces a file claims it in its install record, so a row whose
+file 626 had replaced counted as "placed by 626". Vanilla then held the mod's copy and left the game with
+neither file. Now a row with any file listed in a `ReplacedStore` batch manifest under
+`<dataDir>\replaced` is never "placed by 626". It stays on and is named: "626 replaced a game file here;
+turning it off would leave the game without it".
+
+**System folders (I-C).** A location that is one of these gets no turn-offs and no sweep. It isn't
+walked or counted, and it is named once:
+
+- an ancestor of the game folder (a `steamapps\common` holds the game);
+- a drive root;
+- the user profile, or its AppData, Documents or Desktop themselves;
+- Windows, Program Files or ProgramData.
+
+A game's folder under Documents is still fine.
+
+**Minors.**
+
+- **Ownership hardening.** A recorded file must exist as a file, a record entry that is rooted or uses
+  `..` is ignored, and a file written later than its record (plus 10 minutes of slack) doesn't count.
+  Install records carry no size or hash today, so ownership is otherwise by name. The code says so, and
+  says to compare content here once records gain it.
+- **Folder-form mods.** One qualifies when every file under its folder (links not followed) is recorded,
+  and at least one is.
+- **Sheet counts.** Only rows that are mods count as mods. That means a row that replaced a game file, or
+  a turn-off that refused. A row in a folder 626 can't read, or a base pak, is an item 626 can't tell from
+  the game's own files. Each name is counted once. A vanilla Skyrim reads "626 didn't turn off any mods
+  here. 7 items 626 can't tell from the game's own files are still in place".
+- **The flag's base list** gains executable folders (`bin`, `Binaries`, `x64`, `Win64`). Each segment is
+  read the way Windows opens it (`Data.` and ` Data ` are `Data`).
+- **`PakClassifier`** treats UE4's project-named base pak (`<Project>-WindowsNoEditor.pak`, `-Windows`,
+  `-WindowsClient`, `-WindowsServer`, no `_P`) as base. That is a one-line regex change, with tests.
