@@ -298,4 +298,19 @@ public class IdentifyRunReportTests
 
         Assert.DoesNotContain("None of those", note ?? "");
     }
+
+    // B2: finds the swept-candidate name search never asked about must not read as finds Nexus had
+    // no match for. The note rides next to the counts, whether or not anything was written.
+    [Fact]
+    public void The_swept_search_note_is_kept_next_to_what_was_written()
+    {
+        const string note = "Searched Nexus by name for the first 200 of 260 unnamed finds; the rest are listed as not identified.";
+
+        var withWrites = IdentifyRunReport.Summarize(new IdentifyRunOutcome { Adopted = 3, SweptSearchNote = note });
+        Assert.StartsWith("Adopted 3 mods.", withWrites);
+        Assert.EndsWith(note, withWrites);
+
+        var nothing = IdentifyRunReport.Summarize(new IdentifyRunOutcome { NothingHappenedLine = "No mods found.", SweptSearchNote = note });
+        Assert.Equal($"No mods found. {note}", nothing);
+    }
 }
