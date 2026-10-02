@@ -1428,8 +1428,12 @@ public sealed partial class MainViewModel : ObservableObject
             // B4 stage two: a turn-on can succeed and still leave files in disabled-trees/<Mod> (under a
             // tree the game no longer declares). ModToggle returns no outcome, so ask Core directly; the
             // mod is on, and the user is told where the rest is rather than finding out on the next off.
-            if (row.Enabled && Scanner.ExtraTreeLeftover(_ctx, row.Mod.Name) is { } heldPath)
-                AnswerStatus(ModTreesText.LeftoverStatus(row.Mod.Name, heldPath));
+            // "On" is read from the RELOADED row: a skipped turn-on (folder now owned by another tool,
+            // unreadable metadata) does not throw, and must never be reported as on.
+            var reloaded = _allRows.FirstOrDefault(r => string.Equals(r.Mod.Name, row.Mod.Name, StringComparison.Ordinal));
+            if (row.Enabled && reloaded?.Mod.Enabled == true
+                && Scanner.ExtraTreeLeftover(_ctx, row.Mod.Name) is { } leftover)
+                AnswerStatus(ModTreesText.LeftoverStatus(row.Mod.Name, leftover));
         }
         catch (Exception e)
         {

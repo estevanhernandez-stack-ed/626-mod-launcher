@@ -6,24 +6,26 @@ namespace ModManager.Core;
 /// row text both come through here, so a row never promises a move the toggle won't make.
 ///
 /// <para>Built by <see cref="Scanner.ExtraTreeRowsFor"/>, once per reload. A game that declares no extra
-/// trees gets <see cref="None"/> and pays nothing.</para>
+/// trees gets <see cref="None"/> and pays nothing; a game whose lane is not the scanner's reads its trees
+/// (so the row can still say where the mod's files are) but never the mod list.</para>
 /// </summary>
 public sealed class ExtraTreeRows
 {
     private readonly GameContext? _ctx;
     private readonly IReadOnlyList<string> _rowNames;
-    private ListingMechanism? _lane;
+    private readonly bool _laneMovesExtras;
 
-    public static readonly ExtraTreeRows None = new(null, ModTrees.Empty, Array.Empty<string>());
+    public static readonly ExtraTreeRows None = new(null, ModTrees.Empty, Array.Empty<string>(), false);
 
     /// <summary>The trees, read once.</summary>
     public ModTrees Trees { get; }
 
-    internal ExtraTreeRows(GameContext? ctx, ModTrees trees, IReadOnlyList<string> rowNames)
+    internal ExtraTreeRows(GameContext? ctx, ModTrees trees, IReadOnlyList<string> rowNames, bool laneMovesExtras)
     {
         _ctx = ctx;
         Trees = trees;
         _rowNames = rowNames;
+        _laneMovesExtras = laneMovesExtras;
     }
 
     /// <summary>
@@ -44,51 +46,63 @@ public sealed class ExtraTreeRows
 
     /// <summary>
     /// What turning <paramref name="row"/> off would move, and the trees where an entry with its name
-    /// stays put. Adds the row-level rules the toggle applies before it ever asks for extras: a read-only
-    /// row, a loader-driven mod (UE4SS, BepInEx), a proxy-loader or library row, and a game whose mods are
-    /// not toggled by the scanner all move nothing, so every tree with the mod's name is held back.
+    /// stays put, each with its reason. Adds the row-level rules the toggle applies before it ever asks
+    /// for extras: a read-only row, a loader-driven mod (UE4SS, BepInEx), a proxy-loader or library row,
+    /// and a game whose mods are not toggled by the scanner all move nothing, so every tree with the mod's
+    /// name is held back as <see cref="HeldReason.RowNotMoved"/>.
     /// </summary>
     public ModTreeMoves MovesFor(Mod row)
     {
         if (_ctx is null) return ModTreeMoves.None;
         if (!MovesExtras(row))
-            return new ModTreeMoves(Array.Empty<ModTreeEntry>(), Trees.For(row.Name));
+            return new ModTreeMoves(Array.Empty<ModTreeEntry>(),
+                Trees.For(row.Name).Select(t => new HeldTree(t, HeldReason.RowNotMoved)).ToList());
         return Select(row);
     }
 
     /// <summary>The trees held in <c>disabled-trees/&lt;Mod&gt;</c> for a turned-off mod, in the manifest's
-    /// order, once each.</summary>
+    /// order, once each. Empty when the folder can't be read; <see cref="TextFor"/> says so instead.</summary>
     public IReadOnlyList<string> HeldWhileOff(string modName)
-        => HeldEntries(modName).Select(e => e.Tree).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        => Held(modName).Entries.Select(e => e.Tree).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary>Each held entry as <c>tree/entry</c>, in the manifest's order.</summary>
     public IReadOnlyList<string> HeldWhileOffEntries(string modName)
-        => HeldEntries(modName).Select(e => e.Tree + "/" + e.EntryName).ToList();
+        => Held(modName).Entries.Select(e => e.Tree + "/" + e.EntryName).ToList();
 
-    /// <summary>The row's line and tooltip. A turned-off row reads the held layout; a live row reads the
-    /// toggle's selection.</summary>
+    /// <summary>The row's line and tooltip. A live row reads the toggle's selection. A turned-off row reads
+    /// the held layout, names any entry still live, and names the holding folder when files are held
+    /// there that no declared tree accounts for, or when it can't be read.</summary>
     public ModTreesText TextFor(Mod row)
     {
         if (_ctx is null) return ModTreesText.None;
         var moves = MovesFor(row);
         var moving = moves.Movable.Select(e => e.Tree);
-        if (row.Enabled) return ModTreesText.For(moving, moves.HeldBack, Array.Empty<string>());
-        // Off: what is held is what the line names. An entry left live (a rule kept it) is still said.
-        return ModTreesText.For(Array.Empty<string>(), moves.HeldBack, HeldWhileOff(row.Name));
+        if (row.Enabled) return ModTreesText.For(moving, moves.Held, Array.Empty<string>());
+
+        var held = Held(row.Name);
+        return ModTreesText.For(Array.Empty<string>(), moves.Held,
+            held.Entries.Select(e => e.Tree), stillOn: moving, heldUnknownPath: held.UnknownPath);
     }
 
-    private IReadOnlyList<TreeHolding.HeldEntry> HeldEntries(string modName)
+    // What is held for a mod. UnknownPath is the holding folder when files sit there under no declared tree,
+    // or when the folder could not be read: neither may fall silent.
+    private (IReadOnlyList<TreeHolding.HeldEntry> Entries, string? UnknownPath) Held(string modName)
     {
-        if (_ctx is null || string.IsNullOrEmpty(modName)) return Array.Empty<TreeHolding.HeldEntry>();
-        try { return TreeHolding.Held(_ctx, modName, _ctx.ExtraModTrees); }
-        catch { return Array.Empty<TreeHolding.HeldEntry>(); }
+        if (_ctx is null || string.IsNullOrEmpty(modName)) return (Array.Empty<TreeHolding.HeldEntry>(), null);
+        var dir = TreeHolding.ModDir(_ctx, modName);
+        try
+        {
+            var entries = TreeHolding.Held(_ctx, modName, _ctx.ExtraModTrees);
+            if (entries.Count > 0) return (entries, null);
+            return (entries, TreeHolding.HoldsFiles(_ctx, modName) ? dir : null);
+        }
+        catch { return (Array.Empty<TreeHolding.HeldEntry>(), dir); }
     }
 
     private bool MovesExtras(Mod row)
     {
+        if (!_laneMovesExtras) return false;
         if (row.ReadOnly || row.Loader is "ue4ss" or "bepinex") return false;
-        if (row.Location == ProxyLoaderRows.LocationTag || row.Class == "library") return false;
-        _lane ??= ModListing.MechanismFor(_ctx!.Game, _ctx);
-        return _lane == ListingMechanism.Scanner;
+        return row.Location != ProxyLoaderRows.LocationTag && row.Class != "library";
     }
 }

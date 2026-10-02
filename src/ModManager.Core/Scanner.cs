@@ -842,35 +842,45 @@ public static class Scanner
     private static IReadOnlyList<ModTreeEntry> ExtraTreeMovesFor(Mod m, GameContext c)
     {
         if (c.ExtraModTrees is not { Count: > 0 }) return Array.Empty<ModTreeEntry>();
-        return ExtraTreeRowsFor(c).Select(m).Movable;
+        // The toggle is already on the scanner's lane, so it never asks which lane this is.
+        return ExtraTreeRowsWithNames(c).Select(m).Movable;
     }
+
+    private static ExtraTreeRows ExtraTreeRowsWithNames(GameContext c)
+        => new(c, ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)),
+            BuildModList(c).Select(r => r.Name).ToList(), laneMovesExtras: true);
 
     /// <summary>
     /// The extra-tree picture for every row of a game (B4 stage two), built once: the declared trees read
     /// once, the mod list's names read once. The row text and the toggle ask the same object, so a row
     /// says exactly what turning it off would move. A game that declares no extra trees gets
-    /// <see cref="ExtraTreeRows.None"/> and pays nothing, not even the mod-list read.
+    /// <see cref="ExtraTreeRows.None"/> and pays nothing, not even the mod-list read. A game whose lane is
+    /// not the scanner's never moves extras, so it reads its trees for the row's line but skips the
+    /// mod list.
     /// </summary>
     public static ExtraTreeRows ExtraTreeRowsFor(GameContext c)
     {
         if (c.ExtraModTrees is not { Count: > 0 }) return ExtraTreeRows.None;
-        var names = BuildModList(c).Select(r => r.Name).ToList();
-        return new ExtraTreeRows(c,
-            ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)), names);
+        if (ModListing.MechanismFor(c.Game, c) != ListingMechanism.Scanner)
+            return new ExtraTreeRows(c,
+                ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)),
+                Array.Empty<string>(), laneMovesExtras: false);
+        return ExtraTreeRowsWithNames(c);
     }
 
     /// <summary>
     /// The folder still holding files for <paramref name="modName"/> in <c>disabled-trees</c>, or null
     /// when nothing is held. After a turn-on this is the leftover <see cref="EnableOutcome.Reason"/> warns
     /// about: files under a tree the game no longer declares, which no toggle will find. A folder that
-    /// cannot be read is not known to be empty, so it is reported too.
+    /// cannot be read is reported as <c>Readable == false</c>: 626 could not look, which is not the same as
+    /// files being there.
     /// </summary>
-    public static string? ExtraTreeLeftover(GameContext c, string modName)
+    public static TreeLeftover? ExtraTreeLeftover(GameContext c, string modName)
     {
         if (string.IsNullOrEmpty(modName)) return null;
-        bool held;
-        try { held = TreeHolding.HoldsFiles(c, modName); } catch { held = true; }
-        return held ? TreeHolding.ModDir(c, modName) : null;
+        var dir = TreeHolding.ModDir(c, modName);
+        try { return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null; }
+        catch { return new TreeLeftover(dir, Readable: false); }
     }
 
     /// <summary>Result of an enable attempt — lets bulk / Safe-Clear callers see WHY a mod didn't

@@ -108,7 +108,87 @@ public class MultiTreeToggleRowTests : IDisposable
 
         Assert.Empty(moves.Movable);
         Assert.Equal(new[] { "r6/scripts", "r6/tweaks", Cet }, moves.HeldBack);
+        Assert.All(moves.Held, h => Assert.Equal(HeldReason.RowNotMoved, h.Reason));
+
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(row);
+        Assert.Equal($"Also has files in r6/scripts, r6/tweaks, {Cet}", text.Line);
+        Assert.Equal("626 doesn't move this mod's files in these folders. They stay where they are, on or off.",
+            text.Tooltip);
     }
+
+    [Fact]
+    public async Task An_owned_tree_is_held_back_as_owned_and_the_row_says_another_tool_manages_it()
+    {
+        File.WriteAllText(Path.Combine(GameRoot, "r6", "tweaks", "__folder_managed_by_vortex"), "");
+        var ctx = Ctx();
+        var row = await Row(ctx, "CoolMod");
+
+        var moves = Scanner.ExtraTreeRowsFor(ctx).MovesFor(row);
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(row);
+
+        Assert.Equal(new[] { new HeldTree("r6/tweaks", HeldReason.OwnedTree) }, moves.Held);
+        Assert.Equal(new[] { "r6/scripts", Cet }, moves.Movable.Select(e => e.Tree));
+        Assert.Equal("626 turns these on and off with the mod. Files in r6/tweaks stay where they are: "
+            + "another tool manages that folder.", text.Tooltip);
+    }
+
+    [Fact]
+    public async Task A_contested_tree_is_held_back_as_contested()
+    {
+        Put("archive/pc/mod/Cool_Mod.archive", "OTHER MAIN");
+        var ctx = Ctx();
+
+        var moves = Scanner.ExtraTreeRowsFor(ctx).MovesFor(await Row(ctx, "CoolMod"));
+
+        Assert.All(moves.Held, h => Assert.Equal(HeldReason.Contested, h.Reason));
+    }
+
+    [Fact]
+    public async Task A_mod_turned_off_before_stage_two_says_its_files_are_still_on()
+    {
+        // Turned off by a build that knew no extra trees: only the main file moved.
+        await Scanner.DisableModAsync("CoolMod", Ctx(Array.Empty<string>()));
+        var ctx = Ctx();
+        var row = await Row(ctx, "CoolMod");
+        Assert.False(row.Enabled);
+
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(row);
+
+        Assert.Equal($"Files in r6/scripts, r6/tweaks, {Cet} are still on.", text.Line);
+        Assert.Equal("These files didn't move when the mod was turned off. Turn it on and off again to move them.",
+            text.Tooltip);
+    }
+
+    [Fact]
+    public async Task An_off_row_with_files_held_under_no_declared_tree_names_the_folder()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx(new[] { "r6/scripts", "r6/tweaks", Cet, "old/tree" }));
+        Directory.CreateDirectory(Path.Combine(HeldTrees, "old", "tree"));
+        File.WriteAllText(Path.Combine(HeldTrees, "old", "tree", "CoolMod.txt"), "STRAY");
+        var ctx = Ctx(new[] { "red4ext/plugins" });   // the game no longer declares where those went
+
+        var text = Scanner.ExtraTreeRowsFor(ctx).TextFor(await Row(ctx, "CoolMod"));
+
+        Assert.Equal($"Some files are held in {TreeHoldingDir(ctx)}.", text.Line);
+    }
+
+    [Fact]
+    public async Task An_unreadable_holding_folder_on_an_off_row_is_not_silent()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        var ctx = Ctx();
+        var row = await Row(ctx, "CoolMod");
+        var rows = Scanner.ExtraTreeRowsFor(ctx);
+
+        TreeHolding.BeforeReadForTests = _ => throw new UnauthorizedAccessException("denied");
+        ModTreesText text;
+        try { text = rows.TextFor(row); }
+        finally { TreeHolding.BeforeReadForTests = null; }
+
+        Assert.Equal($"Some files are held in {TreeHoldingDir(ctx)}.", text.Line);
+    }
+
+    private static string TreeHoldingDir(GameContext ctx) => Path.Combine(ctx.DataDir, "disabled-trees", "CoolMod");
 
     [Fact]
     public async Task A_turned_off_row_names_the_trees_held_for_it()
@@ -154,7 +234,25 @@ public class MultiTreeToggleRowTests : IDisposable
         var outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx());
         Assert.True(outcome.Enabled);
 
-        Assert.Equal(Path.GetFullPath(HeldTrees), Path.GetFullPath(Scanner.ExtraTreeLeftover(Ctx(), "CoolMod")!));
+        var leftover = Scanner.ExtraTreeLeftover(Ctx(), "CoolMod");
+        Assert.NotNull(leftover);
+        Assert.True(leftover!.Readable);
+        Assert.Equal(Path.GetFullPath(HeldTrees), Path.GetFullPath(leftover.Path));
         Assert.True(File.Exists(stray));
+    }
+
+    [Fact]
+    public async Task An_unreadable_holding_folder_is_reported_as_unreadable_not_as_held()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+
+        TreeHolding.BeforeReadForTests = _ => throw new UnauthorizedAccessException("denied");
+        TreeLeftover? leftover;
+        try { leftover = Scanner.ExtraTreeLeftover(Ctx(), "CoolMod"); }
+        finally { TreeHolding.BeforeReadForTests = null; }
+
+        Assert.NotNull(leftover);
+        Assert.False(leftover!.Readable);
+        Assert.Equal(Path.GetFullPath(HeldTrees), Path.GetFullPath(leftover.Path));
     }
 }

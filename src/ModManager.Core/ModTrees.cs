@@ -118,12 +118,20 @@ public sealed class ModTrees
 
         var contested = otherRowNames.Any(n => Key(n) == key);
         var movable = new List<ModTreeEntry>();
-        var held = new List<string>();
+        var held = new List<HeldTree>();
         foreach (var e in entries)
         {
-            if (contested || HoldsProtected(e.AbsPath) || isOwned(e.TreeDir))
+            // The reason is the row's to say, so each cause is named: two claimants first (it holds every
+            // tree back), then a tree another tool owns (true of every entry in it), then the one entry
+            // that is or holds a protected folder.
+            HeldReason? reason = contested ? HeldReason.Contested
+                : isOwned(e.TreeDir) ? HeldReason.OwnedTree
+                : HoldsProtected(e.AbsPath) ? HeldReason.Protected
+                : null;
+            if (reason is { } r)
             {
-                if (!held.Contains(e.Tree, StringComparer.OrdinalIgnoreCase)) held.Add(e.Tree);
+                if (!held.Any(h => string.Equals(h.Tree, e.Tree, StringComparison.OrdinalIgnoreCase)))
+                    held.Add(new HeldTree(e.Tree, r));
             }
             else movable.Add(e);
         }
@@ -167,9 +175,29 @@ public sealed class ModTrees
 public sealed record ModTreeEntry(string Tree, string EntryName, string AbsPath, string TreeDir);
 
 /// <summary>What <see cref="ModTrees.MovableFor"/> decided: <see cref="Movable"/> in manifest order, and
-/// <see cref="HeldBack"/>, the trees (manifest order, once each) with an entry of the mod's name that a
-/// safety rule kept in place.</summary>
-public sealed record ModTreeMoves(IReadOnlyList<ModTreeEntry> Movable, IReadOnlyList<string> HeldBack)
+/// <see cref="Held"/>, the trees (manifest order, once each) with an entry of the mod's name that a
+/// safety rule kept in place, each with the rule that kept it.</summary>
+public sealed record ModTreeMoves(IReadOnlyList<ModTreeEntry> Movable, IReadOnlyList<HeldTree> Held)
 {
-    public static readonly ModTreeMoves None = new(Array.Empty<ModTreeEntry>(), Array.Empty<string>());
+    public static readonly ModTreeMoves None = new(Array.Empty<ModTreeEntry>(), Array.Empty<HeldTree>());
+
+    /// <summary>The held trees' names alone, in order.</summary>
+    public IReadOnlyList<string> HeldBack => Held.Select(h => h.Tree).ToList();
+}
+
+/// <summary>A tree where an entry with the mod's name stays put, and why.</summary>
+public sealed record HeldTree(string Tree, HeldReason Reason);
+
+/// <summary>Why an extra-tree entry stays where it is when its mod is turned off.</summary>
+public enum HeldReason
+{
+    /// <summary>Another row's name reduces to the same key, so 626 can't tell whose it is.</summary>
+    Contested,
+    /// <summary>The entry is, or holds, a declared tree or one of the game's own mod folders.</summary>
+    Protected,
+    /// <summary>Another tool manages the tree.</summary>
+    OwnedTree,
+    /// <summary>The row itself moves no extra-tree files: read-only, loader-driven, or a game whose lane
+    /// is not the scanner's.</summary>
+    RowNotMoved,
 }

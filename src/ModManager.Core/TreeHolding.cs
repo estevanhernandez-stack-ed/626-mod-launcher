@@ -22,6 +22,11 @@ internal static class TreeHolding
     // file name, so nothing is skipped.
     private const string NoRecord = "*";
 
+    /// <summary>Tests only: called with the mod's holding folder before <see cref="Held"/> or
+    /// <see cref="HoldsFiles"/> reads it, so a test can make the read fail as an unreadable folder would.
+    /// Thread-static, like the toggle's own test hooks.</summary>
+    [ThreadStatic] internal static Action<string>? BeforeReadForTests;
+
     /// <summary>The root of every mod's held extra-tree entries.</summary>
     public static string Root(GameContext ctx) => Path.Combine(ctx.DataDir, "disabled-trees");
 
@@ -44,6 +49,7 @@ internal static class TreeHolding
     {
         var result = new List<HeldEntry>();
         var modDir = ModDir(ctx, mod);
+        BeforeReadForTests?.Invoke(modDir);
         if (declaredTrees is null || !Directory.Exists(modDir)) return result;
 
         var trees = declaredTrees.Select(NormalizeTree).Where(t => t.Length > 0)
@@ -69,7 +75,12 @@ internal static class TreeHolding
 
     /// <summary>True when a turned-off copy of any extra-tree entry is held: any file anywhere under the
     /// mod's folder. A folder of empty folders holds nothing.</summary>
-    public static bool HoldsFiles(GameContext ctx, string mod) => HoldingFolder.HoldsFiles(ModDir(ctx, mod), NoRecord);
+    public static bool HoldsFiles(GameContext ctx, string mod)
+    {
+        var modDir = ModDir(ctx, mod);
+        BeforeReadForTests?.Invoke(modDir);
+        return HoldingFolder.HoldsFiles(modDir, NoRecord);
+    }
 
     /// <summary>Remove the mod's holding folder once no file remains under it; a file never goes.</summary>
     public static void RemoveIfEmpty(GameContext ctx, string mod) => HoldingFolder.RemoveIfNoFiles(ModDir(ctx, mod));
