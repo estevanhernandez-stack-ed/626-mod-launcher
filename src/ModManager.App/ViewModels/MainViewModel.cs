@@ -140,19 +140,19 @@ public sealed partial class MainViewModel : ObservableObject
     // ModListing.Resolve consults, so the toggle lane and the listing can never disagree.
     private bool LooseRootBacked => _ctx is not null && !ConfigBacked && LooseRootService.Applies(_ctx);
 
-    [ObservableProperty] private IReadOnlyList<Theme> themeOptions = Array.Empty<Theme>();
-    [ObservableProperty] private Theme? selectedTheme;
+    [ObservableProperty] public partial IReadOnlyList<Theme> ThemeOptions { get; set; } = Array.Empty<Theme>();
+    [ObservableProperty] public partial Theme? SelectedTheme { get; set; }
 
-    [ObservableProperty] private ObservableCollection<GameOption> games = new();
-    [ObservableProperty] private GameOption? activeGame;
-    [ObservableProperty] private ObservableCollection<ModRowViewModel> mods = new();
-    [ObservableProperty] private string statusText = "No game registered.";
-    [ObservableProperty] private string gameRootText = "";
-    [ObservableProperty] private string activeMode = "all";
+    [ObservableProperty] public partial ObservableCollection<GameOption> Games { get; set; } = new();
+    [ObservableProperty] public partial GameOption? ActiveGame { get; set; }
+    [ObservableProperty] public partial ObservableCollection<ModRowViewModel> Mods { get; set; } = new();
+    [ObservableProperty] public partial string StatusText { get; set; } = "No game registered.";
+    [ObservableProperty] public partial string GameRootText { get; set; } = "";
+    [ObservableProperty] public partial string ActiveMode { get; set; } = "all";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GameVisibility))]
-    private bool hasGame;
+    public partial bool HasGame { get; set; }
 
     // The mod list's empty state depends on whether a game is active, so it recomputes when that
     // changes. See RefreshEmptyState - one message, four causes.
@@ -228,7 +228,7 @@ public sealed partial class MainViewModel : ObservableObject
     // drift would flag Elden Ring and every other loader-based install, all of them working fine.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SetupBannerVisibility))]
-    private bool setupNeedsAttention;
+    public partial bool SetupNeedsAttention { get; set; }
 
     public Visibility SetupBannerVisibility =>
         SetupNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
@@ -247,7 +247,7 @@ public sealed partial class MainViewModel : ObservableObject
         ? Visibility.Collapsed
         : Visibility.Visible;
 
-    [ObservableProperty] private bool isBusy;
+    [ObservableProperty] public partial bool IsBusy { get; set; }
 
     /// <summary>True while a long operation is running that the user is allowed to stop. Drives the
     /// Stop button beside the busy ring. Separate from <see cref="IsBusy"/> because most busy work
@@ -255,7 +255,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// read-only, resumable run (the Nexus name-search sweep) offers Stop.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CancelVisibility))]
-    private bool isCancellable;
+    public partial bool IsCancellable { get; set; }
 
     public Visibility CancelVisibility => IsCancellable ? Visibility.Visible : Visibility.Collapsed;
 
@@ -373,16 +373,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LaunchHintVisibility))]
-    private bool launchNeedsAttention;
+    public partial bool LaunchNeedsAttention { get; set; }
 
     public Visibility LaunchHintVisibility => LaunchNeedsAttention ? Visibility.Visible : Visibility.Collapsed;
 
     // Steam updated this game since we last recorded its build — installed mods may need rechecking.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SteamBuildWarningVisibility))]
-    private bool steamBuildChanged;
+    public partial bool SteamBuildChanged { get; set; }
 
-    [ObservableProperty] private string steamBuildMessage = "";
+    [ObservableProperty] public partial string SteamBuildMessage { get; set; } = "";
 
     // The live build to re-baseline to when the user dismisses the warning.
     private string? _pendingSteamBuild;
@@ -391,7 +391,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CoopHintVisibility))]
-    private bool coopLauncherMissing;
+    public partial bool CoopLauncherMissing { get; set; }
 
     public Visibility CoopHintVisibility => CoopLauncherMissing ? Visibility.Visible : Visibility.Collapsed;
 
@@ -451,7 +451,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(StateDetailActionVisibility))]
     [NotifyPropertyChangedFor(nameof(StateDetailDismissVisibility))]
     [NotifyPropertyChangedFor(nameof(StateDetailAccent))]
-    private GameStateChipViewModel? expandedChip;
+    public partial GameStateChipViewModel? ExpandedChip { get; set; }
 
     public Visibility StateDetailVisibility => ExpandedChip is null ? Visibility.Collapsed : Visibility.Visible;
     public string StateDetailText => ExpandedChip?.Detail ?? "";
@@ -575,7 +575,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadOrderVisibility))]
     [NotifyPropertyChangedFor(nameof(NormalBarVisibility))]
-    private bool isLoadOrderMode;
+    public partial bool IsLoadOrderMode { get; set; }
 
     /// <summary>True when the active game resolves to no mod lane at all (spec 6a: a STATE, never a
     /// store/engine check) — App-side surfaces (launch menu, drag caption, Play label) that live
@@ -758,10 +758,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_suppressActiveSwitch || value is null) return;
         // A filter typed for one game must not pre-narrow the next game's first render (F-061).
-        // Backing-field clear: the property setter would run FilterRows over the OUTGOING game's
-        // rows for one wasted render. The notify still empties the TwoWay-bound box.
-        modFilterText = "";
-        OnPropertyChanged(nameof(ModFilterText));
+        // Through the setter, so the box and the list agree while the next game loads: the outgoing
+        // game's rows show unfiltered for one in-memory render, never narrowed by a search the
+        // now-empty box no longer shows. (This used to write the backing field to skip that render.)
+        ModFilterText = "";
         _svc.SetActiveGame(value.Id);
         _ = ReloadModsAsync();
     }
@@ -1183,7 +1183,7 @@ public sealed partial class MainViewModel : ObservableObject
     // View toggle: group the list by source (paks / UE4SS installed / bundled) or by MP-safety class.
     public IReadOnlyList<string> GroupModes { get; } = new[] { "By source", "By class", "By category" };
 
-    [ObservableProperty] private string groupMode = "By source";
+    [ObservableProperty] public partial string GroupMode { get; set; } = "By source";
     partial void OnGroupModeChanged(string value)
     {
         // Re-group from the STATE list, never the filtered render list — regrouping while a
@@ -1266,7 +1266,7 @@ public sealed partial class MainViewModel : ObservableObject
     // loose-identify) reads _allRows — a typed filter must never narrow a file op.
     private IReadOnlyList<ModRowViewModel> _allRows = Array.Empty<ModRowViewModel>();
 
-    [ObservableProperty] private string modFilterText = "";
+    [ObservableProperty] public partial string ModFilterText { get; set; } = "";
 
     partial void OnModFilterTextChanged(string value)
         => Mods = new ObservableCollection<ModRowViewModel>(FilterRows(_allRows));
@@ -1276,8 +1276,8 @@ public sealed partial class MainViewModel : ObservableObject
     // with no words - the moment the app most needs to say "drop a zip here" - and wave 6's MP/SP
     // filter could empty the list with no search text at all, which reads as "the mods are gone"
     // because the control that emptied it is a VIEW control. ModListEmptyState decides all four.
-    [ObservableProperty] private string filterEmptyText = "";
-    [ObservableProperty] private Visibility filterEmptyVisibility = Visibility.Collapsed;
+    [ObservableProperty] public partial string FilterEmptyText { get; set; } = "";
+    [ObservableProperty] public partial Visibility FilterEmptyVisibility { get; set; } = Visibility.Collapsed;
 
     private void RefreshEmptyState(int totalRows, int visibleRows)
     {

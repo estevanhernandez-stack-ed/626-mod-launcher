@@ -119,7 +119,7 @@ public sealed partial class ToolsPanel : UserControl
     /// </summary>
     private async void OnUninstallFrameworkClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement fe || fe.Tag is not FrameworkInstallManifest m) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not FrameworkInstallManifest m || ViewModel is null) return;
 
         var dialog = new ContentDialog
         {

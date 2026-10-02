@@ -250,10 +250,10 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>Installed games discovered from the store that aren't registered yet.</summary>
     public ObservableCollection<DiscoveredGameViewModel> DiscoveryRows { get; } = new();
 
-    [ObservableProperty] private string searchText = "";
-    [ObservableProperty] private string? sourceFilter;   // null = any store source
-    [ObservableProperty] private EngineTier? tierFilter;  // null = any tier
-    [ObservableProperty] private bool banRiskOnly;        // true = only ban-risk games
+    [ObservableProperty] public partial string SearchText { get; set; } = "";
+    [ObservableProperty] public partial string? SourceFilter { get; set; }   // null = any store source
+    [ObservableProperty] public partial EngineTier? TierFilter { get; set; }  // null = any tier
+    [ObservableProperty] public partial bool BanRiskOnly { get; set; }        // true = only ban-risk games
 
     /// <summary>True when the registry has no games. NOT the same as "nothing to show" — a machine with
     /// zero registered games can still have a full discovery lane, which is exactly the first-run case.

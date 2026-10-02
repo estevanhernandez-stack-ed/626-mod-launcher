@@ -12,13 +12,13 @@ public sealed partial class VariantOptionVM : ObservableObject
     public string ModName { get; }   // the underlying mod key to enable/disable
     public string Label { get; }     // short option label (the variant tag, e.g. "10X")
     public bool CanToggle { get; }
-    [ObservableProperty] private bool enabled;
+    [ObservableProperty] public partial bool Enabled { get; set; }
 
     public VariantOptionVM(string modName, string label, bool enabled, bool canToggle)
     {
         ModName = modName;
         Label = label;
-        this.enabled = enabled;
+        Enabled = enabled;
         CanToggle = canToggle;
     }
 }
