@@ -17,7 +17,8 @@ public static class ServerInfoTool
     {
         serverVersion = "0.1.0",
         // 2: list_themes, get_app_settings, list_save_mods (E1, third slice).
-        catalogVersion = 2,
+        // 3: dry_run_intake, intake (E1, fourth slice).
+        catalogVersion = 3,
         // .mcp.json runs the server with --no-build, so it serves whatever was last compiled. That
         // sat on a nine-day-old binary through an entire session with nothing to surface it: no
         // payload carried a version, so the only way to notice was comparing file timestamps, which

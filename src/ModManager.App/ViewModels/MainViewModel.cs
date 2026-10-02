@@ -3798,10 +3798,18 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null || paths.Count == 0) return;
 
+        // Every route is decided up front, by the same router the agent's dry_run_intake and intake use
+        // (E1, fourth slice), and nothing is written by deciding. The steps below ask their questions
+        // and then act on the plan, so a dry run describes this drop rather than a guess at it.
+        var archiveReader = new SharpCompressArchiveReader();
+        var plan = DropRouter.Plan(_ctx, paths, archiveReader);
+        var routeOf = plan.Items.GroupBy(i => i.Path).ToDictionary(g => g.Key, g => g.First());
+        DropRoute RouteOf(string p) => routeOf.TryGetValue(p, out var item) ? item.Route : DropRoute.Mod;
+
         // Nowhere for a mod to go: say why, before any gate or extraction. Nothing is written.
-        if (ModListing.HasNoModLane(_ctx))
+        if (plan.Blocked is not null)
         {
-            StatusText = ModListEmptyState.NoModLane;
+            StatusText = plan.Blocked;
             return;
         }
 
@@ -3818,7 +3826,7 @@ public sealed partial class MainViewModel : ObservableObject
         // ship any catalog-recognized framework. Catalog match -> confirmation dialog -> install
         // via FrameworkInstaller (game root, with backup snapshot). Looks-like-framework ->
         // feedback nudge then fall through to the engine-specific intake (or cancel).
-        var frameworkOutcome = await TryInstallFrameworksAsync(paths);
+        var frameworkOutcome = await TryInstallFrameworksAsync(plan);
         paths = frameworkOutcome.Remaining;
         if (paths.Count == 0)
         {
@@ -3829,13 +3837,13 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        if (ConfigBacked)
+        if (plan.Lane == DropLane.ModEngine2)
         {
             // ME2 mods are folders registered in the config — drop-to-install isn't wired yet.
-            StatusText = "For Mod Engine 2 games, place the mod's folder under the ME2 'mod' folder, then add it in the config. Auto-install is coming.";
+            StatusText = DropRouter.ModEngine2DropNotice;
             return;
         }
-        if (DirectInjectBacked)
+        if (plan.Lane == DropLane.DirectInject)
         {
             // Direct-inject: plan the drop, confirm any collisions (replace keeps the old version,
             // revertible), then execute into the game's exe folder. Re-detect so a newly-installed
@@ -3844,10 +3852,10 @@ public sealed partial class MainViewModel : ObservableObject
             IsBusy = true;
             try
             {
-                var plan = _direct.Plan(_ctx.Game, paths);
-                var chosen = await ConfirmReplacementsAsync(plan);
+                var diPlan = _direct.Plan(_ctx.Game, paths);
+                var chosen = await ConfirmReplacementsAsync(diPlan);
                 if (chosen is null) { StatusText = "Update cancelled."; return; }
-                var r = _direct.Execute(_ctx.Game, plan, chosen);
+                var r = _direct.Execute(_ctx.Game, diPlan, chosen);
                 if (r.Added.Count > 0 || r.Updated.Count > 0) _svc.Redetect(_ctx.Game.Id); // pick up mod folders + launchers
                 await ReloadModsAsync();                                                    // rebuilds context: refreshed list + Play targets
 
@@ -3895,7 +3903,7 @@ public sealed partial class MainViewModel : ObservableObject
                 var saveTypeExts = GameSaveTypesCatalog.Resolve(_ctx.Game)
                     .SaveTypes.Select(t => t.Extension).ToList();
                 IReadOnlyList<SaveModDropVerdict> verdicts = SaveModFlow.TryHandleDrops(
-                    remaining, saveTypeExts,
+                    remaining.Where(p => RouteOf(p) == DropRoute.SaveMod).ToList(), saveTypeExts,
                     saveProfilesDir: _ctx.SaveDir!,
                     snapshotsDir: _ctx.SavesDir,
                     dataDir: _ctx.DataDir,
@@ -3950,41 +3958,24 @@ public sealed partial class MainViewModel : ObservableObject
             var luaInstalledSources = new List<(string ArchivePath, string ModName)>(); // for post-install metadata identify
             var luaNeedsManual = new List<string>();   // detected but not ours to install
             var luaFailures = new List<string>();
-            var archiveReader = new SharpCompressArchiveReader();
-            var ownedUe4ss = FrameworkRegistry.List(_ctx.DataDir)
-                .FirstOrDefault(m => string.Equals(m.FrameworkId, "ue4ss", StringComparison.OrdinalIgnoreCase));
-            var ue4ssModsDir = ownedUe4ss is null ? null : Path.Combine(ownedUe4ss.InstallPath, "ue4ss", "Mods");
+            var ue4ssModsDir = plan.Ue4ssModsDir;
             remaining = remaining.Where(p =>
             {
-                if (string.IsNullOrEmpty(p) || !File.Exists(p)) return true;
-                var lower = p.ToLowerInvariant();
-                if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) return true;
-                try
+                if (RouteOf(p) != DropRoute.Ue4ssLua) return true;   // not a Lua mod — leave for the next step
+                if (ue4ssModsDir is not null)
                 {
-                    using (var arch = archiveReader.Open(p))
-                        if (!Ue4ssLuaDetect.Detect(arch.EntryNames).IsLuaMod) return true;  // not a Lua mod — leave for intake
-
-                    if (ue4ssModsDir is not null)
+                    try
                     {
-                        try
-                        {
-                            var res = Ue4ssLuaInstaller.Install(p, ue4ssModsDir, archiveReader);
-                            luaInstalled.Add(res.ModName);
-                            // Remember the source archive so we can md5-identify metadata for it after the
-                            // loop (the sync Where-lambda can't await). The archive is still on disk here.
-                            luaInstalledSources.Add((p, res.ModName));
-                        }
-                        catch (Exception ex) { luaFailures.Add($"{Path.GetFileName(p)}: {ex.Message}"); }
+                        var res = Ue4ssLuaInstaller.Install(p, ue4ssModsDir, archiveReader);
+                        luaInstalled.Add(res.ModName);
+                        // Remember the source archive so we can md5-identify metadata for it after the
+                        // loop (the sync Where-lambda can't await). The archive is still on disk here.
+                        luaInstalledSources.Add((p, res.ModName));
                     }
-                    else
-                    {
-                        using var arch = archiveReader.Open(p);
-                        var v = Ue4ssLuaDetect.Detect(arch.EntryNames);
-                        luaNeedsManual.Add(v.ModFolderName ?? Path.GetFileNameWithoutExtension(p));
-                    }
-                    return false; // carved out of regular intake
+                    catch (Exception ex) { luaFailures.Add($"{Path.GetFileName(p)}: {ex.Message}"); }
                 }
-                catch { return true; }
+                else luaNeedsManual.Add(routeOf[p].LuaModFolder ?? Path.GetFileNameWithoutExtension(p));
+                return false; // carved out of regular intake
             }).ToList();
 
             // Identify metadata for each just-installed Lua mod by md5-matching its source archive against
@@ -4008,30 +3999,30 @@ public sealed partial class MainViewModel : ObservableObject
             var toolFailures = new List<string>();
             remaining = remaining.Where(p =>
             {
-                if (string.IsNullOrEmpty(p) || !File.Exists(p)) return true;
-                var lower = p.ToLowerInvariant();
-                if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) return true;
+                if (RouteOf(p) != DropRoute.Tool) return true;
+                var item = routeOf[p];
+                if (item.Problem is not null)
+                {
+                    toolFailures.Add($"{Path.GetFileName(p)}: {item.Problem}");
+                    return false; // classification failed; don't fall back to mod intake for an exe-only zip
+                }
                 try
                 {
-                    var (cls, known) = ToolDetector.Classify(p, _ctx!.Game.Engine ?? "", _ctx.Game.SteamAppId ?? "");
-                    if (cls != ToolClassification.Tool) return true;
-                    var result = ToolIntake.Install(p, _ctx.DataDir, known);
+                    var result = ToolIntake.Install(p, _ctx.DataDir, item.Tool);
                     installedTools.Add(result.Entry);
                     if (result.Candidates.Count > 0)
                         ambiguousRunnables[result.Entry.ToolId] = result.Candidates;
-                    return false; // carved out — don't run through mod intake
                 }
-                catch (Exception ex)
-                {
-                    toolFailures.Add($"{Path.GetFileName(p)}: {ex.Message}");
-                    return false; // tool install failed; don't fall back to mod intake for an exe-only zip
-                }
+                catch (Exception ex) { toolFailures.Add($"{Path.GetFileName(p)}: {ex.Message}"); }
+                return false; // carved out — don't run through mod intake
             }).ToList();
 
-            var plan = Scanner.PlanIntake(remaining, _ctx);
-            var chosen = await ConfirmReplacementsAsync(plan);
+            // Re-planned over what is left: the drop plan's intake also covered archives the user may have
+            // just turned away at the looks-like-a-framework question.
+            var intakePlan = Scanner.PlanIntake(remaining, _ctx);
+            var chosen = await ConfirmReplacementsAsync(intakePlan);
             if (chosen is null) { StatusText = "Update cancelled."; return; }
-            var r = Scanner.ExecuteIntake(plan, chosen, _ctx);
+            var r = Scanner.ExecuteIntake(intakePlan, chosen, _ctx);
             var identified = 0;
             var nexusIdentified = 0;
             if (r.Added.Count > 0)
@@ -4178,89 +4169,58 @@ public sealed partial class MainViewModel : ObservableObject
         bool AnyInstalled);
 
     /// <summary>
-    /// Drop-pipeline Pre-check 0: detect + install catalog-known frameworks before the
-    /// engine-specific intake. For each dropped archive: peek its entries, run KnownFramework
-    /// .Classify, show the confirmation dialog on a hit, the unrecognized-nudge on
-    /// looks-like-framework, otherwise leave it for the caller's branches.
+    /// Drop-pipeline Pre-check 0: install catalog-known frameworks before the engine-specific intake.
+    /// <see cref="DropRouter"/> already classified each path; here the app asks: the confirmation dialog
+    /// on a framework, the unrecognized-nudge on looks-like-framework. Everything else is left for the
+    /// caller's branches.
     /// </summary>
-    private async Task<FrameworkPrecheckOutcome> TryInstallFrameworksAsync(IReadOnlyList<string> paths)
+    private async Task<FrameworkPrecheckOutcome> TryInstallFrameworksAsync(DropPlan plan)
     {
-        if (_ctx is null) return new FrameworkPrecheckOutcome(paths, Array.Empty<string>(), false);
+        if (_ctx is null) return new FrameworkPrecheckOutcome(plan.Items.Select(i => i.Path).ToList(), Array.Empty<string>(), false);
         var remaining = new List<string>();
         var statusParts = new List<string>();
         bool anyInstalled = false;
 
-        foreach (var src in paths)
+        foreach (var item in plan.Items)
         {
-            if (string.IsNullOrEmpty(src) || !File.Exists(src)) { remaining.Add(src); continue; }
-            var lower = src.ToLowerInvariant();
-            if (!Intake.ArchiveExtensions.Any(a => lower.EndsWith(a))) { remaining.Add(src); continue; }
-
-            IReadOnlyList<string>? zipEntries = null;
-            try
+            var src = item.Path;
+            if (item.Route == DropRoute.Framework && item.Framework is { } fw)
             {
-                using var zip = System.IO.Compression.ZipFile.OpenRead(src);
-                zipEntries = zip.Entries.Select(e => e.FullName).ToList();
-            }
-            catch { /* can't peek — let the regular intake try */ }
-            if (zipEntries is null) { remaining.Add(src); continue; }
-
-            var classify = KnownFramework.Classify(zipEntries, _ctx.Game.Engine ?? "", _ctx.Game.SteamAppId);
-            if (classify.Match is not null)
-            {
-                var fileNames = zipEntries
-                    .Select(e => e.Replace('\\', '/'))
-                    .Where(e => !e.EndsWith("/", StringComparison.Ordinal))
-                    .ToList();
-                // Resolve the symbolic InstallRoot ("PlayFolder", "GameRoot") to the actual
-                // absolute path the installer will use. Two reasons: (1) the dialog has to show
-                // the user the TRUTH about where files land — "ELDEN RING" hides the \Game
-                // suffix and confused F2's first smoke; (2) the overwrite-check has to look in
-                // the same place the installer will write, or it'll miss / falsely report
-                // existing files.
-                // ue-pak frameworks (UE4SS) resolve a project-relative root from the game's mod
-                // locations (e.g. R5/Binaries/Win64); ELM's GameRoot/PlayFolder ignore this arg.
-                var relPaths = _ctx.Game.ModLocations.Select(l => l.Path).ToList();
-                var resolvedInstallRoot = FrameworkInstaller.ResolveInstallRoot(
-                    classify.Match.InstallRoot, _ctx.GameRoot, relPaths);
-                if (resolvedInstallRoot is null)
+                // The router resolved the symbolic InstallRoot ("PlayFolder", "GameRoot", a UE4SS
+                // project folder) to the absolute path the installer will use, so the dialog shows the
+                // truth about where files land and the overwrite list was checked in that same place.
+                if (item.Problem is not null || item.FrameworkInstallRoot is null)
                 {
-                    // No project subfolder resolved — render the same refusal Install would, instead
-                    // of dereferencing null in the overwrite-preview.
-                    statusParts.Add(
-                        $"Couldn't install {classify.Match.DisplayName}: no project subfolder found in " +
-                        "the game's mod locations. Re-scan the game's mod folders and try again.");
+                    statusParts.Add(item.Problem ?? $"Couldn't install {fw.DisplayName}.");
                     continue;
                 }
-                var willOverwrite = fileNames
-                    .Where(e => File.Exists(Path.Combine(resolvedInstallRoot, e)))
-                    .ToList();
-
-                var dlg = new FrameworkInstallDialog(classify.Match, fileNames, willOverwrite, resolvedInstallRoot)
+                var relPaths = _ctx.Game.ModLocations.Select(l => l.Path).ToList();
+                var dlg = new FrameworkInstallDialog(fw, item.FrameworkFiles ?? Array.Empty<string>(),
+                    item.FrameworkOverwrites ?? Array.Empty<string>(), item.FrameworkInstallRoot)
                 { XamlRoot = App.MainWindow!.Content.XamlRoot };
                 var result = await dlg.ShowAsync();
                 if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
                 {
-                    statusParts.Add($"Skipped {classify.Match.DisplayName} install");
+                    statusParts.Add($"Skipped {fw.DisplayName} install");
                     continue;
                 }
 
                 try
                 {
-                    var r = FrameworkInstaller.Install(src, classify.Match, _ctx.GameRoot, _ctx.DataDir, relPaths);
+                    var r = FrameworkInstaller.Install(src, fw, _ctx.GameRoot, _ctx.DataDir, relPaths);
                     // Report the real install location, not a hardcoded "game root" — UE4SS lands under
                     // <project>/Binaries/Win64, and saying "game root" there is a lie.
-                    statusParts.Add($"Installed {classify.Match.DisplayName} ({r.InstalledFiles.Count} file(s) to {r.InstallPath})");
+                    statusParts.Add($"Installed {fw.DisplayName} ({r.InstalledFiles.Count} file(s) to {r.InstallPath})");
                     anyInstalled = true;
                 }
                 catch (Exception ex)
                 {
-                    statusParts.Add($"Couldn't install {classify.Match.DisplayName}: {ex.Message}");
+                    statusParts.Add($"Couldn't install {fw.DisplayName}: {ex.Message}");
                 }
                 continue;
             }
 
-            if (classify.LooksLikeFramework)
+            if (item.LooksLikeFramework)
             {
                 var nudge = new FrameworkUnrecognizedNudgeDialog(Path.GetFileName(src))
                 { XamlRoot = App.MainWindow!.Content.XamlRoot };
