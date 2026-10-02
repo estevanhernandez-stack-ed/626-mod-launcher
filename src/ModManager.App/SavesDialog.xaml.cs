@@ -93,12 +93,15 @@ public sealed record SaveFileRow(string Name, string TypeLabel, IReadOnlyList<Sa
 }
 
 /// <summary>One installed-save-mod row: friendly title + when/source detail.</summary>
-public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail)
+public sealed record SaveModRow(SaveModEntry Entry, string Title, string Detail, string? WorldTag = null)
 {
     // Row identity for an agent (automation-ids rule): a stable key off the world's id, never the display name.
     public string RowAutomationId => $"SaveModRow.{Entry.Guid}";
-    public string ResetAutomationName => $"Reset {Title}";
-    public string RemoveAutomationName => $"Remove {Title}";
+    // Two worlds can share a title (both installed from a World.zip). Then the names carry the short
+    // world id too, so pressing "Reset <title>" can never reach the other world.
+    public string ResetAutomationName => $"Reset {ButtonSubject}";
+    public string RemoveAutomationName => $"Remove {ButtonSubject}";
+    private string ButtonSubject => WorldTag is null ? Title : $"{Title} (world {WorldTag})";
 
     // The list item's UIA name falls back to this, and the record's own would be the whole kept-zip path.
     public override string ToString() => Title;
@@ -319,9 +322,13 @@ public sealed partial class SavesDialog : ContentDialog
 
     private void RefreshSaveMods()
     {
-        var rows = SaveModStore.Load(_dataDir)
+        var entries = SaveModStore.Load(_dataDir);
+        var sharedTitles = entries.GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rows = entries
             .Select(e => new SaveModRow(e, e.Name,
-                $"{e.InstalledUtc.ToLocalTime():g}  ·  world {Short(e.Guid)}  ·  {System.IO.Path.GetFileName(e.SourceZip)}"))
+                $"{e.InstalledUtc.ToLocalTime():g}  ·  world {Short(e.Guid)}  ·  {System.IO.Path.GetFileName(e.SourceZip)}",
+                sharedTitles.Contains(e.Name) ? Short(e.Guid) : null))
             .OrderByDescending(r => r.Entry.InstalledUtc)
             .ToList();
         SaveModList.ItemsSource = rows;
