@@ -317,6 +317,27 @@ public sealed partial class MainWindow : Window
             DispatcherQueue.TryEnqueue(async () => await ViewModel.RefreshAsync());
     }
 
+    // A restore that went through can still leave something to look at: a mod the clear turned off that is
+    // not back on (a ban-risk game waits for its acknowledgment, a folder another tool now owns), or a game
+    // missing from the restored registry. Said once, after the restore, instead of dropped.
+    private async Task ShowRestoreNotesAsync(ModManager.Core.RestorePoints.RestoreResult result)
+    {
+        if (ModManager.Core.RestorePoints.SafeClearSummary.RestoreNotes(result) is not { } notes) return;
+        var d = new ContentDialog
+        {
+            Title = "Restored, with notes",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 360,
+                Content = new TextBlock { Text = notes, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+            },
+            CloseButtonText = "OK",
+            XamlRoot = Content.XamlRoot,
+        };
+        ModManager.App.Services.DialogTheming.Apply(d); // vibe-glow wave 1: popup-scope theme brushes
+        await d.ShowAsync();
+    }
+
     private async Task HandleInterruptedClearAsync(Services.RestorePointService rp, ModManager.Core.RestorePoints.InterruptedClear ic)
     {
         if (ic.Sealed)
@@ -332,7 +353,7 @@ public sealed partial class MainWindow : Window
             };
             ModManager.App.Services.DialogTheming.Apply(d); // vibe-glow wave 1: popup-scope theme brushes
             if (await d.ShowAsync() == ContentDialogResult.Primary)
-                await rp.RestoreAsync(ic.Timestamp);
+                await ShowRestoreNotesAsync(await rp.RestoreAsync(ic.Timestamp));
         }
         else
         {
@@ -1423,6 +1444,7 @@ public sealed partial class MainWindow : Window
                     ModManager.App.Services.DialogTheming.Apply(err); // vibe-glow wave 1: popup-scope theme brushes
                     await err.ShowAsync();
                 }
+                else await ShowRestoreNotesAsync(r);
                 // On success the UI refreshes via LauncherService.RegistryChanged → RefreshAsync.
             }
         }
