@@ -47,12 +47,22 @@ public static class ProfileTools
             return WriteTools.Refuse(tool, null, gameId, args, AgentRefusal.NotFound, $"No game with id '{gameId}'.");
 
         var ctx = Scanner.GameContext(game);
+        // The ONE plan this call gates, applies and verifies. Re-planning inside the apply would run
+        // whatever the file or the mods say by then, past a gate that was asked about something else.
         IReadOnlyList<(Mod Mod, bool Enable)> plan;
         try { plan = Scanner.ProfilePlan(profileName, ctx); }
         catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException or ArgumentException)
         {
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.NotFound,
                 $"No loadout named '{profileName}' for {gameId}. Call list_profiles for the names.");
+        }
+        catch (Exception e)
+        {
+            // Truncated JSON, a locked or unreadable file: still a recorded answer, never an escape that
+            // leaves no line in the log.
+            var detail = $"Couldn't read the loadout '{profileName}': {e.Message}";
+            AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "unreadable", detail));
+            return new { ok = false, refusal = "unreadable", detail };
         }
 
         var changes = plan.Select(p => new { modName = p.Mod.Name, enable = p.Enable }).ToList();
@@ -86,22 +96,20 @@ public static class ProfileTools
         if (!decision.Allowed)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, decision.Refusal, decision.Detail);
 
-        try { await Scanner.LoadProfileAsync(profileName, ctx); }
-        catch (Exception e)
-        {
-            AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "error", e.Message));
-            return new { ok = false, refusal = "error", detail = e.Message };
-        }
+        // The plan that was gated is the plan that runs. Every change is tried; one that throws does not
+        // strand the rest, and the answer names what did and did not land.
+        var failed = await Scanner.ApplyProfilePlanAsync(plan, ctx);
 
-        // Check each change against the listing instead of assuming it took, as set_mod_enabled does.
-        var notApplied = plan.Where(p => !ModToggle.IsApplied(game, p.Mod.Name, p.Enable))
-            .Select(p => p.Mod.Name).ToList();
-        if (notApplied.Count > 0)
+        // Check the whole plan against ONE listing instead of assuming it took, as set_mod_enabled does.
+        var notApplied = ModToggle.NotApplied(game, plan.Select(p => (p.Mod.Name, p.Enable)));
+        if (failed.Count > 0 || notApplied.Count > 0)
         {
+            var errors = failed.Select(f => new { modName = f.Mod.Name, error = f.Error }).ToList();
             var detail = $"Applied {plan.Count - notApplied.Count} of {plan.Count} change(s); the mod list does "
-                         + $"not show these as asked: {string.Join(", ", notApplied)}.";
+                         + $"not show these as asked: {string.Join(", ", notApplied)}."
+                         + (failed.Count > 0 ? $" {failed.Count} of them failed with an error." : "");
             AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(DateTime.UtcNow, tool, gameId, args, "not_applied", detail));
-            return new { ok = false, refusal = "not_applied", detail, notApplied, changes };
+            return new { ok = false, refusal = "not_applied", detail, notApplied, errors, changes };
         }
 
         AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(

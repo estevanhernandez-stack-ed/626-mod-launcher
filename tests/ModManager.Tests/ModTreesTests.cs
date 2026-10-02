@@ -63,6 +63,39 @@ public class ModTreesTests : IDisposable
         Assert.Equal(new[] { "r6/scripts" }, ModTrees.Build(_root, Trees).For("CoolMod"));
     }
 
+    // Review on #369: CleanModName drops short all-caps tokens, so BetterHUD and BetterUI collapsed to
+    // one name and a row claimed another mod's folder.
+    [Fact]
+    public void Names_that_differ_only_in_what_a_search_cleaner_drops_stay_different()
+    {
+        Dir("r6/scripts/BetterUI");
+        Dir("r6/scripts/Foo.Baz");
+        var trees = ModTrees.Build(_root, Trees);
+
+        Assert.Empty(trees.For("BetterHUD"));
+        Assert.Empty(trees.For("Foo.Bar"));
+        Assert.Equal(new[] { "r6/scripts" }, trees.For("Foo.Baz"));
+    }
+
+    [Fact]
+    public void A_tree_spelled_two_ways_is_listed_once()
+    {
+        Dir("r6/scripts/CoolMod");
+        Assert.Equal(new[] { "r6/scripts" }, ModTrees.Build(_root, new[] { "r6/scripts", "r6\\scripts/" }).For("CoolMod"));
+    }
+
+    [Fact]
+    public void A_tree_that_is_the_games_own_mod_folder_is_not_somewhere_else()
+    {
+        File_("archive/pc/mod/CoolMod.archive");
+        Dir("r6/scripts/CoolMod");
+        var own = new[] { Path.Combine(_root, "archive", "pc", "mod") };
+
+        var trees = ModTrees.Build(_root, new[] { "archive/pc/mod", "r6/scripts" }, own);
+
+        Assert.Equal(new[] { "r6/scripts" }, trees.For("CoolMod"));
+    }
+
     // ---- the manifest field ----
 
     [Fact]
@@ -94,17 +127,30 @@ public class ModTreesTests : IDisposable
     [InlineData("../escape")]
     [InlineData("r6/../../escape")]
     [InlineData("D:relative")]
-    public void One_unsafe_extra_tree_rejects_the_entry(string bad)
+    public void An_unsafe_extra_tree_is_dropped_and_the_entry_kept(string bad)
     {
+        // Descriptive data: one bad tree must not throw away the entry's ban-risk and store corrections.
         var manifest = new GameManifest
         {
-            Games = new[] { new GameManifestEntry { Id = "bad", Name = "Bad", Engine = "custom", ExtraModTrees = new[] { "r6/scripts", bad } } },
+            Games = new[] { new GameManifestEntry { Id = "cp", Name = "CP", Engine = "custom", BanRisk = "high", ExtraModTrees = new[] { "r6/scripts", bad } } },
         };
 
         var result = ManifestValidator.Validate(manifest, EnginePresets.Presets.Keys.ToHashSet());
 
-        Assert.Empty(result.Manifest.Games);
-        Assert.Contains("bad", result.RejectedEntries);
+        var kept = Assert.Single(result.Manifest.Games);
+        Assert.Equal("high", kept.BanRisk);
+        Assert.Equal(new[] { "r6/scripts" }, kept.ExtraModTrees);
+        Assert.Empty(result.RejectedEntries);
+    }
+
+    [Fact]
+    public void An_entry_whose_only_tree_is_unsafe_keeps_none()
+    {
+        var manifest = new GameManifest
+        {
+            Games = new[] { new GameManifestEntry { Id = "cp", Name = "CP", Engine = "custom", ExtraModTrees = new[] { "../escape" } } },
+        };
+        Assert.Null(Assert.Single(ManifestValidator.Validate(manifest, EnginePresets.Presets.Keys.ToHashSet()).Manifest.Games).ExtraModTrees);
     }
 
     [Fact]

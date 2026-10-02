@@ -73,4 +73,31 @@ public class ProfileLoadLaneTests : IDisposable
         await Scanner.SaveProfileAsync("as-is", c);
         Assert.Empty(Scanner.ProfilePlan("as-is", Scanner.GameContext(_game)));
     }
+
+    // Review on #369: saves now snapshot every lane, loaders included, and a load would silently move
+    // the DLL loader every other mod rides on, without the warning its own row toggle gives.
+    [Fact]
+    public async Task A_loader_is_never_in_a_profile_plan()
+    {
+        File.WriteAllText(Path.Combine(Play, "dinput8.dll"), "dll");
+        var c = Scanner.GameContext(_game);
+        var loader = ModListing.Resolve(_game).Single(m => m.IsLoader);
+        await ModToggle.SetEnabledAsync(c, loader, enabled: false);
+        await Scanner.SaveProfileAsync("loader-off", c);                 // records the loader as off
+        await ModToggle.SetEnabledAsync(c, ModListing.Resolve(_game).Single(m => m.IsLoader), enabled: true);
+
+        Assert.Empty(Scanner.ProfilePlan("loader-off", Scanner.GameContext(_game)));
+    }
+
+    [Theory]
+    [InlineData("{\"mods\":null}")]
+    [InlineData("{\"mods\":[null,{\"enabled\":true}]}")]
+    public void A_hand_edited_profile_with_nothing_usable_plans_nothing_rather_than_throw(string json)
+    {
+        var c = Scanner.GameContext(_game);
+        Directory.CreateDirectory(c.ProfilesDir);
+        File.WriteAllText(Path.Combine(c.ProfilesDir, "odd.json"), json);
+
+        Assert.Empty(Scanner.ProfilePlan("odd", c));
+    }
 }

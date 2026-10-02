@@ -137,4 +137,18 @@ public class McpApplyLoadoutTests : IDisposable
         var r = Json(await ProfileTools.ApplyLoadout("er-loadout", "nope"));
         Assert.Equal("not_found", r.GetProperty("refusal").GetString());
     }
+
+    [Fact]
+    public async Task An_unreadable_loadout_is_answered_and_recorded_not_thrown()
+    {
+        var game = Register("er-loadout");
+        var c = Scanner.GameContext(game);
+        Directory.CreateDirectory(c.ProfilesDir);
+        File.WriteAllText(Path.Combine(c.ProfilesDir, "broken.json"), "{\"mods\": [");   // truncated
+
+        var r = Json(await ProfileTools.ApplyLoadout("er-loadout", "broken"));
+
+        Assert.Equal("unreadable", r.GetProperty("refusal").GetString());
+        Assert.Equal("unreadable", AgentAudit.Read(Scanner.DataDirForGame(game)).Last().Result);
+    }
 }

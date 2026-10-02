@@ -36,9 +36,10 @@ holds paths relative to the game root, in the order the row should list them.
 - **Descriptive only**, like every manifest field: it says where mods put files, never how to enable
   them. Whether a tree may be toggled is deliberately NOT a field yet. It is stage two's question, and
   a flag shipped now would be answered by guesswork.
-- **Gated like `modPath`.** `ManifestValidator` rejects the whole entry if any tree is absolute,
-  drive-qualified or contains `..`, as it does for an unsafe `modPath`. A feed naming an escaping folder
-  is not trusted for the rest.
+- **Gated like `modPath`, but per tree.** `ManifestValidator` drops any tree that is absolute,
+  drive-qualified or contains `..`, and keeps the rest of the entry. The trees are descriptive, and
+  rejecting the whole entry over one bad tree would throw away its ban-risk, store-id and `modPath`
+  corrections with it.
 - **No schema bump.** An older binary ignores the key, as it did for `loaders`.
 - **Merge and miner.** `EffectiveManifest.MergeEntry` carries it (remote wins), and the merge
   completeness test covers it. The miner's `OverrideEntry` and `OverridesMerge` carry it from a
@@ -47,8 +48,11 @@ holds paths relative to the game root, in the order the row should list them.
 ### Which trees hold a mod
 
 `ModTrees.Build(gameRoot, trees)` lists each tree's top level once per reload. `For(modName)` returns
-the trees holding an entry whose cleaned name EQUALS the mod's: same `NameMatch.CleanModName`,
-compared on letters and digits, case-insensitively.
+the trees holding an entry whose name EQUALS the mod's, compared on letters and digits,
+case-insensitively. A folder is known by its whole name and a file by its stem. `NameMatch`'s
+cleaner is deliberately not used: it drops short all-caps and version tokens to help a search, and
+here that would collapse `BetterHUD` and `BetterUI` into one name. A tree that is one of the game's
+own mod folders is skipped, and a tree spelled two ways is listed once.
 
 - **Equality, not similarity.** Telling a user a folder belongs to a mod it doesn't is worse than
   saying nothing. `CoolModExtras` is not `CoolMod`.
