@@ -51,7 +51,8 @@ public static class SaveWritePolicy
         // a write block must not, or a contradiction would switch the protection off.
         var isEa = !string.IsNullOrWhiteSpace(game.EaContentId)
             || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryFor(game)?.Stores.EaContentId)
-            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryById(game.Id)?.Stores.EaContentId);
+            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryById(game.Id)?.Stores.EaContentId)
+            || !string.IsNullOrWhiteSpace(ManifestIdLookup.EntryById(game.ManifestId)?.Stores.EaContentId);
         return isEa ? EaRefusal : null;
     }
 

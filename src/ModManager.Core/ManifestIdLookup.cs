@@ -98,7 +98,11 @@ public static class ManifestIdLookup
         if (StoreEntry(snap.Ea, game.EaContentId) is { } byEa) ids.Add(byEa.Id);
         // The own id only when no store id names a game, the same precedence as EntryFor, so the loader
         // scan and the mod scan never disagree about which game this is.
-        if (ids.Count == 0 && !string.IsNullOrEmpty(game.Id)) ids.Add(game.Id);
+        if (ids.Count == 0)
+        {
+            if (!string.IsNullOrEmpty(game.ManifestId)) ids.Add(game.ManifestId);
+            if (!string.IsNullOrEmpty(game.Id)) ids.Add(game.Id);
+        }
         return ids;
     }
 
@@ -107,7 +111,8 @@ public static class ManifestIdLookup
     /// manifest correction (file extensions, grouping, mod path) reach a game the user already added.
     ///
     /// <para><b>Store identity first.</b> The entry claiming the registration's Steam app id, else the
-    /// one claiming its EA content id, else the entry with its own id. A store id names exactly one
+    /// one claiming its EA content id, else the entry it was added as (<see cref="GameEntry.ManifestId"/>),
+    /// else the entry with its own id. A store id names exactly one
     /// game; the own id is only as good as however it was made. A second store copy is <c>&lt;id&gt;-2</c>
     /// and an older registration is a slug of its display name, which can collide with a different
     /// game's manifest id ("doom" for Doom Eternal).</para>
@@ -122,7 +127,8 @@ public static class ManifestIdLookup
         var snap = Maps();
         return StoreEntry(snap.Steam, game.SteamAppId)
             ?? StoreEntry(snap.Ea, game.EaContentId)
-            ?? (!string.IsNullOrEmpty(game.Id) && snap.ById.TryGetValue(game.Id, out var own) ? own : null);
+            ?? IdEntry(snap, game.ManifestId)
+            ?? IdEntry(snap, game.Id);
     }
 
     /// <summary>
@@ -142,11 +148,19 @@ public static class ManifestIdLookup
         var snap = Maps();
         if ((StoreEntry(snap.Steam, game.SteamAppId) ?? StoreEntry(snap.Ea, game.EaContentId)) is { } byStore)
             return byStore;
-        if (string.IsNullOrEmpty(game.Id) || !snap.ById.TryGetValue(game.Id, out var own)) return null;
-        return Contradicts(game.SteamAppId, own.Stores.SteamAppId) || Contradicts(game.EaContentId, own.Stores.EaContentId)
-            ? null
-            : own;
+        // The recorded id, then the own id, each refused when a store id the game carries disagrees.
+        foreach (var id in new[] { game.ManifestId, game.Id })
+        {
+            if (IdEntry(snap, id) is not { } named) continue;
+            return Contradicts(game.SteamAppId, named.Stores.SteamAppId) || Contradicts(game.EaContentId, named.Stores.EaContentId)
+                ? null
+                : named;
+        }
+        return null;
     }
+
+    private static GameManifestEntry? IdEntry(Snapshot snap, string? id)
+        => !string.IsNullOrEmpty(id) && snap.ById.TryGetValue(id, out var e) ? e : null;
 
     private static bool Contradicts(string? registered, string? claimed)
         => !string.IsNullOrWhiteSpace(registered) && !string.IsNullOrWhiteSpace(claimed)

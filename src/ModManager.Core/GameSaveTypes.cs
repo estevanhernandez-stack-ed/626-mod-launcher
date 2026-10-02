@@ -87,7 +87,7 @@ public static class SaveFileKindsCatalog
     public static IReadOnlyList<SaveFileKind> For(GameEntry game)
     {
         var entry = ManifestIdLookup.ConfirmedEntryFor(game);
-        foreach (var id in new[] { entry?.Id, game.Id })
+        foreach (var id in new[] { entry?.Id, game.ManifestId, game.Id })
             if (!string.IsNullOrEmpty(id) && ById.TryGetValue(id, out var byId)) return byId;
         foreach (var ea in new[] { game.EaContentId, entry?.Stores.EaContentId })
             if (!string.IsNullOrEmpty(ea) && ByEaContentId.TryGetValue(ea, out var byEa)) return byEa;

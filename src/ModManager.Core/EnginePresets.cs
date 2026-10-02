@@ -96,6 +96,10 @@ public static partial class EnginePresets
             entry.LaunchUrl = "steam://rungameid/" + input.SteamAppId;
         }
         if (!string.IsNullOrEmpty(input.EaContentId)) entry.EaContentId = input.EaContentId;
+        // The entry the add named, kept through the -2 rename above. Only an explicit id counts: a name
+        // that slugifies to a manifest id ("doom" for Doom Eternal) is a guess, not a choice.
+        if (!string.IsNullOrEmpty(input.Id) && ManifestIdLookup.EntryById(input.Id) is { } named)
+            entry.ManifestId = named.Id;
         if (!string.IsNullOrEmpty(input.LaunchUrl)) entry.LaunchUrl = input.LaunchUrl;
         if (!string.IsNullOrEmpty(input.DataDir)) entry.DataDir = input.DataDir;
         if (!string.IsNullOrEmpty(input.LaunchExe)) entry.LaunchExe = input.LaunchExe;
