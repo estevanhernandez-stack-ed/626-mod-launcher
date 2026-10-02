@@ -7,6 +7,10 @@ namespace ModManager.Core;
 /// an 8.3 alias (<c>OTHERL~1</c>) opens the long-named folder it abbreviates. A join of root and name is
 /// therefore only the mod's own folder when the name is one folder as written AND the root lists an entry
 /// by that real name. Uninstall's deletes ask here before touching a folder by name.
+///
+/// <para>626's own holding folders sidestep the normalisation entirely: they are named by
+/// <see cref="HoldingName.Folder"/>, which encodes any name Windows would not keep as written. These checks
+/// stay as the guards around a delete, applied to that encoded name.</para>
 /// </summary>
 internal static class FolderNames
 {

@@ -1,0 +1,252 @@
+using System.Security.Cryptography;
+using System.Text.Json;
+using ModManager.Core;
+
+namespace ModManager.Tests;
+
+/// <summary>
+/// Two mods whose names Windows reads as one folder. Under the UE-pak rule <c>Foo_P.pak</c> is <c>Foo</c> and
+/// <c>Foo _P.pak</c> is <c>Foo </c>; Windows strips the trailing space, so holding <c>Foo </c> in
+/// <c>disabled/Foo </c> used to put it in <c>Foo</c>'s folder. <c>CON_P.pak</c> is <c>CON</c>, a device.
+/// Each now has its own holding folder (<see cref="HoldingName"/>), and every toggle is byte-identical.
+/// </summary>
+public class NameAliasToggleTests : IDisposable
+{
+    private readonly string _root = TestSupport.TempDir("mmb-alias-");
+    private string GameRoot => Path.Combine(_root, "game");
+    private string DataDir => Path.Combine(_root, "data");
+    private string Mods => Path.Combine(GameRoot, "Content", "Paks", "~mods");
+    private string Disabled => Path.Combine(DataDir, "disabled");
+
+    public NameAliasToggleTests()
+    {
+        Directory.CreateDirectory(Mods);
+        File.WriteAllText(Path.Combine(Mods, "Foo_P.pak"), "PLAIN FOO");
+        File.WriteAllText(Path.Combine(Mods, "Foo _P.pak"), "SPACED FOO");
+    }
+
+    public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
+
+    // The ue-pak preset, as the add-game flow builds it: strip_underscore_p_suffix.
+    private GameEntry Game()
+    {
+        var g = EnginePresets.BuildGameEntry(
+            new GameInput { Name = "Alias", Engine = "ue-pak", GameRoot = GameRoot, ModPath = "Content/Paks/~mods" },
+            Array.Empty<string>());
+        g.DataDir = DataDir;
+        return g;
+    }
+
+    private GameContext Ctx() => Scanner.GameContext(Game());
+
+    private Task<IReadOnlyList<Mod>> Rows() => Scanner.BuildModListAsync(Ctx());
+
+    /// <summary>Every file under the game root, by relative path, with its SHA-256.</summary>
+    private Dictionary<string, string> GameHashes()
+        => Directory.GetFiles(GameRoot, "*", SearchOption.AllDirectories).ToDictionary(
+            p => Path.GetRelativePath(GameRoot, p),
+            p => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))),
+            StringComparer.Ordinal);
+
+    private string Held(string modName) => Path.Combine(Disabled, HoldingName.Folder(modName));
+
+    [Fact]
+    public async Task Both_names_list_as_separate_rows()
+    {
+        var rows = await Rows();
+
+        Assert.Single(rows, m => m.Name == "Foo" && m.Enabled);
+        Assert.Single(rows, m => m.Name == "Foo " && m.Enabled);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Each_is_held_apart_and_both_come_back_byte_identical(bool spacedFirst)
+    {
+        var before = GameHashes();
+        var order = spacedFirst ? new[] { "Foo ", "Foo" } : new[] { "Foo", "Foo " };
+
+        await Scanner.DisableModAsync(order[0], Ctx());
+        if (order[0] == "Foo ")
+        {
+            // Held in its own encoded folder; Foo is live and untouched.
+            Assert.Equal("SPACED FOO", File.ReadAllText(Path.Combine(Disabled, "~626~466f6f20", "Foo _P.pak")));
+            Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Mods, "Foo_P.pak")));
+            Assert.False(Directory.Exists(Path.Combine(Disabled, "Foo")));
+        }
+        else
+        {
+            Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Disabled, "Foo", "Foo_P.pak")));
+            Assert.Equal("SPACED FOO", File.ReadAllText(Path.Combine(Mods, "Foo _P.pak")));
+            Assert.False(Directory.Exists(Path.Combine(Disabled, "~626~466f6f20")));
+        }
+
+        await Scanner.DisableModAsync(order[1], Ctx());
+
+        Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Disabled, "Foo", "Foo_P.pak")));
+        Assert.Equal("SPACED FOO", File.ReadAllText(Path.Combine(Disabled, "~626~466f6f20", "Foo _P.pak")));
+        Assert.False(File.Exists(Path.Combine(Disabled, "Foo", "Foo _P.pak")));
+        Assert.Empty(Directory.GetFiles(Mods));
+
+        var rows = await Rows();
+        Assert.Equal(2, rows.Count);
+        Assert.Single(rows, m => m.Name == "Foo" && !m.Enabled && m.Files.SequenceEqual(new[] { "Foo_P.pak" }));
+        Assert.Single(rows, m => m.Name == "Foo " && !m.Enabled && m.Files.SequenceEqual(new[] { "Foo _P.pak" }));
+
+        await Scanner.EnableModAsync(order[0], Ctx());
+        await Scanner.EnableModAsync(order[1], Ctx());
+
+        Assert.Equal(before, GameHashes());
+        Assert.Empty(Directory.GetFileSystemEntries(Disabled));
+        Assert.All(await Rows(), m => Assert.True(m.Enabled));
+    }
+
+    [Fact]
+    public async Task A_device_name_turns_off_and_on_byte_identically_through_its_encoded_folder()
+    {
+        File.WriteAllText(Path.Combine(Mods, "CON_P.pak"), "CONSOLE MOD");
+        var before = GameHashes();
+        Assert.Single(await Rows(), m => m.Name == "CON");
+
+        await Scanner.DisableModAsync("CON", Ctx());
+
+        Assert.Equal("CONSOLE MOD", File.ReadAllText(Path.Combine(Disabled, "~626~434f4e", "CON_P.pak")));
+        Assert.Equal(new[] { "~626~434f4e" }, Directory.GetDirectories(Disabled).Select(Path.GetFileName));
+        Assert.Single(await Rows(), m => m.Name == "CON" && !m.Enabled);
+
+        await Scanner.EnableModAsync("CON", Ctx());
+
+        Assert.Equal(before, GameHashes());
+        Assert.Empty(Directory.GetFileSystemEntries(Disabled));
+    }
+
+    [Theory]
+    [InlineData("Foo ", false)]
+    [InlineData("Foo ", true)]
+    [InlineData("CON", false)]
+    [InlineData("CON", true)]
+    public async Task Uninstall_takes_only_its_own_files_and_leaves_Foo_alone(string name, bool turnedOff)
+    {
+        File.WriteAllText(Path.Combine(Mods, "CON_P.pak"), "CONSOLE MOD");
+        // The bystander Foo, held off, so its folder is the one an aliasing join would reach.
+        await Scanner.DisableModAsync("Foo", Ctx());
+        if (turnedOff) await Scanner.DisableModAsync(name, Ctx());
+        var row = ModListing.Resolve(Game()).Single(m => m.Name == name);
+
+        ModUninstall.Run(Ctx(), row);
+
+        Assert.DoesNotContain(await Rows(), m => m.Name == name);
+        Assert.False(Directory.Exists(Held(name)));
+        Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Disabled, "Foo", "Foo_P.pak")));
+        Assert.True(File.Exists(Path.Combine(Disabled, "Foo", "meta.json")));
+        Assert.Single(await Rows(), m => m.Name == "Foo" && !m.Enabled);
+    }
+
+    // What an earlier build left: disabled/Bar with its record, an ordinary name, so the same folder.
+    [Fact]
+    public async Task A_legacy_held_folder_still_lists_and_turns_on()
+    {
+        var legacy = Path.Combine(Disabled, "Bar");
+        Directory.CreateDirectory(legacy);
+        File.WriteAllText(Path.Combine(legacy, "Bar_P.pak"), "LEGACY BAR");
+        File.WriteAllText(Path.Combine(legacy, "meta.json"), JsonSerializer.Serialize(new
+        {
+            location = "mods", hadOnServer = new Dictionary<string, bool> { ["Bar_P.pak"] = false },
+            disabledAt = "2026-09-01T00:00:00.0000000Z", isFolder = false,
+        }));
+
+        Assert.Single(await Rows(), m => m.Name == "Bar" && !m.Enabled);
+
+        await Scanner.EnableModAsync("Bar", Ctx());
+
+        Assert.Equal("LEGACY BAR", File.ReadAllText(Path.Combine(Mods, "Bar_P.pak")));
+        Assert.False(Directory.Exists(legacy));
+    }
+
+    // A folder whose encoding is malformed is no mod 626 can name: skipped, never guessed at.
+    [Fact]
+    public async Task A_malformed_encoded_folder_is_not_listed()
+    {
+        var odd = Path.Combine(Disabled, "~626~zz");
+        Directory.CreateDirectory(odd);
+        File.WriteAllText(Path.Combine(odd, "x.pak"), "X");
+
+        var rows = await Rows();
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("X", File.ReadAllText(Path.Combine(odd, "x.pak")));
+    }
+}
+
+/// <summary>
+/// The same alias on a Cyberpunk-shaped game with extra trees: <c>Foo.archive</c> is <c>Foo</c> and
+/// <c>Foo..archive</c> is <c>Foo.</c>. A folder <c>r6/scripts/Foo.</c> can't be made on Windows, so the
+/// extra-tree side has one <c>r6/scripts/Foo</c>, and its key rule (letters and digits only) reads both mods
+/// as its claimant. Two claimants hold the entry back, so <c>Foo.</c>'s turn-off moves only its own main file.
+/// </summary>
+public class NameAliasTreeToggleTests : IDisposable
+{
+    private static readonly string[] Trees = { "r6/scripts", "r6/tweaks" };
+
+    private readonly string _root = TestSupport.TempDir("mmb-alias-trees-");
+    private string GameRoot => Path.Combine(_root, "game");
+    private string DataDir => Path.Combine(_root, "data");
+
+    public NameAliasTreeToggleTests()
+    {
+        Put("archive/pc/mod/Foo.archive", "PLAIN");
+        Put("archive/pc/mod/Foo..archive", "DOTTED");
+        Put("r6/scripts/Foo/main.reds", "FOO SCRIPTS");
+    }
+
+    public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
+
+    private void Put(string rel, string content)
+    {
+        var p = Path.Combine(GameRoot, rel);
+        Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+        File.WriteAllText(p, content);
+    }
+
+    private GameContext Ctx() => Scanner.GameContext(new GameEntry
+    {
+        Id = "alias-trees", Engine = "custom", GameRoot = GameRoot, DataDir = DataDir,
+        FileExtensions = new[] { "archive" },
+        ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
+    }, extraModTrees: Trees);
+
+    [Fact]
+    public async Task Turning_off_Foo_dot_holds_its_main_file_apart_and_moves_none_of_Foos_extras()
+    {
+        var rows = await Scanner.BuildModListAsync(Ctx());
+        Assert.Single(rows, m => m.Name == "Foo");
+        Assert.Single(rows, m => m.Name == "Foo.");
+
+        // Two claimants for r6/scripts/Foo: the single-claimant rule holds it back for both.
+        var moves = Scanner.ExtraTreeRowsFor(Ctx()).MovesFor(rows.Single(m => m.Name == "Foo."));
+        Assert.Empty(moves.Movable);
+
+        await Scanner.DisableModAsync("Foo.", Ctx());
+
+        var held = Path.Combine(DataDir, "disabled", "~626~466f6f2e");
+        Assert.Equal("DOTTED", File.ReadAllText(Path.Combine(held, "Foo..archive")));
+        Assert.Equal("PLAIN", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "Foo.archive")));
+        Assert.Equal("FOO SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "Foo", "main.reds")));
+        Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled", "Foo")));
+        Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees")));
+
+        var after = await Scanner.BuildModListAsync(Ctx());
+        Assert.Single(after, m => m.Name == "Foo." && !m.Enabled);
+        Assert.Single(after, m => m.Name == "Foo" && m.Enabled);
+
+        await Scanner.EnableModAsync("Foo.", Ctx());
+
+        Assert.Equal("DOTTED", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "Foo..archive")));
+        Assert.False(Directory.Exists(held));
+    }
+
+    [Fact]
+    public void A_held_extra_tree_folder_uses_the_encoded_name()
+        => Assert.Equal(Path.Combine(DataDir, "disabled-trees", "~626~466f6f2e"), TreeHolding.ModDir(Ctx(), "Foo."));
+}

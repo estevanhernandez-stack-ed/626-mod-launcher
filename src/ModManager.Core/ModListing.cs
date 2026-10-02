@@ -234,7 +234,10 @@ public static class ModListing
         try
         {
             return Directory.Exists(ctx.DisabledRoot)
-                ? Directory.GetDirectories(ctx.DisabledRoot).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList()
+                ? Directory.GetDirectories(ctx.DisabledRoot).Select(Path.GetFileName)
+                    // A holding folder is the mod's name or its HoldingName encoding; the key is the name.
+                    .Select(n => n is null ? null : HoldingName.ModName(n))
+                    .Where(n => n is not null).Select(n => n!).ToList()
                 : Array.Empty<string>();
         }
         catch { return Array.Empty<string>(); }

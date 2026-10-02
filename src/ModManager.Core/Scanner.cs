@@ -472,9 +472,13 @@ public static class Scanner
     private static IReadOnlyList<DisabledEntry> ListDisabled(GameContext c)
     {
         var result = new List<DisabledEntry>();
-        foreach (var name in SafeReadDirs(c.DisabledRoot))
+        foreach (var folder in SafeReadDirs(c.DisabledRoot))
         {
-            var dir = Path.Combine(c.DisabledRoot, name);
+            // The folder is the mod's name, or its HoldingName encoding when Windows would not keep that name
+            // as written. A malformed encoding names no mod 626 can turn on, so it is skipped, not guessed at.
+            if (HoldingName.ModName(folder) is not { } name) continue;
+            // By its real name: a folder only a \\?\-aware tool could make (Foo.) is read as itself.
+            var dir = FolderNames.ExactPath(c.DisabledRoot, folder);
             var location = c.Locations.Count > 0 ? c.Locations[0].Name : "";
             var hadOnServer = new Dictionary<string, bool>();
             var isFolder = false;
@@ -593,7 +597,10 @@ public static class Scanner
         // delete below joins the name onto that root, and for ".." that join is the whole data folder.
         // An empty key used to join onto disabled/ as disabled/ itself: every turned-off mod, deleted.
         if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException(ModUninstall.NoNameMessage);
-        if (FolderNames.Escapes(c.DisabledRoot, name))
+        // The guard is on the folder the name is held in (HoldingName), which never leaves the root by
+        // construction: ".." is held in its own encoded folder. Kept as the last word before a recursive delete.
+        var heldFolder = HoldingName.Folder(name);
+        if (FolderNames.Escapes(c.DisabledRoot, heldFolder))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{name}\": that name leads outside 626's folder for turned-off mods. Nothing was changed.");
 
@@ -632,15 +639,18 @@ public static class Scanner
                 foreach (var manifest in ModInstallRegistry.ClaimsOn(c.DataDir, f))
                     ModInstallRegistry.Remove(c.DataDir, manifest.InstallId);
         }
-        // The turned-off copy, only when it is this mod's own: disabled/ lists an entry by that real name.
-        // Otherwise there is no copy of this mod's to delete, and joining the name would reach a different
-        // mod's (Foo. opens Foo, an 8.3 alias opens the long name). An entry whose real name ends in a dot or
-        // space (a \\?\-aware tool made it) is deleted through its exact path, so the real Foo. goes and its
-        // lookalike Foo never does. A name with a separator or ':' can't match a listed entry at all.
-        if (FolderNames.HasEntryNamed(c.DisabledRoot, name))
-            DeletePath(FolderNames.NamesOneFolder(name)
-                ? Path.Combine(c.DisabledRoot, name)
-                : FolderNames.ExactPath(c.DisabledRoot, name));
+        // The turned-off copy is in the mod's holding folder (HoldingName: the name itself, or its encoding
+        // when Windows would not keep the name as written, so Foo. is never held in, or deleted from, Foo's).
+        // Only when disabled/ lists an entry by that real name, so an 8.3 alias never reaches the long name.
+        if (FolderNames.HasEntryNamed(c.DisabledRoot, heldFolder))
+            DeletePath(Path.Combine(c.DisabledRoot, heldFolder));
+        // A folder whose real name ends in a dot or space can only have been made by a \\?\-aware tool, never
+        // by 626, which encodes such a name. It still lists under that name, so it still goes with the mod,
+        // through its exact path: the real Foo. goes and its lookalike Foo never does. A name with a separator
+        // or ':' can't match a listed entry at all.
+        else if (!string.Equals(heldFolder, name, StringComparison.Ordinal)
+                 && FolderNames.HasEntryNamed(c.DisabledRoot, name))
+            DeletePath(FolderNames.ExactPath(c.DisabledRoot, name));
     }
 
     /// <summary>Delete one entry the scan enumerated under <paramref name="baseDir"/>, by its real relative
@@ -669,7 +679,9 @@ public static class Scanner
             long size = 0;
             foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
             {
-                try { var len = new FileInfo(Path.Combine(root, f)).Length; if (len > size) size = len; }
+                // By its real name: a \\?\-made sidecar such as "Foo_P.sig." is sized as itself, not as the
+                // lookalike its plain join would open.
+                try { var len = new FileInfo(FolderNames.ExactPath(root, f)).Length; if (len > size) size = len; }
                 catch { /* missing in this root — try the next */ }
             }
             if (PakClassifier.IsBaseGamePak(Path.GetFileName(f), size))
@@ -698,7 +710,9 @@ public static class Scanner
         }
         var loc = LocByName(m.Location, c);
         GuardNoBasePakMove(m, loc);
-        var dest = Path.Combine(c.DisabledRoot, m.Name);
+        // HoldingName: "Foo." and "Foo " get folders of their own instead of the "Foo" Windows would normalise
+        // them onto, and CON its own instead of the console device.
+        var dest = Path.Combine(c.DisabledRoot, HoldingName.Folder(m.Name));
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
 
         // Refuse, moving nothing, when an earlier turned-off copy of this mod is already held. The
@@ -960,7 +974,7 @@ public static class Scanner
             return new EnableOutcome(name, true, false, null);
         }
 
-        var src = Path.Combine(c.DisabledRoot, name);
+        var src = Path.Combine(c.DisabledRoot, HoldingName.Folder(name));
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }
         catch { return new EnableOutcome(name, false, true, "no readable disabled metadata"); }

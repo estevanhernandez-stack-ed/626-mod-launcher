@@ -292,30 +292,34 @@ mods = [
 
     // ---- Safety rails on the held-folder delete ----
 
-    // A genuine escape: the name resolves outside the holding root. Refused, because the main uninstall would
-    // misbehave too: it deletes disabled/<name> recursively, which for ".." is the whole data folder.
+    // A name that would escape if joined as written. Before HoldingName this was refused, because the main
+    // uninstall deletes disabled/<name> recursively and for ".." that is the whole data folder. Now the name is
+    // held in its own encoded folder (".." in ~626~2e2e), which can't leave the root, and only that is reached.
     [Theory]
     [InlineData("..\\x")]
     [InlineData("..")]
     [InlineData(".")]
     [InlineData("..\\..\\x")]
-    public void A_mod_name_that_escapes_the_holding_root_throws_and_deletes_nothing(string name)
+    public void A_mod_name_that_would_escape_reaches_only_its_own_encoded_folder(string name)
     {
         var (g, ctx) = TreeGame();
         var outside = Path.Combine(ctx.DataDir, "x", "keep.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
         File.WriteAllText(outside, "KEEP");
         var bystander = HoldForSomeoneElse(ctx);
-        var pak = Path.Combine(ctx.GameRoot, "archive", "pc", "mod", "Plain.archive");
-        var row = new Mod { Name = name, Location = "mods", Enabled = true, Files = new List<string> { "Plain.archive" } };
+        var own = Path.Combine(TreeHolding.ModDir(ctx, name), "r6", "scripts", "x.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(own)!);
+        File.WriteAllText(own, "OWN");
+        Assert.StartsWith(Path.Combine(TreeHolding.Root(ctx), HoldingName.Prefix), own);   // pre-condition
+        var row = new Mod { Name = name, Location = "mods", Enabled = true, Files = new List<string>() };
 
-        var e = Assert.ThrowsAny<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
-        Assert.Contains("holding folder", e.Message);   // refused by the containment rail, not by chance
-        Assert.ThrowsAny<InvalidOperationException>(() => ModUninstall.Preview(ctx, row));
+        var preview = ModUninstall.Preview(ctx, row);
+        Assert.Equal(TreeHolding.ModDir(ctx, name), Assert.Single(preview.HeldFolders).Path);
+        ModUninstall.Run(ctx, row);
 
+        Assert.False(File.Exists(own));
         Assert.Equal("KEEP", File.ReadAllText(outside));
         Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
-        Assert.Equal("PLAIN", File.ReadAllText(pak));
     }
 
     // Round 4: a key can come out empty (`_P.pak` under strip_underscore_p_suffix, a bare `.pak`). It is
@@ -350,16 +354,16 @@ mods = [
         Assert.Equal("626 can't uninstall a mod with no name. Nothing was deleted.", e.Message);
     }
 
-    // Round 2: a name that stays inside the root but can't own a folder there as written (Windows strips a
-    // trailing dot or space; ':' and separators aren't one folder name) holds nothing. It is not refused,
-    // since that made such Mod Engine 2 mods impossible to uninstall, and it never reaches the folder Windows
-    // would normalise it onto.
+    // A name that can't be a folder as written (Windows strips a trailing dot or space; ':' and separators
+    // aren't one folder name) is held in its own HoldingName folder. With nothing held there it holds nothing,
+    // and it never reaches the folder Windows would normalise it onto. (#376 made such a name hold nothing at
+    // all; the encoding gives it a folder of its own instead.)
     [Theory]
     [InlineData("Bystander.")]
     [InlineData("Bystander ")]
     [InlineData("Bystander:alt")]
     [InlineData("x\\..\\Bystander")]
-    public void A_name_that_cant_own_a_held_folder_holds_nothing_and_never_reaches_one(string name)
+    public void A_name_that_cant_be_a_folder_as_written_never_reaches_the_lookalike(string name)
     {
         var (g, ctx) = TreeGame();
         var bystander = HoldForSomeoneElse(ctx);
@@ -369,6 +373,31 @@ mods = [
         Assert.Null(ModUninstall.Preview(ctx, row).HeldSentence());
         Assert.Empty(ModUninstall.Run(ctx, row));
 
+        Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
+    }
+
+    // ... and what IS held in its encoded folder is named in the preview and deleted, Bystander's still not.
+    [Theory]
+    [InlineData("Bystander.")]
+    [InlineData("Bystander ")]
+    [InlineData("Bystander:alt")]
+    [InlineData("CON")]
+    public void A_name_that_cant_be_a_folder_as_written_uninstalls_its_encoded_held_folder(string name)
+    {
+        var (g, ctx) = TreeGame();
+        var bystander = HoldForSomeoneElse(ctx);
+        var dir = TreeHolding.ModDir(ctx, name);
+        var own = Path.Combine(dir, "r6", "scripts", "x.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(own)!);
+        File.WriteAllText(own, "OWN");
+        var row = new Mod { Name = name, Location = "mods", Enabled = true, Files = new List<string>() };
+
+        var held = Assert.Single(ModUninstall.Preview(ctx, row).HeldFolders);
+        Assert.Equal(dir, held.Path);
+        Assert.Equal(new[] { "r6/scripts" }, held.Trees);
+        Assert.Equal(new[] { dir }, ModUninstall.Run(ctx, row));
+
+        Assert.False(Directory.Exists(dir));
         Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
     }
 

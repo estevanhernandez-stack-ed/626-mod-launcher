@@ -30,8 +30,9 @@ internal static class TreeHolding
     /// <summary>The root of every mod's held extra-tree entries.</summary>
     public static string Root(GameContext ctx) => Path.Combine(ctx.DataDir, "disabled-trees");
 
-    /// <summary>One mod's holding folder.</summary>
-    public static string ModDir(GameContext ctx, string mod) => Path.Combine(Root(ctx), mod);
+    /// <summary>One mod's holding folder: <see cref="HoldingName.Folder"/>, so <c>Foo.</c> is never held in
+    /// <c>Foo</c>'s folder and <c>CON</c> never names the console device.</summary>
+    public static string ModDir(GameContext ctx, string mod) => Path.Combine(Root(ctx), HoldingName.Folder(mod));
 
     /// <summary>Where an entry of <paramref name="tree"/> is held while the mod is off.</summary>
     public static string PathFor(GameContext ctx, string mod, string tree, string entry)
