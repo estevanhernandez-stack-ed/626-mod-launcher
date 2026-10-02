@@ -14,15 +14,61 @@ using ModManager.Core.Recency;
 namespace ModManager.App.ViewModels;
 
 /// <summary>
+/// The cover a library row shows, for both kinds of row (B6): the image, the themed initial when there
+/// is none, and the late swap when a cover arrives from Steam's CDN. One copy, so a fix lands once.
+/// </summary>
+public abstract partial class LibraryCoverRowViewModel : ObservableObject
+{
+    private string? _coverPath;
+    private ImageSource? _cover;
+
+    protected LibraryCoverRowViewModel(string? coverPath) => _coverPath = coverPath;
+
+    public abstract string Name { get; }
+
+    public string? CoverPath => _coverPath;
+
+    /// <summary>Built once per path and decoded at thumbnail size: the list holds every installed game,
+    /// and a full-size portrait decode per row per filter keystroke is what made it lag.</summary>
+    public ImageSource? Cover => _cover ??= string.IsNullOrEmpty(_coverPath)
+        ? null
+        : new BitmapImage(new Uri(_coverPath)) { DecodePixelWidth = 300 };
+
+    public bool HasCover => !string.IsNullOrEmpty(_coverPath);
+    public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PlaceholderVisibility => HasCover ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>The single-letter initial on the placeholder swatch when no cover art exists.</summary>
+    public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
+
+    /// <summary>Themed brush for the placeholder swatch — the app's live accent instance (hard-cast:
+    /// a missing key fails loud — F-066). App-side only; keeps Core pure.</summary>
+    public Brush Placeholder =>
+        (Brush)Application.Current.Resources["ThemeAccent"]; // hard-cast: fail loud (F-066)
+
+    /// <summary>Swap in a cover resolved later (e.g. fetched from the Steam CDN). Call on the UI thread —
+    /// it raises the cover bindings so the row replaces its placeholder with the image.</summary>
+    public void SetCover(string coverPath)
+    {
+        _coverPath = coverPath;
+        _cover = null;
+        OnPropertyChanged(nameof(CoverPath));
+        OnPropertyChanged(nameof(Cover));
+        OnPropertyChanged(nameof(HasCover));
+        OnPropertyChanged(nameof(CoverVisibility));
+        OnPropertyChanged(nameof(PlaceholderVisibility));
+    }
+}
+
+/// <summary>
 /// App-side view row wrapping a pure <see cref="GameLibraryRow"/> for the Library home. Adds the
 /// bound <see cref="ImageSource"/> cover (built on the UI thread from the resolved path) plus a
 /// themed-initial placeholder for games with no cover art — mirroring <see cref="GameOption"/>'s
 /// null-degrade behavior. The Core row stays pure; every WinUI type lives here in the App layer.
 /// </summary>
-public sealed partial class GameLibraryRowViewModel : ObservableObject
+public sealed partial class GameLibraryRowViewModel : LibraryCoverRowViewModel
 {
     public GameLibraryRow Row { get; }
-    private string? _resolvedCover;
 
     /// <summary>Pending Nexus update count for this game, already collapsed to 0 by the caller when the
     /// game is unchecked (<see cref="ModUpdateSummary.GameUpdateSummary.Checked"/> false) — this VM
@@ -30,17 +76,15 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     /// render identically (no badge). See <see cref="UpdateBadgeVisibility"/>.</summary>
     public int PendingUpdateCount { get; }
 
-    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0)
+    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0) : base(row.CoverPath)
     {
         Row = row;
-        _resolvedCover = row.CoverPath;
         PendingUpdateCount = pendingUpdateCount;
     }
 
     public string Id => Row.Id;
-    public string Name => Row.Name;
+    public override string Name => Row.Name;
     public string? StoreSource => Row.StoreSource;
-    public string? CoverPath => _resolvedCover;
     public LastPlayed Recency => Row.Recency;
     public int ModCount => Row.ModCount;
     public int EnabledCount => Row.EnabledCount;
@@ -49,39 +93,6 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
     public string? BanRisk => Row.BanRisk;
     public IReadOnlyList<string> DetectedLoaders => Row.DetectedLoaders;
     public string? NexusDomain => Row.NexusDomain;
-
-    /// <summary>Local cover image, built on the UI thread when the card renders; null degrades to the
-    /// themed <see cref="Placeholder"/> swatch. Mirrors <see cref="GameOption.Cover"/>.</summary>
-    public ImageSource? Cover => string.IsNullOrEmpty(CoverPath)
-        ? null
-        : new BitmapImage(new Uri(CoverPath));
-
-    /// <summary>True when there's no cover art — the view shows the placeholder instead.</summary>
-    public bool HasCover => !string.IsNullOrEmpty(CoverPath);
-
-    /// <summary>Visibility helpers so the view binds directly (no converters — matches the app pattern).</summary>
-    public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility PlaceholderVisibility => HasCover ? Visibility.Collapsed : Visibility.Visible;
-
-    /// <summary>Swap in a cover resolved asynchronously (e.g. fetched from the Steam CDN). Call on the UI
-    /// thread — it raises the cover bindings so the card replaces its placeholder with the image.</summary>
-    public void SetCover(string coverPath)
-    {
-        _resolvedCover = coverPath;
-        OnPropertyChanged(nameof(CoverPath));
-        OnPropertyChanged(nameof(Cover));
-        OnPropertyChanged(nameof(HasCover));
-        OnPropertyChanged(nameof(CoverVisibility));
-        OnPropertyChanged(nameof(PlaceholderVisibility));
-    }
-
-    /// <summary>The single-letter initial shown on the placeholder swatch when no cover art exists.</summary>
-    public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
-
-    /// <summary>Themed brush for the placeholder swatch — the app's live accent instance (hard-cast:
-    /// a missing key fails loud — F-066). App-side only; keeps Core pure.</summary>
-    public Brush Placeholder =>
-        (Brush)Application.Current.Resources["ThemeAccent"]; // hard-cast: fail loud (F-066)
 
     /// <summary>Human-readable recency line ("2 days ago" / "Unknown") — never a fake time.</summary>
     public string RecencyText => FormatRecency(Recency.LastPlayedUtc);
@@ -128,10 +139,8 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
         ? "No mods"
         : $"{ModCount} mod{(ModCount == 1 ? "" : "s")} · {EnabledCount} on";
 
-    /// <summary>Store-source badge text ("Steam" / "GOG" / "Manual" / ""). Title-cased for display.</summary>
-    public string SourceBadge => string.IsNullOrEmpty(StoreSource)
-        ? ""
-        : char.ToUpperInvariant(StoreSource[0]) + StoreSource[1..];
+    /// <summary>Store-source badge text ("Steam" / "EA" / ""), named the way unmanaged rows name theirs.</summary>
+    public string SourceBadge => GameLibraryBuilder.StoreDisplayName(StoreSource);
 
     // --- Chip presentation (view-thread helpers so the XAML can bind Visibility directly, matching
     // the app's VM-drives-Visibility convention — no converters in this codebase) ------------------
@@ -187,19 +196,14 @@ public sealed partial class GameLibraryRowViewModel : ObservableObject
 /// through its own store, and Start managing. Nothing about it creates state: no data dir, no registry
 /// entry, until the user asks for one.
 /// </summary>
-public sealed partial class UnmanagedGameRowViewModel : ObservableObject
+public sealed partial class UnmanagedGameRowViewModel : LibraryCoverRowViewModel
 {
     public InstalledGame Game { get; }
-    private string? _cover;
 
-    public UnmanagedGameRowViewModel(InstalledGame game, string? coverPath)
-    {
-        Game = game;
-        _cover = coverPath;
-    }
+    public UnmanagedGameRowViewModel(InstalledGame game, string? coverPath) : base(coverPath) => Game = game;
 
     public string AppId => Game.AppId;
-    public string Name => Game.Name;
+    public override string Name => Game.Name;
     public string StoreKind => Game.StoreKind;
 
     /// <summary>Stable id for this row. Keyed on store AND store id: a Steam app id and an EA content
@@ -211,12 +215,7 @@ public sealed partial class UnmanagedGameRowViewModel : ObservableObject
     public string ManageAutomationName => $"Start managing {Name}";
 
     /// <summary>The store, named the way the managed rows name theirs.</summary>
-    public string SourceBadge => StoreKind switch
-    {
-        "steam" => "Steam",
-        "ea" => "EA",
-        _ => StoreKind,
-    };
+    public string SourceBadge => GameLibraryBuilder.StoreDisplayName(StoreKind);
 
     /// <summary>The store's own last-played time, in the managed rows' words ("Unknown" when the store
     /// keeps none, as EA's does not).</summary>
@@ -225,29 +224,6 @@ public sealed partial class UnmanagedGameRowViewModel : ObservableObject
     /// <summary>Play goes through the store's own launcher; a store we can't launch through has no
     /// Play button rather than one that does nothing.</summary>
     public Visibility PlayVisibility => StoreLaunch.UrlFor(Game) is null ? Visibility.Collapsed : Visibility.Visible;
-
-    public string? CoverPath => _cover;
-    public ImageSource? Cover => string.IsNullOrEmpty(_cover) ? null : new BitmapImage(new Uri(_cover));
-    public bool HasCover => !string.IsNullOrEmpty(_cover);
-    public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[..1].ToUpperInvariant();
-
-    public Brush Placeholder =>
-        (Brush)Application.Current.Resources["ThemeAccent"]; // hard-cast: fail loud (F-066)
-
-    /// <summary>Visibility helpers so the view binds directly (no converters — matches the app pattern).</summary>
-    public Visibility CoverVisibility => HasCover ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility PlaceholderVisibility => HasCover ? Visibility.Collapsed : Visibility.Visible;
-
-    /// <summary>Swap in a cover fetched later (Steam's CDN). Call on the UI thread.</summary>
-    public void SetCover(string coverPath)
-    {
-        _cover = coverPath;
-        OnPropertyChanged(nameof(CoverPath));
-        OnPropertyChanged(nameof(Cover));
-        OnPropertyChanged(nameof(HasCover));
-        OnPropertyChanged(nameof(CoverVisibility));
-        OnPropertyChanged(nameof(PlaceholderVisibility));
-    }
 }
 
 /// <summary>
@@ -275,6 +251,16 @@ public sealed partial class LibraryViewModel : ObservableObject
     // from — and the unmanaged rows' view-models, keyed by store + store id.
     private IReadOnlyList<LibraryEntry> _entries = Array.Empty<LibraryEntry>();
     private readonly Dictionary<(string Store, string AppId), UnmanagedGameRowViewModel> _unmanaged = new();
+
+    // Each managed entry's view-model, keyed by the Core row INSTANCE the entry wraps. Built once per
+    // Load, not per keystroke, and by reference rather than by id: a hand-edited games.json with two
+    // entries sharing an id must still render both rows, not throw out of the filter.
+    private readonly Dictionary<GameLibraryRow, GameLibraryRowViewModel> _managedByRow = new(ReferenceEqualityComparer.Instance);
+
+    // The cover pass: the one in flight (a newer Load cancels it rather than racing it over the same
+    // ids), and the Steam ids the CDN had nothing for this session (asked once, not on every return home).
+    private CancellationTokenSource? _coverPass;
+    private readonly HashSet<string> _coverMisses = new(StringComparer.Ordinal);
 
     // Row id -> Steam app id, captured on Load so the async cover pass can fetch missing art by app id.
     private readonly Dictionary<string, string?> _appIdByRow = new();
@@ -413,10 +399,13 @@ public sealed partial class LibraryViewModel : ObservableObject
         TotalPendingUpdates = _updateSummaries.Sum(s => s.Count);
 
         _allRows.Clear();
+        _managedByRow.Clear();
         foreach (var r in rows)
         {
             var pending = updateByGameId.TryGetValue(r.Id, out var summary) && summary.Checked ? summary.Count : 0;
-            _allRows.Add(new GameLibraryRowViewModel(r, pending));
+            var vm = new GameLibraryRowViewModel(r, pending);
+            _allRows.Add(vm);
+            _managedByRow[r] = vm;
         }
 
         _appIdByRow.Clear();
@@ -444,31 +433,33 @@ public sealed partial class LibraryViewModel : ObservableObject
         OnPropertyChanged(nameof(UpdatesEntryText));
         OnPropertyChanged(nameof(UpdatesEntryTooltip));
 
-        _ = ResolveCoversAsync(); // fill covers Steam didn't cache locally from its public CDN (once)
+        _coverPass?.Cancel();
+        _coverPass = new CancellationTokenSource();
+        _ = ResolveCoversAsync(_coverPass.Token); // fill covers Steam didn't cache locally from its public CDN (once)
     }
 
     // Fetch portrait covers for rows that had no local art, then swap them in on the UI thread. Most
     // installed games only have a 32px icon cached locally, so their real cover comes from Steam's public
     // CDN, fetched once and cached. Failures (404 / offline) leave the row's themed placeholder.
-    private async Task ResolveCoversAsync()
+    private async Task ResolveCoversAsync(CancellationToken ct)
     {
-        foreach (var row in _allRows.ToList())
-        {
-            if (row.HasCover) continue;
-            if (!_appIdByRow.TryGetValue(row.Id, out var appId) || string.IsNullOrEmpty(appId)) continue;
-            var path = await _covers.FetchPortraitAsync(appId);
-            if (path is null) continue;
-            if (_dispatcher is null) row.SetCover(path);
-            else _dispatcher.TryEnqueue(() => row.SetCover(path));
-        }
+        // Managed rows by their registered Steam id; unmanaged Steam rows too, since the art is the
+        // store's and not state of ours. Steam only: an EA content id is not a Steam app id and must
+        // never be looked up as one.
+        var wanted = new List<(LibraryCoverRowViewModel Row, string AppId)>();
+        foreach (var row in _allRows)
+            if (!row.HasCover && _appIdByRow.TryGetValue(row.Id, out var appId) && !string.IsNullOrEmpty(appId))
+                wanted.Add((row, appId));
+        foreach (var row in _unmanaged.Values)
+            if (!row.HasCover && row.StoreKind == "steam" && !string.IsNullOrEmpty(row.AppId))
+                wanted.Add((row, row.AppId));
 
-        // Unmanaged Steam games get the same cover fetch: the art is the store's, not state of ours.
-        // Steam only — an EA content id is not a Steam app id and must never be looked up as one.
-        foreach (var row in _unmanaged.Values.ToList())
+        foreach (var (row, appId) in wanted)
         {
-            if (row.HasCover || row.StoreKind != "steam" || string.IsNullOrEmpty(row.AppId)) continue;
-            var path = await _covers.FetchPortraitAsync(row.AppId);
-            if (path is null) continue;
+            if (ct.IsCancellationRequested) return;
+            if (_coverMisses.Contains(appId)) continue;
+            var path = await _covers.FetchPortraitAsync(appId);
+            if (path is null) { _coverMisses.Add(appId); continue; }
             if (_dispatcher is null) row.SetCover(path);
             else _dispatcher.TryEnqueue(() => row.SetCover(path));
         }
@@ -542,12 +533,11 @@ public sealed partial class LibraryViewModel : ObservableObject
     {
         // Which entries pass is Core's call (LibraryList.Matches, tested); this only maps each one back
         // to its row view-model.
-        var managedById = _allRows.ToDictionary(r => r.Id, StringComparer.Ordinal);
         Rows.Clear();
         foreach (var e in _entries)
         {
             if (!LibraryList.Matches(e, SearchText, SourceFilter, TierFilter, BanRiskOnly)) continue;
-            if (e.Managed is { } m && managedById.TryGetValue(m.Id, out var managedRow)) Rows.Add(managedRow);
+            if (e.Managed is { } m && _managedByRow.TryGetValue(m, out var managedRow)) Rows.Add(managedRow);
             else if (e.Unmanaged is { } u && _unmanaged.TryGetValue((u.StoreKind, u.AppId), out var unmanagedRow)) Rows.Add(unmanagedRow);
         }
 

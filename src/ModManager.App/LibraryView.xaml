@@ -35,14 +35,14 @@
                     <Grid Grid.Column="0" Width="60" Height="80" CornerRadius="0"
                           VerticalAlignment="Center">
                         <Border CornerRadius="0" Background="{x:Bind Placeholder}"
-                                Visibility="{x:Bind PlaceholderVisibility}">
+                                Visibility="{x:Bind PlaceholderVisibility, Mode=OneWay}">
                             <TextBlock Text="{x:Bind Initial}" FontSize="26" FontWeight="Bold"
                                        Foreground="Black" HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
                         </Border>
                         <Border CornerRadius="0"
-                                Visibility="{x:Bind CoverVisibility}">
-                            <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
+                                Visibility="{x:Bind CoverVisibility, Mode=OneWay}">
+                            <Image Source="{x:Bind Cover, Mode=OneWay}" Stretch="UniformToFill" />
                         </Border>
                     </Grid>
 
@@ -197,14 +197,14 @@
                                             <Grid Width="150" Height="200" CornerRadius="0">
                                                 <!-- Themed initial placeholder when no cover art -->
                                                 <Border CornerRadius="0" Background="{x:Bind Placeholder}"
-                                                        Visibility="{x:Bind PlaceholderVisibility}">
+                                                        Visibility="{x:Bind PlaceholderVisibility, Mode=OneWay}">
                                                     <TextBlock Text="{x:Bind Initial}" FontSize="56" FontWeight="Bold"
                                                                Foreground="Black" HorizontalAlignment="Center"
                                                                VerticalAlignment="Center" />
                                                 </Border>
                                                 <Border CornerRadius="0"
-                                                        Visibility="{x:Bind CoverVisibility}">
-                                                    <Image Source="{x:Bind Cover}" Stretch="UniformToFill" />
+                                                        Visibility="{x:Bind CoverVisibility, Mode=OneWay}">
+                                                    <Image Source="{x:Bind Cover, Mode=OneWay}" Stretch="UniformToFill" />
                                                 </Border>
                                             </Grid>
                                             <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"

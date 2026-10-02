@@ -105,4 +105,37 @@ public class LibraryListTests
         Assert.Null(StoreLaunch.UrlFor(new InstalledGame("gog", "123", "X", "C:\\X")));
         Assert.Null(StoreLaunch.UrlFor(new InstalledGame("steam", " ", "X", "C:\\X")));
     }
+
+    // B6 review: FromUnixTimeSeconds throws past year 9999, and one malformed appmanifest took the
+    // whole home down with it.
+    [Theory]
+    [InlineData("99999999999999")]
+    [InlineData("9223372036854775807")]
+    public void A_timestamp_past_what_a_date_can_hold_is_unknown_not_a_crash(string raw)
+    {
+        Assert.Null(LibraryList.FromUnixSeconds(raw));
+        var e = Assert.Single(LibraryList.Compose(Array.Empty<GameLibraryRow>(),
+            new[] { new InstalledGame("steam", "1", "X", "C:\\X") { LastPlayed = raw } }));
+        Assert.Null(e.LastPlayedUtc);
+    }
+
+    // B6 review: nothing sets GameEntry.StoreSource, so every managed row had no store while the
+    // unmanaged rows beside it did, and a store filter dropped every managed game.
+    [Fact]
+    public void A_managed_games_store_is_read_from_the_ids_it_carries()
+    {
+        Assert.Equal("steam", GameLibraryBuilder.StoreOf(new GameEntry { Id = "a", SteamAppId = "1" }));
+        Assert.Equal("ea", GameLibraryBuilder.StoreOf(new GameEntry { Id = "b", EaContentId = "16425895" }));
+        Assert.Equal("gog", GameLibraryBuilder.StoreOf(new GameEntry { Id = "c", StoreSource = "gog", SteamAppId = "1" }));
+        Assert.Null(GameLibraryBuilder.StoreOf(new GameEntry { Id = "d" }));
+    }
+
+    [Theory]
+    [InlineData("steam", "Steam")]
+    [InlineData("ea", "EA")]
+    [InlineData("EA", "EA")]
+    [InlineData("gog", "Gog")]
+    [InlineData(null, "")]
+    public void Both_kinds_of_row_name_a_store_the_same_way(string? store, string shown)
+        => Assert.Equal(shown, GameLibraryBuilder.StoreDisplayName(store));
 }

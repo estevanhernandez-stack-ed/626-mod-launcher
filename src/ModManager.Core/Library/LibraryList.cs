@@ -70,10 +70,17 @@ public static class LibraryList
 
     /// <summary>The store's own last-played time for an install: Steam stamps unix seconds in the
     /// appmanifest (0 when never played); EA records none. Same reading as the Steam recency source.</summary>
-    public static DateTime? StoreLastPlayed(InstalledGame game)
-        => long.TryParse(game.LastPlayed, out var unixSeconds) && unixSeconds > 0
+    public static DateTime? StoreLastPlayed(InstalledGame game) => FromUnixSeconds(game.LastPlayed);
+
+    /// <summary>A store's unix-seconds timestamp, or null when it is missing, unreadable, zero (Steam's
+    /// "never"), or outside the range a date can hold. One malformed appmanifest must cost one row its
+    /// last-played time, never the whole library (FromUnixTimeSeconds throws past year 9999).</summary>
+    public static DateTime? FromUnixSeconds(string? raw)
+        => long.TryParse(raw, out var unixSeconds) && unixSeconds > 0 && unixSeconds <= MaxUnixSeconds
             ? DateTimeOffset.FromUnixTimeSeconds(unixSeconds).UtcDateTime
             : null;
+
+    private static readonly long MaxUnixSeconds = DateTimeOffset.MaxValue.ToUnixTimeSeconds();
 }
 
 /// <summary>How to start an installed game through its own store, for a game 626 does not manage.

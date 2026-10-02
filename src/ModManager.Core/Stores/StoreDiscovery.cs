@@ -2,8 +2,10 @@ using ModManager.Core.Manifest;
 
 namespace ModManager.Core.Stores;
 
-/// <summary>Which installed games the discovery lane offers: not already registered, keyed by store, and
-/// for EA only the ones the manifest knows (see <see cref="EaGameImport"/>).</summary>
+/// <summary>Which installed games the library lists as not managed (B6; once the discovery lane): not
+/// already registered, by store id or by folder, keyed by store; for EA only the ones the manifest knows
+/// (see <see cref="EaGameImport"/>); for Steam never a runtime or redistributable
+/// (<see cref="SteamNonGames"/>).</summary>
 public static class StoreDiscovery
 {
     public static IReadOnlyList<InstalledGame> Offerable(
@@ -27,7 +29,12 @@ public static class StoreDiscovery
                     && !registeredRoots.Contains(NormalizeDir(ig.InstallDir))
                     && EaGameImport.Match(ig, games) is { } matched
                     && !registeredIds.Contains(matched.Id)
-                : !steamIds.Contains(ig.AppId))
+                // A Steam game registered without its app id (a + Game add with the box left blank) is
+                // still that game: the folder says so, the same fact the EA branch uses. And a runtime or
+                // redistributable is never a game to offer (B6 review: they became library rows).
+                : !steamIds.Contains(ig.AppId)
+                    && !registeredRoots.Contains(NormalizeDir(ig.InstallDir))
+                    && !SteamNonGames.Is(ig))
             .ToList();
     }
 
