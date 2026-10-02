@@ -6,11 +6,18 @@ namespace ModManager.Core.RestorePoints;
 /// supplies the GameEntry + a built GameContext and picks the end-state.</summary>
 public sealed record GameCaptureInput(GameEntry Game, GameContext Context, string EndState);
 
-/// <summary>Result of <see cref="RestorePointEngine.ApplyEndState"/>. vanilla populates MovedFiles;
-/// modsActive populates EnableOutcomes. The other list is always empty.</summary>
+/// <summary>Result of <see cref="RestorePointEngine.ApplyEndState"/>. vanilla populates MovedFiles and
+/// TurnOffSkips (the turn-offs that refused; those mods are still active); modsActive populates
+/// EnableOutcomes. The lists an end-state does not use are empty.</summary>
 public sealed record EndStateResult(
     IReadOnlyList<MovedFile> MovedFiles,
-    IReadOnlyList<Scanner.EnableOutcome> EnableOutcomes);
+    IReadOnlyList<Scanner.EnableOutcome> EnableOutcomes,
+    IReadOnlyList<ClearSkip> TurnOffSkips);
+
+/// <summary>Result of <see cref="RestorePointEngine.ReplayGame"/>: the mods from the sealed turn-off set
+/// that are not on after Restore, each with the lane's reason when it gave one. Empty means every mod the
+/// clear turned off is back on (or the archive carried no turn-off record).</summary>
+public sealed record ReplayResult(IReadOnlyList<ClearSkip> NotBackOn);
 
 /// <summary>
 /// The headless Safe Clear / Restore file engine. Takes explicit archive paths — no %APPDATA%
@@ -20,27 +27,120 @@ public sealed record EndStateResult(
 public static partial class RestorePointEngine
 {
     /// <summary>Apply the chosen end-state to a game AFTER its capture is sealed.
-    /// vanilla: move detected direct-inject game-folder files into the archive (recorded), uninstall
-    /// frameworks (their files were captured), flip loader manifests off; owned mods untouched.
+    /// vanilla: move detected direct-inject game-folder files into the archive (recorded), turn off every
+    /// other enabled, switchable mod through <see cref="ModToggle"/> (held in the data dir; a refusal is
+    /// returned in TurnOffSkips, never thrown), uninstall frameworks (their files were captured), flip
+    /// loader manifests off; owned mods untouched.
     /// modsActive: re-enable everything from holding, returning per-mod outcomes (skips surfaced).
     /// <para>When <paramref name="plannedVanillaMoves"/> is supplied, MUTATE executes EXACTLY that set
     /// (sealed by the orchestrator in CAPTURE-ALL — single source of truth, no re-detect drift).
-    /// When null (skip-archive path, no sealed manifest), the moves are planned on the spot.</para></summary>
+    /// When null (skip-archive path, no sealed manifest), the moves are planned on the spot. The same holds
+    /// for <paramref name="plannedTurnOffs"/>, the sealed <c>turnedOffByClear</c> set.</para></summary>
     public static EndStateResult ApplyEndState(GameContext c, string endState, string gameArchiveDir,
-        IReadOnlyList<MovedFile>? plannedVanillaMoves = null)
+        IReadOnlyList<MovedFile>? plannedVanillaMoves = null, IReadOnlyList<ClearedMod>? plannedTurnOffs = null)
     {
         if (string.Equals(endState, "modsActive", StringComparison.OrdinalIgnoreCase))
-            return new EndStateResult(Array.Empty<MovedFile>(), ReEnableAll(c));
+            return new EndStateResult(Array.Empty<MovedFile>(), ReEnableAll(c), Array.Empty<ClearSkip>());
         if (!string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException($"Unknown end-state \"{endState}\" (expected \"vanilla\" or \"modsActive\").", nameof(endState));
 
         // Execute EXACTLY the sealed plan when given (single source of truth — no re-detect drift).
         // Skip-archive has no sealed manifest, so plan now.
         var planned = plannedVanillaMoves ?? PlanVanillaMoves(c);
+        // Planned against the moves BEFORE they run: a row the direct-inject step owns is left to it.
+        var turnOffs = plannedTurnOffs ?? PlanVanillaTurnOffs(c, planned);
         var moved = ExecuteVanillaMoves(c, gameArchiveDir, planned);
+        // Before the framework uninstall: the listing must look the way it did when the set was sealed (a
+        // UE4SS mods folder is a location because UE4SS is there), and a mod goes before what loads it.
+        var skips = TurnOff(c, turnOffs);
         UninstallFrameworks(c);
         FlipLoadersOff(c);
-        return new EndStateResult(moved, Array.Empty<Scanner.EnableOutcome>());
+        return new EndStateResult(moved, Array.Empty<Scanner.EnableOutcome>(), skips);
+    }
+
+    /// <summary>
+    /// Plan (do NOT execute) the vanilla turn-offs for a game: every enabled, switchable row of the one
+    /// listing (<see cref="ModListing.Resolve"/>), in the order they will be turned off, ordinary rows
+    /// first and loader rows last. The orchestrator seals this as <c>turnedOffByClear</c> BEFORE anything
+    /// moves (Law A), and Restore turns exactly this set back on.
+    ///
+    /// <para>Left out, each because something else already owns it: a <c>ReadOnly</c> row (another tool's
+    /// files, or a library the listing refuses to switch, as Play vanilla does); a UE4SS/BepInEx manifest
+    /// mod (captured in <c>loaderMods</c> and flipped by the loader sweep); and any row whose files sit at
+    /// or under a planned direct-inject move (that step moves it to <c>vanilla-moved</c>; never twice).</para>
+    /// </summary>
+    public static IReadOnlyList<ClearedMod> PlanVanillaTurnOffs(GameContext c, IReadOnlyList<MovedFile> plannedMoves)
+    {
+        var moved = plannedMoves.Select(mf => FullNorm(Path.Combine(c.GameRoot, mf.Rel)))
+            .Where(p => p is not null).Select(p => p!).ToList();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return ModListing.Resolve(c.Game)
+            .Where(m => m.Enabled && !m.ReadOnly && m.Loader is not ("ue4ss" or "bepinex"))
+            .Where(m => !CoveredByMoves(c, m, moved))
+            .Where(m => seen.Add(m.Location + "\u0000" + m.Name))
+            .OrderBy(m => IsLoaderRow(m) ? 1 : 0)   // stable: listing order within each group
+            .Select(m => new ClearedMod(m.Name, m.Location))
+            .ToList();
+    }
+
+    // A loader row: what other mods load through. Turned off last, turned back on first.
+    private static bool IsLoaderRow(Mod m) => m.IsLoader || m.Location == ProxyLoaderRows.LocationTag;
+
+    // True when any of the row's files is, or sits under, a path the direct-inject step will move.
+    private static bool CoveredByMoves(GameContext c, Mod m, IReadOnlyList<string> moved)
+    {
+        if (moved.Count == 0) return false;
+        var baseDir = m.Location switch
+        {
+            "direct-inject" or ProxyLoaderRows.LocationTag => DirectInjectListing.PlayFolder(c.GameRoot),
+            LooseMods.LooseRootListing.LooseRootLocation => LooseMods.LooseRootListing.PlayFolder(c.GameRoot),
+            _ => c.Locations.FirstOrDefault(l => l.Name == m.Location)?.Abs,
+        };
+        if (baseDir is null) return false;
+        var files = m.Files.Count > 0 ? m.Files : new List<string> { m.Name };
+        foreach (var f in files)
+        {
+            var abs = FullNorm(Path.Combine(baseDir, f));
+            if (abs is null) continue;
+            if (moved.Any(mp => string.Equals(abs, mp, StringComparison.OrdinalIgnoreCase)
+                    || abs.StartsWith(mp + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        return false;
+    }
+
+    private static string? FullNorm(string path)
+    {
+        try { return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)); }
+        catch { return null; }
+    }
+
+    // The sealed row, found again in a fresh listing: by name and location, then by name alone.
+    private static Mod? FindRow(IReadOnlyList<Mod> rows, ClearedMod cm)
+        => rows.FirstOrDefault(m => string.Equals(m.Name, cm.Name, StringComparison.OrdinalIgnoreCase)
+                                    && string.Equals(m.Location, cm.Location, StringComparison.OrdinalIgnoreCase))
+           ?? rows.FirstOrDefault(m => string.Equals(m.Name, cm.Name, StringComparison.OrdinalIgnoreCase));
+
+    // Turn the sealed set off through the one write path. A refusal is recorded and the rest go on: vanilla
+    // is best-effort, and the toggle rolls back its own partial move, so a refused mod is left as it was.
+    // Judged by one listing at the end as well, so a lane that refuses without throwing is still caught.
+    private static IReadOnlyList<ClearSkip> TurnOff(GameContext c, IReadOnlyList<ClearedMod> set)
+    {
+        if (set.Count == 0) return Array.Empty<ClearSkip>();
+        var skips = new List<ClearSkip>();
+        var rows = ModListing.Resolve(c.Game);
+        foreach (var cm in set)
+        {
+            var row = FindRow(rows, cm);
+            if (row is null || !row.Enabled) continue;   // gone or already off since the seal: nothing live
+            try { ModToggle.SetEnabledAsync(c, row, false).GetAwaiter().GetResult(); }
+            catch (Exception e) { skips.Add(new ClearSkip(cm.Name, e.Message)); }
+        }
+        var now = ModListing.Resolve(c.Game);
+        foreach (var cm in set)
+            if (!skips.Any(s => s.Name == cm.Name) && FindRow(now, cm) is { Enabled: true })
+                skips.Add(new ClearSkip(cm.Name, "it was still on after the turn-off"));
+        return skips;
     }
 
     private static IReadOnlyList<Scanner.EnableOutcome> ReEnableAll(GameContext c)
@@ -119,7 +219,9 @@ public static partial class RestorePointEngine
 
     /// <summary>Restore one game from its archive: data dir copy-back, vanilla-moved files back into
     /// the game folder (PathGate-gated per destination — Law B; sha-verified — Law C), framework
-    /// files back to InstallPath, loader enable-state re-applied. No File.Delete loop in the game
+    /// files back to InstallPath, loader enable-state re-applied, then the sealed <c>turnedOffByClear</c>
+    /// set turned back on through ModToggle and reconciled (what is not back on is returned, never thrown;
+    /// a ban-risk game without its acknowledgment is left held). No File.Delete loop in the game
     /// folder — verified per-file overwrite only. Note: PathGate validates path strings, not resolved
     /// symlink targets; a symlink inside the archive could redirect a write. Low threat on Windows
     /// since symlink creation requires elevation, but noted for completeness.
@@ -127,7 +229,7 @@ public static partial class RestorePointEngine
     /// (emptied the holding folder). The archived <c>data/disabled/</c> sub-tree is therefore stale
     /// and is intentionally NOT restored — resurrecting it would place the mod in both the live mods
     /// folder and the holding folder, breaking a subsequent user-initiated disable.</para></summary>
-    public static void ReplayGame(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
+    public static ReplayResult ReplayGame(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
     {
         var gameRootFull = Path.GetFullPath(liveCtx.GameRoot);
 
@@ -214,12 +316,65 @@ public static partial class RestorePointEngine
             catch { /* best effort */ }
         }
 
-        // 5. Remove the launcher-authored off-boarding sheet if present.
+        // 5. Turn back on exactly what the vanilla clear turned off (null = an archive from before the
+        //    record: nothing to do, as before). Last, so the files and loaders those mods need are back.
+        var notBackOn = TurnBackOn(ga, liveCtx);
+
+        // 6. Remove the launcher-authored off-boarding sheet if present.
         // Law B: gate the manifest-supplied path against the game root before deleting.
         if (ga.OffboardingSheetGameFolderPath is not null
             && PathGate.IsContainedAbsolute(ga.OffboardingSheetGameFolderPath, liveCtx.GameRoot)
             && File.Exists(ga.OffboardingSheetGameFolderPath))
             try { File.Delete(ga.OffboardingSheetGameFolderPath); } catch { /* best effort */ }
+
+        return new ReplayResult(notBackOn);
+    }
+
+    /// <summary>Why Restore left a ban-risk game's mods held.</summary>
+    public const string BanRiskLeftOff =
+        "this game carries a ban risk, so 626 won't turn mods on without your say-so. "
+        + "Turn them on from the launcher, which asks first.";
+
+    // Turn the sealed set back on through ModToggle, loader rows first (the reverse of the turn-off order),
+    // minus the turn-offs that refused (they never went off). Then reconcile against ONE listing: whatever
+    // is not on is reported, with the lane's reason when it gave one. Judging by the final listing, not by
+    // each call, is what lets a restore point from a clear that died partway finish cleanly: a mod MUTATE
+    // never reached is still on, and is not reported.
+    private static IReadOnlyList<ClearSkip> TurnBackOn(GameArchive ga, GameContext liveCtx)
+    {
+        if (ga.TurnedOffByClear is not { Count: > 0 } set
+            || !string.Equals(ga.EndState, "vanilla", StringComparison.OrdinalIgnoreCase))
+            return Array.Empty<ClearSkip>();
+        var refused = new HashSet<string>((ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Select(s => s.Name),
+            StringComparer.OrdinalIgnoreCase);
+        var wanted = set.Where(cm => !refused.Contains(cm.Name)).Reverse().ToList();
+        if (wanted.Count == 0) return Array.Empty<ClearSkip>();
+
+        var game = liveCtx.Game;
+        var rows = ModListing.Resolve(game);
+
+        // Never enable on a ban-risk game without its acknowledgment. The ack lives in the data dir, which
+        // step 1 has just put back, so a game acknowledged before the clear is acknowledged now.
+        if (BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(game), BanRiskAckStore.IsAcked(liveCtx.DataDir, game.Id ?? "")))
+            return wanted.Where(cm => FindRow(rows, cm) is not { Enabled: true })
+                .Select(cm => new ClearSkip(cm.Name, BanRiskLeftOff)).ToList();
+
+        var reasons = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cm in wanted)
+        {
+            var found = FindRow(rows, cm);
+            if (found is { Enabled: true }) continue;   // never went off (a clear that died partway): already back
+            var row = found ?? new Mod { Name = cm.Name, Location = cm.Location };
+            try
+            {
+                var o = ModToggle.SetEnabledWithOutcomeAsync(liveCtx, row, true).GetAwaiter().GetResult();
+                if (!o.Applied) reasons[cm.Name] = o.Reason;
+            }
+            catch (Exception e) { reasons[cm.Name] = e.Message; }
+        }
+        return ModToggle.NotApplied(game, wanted.Select(cm => (cm.Name, true)))
+            .Select(n => new ClearSkip(n, reasons.GetValueOrDefault(n) ?? "it didn't come back on"))
+            .ToList();
     }
 
     // Verified copy that OVERWRITES existing files (restore replays over a known layout — NOT a
@@ -327,7 +482,8 @@ public static partial class RestorePointEngine
             Mods: mods,
             OffboardingSheetGameFolderPath: null,
             SaveLocation: saveLocation,
-            SaveBackupCount: saveBackupCount);
+            SaveBackupCount: saveBackupCount,
+            DataDir: c.DataDir);
     }
 
     // How many launcher-made save backups live under the per-game saves dir (each backup is a

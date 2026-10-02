@@ -61,7 +61,9 @@ The string-contains assertion is what protects you — without it, the round-tri
 - Registry / settings (`src/ModManager.Core/Registry.cs`; `GameEntry.manifestId`, the entry a game was added as, covered by `ManifestIdentityTests.ManifestId_round_trips_as_camelCase_and_is_omitted_when_null`)
 - Tool registry (`src/ModManager.Core/Tools/ToolRegistry.cs`)
 - `ModMeta` `installedUtc` + `sourceConfidence` (`src/ModManager.Core/Mod.cs`)
-- Restore-point manifest (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs`)
+- Restore-point manifest (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs`), including the
+  vanilla turn-off record on each game (`turnedOffByClear` / `turnOffSkipped` / `dataDir`, schema 2;
+  round-trip in `RestorePointManifestTests.Turn_off_record_round_trips_as_camelCase`)
 - `TakenOverState` taken-over.json (`src/ModManager.Core/VortexTakeover.cs`)
 - `VanillaStash` vanilla-stash.json (`src/ModManager.Core/VanillaLaunch.cs`)
 - `NexusOAuthConfig` nexus-oauth-cache.json (`src/ModManager.Core/Nexus/NexusOAuthConfig.cs` — `JsonOpts`; written/read via `src/ModManager.App/Services/NexusOAuthConfigSource.cs`)

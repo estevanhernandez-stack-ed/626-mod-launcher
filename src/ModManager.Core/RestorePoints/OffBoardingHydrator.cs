@@ -15,7 +15,19 @@ public static class OffBoardingHydrator
                 m.Name, m.SourceUrl, m.SourceConfidence, FormatDate(m.InstalledUtc))).ToList(),
             OwnedMods: ga.OwnedMods.Select(o => new OffBoardingOwnedMod(o.Name, o.ManagedBy)).ToList(),
             SaveLocation: ga.SaveLocation,
-            SaveBackupCount: ga.SaveBackupCount);
+            SaveBackupCount: ga.SaveBackupCount,
+            TurnedOffCount: TurnedOffCount(ga),
+            HeldInDataDir: ga.TurnedOffByClear is null ? null : ga.DataDir,
+            TurnOffSkips: ga.TurnOffSkipped);
+
+    // What actually went off: the sealed set minus the turn-offs that refused (those are still active).
+    private static int TurnedOffCount(GameArchive ga)
+    {
+        if (ga.TurnedOffByClear is null) return 0;
+        var refused = new HashSet<string>((ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Select(s => s.Name),
+            StringComparer.OrdinalIgnoreCase);
+        return ga.TurnedOffByClear.Count(m => !refused.Contains(m.Name));
+    }
 
     // Launch guidance reflects the POST-CLEAR state. Vanilla: mod launchers were moved out -> launch
     // normally. modsActive: launchers are still installed -> point at the (default) launch target.

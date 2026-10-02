@@ -15,7 +15,12 @@ public sealed record OffBoardingReport(
     // SaveLocation is the live save path (null if the launcher had none recorded); SaveBackupCount is
     // how many launcher-made save backups were preserved into this restore point.
     string? SaveLocation = null,
-    int SaveBackupCount = 0);
+    int SaveBackupCount = 0,
+    // Vanilla with a turn-off record: how many mods were turned off and held, where they are held, and
+    // the ones whose turn-off refused (still active). Zero / null renders no section (an older archive).
+    int TurnedOffCount = 0,
+    string? HeldInDataDir = null,
+    IReadOnlyList<ClearSkip>? TurnOffSkips = null);
 
 public sealed record OffBoardingOwnedMod(string Name, string ManagedBy);
 

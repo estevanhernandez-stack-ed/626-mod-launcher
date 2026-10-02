@@ -85,4 +85,28 @@ public class OffBoardingHydratorTests
         Assert.Null(line.InstalledDate);
         Assert.Null(line.SourceUrl);
     }
+
+    [Fact]
+    public void Hydrate_counts_the_turned_off_set_minus_skips_and_carries_the_data_dir()
+    {
+        var ga = VanillaArchive() with
+        {
+            TurnedOffByClear = new[] { new ClearedMod("A", "mods"), new ClearedMod("B", "mods"), new ClearedMod("C", "mods") },
+            TurnOffSkipped = new[] { new ClearSkip("B", "locked") },
+            DataDir = @"D:\_626mods\t",
+        };
+        var report = OffBoardingHydrator.Hydrate(ga, @"C:\rp\x");
+
+        Assert.Equal(2, report.TurnedOffCount);
+        Assert.Equal(@"D:\_626mods\t", report.HeldInDataDir);
+        Assert.Equal("B", Assert.Single(report.TurnOffSkips!).Name);
+    }
+
+    [Fact]
+    public void Hydrate_leaves_the_turn_off_fields_empty_for_an_old_archive()
+    {
+        var report = OffBoardingHydrator.Hydrate(VanillaArchive(), @"C:\rp\x");
+        Assert.Equal(0, report.TurnedOffCount);
+        Assert.Null(report.TurnOffSkips);
+    }
 }

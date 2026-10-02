@@ -54,4 +54,28 @@ public class SafeClearSummaryTests
         Assert.Contains("Restore points", msg);
         Assert.DoesNotContain("not-a-stamp", msg);               // never surface a junk stamp
     }
+
+    private static RestoreResult Restored(params string[] warnings)
+        => new(Ok: true, RefusedReason: null, Conflicts: System.Array.Empty<RestoreConflict>(), Warnings: warnings);
+
+    [Fact]
+    public void RestoreNotes_is_null_when_everything_came_back()
+        => Assert.Null(SafeClearSummary.RestoreNotes(Restored()));
+
+    [Fact]
+    public void RestoreNotes_says_the_setup_is_back_and_lists_every_note()
+    {
+        var notes = SafeClearSummary.RestoreNotes(Restored(
+            "Pak Game: \"alpha\" is not back on: target folder now owned by another tool",
+            "Tree Game: \"CoolMod\" is not back on: it didn't come back on"));
+
+        Assert.NotNull(notes);
+        Assert.Contains("restored", notes, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"alpha\" is not back on", notes);
+        Assert.Contains("\"CoolMod\" is not back on", notes);
+    }
+
+    [Fact]
+    public void RestoreNotes_is_null_for_a_refused_restore()
+        => Assert.Null(SafeClearSummary.RestoreNotes(Restored("x") with { Ok = false }));
 }

@@ -87,6 +87,10 @@ public sealed class RestorePointOrchestrator
             // MUTATE-ALL. MUTATE passes the sealed plan to ApplyEndState so it executes EXACTLY that
             // set — no re-detect drift if the game folder changes between the two phases.
             var plannedByGame = new Dictionary<string, IReadOnlyList<MovedFile>>();
+            // The vanilla turn-off set per game, sealed alongside the moves (turnedOffByClear) and handed to
+            // MUTATE the same way: MUTATE turns off exactly what the seal says Restore will turn back on.
+            var turnOffsByGame = new Dictionary<string, IReadOnlyList<ClearedMod>>();
+            RestorePointManifest? sealedManifest = null;
 
             // CAPTURE-ALL (Law A) — non-destructive. For vanilla games, plan the moves NOW while
             // files are still in place and seal those planned MovedFiles into the manifest BEFORE
@@ -106,8 +110,10 @@ public sealed class RestorePointOrchestrator
                     if (string.Equals(endState, "vanilla", StringComparison.OrdinalIgnoreCase))
                     {
                         var planned = RestorePointEngine.PlanVanillaMoves(ctx);
+                        var turnOffs = RestorePointEngine.PlanVanillaTurnOffs(ctx, planned);
                         plannedByGame[g.Id] = planned;
-                        ga = ga with { MovedFiles = planned, OffboardingSheetGameFolderPath = sheetPath };
+                        turnOffsByGame[g.Id] = turnOffs;
+                        ga = ga with { MovedFiles = planned, TurnedOffByClear = turnOffs, OffboardingSheetGameFolderPath = sheetPath };
                     }
                     else
                     {
@@ -124,6 +130,7 @@ public sealed class RestorePointOrchestrator
                     Complete: true, opts.KeepNexus,
                     FileTally.ByteSize(rpDir) + movedBytes, FileTally.FileCount(rpDir) + movedCount, archives);
                 RestorePointManifestStore.WriteSealed(rpDir, manifest);   // THE SEAL — before any move (Law A)
+                sealedManifest = manifest;
             }
 
             // MUTATE-ALL — executes the planned moves (and other end-state work) AFTER the seal.
@@ -134,13 +141,40 @@ public sealed class RestorePointOrchestrator
             // rpDir/games/<id>/vanilla-moved (never deletes) — but no manifest is sealed and no marker
             // is written, so this folder is NOT a managed restore point. Files are preserved on disk
             // (recoverable manually); ListRestorePoints shows only sealed points.
+            // A turn-off that refuses (a held earlier copy, a locked file) does not abort: that mod stays as it
+            // was, the rest carry on, and the skip is recorded below and returned as a warning.
+            var skipsByGame = new Dictionary<string, IReadOnlyList<ClearSkip>>();
             foreach (var g in games)
             {
                 var ctx = _provider.ContextFor(g);
-                RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id),
-                    plannedByGame.TryGetValue(g.Id, out var pm) ? pm : null);
+                var end = RestorePointEngine.ApplyEndState(ctx, EndStateFor(g.Id, opts), Path.Combine(rpDir, "games", g.Id),
+                    plannedByGame.TryGetValue(g.Id, out var pm) ? pm : null,
+                    turnOffsByGame.TryGetValue(g.Id, out var to) ? to : null);
+                if (end.TurnOffSkips.Count > 0)
+                {
+                    skipsByGame[g.Id] = end.TurnOffSkips;
+                    foreach (var s in end.TurnOffSkips)
+                        warnings.Add($"{g.GameName}: \"{s.Name}\" is still active: {s.Reason}");
+                }
                 if (opts.CreateRestorePoint) RestoreMarkers.WriteRestoreAvailable(ctx.DataDir, timestamp);
                 sheetPaths.Add(Path.Combine(ctx.GameRoot, SheetFileName));
+            }
+
+            // Note the refusals on the sealed manifest, for the sheet and so Restore doesn't try to turn on a
+            // mod that never went off. An atomic rewrite of an already-complete manifest: a note, not part of
+            // the seal. If it fails, the sealed manifest still restores (Restore judges by the final listing).
+            if (sealedManifest is not null && skipsByGame.Count > 0)
+            {
+                try
+                {
+                    RestorePointManifestStore.WriteSealed(rpDir, sealedManifest with
+                    {
+                        Games = sealedManifest.Games
+                            .Select(ga => skipsByGame.TryGetValue(ga.Id, out var sk) ? ga with { TurnOffSkipped = sk } : ga)
+                            .ToList(),
+                    });
+                }
+                catch { /* best effort: the warnings above still name every skip */ }
             }
 
             // RESET — delete top-level launcher state (archived); nexus only if not keeping it.
@@ -227,7 +261,14 @@ public sealed class RestorePointOrchestrator
             {
                 var game = _provider.Games.FirstOrDefault(g => g.Id == ga.Id);
                 if (game is null) { warnings.Add($"{ga.GameName}: not in the restored registry — skipped."); continue; }
-                RestorePointEngine.ReplayGame(ga, Path.Combine(rpDir, "games", ga.Id), _provider.ContextFor(game));
+                var replay = RestorePointEngine.ReplayGame(ga, Path.Combine(rpDir, "games", ga.Id), _provider.ContextFor(game));
+                // The mods the clear turned off that are not back on, grouped by reason so a 200-mod game
+                // that hit one cause reads as one line, not two hundred.
+                foreach (var grp in replay.NotBackOn.GroupBy(n => n.Reason))
+                {
+                    var names = grp.Select(n => $"\"{n.Name}\"").ToList();
+                    warnings.Add($"{ga.GameName}: {string.Join(", ", names)} {(names.Count == 1 ? "is" : "are")} not back on: {grp.Key}");
+                }
             }
 
             RestoreMarkers.ClearLastClear(_dataRoot);

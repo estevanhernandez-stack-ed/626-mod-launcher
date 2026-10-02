@@ -35,6 +35,25 @@ public static class OffBoardingSheet
             foreach (var line in r.LaunchLines) sb.AppendLine("  " + line);
         sb.AppendLine();
 
+        // Vanilla with a turn-off record: say what went off, where it is held, and that Restore brings back
+        // exactly that set. A refused turn-off is named as still active, so "vanilla" never overclaims.
+        var skips = r.TurnOffSkips ?? Array.Empty<ClearSkip>();
+        if (r.TurnedOffCount > 0 || skips.Count > 0)
+        {
+            sb.AppendLine("MODS TURNED OFF");
+            if (r.TurnedOffCount > 0)
+            {
+                var mods = r.TurnedOffCount == 1 ? "1 mod" : $"{r.TurnedOffCount} mods";
+                sb.AppendLine($"  626 turned off {mods} and is holding {(r.TurnedOffCount == 1 ? "it" : "them")} in its data folder:");
+                if (!string.IsNullOrEmpty(r.HeldInDataDir)) sb.AppendLine("    " + r.HeldInDataDir);
+                sb.AppendLine("  Don't delete that folder. Restoring this setup turns exactly "
+                    + (r.TurnedOffCount == 1 ? "that 1 back on." : $"those {r.TurnedOffCount} back on."));
+            }
+            foreach (var s in skips)
+                sb.AppendLine($"  {s.Name} is still active: 626 couldn't turn it off. {s.Reason}");
+            sb.AppendLine();
+        }
+
         sb.AppendLine("WHAT'S STILL INSTALLED");
         sb.AppendLine(r.Frameworks.Count == 0
             ? "  Frameworks:  (none)"

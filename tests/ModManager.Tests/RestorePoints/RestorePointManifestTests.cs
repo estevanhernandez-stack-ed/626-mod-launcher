@@ -98,4 +98,64 @@ public class RestorePointManifestTests : IDisposable
         Assert.Contains("\"location\"", json);
         Assert.DoesNotContain("\"Location\"", json);
     }
+
+    [Fact]
+    public void Turn_off_record_round_trips_as_camelCase()
+    {
+        Directory.CreateDirectory(_tmp);
+        var m = Sample(complete: true);
+        m = m with
+        {
+            Games = new[]
+            {
+                m.Games[0] with
+                {
+                    TurnedOffByClear = new[] { new ClearedMod("CoolMod", "mods"), new ClearedMod("Alpha", "mods") },
+                    TurnOffSkipped = new[] { new ClearSkip("Alpha", "an earlier turned-off copy is held") },
+                    DataDir = "D:/SteamLibrary/_626mods/elden-ring",
+                },
+            },
+        };
+        RestorePointManifestStore.WriteSealed(_tmp, m);
+        var json = File.ReadAllText(Path.Combine(_tmp, RestorePointManifestStore.FileName));
+
+        Assert.Contains("\"turnedOffByClear\"", json);
+        Assert.Contains("\"turnOffSkipped\"", json);
+        Assert.Contains("\"dataDir\"", json);
+        Assert.Contains("\"reason\"", json);
+        Assert.DoesNotContain("\"TurnedOffByClear\"", json);
+        Assert.DoesNotContain("\"TurnOffSkipped\"", json);
+        Assert.DoesNotContain("\"DataDir\"", json);
+        Assert.DoesNotContain("\"Reason\"", json);
+        Assert.DoesNotContain("\"Location\"", json);
+
+        var g = RestorePointManifestStore.Read(_tmp)!.Games[0];
+        Assert.Equal(new[] { "CoolMod", "Alpha" }, g.TurnedOffByClear!.Select(x => x.Name));
+        Assert.Equal("mods", g.TurnedOffByClear![0].Location);
+        Assert.Equal("Alpha", Assert.Single(g.TurnOffSkipped!).Name);
+        Assert.Equal("D:/SteamLibrary/_626mods/elden-ring", g.DataDir);
+    }
+
+    [Fact]
+    public void A_manifest_written_before_the_turn_off_record_reads_it_as_null()
+    {
+        Directory.CreateDirectory(_tmp);
+        RestorePointManifestStore.WriteSealed(_tmp, Sample(complete: true));
+        var path = Path.Combine(_tmp, RestorePointManifestStore.FileName);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var game = node["games"]![0]!.AsObject();
+        game.Remove("turnedOffByClear");
+        game.Remove("turnOffSkipped");
+        game.Remove("dataDir");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var g = RestorePointManifestStore.Read(_tmp)!.Games[0];
+        Assert.Null(g.TurnedOffByClear);
+        Assert.Null(g.TurnOffSkipped);
+        Assert.Null(g.DataDir);
+    }
+
+    [Fact]
+    public void Schema_is_2_once_the_manifest_carries_the_turn_off_record()
+        => Assert.Equal(2, RestorePoint.SchemaVersion);
 }
