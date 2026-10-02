@@ -1388,6 +1388,15 @@ those, and for any manual re-run; it always reports back, even on nothing-found.
    Cyberpunk itself would not show this (its stored path is already `archive/pc/mod`), which is why
    the original recipe could not catch it.
 
+   **Fixed 2026-10-02 (B2), not yet re-run live.** The sweep's mod folders now come from
+   `DiscoverySweep.ModPathsFor(ctx)` in Core, which reads `ctx.Locations` - the same resolved list the
+   scanner lists from, appended UE4SS folder included - instead of the raw `ctx.Game.ModLocations`.
+   `BuildDiscoveryProposalsAsync` calls it, so folders and extensions both come from the resolved
+   context. The stale raw folder is deliberately not swept as well: engine-shaped promises a row after
+   adoption, and the scanner never reads that folder. Covered by `DiscoverySweepModPathsTests` (the
+   A5 fixture shape: a probe under `nativePC` is offered, one under the stale `mods` is not). EXPECT
+   on a re-run: `A5SweepProbe.arc` present, `RawPathProbe.arc` absent.
+
 **Why these matter:** every layer below the App wiring is unit-tested, but three separate
 review-round bugs on this exact feature were "ran fine, showed a status line, wrote nothing" —
 wrong extensions swept, archive candidates keyed to a dead write target, and a name index with no
@@ -1682,6 +1691,17 @@ removed afterwards; real games opened read-only; games.json restored byte-identi
    second registration (custom engine joined to the `dragon-s-dogma-dark-arisen` manifest entry:
    stored `mods`, scanned `nativePC`, `declared:false`). Also a cosmetic double space before "(this
    folder doesn't exist)".
+   **Fixed 2026-10-02 (B1), not yet re-run live.** `Scanner.GameContext` now tags each registration
+   location with its stored path and its resolved path, and `GameShape` calls a location declared when
+   it came from the registration's list, corrected or not; only a launcher-appended location (the
+   UE4SS folder) is derived. The corrected path is what shows, with what the registration stored:
+   EXPECT `mods (corrected from mod by the game's definition) (this folder doesn't exist)`, one space
+   before each parenthesis. `DeclaredLocation.CorrectedFrom` carries the stored path; the
+   missing-folder note adds "The game's definition corrected it from 'mod'." `get_game_shape` now
+   reports `declared:true` and `path: "mods"` with no MCP change (it projects `GameShape`; it does not
+   project `CorrectedFrom`). The SETUP chip can now fire for a missing corrected location, and stays
+   quiet here because Elden Ring has 11 mods. Covered by `GameShapeCorrectedPathTests`; the
+   `repair-elden-ring-reads-healthy` case now asserts the line.
 2. PASS. Test game with its folder present and 0 mods: no chip. Mod folder set to a missing path and
    saved: `StateChip.setup-drift` appears; Dismiss removes it; switching away and back re-shows it.
 3. PASS (current behaviour, see above). Off with no change; off + "A game folder is required..." for
@@ -1716,7 +1736,13 @@ removed afterwards; real games opened read-only; games.json restored byte-identi
 Harness: steps 1, 3, 7 and 8 are `repair-elden-ring-reads-healthy`, `repair-save-gating`,
 `repair-cancel-is-inert` and `repair-windrose-location-count-readonly` in `scripts/smoke-run.ps1`
 (run them alone with `-Only`; 3 and 7 register and remove their own fixture game). Step 1's case
-asserts the healthy half only, not the mislabelled line.
+now also asserts the "Set to look in" line (no "added by the launcher", no double space, names the
+stored path), so B1 cannot come back unnoticed.
+
+Minor findings, also fixed 2026-10-02: a failed move now removes the parent folders it created
+(the empty `_626mods` on the target drive in step 12), only while they are empty
+(`DataDirMoveExecuteTests`); and the Save blocker is pinned below the scroll area, directly above the
+buttons, with `AutomationId` `SetupBlockerText`, so a greyed Save always shows its reason (step 3).
 
 ---
 

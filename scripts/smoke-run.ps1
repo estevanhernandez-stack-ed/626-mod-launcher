@@ -1029,11 +1029,18 @@ Case 'repair-elden-ring-reads-healthy' 'PR (feat/registration-repair-ui) step 1'
         $mods = Get-SetupValue 'Mods found'
         $loaded = Get-SetupValue 'Loaded by'
         $verdict = (Get-SetupTexts | Where-Object { $_ -like '*drift, not damage*' } | Select-Object -First 1)
+        $look = Get-SetupValue 'Set to look in'
+        $stored = @(((Get-Content $gamesJson -Raw | ConvertFrom-Json).games | Where-Object id -eq 'elden-ring').modLocations)[0].path
         Assert-True ($mods -and $mods -ne 'None.') "Mods found reads '$mods'"
         Assert-True ($loaded -like '*Elden Mod Loader*') "Loaded by reads '$loaded'"
         Assert-True ($null -ne $verdict) "no verdict saying the drift is not damage"
+        # B1: the registration's own location, even when the game definition corrected its path
+        # (stored 'mod', effective 'mods'), is declared - never "added by the launcher".
+        Assert-True ($look -and $look -notlike '*added by the launcher*') "Set to look in attributes Elden Ring's own folder to the launcher: '$look'"
+        Assert-True (-not $look.Contains('  ')) "Set to look in has a double space: '$look'"
+        Assert-True ((-not $stored) -or $look.Contains([string]$stored)) "Set to look in never names the stored path '$stored': '$look'"
         Assert-True (-not (Test-SaveEnabled)) "Save is enabled with nothing changed"
-        "'$mods' loaded by '$loaded'; verdict says drift, not damage; no SETUP chip"
+        "'$mods' loaded by '$loaded'; look-in '$look'; verdict says drift, not damage; no SETUP chip"
     }
     finally {
         Close-SetupDialog
