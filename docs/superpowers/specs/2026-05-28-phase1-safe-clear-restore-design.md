@@ -107,7 +107,8 @@ SafeClearAsync:
     for each game, apply end-state:
       vanilla    → reverse direct-inject (DirectInject.Disable), uninstall frameworks
                    (Phase-0-fixed Uninstall, against InstallPath), move active mod payloads to
-                   holding; ReplacedStore-backed files restored to true original; loader manifests
+                   holding (through ModToggle; the set sealed in CAPTURE as turnedOffByClear —
+                   see 2026-10-02-safe-clear-holds-mods-design.md); ReplacedStore-backed files restored to true original; loader manifests
                    flipped off; OWNED mods left in place (can't move) and flagged in the sheet
       modsActive → re-enable everything from holding first (Phase-0-fixed EnableMod with rollback +
                    structured skip outcomes), then reconcile live enabled set vs pre-clear set and
@@ -135,6 +136,7 @@ A failure during MUTATE/RESET leaves a **complete, sealed** restore point (captu
 - Pure additive mod entries (catalog-known direct-inject, frameworks) → moved/uninstalled cleanly.
 - Loose files matching no catalog signature and no ReplacedStore record → archived, but the sheet says: "these files were added by mods and moved to your restore point; your game folder may differ from a fresh install if a mod overwrote a game file we didn't snapshot."
 - Owned/Vortex mods → not touched; sheet says "managed by Vortex — clean up there."
+- Every other enabled, switchable mod → turned off through the ordinary toggle (B4 extra trees included) and held in the game's data dir; the set is sealed in the manifest as `turnedOffByClear` and Restore turns exactly that set back on. The sheet says how many, names the data folder holding them, and lists any turn-off that refused as still active. Detail: [2026-10-02 Safe Clear holds mods](2026-10-02-safe-clear-holds-mods-design.md). (Before 2026-10-02 the code skipped this step; ordinary folder-lane mods stayed live after "Return to vanilla".)
 
 ## The off-boarding sheet (`OffBoardingReport` → `OffBoardingSheet.Render`)
 
