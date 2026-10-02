@@ -115,12 +115,27 @@ public sealed record GameShape
     /// "broken" (Este, 2026-08-18, recorded in ModFolderSeed). It stays declared everywhere else.
     /// "Not started" needs a game to have started on, though: with the game folder itself missing or
     /// wrong, a corrected location counts again, so the chip still leads to the dialog that fixes the
-    /// folder.</summary>
+    /// folder. Nor is it "not started" when the user's files still sit in the registration's OWN
+    /// pre-correction folder: Elden Ring with 5 mods in <c>mod</c>, no <c>mods</c>, and an empty list
+    /// is exactly the case the chip exists for. That is the same condition the leftover-files note
+    /// reads (<see cref="StoredFolderLeftovers"/>), so the note and the chip cannot disagree.</summary>
     private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared, string gameRoot)
     {
         if (modCount != 0) return false;
         var rootThere = !string.IsNullOrEmpty(gameRoot) && Directory.Exists(gameRoot);
-        return declared.Any(d => d.Declared && !d.Exists && (d.CorrectedFrom is null || !rootThere));
+        return declared.Any(d => d.Declared && !d.Exists
+            && (d.CorrectedFrom is null || !rootThere || StoredFolderLeftovers(d, gameRoot) > 0));
+    }
+
+    /// <summary>How many files sit in a corrected location's ORIGINAL folder (the path the
+    /// registration stores), which the launcher no longer reads. Zero when nothing was corrected, the
+    /// folder is absent or empty, or it contains the corrected folder (the game root, say), where the
+    /// count would include the very files the launcher does read.</summary>
+    private static int StoredFolderLeftovers(DeclaredLocation d, string gameRoot)
+    {
+        if (!d.Declared || d.CorrectedFrom is null) return 0;
+        var storedAbs = Scanner.LocationAbs(gameRoot, d.CorrectedFrom);
+        return IsInside(d.Absolute, storedAbs) ? 0 : FileCountUnder(storedAbs);
     }
 
     /// <summary>
@@ -276,13 +291,9 @@ public sealed record GameShape
         // that does not exist.
         // m2. A correction moved the launcher off the registration's own folder; files still sitting
         // there are no longer read, and nothing else would ever say so.
-        foreach (var d in declared.Where(d => d.Declared && d.CorrectedFrom is not null))
+        foreach (var d in declared)
         {
-            var storedAbs = Scanner.LocationAbs(gameRoot, d.CorrectedFrom!);
-            // A stored folder that CONTAINS the corrected one (the game root, say) would count the very
-            // files the launcher does read, and the whole game besides. Say nothing there.
-            if (IsInside(d.Absolute, storedAbs)) continue;
-            var leftover = FileCountUnder(storedAbs);
+            var leftover = StoredFolderLeftovers(d, gameRoot);
             if (leftover > 0)
                 notes.Add($"The registration's own '{d.CorrectedFrom}' folder holds {leftover} "
                           + $"file{(leftover == 1 ? "" : "s")} the launcher no longer reads.");

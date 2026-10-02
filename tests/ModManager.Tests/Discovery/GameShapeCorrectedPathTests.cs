@@ -107,6 +107,40 @@ public class GameShapeCorrectedPathTests : IDisposable
                                           && n.Contains("corrected it from 'mods'", StringComparison.Ordinal));
     }
 
+    // "Not started" only holds when nothing was started. The user's mods still sitting in the
+    // registration's OWN pre-correction folder, with the corrected folder missing and the list empty,
+    // is the Elden Ring case that went silent: 5 mods in `mod`, no `mods`, no rows, no chip.
+    [Fact]
+    public void Mods_left_in_the_old_folder_with_the_corrected_one_missing_need_attention()
+    {
+        FeedSays("nativePC");
+        var root = TestSupport.TempDir("shape-corrected-oldfiles-");
+        TestSupport.Write(Path.Combine(root, "mods", "Old.pak"), "x");
+        var game = Game(root);
+
+        var shape = GameShape.Of(game);
+
+        Assert.Equal(0, shape.ModCount);
+        Assert.False(Assert.Single(shape.DeclaredLocations).Exists);
+        Assert.True(shape.NeedsAttention);
+        Assert.True(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
+    }
+
+    [Fact]
+    public void An_empty_old_folder_with_the_corrected_one_missing_stays_quiet()
+    {
+        FeedSays("nativePC");
+        var root = TestSupport.TempDir("shape-corrected-oldempty-");
+        Directory.CreateDirectory(Path.Combine(root, "mods"));
+        var game = Game(root);
+
+        var shape = GameShape.Of(game);
+
+        Assert.Equal(0, shape.ModCount);
+        Assert.False(shape.NeedsAttention);
+        Assert.False(GameShape.NeedsAttentionFor(Scanner.GameContext(game), shape.ModCount));
+    }
+
     // "Not started" only holds when the game is actually there. With the game folder itself missing
     // or wrong, nothing found plus a missing corrected folder is a broken registration, and the chip
     // is the way to the dialog that fixes the game folder.

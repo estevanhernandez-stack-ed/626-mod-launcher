@@ -61,10 +61,6 @@ function Case {
         $status = 'FAIL'; $detail = $_.Exception.Message
     }
     try { Save-Shot -Path $shot | Out-Null } catch { $shot = '' }
-    # The last state the harness itself is answerable for. Every case drives the app, and the app
-    # writes games.json (activeGameId, fixture registrations), so "after the last case" is the
-    # harness's last own write. The end-of-run restore refuses to overwrite anything newer.
-    if ($null -ne $script:GamesSnapshot) { $script:GamesHashAfterHarness = Get-GamesJsonHash }
     $script:Results.Add([pscustomobject]@{
         Case = $Id; Section = $Section; Status = $status; Detail = "$detail"; Shot = (Split-Path $shot -Leaf)
     })
@@ -118,6 +114,13 @@ function Get-GamesJsonHash {
     try { [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData([System.IO.File]::ReadAllBytes($gamesJson))) }
     catch { $null }
 }
+# The harness OWNS a games.json state only right after something it did wrote it: the fixture's
+# register and remove, the app starting, and each navigation it drives (the app records activeGameId
+# when a game is opened or left). Never after an arbitrary case - re-hashing there would absorb a
+# change someone else made mid-run, and the end-of-run restore would then overwrite it.
+function Set-HarnessOwnedGames {
+    if ($null -ne $script:GamesSnapshot) { $script:GamesHashAfterHarness = Get-GamesJsonHash }
+}
 if ((-not $Only -or @($Only | Where-Object { $fixtureCases -contains $_ }).Count -gt 0) -and (Test-Path -LiteralPath $gamesJson)) {
     $script:GamesSnapshot = [System.IO.File]::ReadAllBytes($gamesJson)
     # Also on disk, so a refused restore below still leaves the user a copy to put back by hand.
@@ -135,6 +138,7 @@ Start-Sleep -Seconds 4
 
 $root = Get-AppRoot
 if (-not $root) { throw "app did not present a window" }
+Set-HarnessOwnedGames   # whatever the app wrote while starting is the run's own
 
 # Wait for the window to finish building rather than guessing at it. See Wait-Ready.
 $built = Wait-Ready $root
@@ -223,7 +227,7 @@ Case 'navigate-to-game' 'fix/library-repaint-after-add' {
     Assert-True ($null -ne $target) "no registered game reports any mods - nothing to exercise"
 
     $script:gameId = ($target.Current.AutomationId -replace '^GameRow\.','')
-    Invoke-Node $target; Wait-Idle 4000
+    Invoke-Node $target; Wait-Idle 4000; Set-HarnessOwnedGames
     $t2 = Get-Tree $root
     Assert-True ($null -ne (Find-ById $t2 'HomeButton')) "HomeButton absent after navigation"
     "opened '$($script:gameId)' ($targetLabel), game-view chrome realised"
@@ -296,7 +300,7 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
     # keyed on the FACT (StateChip.ban-risk), which is why the same assertion held before and after
     # the move.
     $t = Get-Tree $root
-    if (Find-ById $t 'HomeButton') { Invoke-Node (Find-ById $t 'HomeButton'); Wait-Idle 3000 }
+    if (Find-ById $t 'HomeButton') { Invoke-Node (Find-ById $t 'HomeButton'); Wait-Idle 3000; Set-HarnessOwnedGames }
 
     $rows = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.')
     $target = $null
@@ -308,7 +312,7 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
 
     $id = ($target.Current.AutomationId -replace '^GameRow\.','')
     try {
-        Invoke-Node $target; Wait-Idle 5000
+        Invoke-Node $target; Wait-Idle 5000; Set-HarnessOwnedGames
         $t2 = Get-Tree $root
         Assert-OnGameView $t2
         $chip = Find-ById $t2 'StateChip.ban-risk'
@@ -333,9 +337,9 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
         # passed is worse, because it hides the mess exactly when there is one.
         if ($script:gameId -and $id -ne $script:gameId) {
             $h = Find-ById (Get-Tree $root) 'HomeButton'
-            if ($h) { Invoke-Node $h; Wait-Idle 3000 }
+            if ($h) { Invoke-Node $h; Wait-Idle 3000; Set-HarnessOwnedGames }
             $back = Find-ById (Get-Tree $root) ("GameRow." + $script:gameId)
-            if ($back) { Invoke-Node $back; Wait-Idle 5000 }
+            if ($back) { Invoke-Node $back; Wait-Idle 5000; Set-HarnessOwnedGames }
         }
     }
 }
@@ -626,11 +630,11 @@ Write-Host '  -- cross-game views --' -ForegroundColor White
 Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $t = Get-Tree $root
     $homeBtn = Find-ById $t 'HomeButton'
-    if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500 }
+    if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500; Set-HarnessOwnedGames }
     $t2 = Get-Tree $root
     $entry = Find-ById $t2 'LibraryUpdatesEntry'
     if (-not $entry) { return "no pending updates - view not reachable from home" }
-    Invoke-Node $entry; Wait-Idle 3500
+    Invoke-Node $entry; Wait-Idle 3500; Set-HarnessOwnedGames
     $t3 = Get-Tree $root
     $rows = @(Find-AllByIdPrefix $t3 'UpdateRow.')
     $back = Find-ById $t3 'UpdatesBackButton'
@@ -669,7 +673,7 @@ Case 'updates-view' 'feat/updates-surface (A10/A11 surface)' {
     $backwards = @($rowText | Where-Object {
         $_ -match '(\S+)\s*→\s*(\S+)' -and -not (Test-ProvablyNewer $Matches[1] $Matches[2])
     })
-    if ($back) { Invoke-Node $back; Wait-Idle 2000 }
+    if ($back) { Invoke-Node $back; Wait-Idle 2000; Set-HarnessOwnedGames }
     # This case printed '0 update rows' and passed for as long as it existed, because the rows carried
     # no AutomationId and nothing asserted they did (A28). A number nobody checks is a case that
     # cannot fail.
@@ -712,11 +716,11 @@ Case 'intake-via-picker' 'A25/A26 - intake records what it placed' {
     $t = Get-Tree $root
     if (-not (Find-ById $t 'AddModsButton')) {
         $home = Find-ById $t 'HomeButton'
-        if ($home) { Invoke-Node $home; Wait-Idle 2500; $t = Get-Tree $root }
+        if ($home) { Invoke-Node $home; Wait-Idle 2500; Set-HarnessOwnedGames; $t = Get-Tree $root }
     }
     # Explicitly Windrose - not whichever game the earlier navigation happened to land on.
     $row = Find-ById (Get-Tree $root) 'GameRow.windrose'
-    if ($row) { Invoke-Node $row; Wait-Idle 4000 }
+    if ($row) { Invoke-Node $row; Wait-Idle 4000; Set-HarnessOwnedGames }
     $t = Get-Tree $root
     Assert-OnGameView $t
 
@@ -830,10 +834,10 @@ Case 'alias-names-hold-apart' 'fix/toggle-name-alias - holding-folder names Wind
         $t = Get-Tree $root
         if (-not (Find-ById $t 'AddModsButton')) {
             $homeBtn = Find-ById $t 'HomeButton'
-            if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500 }
+            if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500; Set-HarnessOwnedGames }
         }
         $wr = Find-ById (Get-Tree $root) 'GameRow.windrose'
-        if ($wr) { Invoke-Node $wr; Wait-Idle 4000 }
+        if ($wr) { Invoke-Node $wr; Wait-Idle 4000; Set-HarnessOwnedGames }
         Assert-OnGameView (Get-Tree $root)
         Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 4000
         Assert-NoModal $root
@@ -926,11 +930,11 @@ function Get-GamesHash { (Get-FileHash $gamesJson -Algorithm SHA256).Hash }
 
 function Open-GameById([string]$Id) {
     $h = Find-ById (Get-Tree $root) 'HomeButton'
-    if ($h) { Invoke-Node $h; Wait-Idle 2500 }
+    if ($h) { Invoke-Node $h; Wait-Idle 2500; Set-HarnessOwnedGames }
     $null = Test-RowPresent (Get-Tree $root) "GameRow.$Id"
     $row = Find-ById (Get-Tree $root) "GameRow.$Id"
     if (-not $row) { throw "SKIP: no GameRow.$Id on this machine" }
-    Invoke-Node $row; Wait-Idle 5000
+    Invoke-Node $row; Wait-Idle 5000; Set-HarnessOwnedGames
     Assert-OnGameView (Get-Tree $root)
 }
 
@@ -1014,6 +1018,7 @@ function New-RepairFixture {
     New-Item -ItemType Directory -Force -Path $mods | Out-Null
     1..3 | ForEach-Object { Set-Content -LiteralPath (Join-Path $mods "RepairFixture$($_)_P.pak") -Value "SMOKE626 inert $_" -Encoding ascii }
     $r = Invoke-McpTool 'register_game' @{ name = 'Repair Harness Fixture'; gameRoot = (Join-Path $fixtureRoot 'FixtureGame'); engine = 'ue-pak' }
+    Set-HarnessOwnedGames   # the register, if it wrote anything, was ours
     Assert-True ($r.ok -and $r.gameId -eq $fixtureId) "fixture registration failed: $($r | ConvertTo-Json -Compress)"
     Open-GameById $fixtureId
 }
@@ -1027,17 +1032,17 @@ function Remove-RepairFixture {
     try {
         if (Test-ModalOpen $root) { Close-SetupDialog }
         $h = Find-ById (Get-Tree $root) 'HomeButton'
-        if ($h) { Invoke-Node $h; Wait-Idle 2500 }
+        if ($h) { Invoke-Node $h; Wait-Idle 2500; Set-HarnessOwnedGames }
         $row = Find-ById (Get-Tree $root) "GameRow.$fixtureId"
         if ($row) {
-            Invoke-Node $row; Wait-Idle 4000
+            Invoke-Node $row; Wait-Idle 4000; Set-HarnessOwnedGames
             $opts = Find-ById (Get-Tree $root) 'GameOptionsButton'
             try { Expand-Node $opts } catch { Invoke-Node $opts }
             Wait-Idle 1200
             Invoke-Node (Find-ById (Get-Tree $root) 'MenuRemoveGame'); Wait-Idle 1500
             $d = Get-ContentDialog $root 'Remove game?' -ButtonName 'Remove'
             $rb = @(Get-Tree $d | Where-Object { try { $_.Current.Name -eq 'Remove' } catch { $false } })[0]
-            Invoke-Node $rb; Wait-Idle 3000
+            Invoke-Node $rb; Wait-Idle 3000; Set-HarnessOwnedGames
         }
     }
     finally {
@@ -1187,6 +1192,8 @@ finally {
         try {
             # Someone else changed games.json after the harness's last own write (the user, another
             # tool, another launcher instance). Overwriting would destroy their change, so leave it.
+            # With no harness write at all, the owned hash is still the snapshot's, so this compares
+            # against the snapshot. A file already back at the snapshot is fine to rewrite: no-op.
             if ($now -ne $script:GamesHashAfterHarness -and $now -ne $want) {
                 # Not `return`: at script level that would end the run before the report.
                 Write-Host "  !! games.json changed outside the harness during the run - NOT restored. The run-start copy is $gamesSnapshotPath" -ForegroundColor Red
