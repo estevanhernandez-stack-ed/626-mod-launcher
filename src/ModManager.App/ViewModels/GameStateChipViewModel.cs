@@ -84,7 +84,7 @@ public sealed partial class GameStateChipViewModel : ObservableObject
 
     /// <summary>True when this chip's sentence is the one showing under the strip.</summary>
     [ObservableProperty]
-    private bool isExpanded;
+    public partial bool IsExpanded { get; set; }
 
     [RelayCommand]
     private void Select() => _onSelect(this);

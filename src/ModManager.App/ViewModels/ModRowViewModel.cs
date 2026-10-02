@@ -21,7 +21,7 @@ public sealed partial class ModRowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleIsOn))]
     [NotifyPropertyChangedFor(nameof(ToggleAutomationName))]
-    private bool enabled;
+    public partial bool Enabled { get; set; }
 
     // Screen-reader names carry the mod's identity — 27 rows must never announce as 27
     // identical "toggle switch" / "uninstall" controls (vibe-glow F-034).
@@ -47,7 +47,7 @@ public sealed partial class ModRowViewModel : ObservableObject
     // carries the dimming (vibe-glow F-016). CanInteract folds in the static CanToggle gate.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInteract))]
-    private bool isBusy;
+    public partial bool IsBusy { get; set; }
 
     public bool CanInteract => CanToggle && !IsBusy;
 
@@ -60,7 +60,7 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ThumbnailVisibility))]
     [NotifyPropertyChangedFor(nameof(ToggleVisibility))]
     [NotifyPropertyChangedFor(nameof(VariantOptionsVisibility))]
-    private bool inLoadOrder;
+    public partial bool InLoadOrder { get; set; }
 
     // Toggling and uninstall are granted separately. Direct-inject mods can be toggled (reversible
     // move) but not uninstalled here — we never delete loose files in the game's exe folder.
@@ -73,7 +73,7 @@ public sealed partial class ModRowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OrderValue))]
-    private int orderPosition;
+    public partial int OrderPosition { get; set; }
 
     public double OrderValue => OrderPosition;
     public Visibility OrderVisibility => InLoadOrder ? Visibility.Visible : Visibility.Collapsed;
@@ -82,7 +82,7 @@ public sealed partial class ModRowViewModel : ObservableObject
     public ModRowViewModel(Mod mod, bool canToggle = true, bool canUninstall = true)
     {
         Mod = mod;
-        enabled = mod.Enabled;
+        Enabled = mod.Enabled;   // no change hook and no subscribers yet: the notify goes nowhere
         _canToggle = canToggle;
         _canUninstall = canUninstall;
     }
@@ -177,7 +177,7 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MpBadgeBrush))]
     [NotifyPropertyChangedFor(nameof(MpBadgeOpacity))]
     [NotifyPropertyChangedFor(nameof(MpBadgeTooltip))]
-    private MpRisk? mpOverride;
+    public partial MpRisk? MpOverride { get; set; }
 
     // Readme/description claim outranks the class hint ("unless the readme says otherwise"); a
     // user override (set after testing) outranks both. Silence stays honest at "MP?".
@@ -310,7 +310,7 @@ public sealed partial class ModRowViewModel : ObservableObject
         : "";
 
     /// <summary>Chip color: amber (warning) for a conditional hint, red (danger) for a required one.</summary>
-    public Brush MissingFrameworkBrush => Res(LoaderHintIsSoft ? "ThemeWarning" : "ThemeDanger");
+    public Brush? MissingFrameworkBrush => Res(LoaderHintIsSoft ? "ThemeWarning" : "ThemeDanger");
 
     public Uri? MissingFrameworkUri => SafeUrl.IsHttpUrl(MissingFrameworkUrl) ? new Uri(MissingFrameworkUrl!) : null;
 

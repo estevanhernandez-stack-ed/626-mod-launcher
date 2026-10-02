@@ -13,7 +13,6 @@ using ModManager.Core.Catalog;
 using ModManager.Core.Frameworks;
 using ModManager.Core.Plugins;
 using ModManager.Core.Tools;
-using Windows.Storage.Pickers;
 using Windows.UI;
 
 namespace ModManager.App;
