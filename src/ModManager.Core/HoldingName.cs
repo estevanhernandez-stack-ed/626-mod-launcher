@@ -11,11 +11,16 @@ namespace ModManager.Core;
 /// <c>Foo..archive</c> is <c>Foo.</c>, <c>CON_P.pak</c> is <c>CON</c>), so a holding folder named after the mod
 /// could be another mod's, or no folder at all.</para>
 ///
-/// <para>An ordinary name is its own folder, unchanged, so every folder an earlier build made still works
-/// with no migration. A name Windows would not keep as written gets <c>~626~</c> plus the lowercase hex of its
+/// <para>An ordinary name is its own folder, unchanged, so a folder an earlier build made for an ordinary name
+/// needs no migration. A name Windows would not keep as written gets <c>~626~</c> plus the lowercase hex of its
 /// UTF-8 bytes: <c>Foo.</c> is held in <c>~626~466f6f2e</c>. The encoding is reversible
-/// (<see cref="ModName"/>), never collides with an ordinary name (those never start with the prefix, which is
-/// why a name that does is encoded too), and two names never share a folder.</para>
+/// (<see cref="ModName"/> is its exact inverse), never collides with an ordinary name (those never start with
+/// the prefix, which is why a name that does is encoded too), and two names that differ other than by case
+/// never share a folder. Two ordinary names differing only in case still do, as Windows compares them.</para>
+///
+/// <para>Not every risky name was unreachable before: Windows 11 lets a plain <c>CreateDirectory</c> make
+/// <c>disabled/Aux</c> or <c>disabled/CON</c>, so an older build may have held such a mod under its raw name.
+/// Those holds are read through <see cref="LegacyPath"/>, by their real name, rather than migrated.</para>
 /// </summary>
 internal static class HoldingName
 {
@@ -29,7 +34,8 @@ internal static class HoldingName
 
     private static HashSet<string> BuildDeviceNames()
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CON", "PRN", "AUX", "NUL" };
+        // CONIN$ and CONOUT$ are the console's input and output buffers.
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" };
         foreach (var port in new[] { "COM", "LPT" })
         {
             for (var i = 0; i <= 9; i++) set.Add(port + i);
@@ -57,24 +63,37 @@ internal static class HoldingName
            + "Nothing was moved.";
 
     /// <summary>
-    /// The mod a holding folder belongs to. A <see cref="Prefix"/> name followed by the lowercase hex of a
-    /// valid UTF-8 name decodes to that name; any other folder name is the mod's name as it is (an ordinary
-    /// name, or a folder an earlier build made). Null for a malformed encoding, so a listing skips the folder
-    /// rather than guessing whose it is.
+    /// The mod a holding folder belongs to: the exact inverse of <see cref="Folder"/>. A <see cref="Prefix"/>
+    /// folder decodes only when <see cref="Folder"/> of the decoded name gives the same folder back. Any other
+    /// folder name, a prefixed one included (hand-made, malformed, or a legacy mod literally named
+    /// <c>~626~...</c>), is the mod's raw name as it is, and a turn-on reaches it through
+    /// <see cref="LegacyPath"/>.
     /// </summary>
-    public static string? ModName(string folderName)
+    public static string ModName(string folderName)
+        => Decode(folderName) is { } name && Folder(name) == folderName ? name : folderName;
+
+    private static string? Decode(string folderName)
     {
-        if (!folderName.StartsWith(Prefix, StringComparison.Ordinal)) return folderName;
+        if (!folderName.StartsWith(Prefix, StringComparison.Ordinal)) return null;
         var hex = folderName.AsSpan(Prefix.Length);
         if (hex.Length == 0 || hex.Length % 2 != 0) return null;
         foreach (var ch in hex)
             if (!(ch is >= '0' and <= '9' or >= 'a' and <= 'f')) return null;
-        var bytes = Convert.FromHexString(hex);
-        var name = Wtf8Decode(bytes);
-        // Only the one spelling Folder writes: an overlong or otherwise non-canonical byte sequence is not a
-        // name 626 encoded.
-        if (name is null || !Wtf8Encode(name).AsSpan().SequenceEqual(bytes)) return null;
-        return name;
+        return Wtf8Decode(Convert.FromHexString(hex));
+    }
+
+    /// <summary>
+    /// A hold an older build made under the raw name of a mod whose name now encodes (Windows 11 allows
+    /// <c>disabled/Aux</c>), or a prefixed folder <see cref="Folder"/> would not write: the path to it under
+    /// <paramref name="root"/>, by its exact real name, or null when there is none. Only a listed entry with
+    /// that real name counts, never one Windows would normalise the name onto, and never a name that leaves
+    /// the root.
+    /// </summary>
+    public static string? LegacyPath(string root, string modName)
+    {
+        if (string.IsNullOrWhiteSpace(modName) || Folder(modName) == modName) return null;
+        if (!FolderNames.HasEntryNamed(root, modName) || FolderNames.Escapes(root, modName)) return null;
+        return FolderNames.ExactPath(root, modName);
     }
 
     // True when Windows keeps the name as one folder exactly as written, and it can't be mistaken for an

@@ -57,6 +57,9 @@ public class HoldingNameTests
     [InlineData("COM¹")]
     [InlineData("LPT³")]
     [InlineData("CON .txt")]
+    [InlineData("CONIN$")]
+    [InlineData("conout$")]
+    [InlineData("CONOUT$.log")]
     [InlineData("~626~466f6f")]
     [InlineData("~626~")]
     public void A_risky_name_gets_an_encoded_folder(string name)
@@ -131,14 +134,29 @@ public class HoldingNameTests
     }
 
     [Theory]
-    [InlineData("~626~4")]          // odd length
-    [InlineData("~626~zz")]         // not hex
-    [InlineData("~626~466F6F2E")]   // uppercase hex is not what Folder writes
-    [InlineData("~626~ff")]         // not UTF-8
-    [InlineData("~626~c0af")]       // overlong
-    [InlineData("~626~")]           // nothing encoded
-    public void A_malformed_encoding_decodes_to_nothing(string folder)
-        => Assert.Null(HoldingName.ModName(folder));
+    [InlineData("~626~4")]
+    [InlineData("~626~zz")]
+    [InlineData("~626~466F6F2E")]
+    [InlineData("~626~ff")]
+    [InlineData("~626~c0af")]
+    [InlineData("~626~")]
+    [InlineData("~626~466f6f")]
+    // ModName is the exact inverse: a ~626~ folder decodes only when Folder(decoded) gives it back. Anything
+    // else (hand-made, or a legacy mod literally named ~626~...) is that raw name, turned on through the
+    // legacy fallback rather than hidden.
+    public void A_non_canonical_prefixed_folder_decodes_to_itself(string folder)
+        => Assert.Equal(folder, HoldingName.ModName(folder));
+
+    [Fact]
+    public void Decoding_is_exact_for_every_folder_Folder_writes()
+    {
+        foreach (var name in new[] { "Foo.", "Foo ", "CON", "~626~466f6f", "a/b" })
+        {
+            var folder = HoldingName.Folder(name)!;
+            Assert.Equal(name, HoldingName.ModName(folder));
+            Assert.Equal(folder, HoldingName.Folder(HoldingName.ModName(folder)!));
+        }
+    }
 
     [Theory]
     [InlineData("Bar")]

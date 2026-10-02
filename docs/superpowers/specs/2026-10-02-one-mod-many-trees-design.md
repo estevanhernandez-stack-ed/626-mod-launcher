@@ -167,15 +167,23 @@ existing `disabled/<Mod>`, not inside it.
   stripped and `CON`, `NUL`, `COM1` and the rest (with or without an extension) are devices. So `Foo _P.pak`
   (the mod `Foo `) was held in `Foo`'s folder, `Foo..archive` (`Foo.`) likewise, and `CON_P.pak` could reach
   the console device (Windows 11 relaxed the device rule for a full path; Windows 10 did not, and other tools
-  reading the data folder may not). An ordinary name is its own folder, unchanged, so every folder an older build made works
-  with no migration. A name that is not safe as written (empty or whitespace, a trailing dot or space, an
-  invalid file-name character, a device name on the part before the first dot, `.` or `..`, a name already
+  reading the data folder may not). An ordinary name is its own folder, unchanged, so an older build's
+  hold of an ordinary name needs no migration. A name that is not safe as written (empty or whitespace, a trailing dot or space, an
+  invalid file-name character, a device name on the part before the first dot (`CONIN$` and `CONOUT$` included), `.` or `..`, a name already
   starting with `~626~`) is held in `~626~` plus the lowercase hex of its UTF-8 bytes: `Foo.` in
   `~626~466f6f2e`. An ordinary name is never encoded, whatever its length. A risky name over 125 bytes would
-  encode past NTFS's 255-character limit, so it has no holding folder and turning it off refuses. Lone surrogates are carried through (WTF-8) so two names never
-  share a folder. `HoldingName.ModName` reverses it for the listing (`ListDisabled`, the library-inference
-  disabled keys, a restore point's re-enable); a `~626~` folder with malformed hex is skipped rather than
-  guessed at. A tagged encoding was chosen over a lossy slug or a hash because it is reversible from the
+  encode past NTFS's 255-character limit, so it has no holding folder and turning it off refuses. Lone surrogates are carried through (WTF-8) so two names that differ
+  other than by case never share a folder. `HoldingName.ModName` is the exact inverse, used wherever a
+  folder name is read back as a mod (`ListDisabled`, the library-inference disabled keys, held library
+  dependents, a restore point's re-enable): a `~626~` folder decodes only when `Folder` of the decoded name
+  gives it back. Anything else, a hand-made or malformed `~626~` folder included, is a raw name.
+  - **Legacy holds are read through a fallback, not migrated.** Windows 11 lets a plain `CreateDirectory`
+    make `disabled/Aux`, `disabled/CON` or `disabled/Con.Fix`, so an older build may have held such a mod
+    under its raw name, in `disabled` and (v0.23.0) `disabled-trees`. Those names now encode, so the
+    toggle would look only in `~626~...` and leave the row stuck off. `HoldingName.LegacyPath` finds the
+    raw-named folder by its exact real name when the encoded one has no record (`disabled`) or does not
+    exist (`disabled-trees`). Turn-on reads and tears it down there, uninstall deletes it, and a new
+    turn-off refuses while it holds a copy. A raw prefixed folder reaches the same fallback. A tagged encoding was chosen over a lossy slug or a hash because it is reversible from the
   folder name alone (the layout stays the record) and changes nothing for the names that were already safe.
 - **A move across volumes undoes itself.** When the game and the data folder sit on different drives, a
   move can't be a rename and falls back to copy then delete. That fallback (`SafeMove`) now removes its
@@ -338,8 +346,9 @@ still listed; a later family member's failure leaves no orphan behind.
   is a device on Windows 10. They stay slug-named: switching to `HoldingName` would stop every folder an
   existing user holds from being found by name. Instead the held record (`__626mod.json`, which already
   stored `name`) is checked both ways, ignoring case. Turning on a name whose slug folder holds a different
-  mod's record refuses. Turning off into a slug folder holding another mod's record refuses, including a
-  record with no files behind it, which the files-only collision guard let through. A record without a
+  mod's record refuses. Turning off into a slug folder whose record belongs to another mod refuses while
+  any of that mod's entries is still held ("Turn <it> on first"); a stale record with none of its entries
+  left is treated as empty and replaced. A record without a
   name (older builds) keeps the old behaviour.
 - **Closed: long names.** An ordinary name is never encoded, whatever its length. A risky name whose
   `~626~` folder would pass 255 characters (over 125 UTF-8 bytes) has no holding folder: turning it off

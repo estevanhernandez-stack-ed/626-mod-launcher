@@ -79,23 +79,30 @@ public class DirectInjectSlugOwnerTests : IDisposable
 
         var e = Assert.Throws<HeldCopyCollisionException>(() => DirectInject.Disable(Play, Holding, FooDash));
 
-        Assert.Equal("626 can't turn \"foo-\" off: 626 is already holding \"Foo\" in the same folder. Nothing was moved.", e.Message);
+        Assert.Equal("626 can't turn \"foo-\" off: 626 is already holding \"Foo\" in the same folder. "
+                     + "Turn \"Foo\" on first. Nothing was moved.", e.Message);
         Assert.Equal(before, Tree());
     }
 
-    // The case the files guard did not cover: a record with nothing behind it. Writing over it would replace
-    // Foo's record with foo-'s.
-    [Fact]
-    public void Turning_off_into_a_slug_folder_holding_only_another_mods_record_refuses()
+    // A stale record: another mod's, but none of its entries is held any more. Nothing is there to protect,
+    // so it is treated as empty and replaced by this mod's.
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[\"Foo.asi\"]")]
+    public void Turning_off_into_a_slug_folder_with_a_stale_record_of_another_mod_replaces_it(string entries)
     {
         Directory.CreateDirectory(SlugDir);
-        File.WriteAllText(Path.Combine(SlugDir, "__626mod.json"), "{\"name\":\"Foo\",\"kind\":\"tweak\",\"entries\":[]}");
-        var before = Tree();
+        File.WriteAllText(Path.Combine(SlugDir, "__626mod.json"), "{\"name\":\"Foo\",\"kind\":\"tweak\",\"entries\":" + entries + "}");
 
-        var e = Assert.Throws<HeldCopyCollisionException>(() => DirectInject.Disable(Play, Holding, FooDash));
+        DirectInject.Disable(Play, Holding, FooDash);
 
-        Assert.Contains("already holding \"Foo\"", e.Message);
-        Assert.Equal(before, Tree());
+        Assert.Equal("FOO DASH", File.ReadAllText(Path.Combine(SlugDir, "foo-.asi")));
+        Assert.False(File.Exists(Path.Combine(Play, "foo-.asi")));
+        Assert.Equal("FOO", File.ReadAllText(Path.Combine(Play, "Foo.asi")));   // Foo's live copy untouched
+        Assert.Equal("foo-", Assert.Single(DirectInject.ListDisabled(Holding)).Name);
+
+        DirectInject.Enable(Play, Holding, "foo-");
+        Assert.Equal("FOO DASH", File.ReadAllText(Path.Combine(Play, "foo-.asi")));
     }
 
     // A record an older build wrote without a name keeps today's behaviour: turned on by any name that slugs there.

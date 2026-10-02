@@ -47,8 +47,9 @@ public static partial class RestorePointEngine
     {
         var outcomes = new List<Scanner.EnableOutcome>();
         // A holding folder is the mod's name or its HoldingName encoding ("Foo." is held in ~626~466f6f2e);
-        // the toggle wants the name. A malformed encoding names no mod and is left alone.
-        foreach (var name in DirectoryNames(c.DisabledRoot).Select(HoldingName.ModName).OfType<string>())
+        // the toggle wants the name. An older build's raw-named hold (disabled/Aux) decodes to itself and the
+        // toggle reads it through HoldingName.LegacyPath.
+        foreach (var name in DirectoryNames(c.DisabledRoot).Select(HoldingName.ModName).Distinct(StringComparer.Ordinal))
             outcomes.Add(Scanner.EnableModWithOutcomeAsync(name, c).GetAwaiter().GetResult());
         return outcomes;
     }

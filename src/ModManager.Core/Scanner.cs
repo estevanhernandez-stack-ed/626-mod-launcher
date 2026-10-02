@@ -475,8 +475,9 @@ public static class Scanner
         foreach (var folder in SafeReadDirs(c.DisabledRoot))
         {
             // The folder is the mod's name, or its HoldingName encoding when Windows would not keep that name
-            // as written. A malformed encoding names no mod 626 can turn on, so it is skipped, not guessed at.
-            if (HoldingName.ModName(folder) is not { } name) continue;
+            // as written. Any other folder (an older build's disabled/Aux, a hand-made ~626~ name) is listed by
+            // its raw name, and turning it on reaches it through HoldingName.LegacyPath.
+            var name = HoldingName.ModName(folder);
             // By its real name: a folder only a \\?\-aware tool could make (Foo.) is read as itself.
             var dir = FolderNames.ExactPath(c.DisabledRoot, folder);
             var location = c.Locations.Count > 0 ? c.Locations[0].Name : "";
@@ -649,9 +650,10 @@ public static class Scanner
         // by 626, which encodes such a name. It still lists under that name, so it still goes with the mod,
         // through its exact path: the real Foo. goes and its lookalike Foo never does. A name with a separator
         // or ':' can't match a listed entry at all.
-        else if (!string.Equals(heldFolder, name, StringComparison.Ordinal)
-                 && FolderNames.HasEntryNamed(c.DisabledRoot, name))
-            DeletePath(FolderNames.ExactPath(c.DisabledRoot, name));
+        // The same goes for an older build's hold under a raw name that now encodes (Windows 11 allows
+        // disabled/Aux): HoldingName.LegacyPath, by its exact real name.
+        if (HoldingName.LegacyPath(c.DisabledRoot, name) is { } legacy)
+            DeletePath(legacy);
     }
 
     /// <summary>Delete one entry the scan enumerated under <paramref name="baseDir"/>, by its real relative
@@ -723,7 +725,11 @@ public static class Scanner
         // listing shows only the live copy when both exist, so the user cannot see the held one. This
         // used to collide mid-move and the rollback ran a recursive delete over the holding folder,
         // destroying that copy; a folder mod that did not collide was silently merged into it instead.
+        // An older build's hold under the raw name (disabled/Aux) is such a copy too.
+        var legacyHeld = HoldingName.LegacyPath(c.DisabledRoot, m.Name);
         if (HoldingFolder.HoldsFiles(dest, "meta.json")
+            || (legacyHeld is not null && (HoldingFolder.HoldsFiles(legacyHeld, "meta.json")
+                                           || File.Exists(Path.Combine(legacyHeld, "meta.json"))))
             || files.Any(f => File.Exists(Path.Combine(dest, f)) || Directory.Exists(Path.Combine(dest, f))))
             throw new HeldCopyCollisionException(
                 $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {dest}, "
@@ -942,7 +948,7 @@ public static class Scanner
     /// </summary>
     public static TreeLeftover? ExtraTreeLeftover(GameContext c, string modName)
     {
-        if (string.IsNullOrEmpty(modName) || !TreeHolding.CanHold(modName)) return null;
+        if (string.IsNullOrEmpty(modName) || !TreeHolding.CanHold(c, modName)) return null;
         var dir = TreeHolding.ModDir(c, modName);
         try { return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null; }
         catch { return new TreeLeftover(dir, Readable: false); }
@@ -979,9 +985,15 @@ public static class Scanner
         }
 
         // A name with no holding folder (risky and too long to encode) can never have been turned off.
-        if (HoldingName.Folder(name) is not { } srcFolder)
-            return new EnableOutcome(name, false, true, "no readable disabled metadata");
-        var src = Path.Combine(c.DisabledRoot, srcFolder);
+        // Where it is held: its HoldingName folder, or, when that has no record, an older build's hold under
+        // the raw name (Windows 11 let a plain CreateDirectory make disabled/Aux). Read and torn down by its
+        // exact real name. A name with no folder of either kind was never turned off.
+        var srcFolder = HoldingName.Folder(name);
+        var src = srcFolder is null ? null : Path.Combine(c.DisabledRoot, srcFolder);
+        if ((src is null || !File.Exists(Path.Combine(src, "meta.json")))
+            && HoldingName.LegacyPath(c.DisabledRoot, name) is { } legacySrc)
+            src = legacySrc;
+        if (src is null) return new EnableOutcome(name, false, true, "no readable disabled metadata");
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }
         catch { return new EnableOutcome(name, false, true, "no readable disabled metadata"); }

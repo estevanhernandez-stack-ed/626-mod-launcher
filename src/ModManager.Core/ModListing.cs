@@ -61,7 +61,11 @@ public static class ModListing
         // switched off" - and those want opposite answers. Reading holding is what lets the row say
         // which one it is.
         var sources = LuaSourcesUnder(primary.Abs);
-        var heldSources = LuaSourcesUnder(ctx.DisabledRoot);
+        // Keyed by holding folder, which for a risky name is its ~626~ encoding; the dependents a row names
+        // are mods, so the folder segment goes back to the mod's name.
+        var heldSources = new Dictionary<string, string>();
+        foreach (var (rel, source) in LuaSourcesUnder(ctx.DisabledRoot))
+            heldSources.TryAdd(HeldRelPathAsModName(rel), source);   // a legacy and an encoded hold may coincide
 
         var enabledByName = alreadyListed
             .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
@@ -236,7 +240,7 @@ public static class ModListing
             return Directory.Exists(ctx.DisabledRoot)
                 ? Directory.GetDirectories(ctx.DisabledRoot).Select(Path.GetFileName)
                     // A holding folder is the mod's name or its HoldingName encoding; the key is the name.
-                    .Select(n => n is null ? null : HoldingName.ModName(n))
+                    .Select(n => n is null ? null : HoldingName.ModName(n))   // the encoding's exact inverse
                     .Where(n => n is not null).Select(n => n!).ToList()
                 : Array.Empty<string>();
         }
@@ -245,6 +249,12 @@ public static class ModListing
 
     /// <summary>Every Lua file under the mod location, keyed relative to it. Capped: a dependency scan
     /// is a convenience, and an enormous tree must not make opening the mod list slow.</summary>
+    private static string HeldRelPathAsModName(string relPath)
+    {
+        var sep = relPath.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+        return sep < 0 ? HoldingName.ModName(relPath) : HoldingName.ModName(relPath[..sep]) + relPath[sep..];
+    }
+
     private static IReadOnlyDictionary<string, string> LuaSourcesUnder(string root)
     {
         var sources = new Dictionary<string, string>();

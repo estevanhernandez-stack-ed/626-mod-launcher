@@ -244,19 +244,25 @@ public static class ModUninstall
             throw new InvalidOperationException(
                 $"626's holding folder {root} is not inside its data folder {dataDir}, so nothing in it was deleted.");
 
-        // A risky name too long to encode has no holding folder, so nothing is held for it.
-        if (HoldingName.Folder(modName) is not { } folder) return null;
-        if (FolderNames.Escapes(root, folder))
+        // Null for a risky name too long to encode.
+        var folder = HoldingName.Folder(modName);
+        if (folder is not null && FolderNames.Escapes(root, folder))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{modName}\": that name leads outside 626's holding folder {root}. Nothing was changed.");
 
-        if (!FolderNames.NamesOneFolder(folder)) return null;
+        // An older build's hold under the raw name (disabled-trees/Aux, which Windows 11 allows) when there is
+        // no encoded one: read and deleted by its exact real name, like the toggle reads it.
+        var encodedPresent = folder is not null && FolderNames.HasEntryNamed(root, folder);
+        var dir = !encodedPresent && HoldingName.LegacyPath(root, modName) is { } legacy ? legacy
+            : folder is not null && FolderNames.NamesOneFolder(folder) ? Path.Combine(root, folder)
+            : null;
+        if (dir is null) return null;
 
         if (Directory.Exists(root) && LinkSafeDelete.IsLink(new DirectoryInfo(root)))
             throw new InvalidOperationException(
                 $"626 won't delete what it holds for \"{modName}\": the holding folder {root} is a link, so it may lead "
                 + "somewhere else. Nothing was changed.");
-        return Path.Combine(root, folder);
+        return dir;
     }
 
     /// <summary>
@@ -266,7 +272,8 @@ public static class ModUninstall
     /// path would.
     /// </summary>
     private static bool HeldPresent(GameContext ctx, string modName)
-        => HoldingName.Folder(modName) is { } folder && FolderNames.HasEntryNamed(TreeHolding.Root(ctx), folder);
+        => (HoldingName.Folder(modName) is { } folder && FolderNames.HasEntryNamed(TreeHolding.Root(ctx), folder))
+           || HoldingName.LegacyPath(TreeHolding.Root(ctx), modName) is not null;
 
 }
 

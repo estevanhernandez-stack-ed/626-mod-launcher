@@ -207,13 +207,15 @@ public static class DirectInject
         var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(mod.Name));
         var present = mod.Entries.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
 
-        // The slug merges names ("Foo" and "foo-" are both "foo"), so a folder already holding ANOTHER mod's
-        // record is not this mod's to write into, files or no files: writing our record over it would hand
-        // that mod's held entries to this one. The files guard below already refuses an occupied folder;
-        // this one also covers a record with nothing behind it, and says whose the folder is.
-        if (ReadMeta(dir) is { Name: { Length: > 0 } heldName } && !SameMod(heldName, mod.Name))
+        // The slug merges names ("Foo" and "foo-" are both "foo"), so the folder may hold ANOTHER mod. While any
+        // of that mod's recorded entries is still held there, it is not this mod's to write into: writing our
+        // record over it would hand that mod's files to this one. A stale record (none of its entries held any
+        // more) protects nothing, so it is treated as empty and replaced.
+        if (ReadMeta(dir) is { Name: { Length: > 0 } heldName } other && !SameMod(heldName, mod.Name)
+            && (other.Entries ?? new List<string>()).Any(e => Exists(Path.Combine(dir, e))))
             throw new HeldCopyCollisionException(
-                $"626 can't turn \"{mod.Name}\" off: 626 is already holding \"{heldName}\" in the same folder. Nothing was moved.");
+                $"626 can't turn \"{mod.Name}\" off: 626 is already holding \"{heldName}\" in the same folder. "
+                + $"Turn \"{heldName}\" on first. Nothing was moved.");
 
         // Validate before acting. Files already in holding are an earlier copy; moving over them would
         // collide, and writing a new record over theirs would orphan them even where no name collides.

@@ -64,6 +64,22 @@ public class LibraryRowStateTests : IDisposable
     private Mod LibraryRow(string name)
         => Assert.Single(ModListing.Resolve(Game()), m => m.Name == name && m.Class == "library");
 
+    // A dependent whose name Windows would not keep as written is held in its ~626~ folder; the row names
+    // the mod, not the folder.
+    [Fact]
+    public void A_held_dependent_in_an_encoded_folder_is_named_by_its_mod_name()
+    {
+        Library("_CatLib");
+        var dir = Path.Combine(_held, HoldingName.Folder("overlay.")!);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "overlay..lua"), @"local c = require(""_CatLib"")");
+
+        var row = LibraryRow("_CatLib");
+
+        Assert.Contains("overlay.", row.Description);
+        Assert.DoesNotContain(HoldingName.Prefix, row.Description);
+    }
+
     [Fact]
     public void In_use_when_a_dependent_is_ON_so_the_toggle_is_refused()
     {

@@ -207,18 +207,80 @@ public class NameAliasToggleTests : IDisposable
         Assert.False(Directory.Exists(legacy));
     }
 
-    // A folder whose encoding is malformed is no mod 626 can name: skipped, never guessed at.
-    [Fact]
-    public async Task A_malformed_encoded_folder_is_not_listed()
+    // Held as an older build would have: a plain CreateDirectory named after the mod, with its record.
+    private string? LegacyHold(string modName, string file, string content)
     {
-        var odd = Path.Combine(Disabled, "~626~zz");
-        Directory.CreateDirectory(odd);
-        File.WriteAllText(Path.Combine(odd, "x.pak"), "X");
+        var dir = Path.Combine(Disabled, modName);
+        try { Directory.CreateDirectory(dir); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
+        if (!FolderNames.HasEntryNamed(Disabled, modName)) return null;   // the OS made something else of it
+        File.WriteAllText(Path.Combine(dir, file), content);
+        File.WriteAllText(Path.Combine(dir, "meta.json"), JsonSerializer.Serialize(new
+        {
+            location = "mods", hadOnServer = new Dictionary<string, bool> { [file] = false },
+            disabledAt = "2026-09-01T00:00:00.0000000Z", isFolder = false,
+        }));
+        return dir;
+    }
 
-        var rows = await Rows();
+    // Windows 11 lets an older build create disabled/Aux, disabled/CON or disabled/Con.Fix. Those names now
+    // encode, so the turn-on would look only in ~626~... and leave the row stuck off; the legacy fallback
+    // reads the folder by its real name.
+    [Theory]
+    [InlineData("Aux")]
+    [InlineData("CON")]
+    [InlineData("Con.Fix")]
+    public async Task A_legacy_device_name_hold_lists_and_turns_on_byte_identically(string name)
+    {
+        var file = name + "_P.pak";
+        var dir = LegacyHold(name, file, "LEGACY " + name);
+        if (dir is null)
+        {
+            // xUnit 2 has no runtime skip. This Windows refuses a folder by that name, so no older build can
+            // have made one and there is nothing to read back. Passing vacuously.
+            return;
+        }
+        Assert.NotEqual(name, HoldingName.Folder(name));   // pre-condition: the name now encodes
 
-        Assert.Equal(2, rows.Count);
-        Assert.Equal("X", File.ReadAllText(Path.Combine(odd, "x.pak")));
+        Assert.Single(await Rows(), m => m.Name == name && !m.Enabled);
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync(name, Ctx());
+
+        Assert.True(outcome.Enabled, outcome.Reason);
+        Assert.Equal("LEGACY " + name, File.ReadAllText(Path.Combine(Mods, file)));
+        Assert.False(FolderNames.HasEntryNamed(Disabled, name));
+        Assert.Single(await Rows(), m => m.Name == name && m.Enabled);
+    }
+
+    [Fact]
+    public async Task A_legacy_device_name_hold_uninstalls_through_its_real_folder()
+    {
+        if (LegacyHold("Aux", "Aux_P.pak", "LEGACY") is null) return;   // see above: passing vacuously
+        await Scanner.DisableModAsync("Foo", Ctx());                      // a bystander held beside it
+        var row = ModListing.Resolve(Game()).Single(m => m.Name == "Aux");
+
+        ModUninstall.Run(Ctx(), row);
+
+        Assert.False(FolderNames.HasEntryNamed(Disabled, "Aux"));
+        Assert.DoesNotContain(await Rows(), m => m.Name == "Aux");
+        Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Disabled, "Foo", "Foo_P.pak")));
+    }
+
+    // A ~626~ folder that Folder would not write (hand-made, or a mod literally named so) is a raw name,
+    // listed and turned on through the same fallback, never hidden.
+    [Theory]
+    [InlineData("~626~zz")]
+    [InlineData("~626~466f6f")]
+    public async Task A_non_canonical_prefixed_folder_lists_under_its_raw_name_and_turns_on(string name)
+    {
+        Assert.NotNull(LegacyHold(name, "Odd_P.pak", "ODD"));
+
+        Assert.Single(await Rows(), m => m.Name == name && !m.Enabled);
+        var outcome = await Scanner.EnableModWithOutcomeAsync(name, Ctx());
+
+        Assert.True(outcome.Enabled, outcome.Reason);
+        Assert.Equal("ODD", File.ReadAllText(Path.Combine(Mods, "Odd_P.pak")));
+        Assert.False(Directory.Exists(Path.Combine(Disabled, name)));
     }
 }
 
@@ -287,6 +349,31 @@ public class NameAliasTreeToggleTests : IDisposable
 
         Assert.Equal("DOTTED", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "Foo..archive")));
         Assert.False(Directory.Exists(held));
+    }
+
+    // v0.23.0 held extra-tree entries under the raw name too: disabled-trees/Aux comes back with disabled/Aux.
+    [Fact]
+    public async Task A_legacy_device_name_hold_restores_its_extra_tree_entries_too()
+    {
+        var main = Path.Combine(DataDir, "disabled", "Aux");
+        var extra = Path.Combine(DataDir, "disabled-trees", "Aux", "r6", "scripts", "Aux", "a.reds");
+        try { Directory.CreateDirectory(main); Directory.CreateDirectory(Path.GetDirectoryName(extra)!); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { return; }
+        if (!FolderNames.HasEntryNamed(Path.Combine(DataDir, "disabled"), "Aux")) return;   // passing vacuously
+        File.WriteAllText(Path.Combine(main, "Aux.archive"), "AUX MAIN");
+        File.WriteAllText(Path.Combine(main, "meta.json"),
+            "{\"location\":\"mods\",\"hadOnServer\":{\"Aux.archive\":false},\"isFolder\":false}");
+        File.WriteAllText(extra, "AUX SCRIPTS");
+        Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "Aux" && !m.Enabled);
+
+        var outcome = await Scanner.EnableModWithOutcomeAsync("Aux", Ctx());
+
+        Assert.True(outcome.Enabled, outcome.Reason);
+        Assert.Null(outcome.Reason);
+        Assert.Equal("AUX MAIN", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "Aux.archive")));
+        Assert.Equal("AUX SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "Aux", "a.reds")));
+        Assert.False(Directory.Exists(main));
+        Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees", "Aux")));
     }
 
     [Fact]
