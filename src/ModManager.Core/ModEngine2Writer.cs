@@ -26,7 +26,6 @@ public static class ModEngine2Writer
             return ordered;
         });
 
-    /// <summary>One-time backup so the user can always recover Mod Engine 2's original config.</summary>
     /// <summary>Uninstall one ME2 mod: delete its folder (when the config names one) and drop it from the
     /// config, keeping a one-time backup of the config. The app's uninstall and the agent's uninstall_mod
     /// both come here. A delete that fails throws, and the config is left as it was.</summary>
@@ -47,6 +46,7 @@ public static class ModEngine2Writer
         AtomicJson.WriteTextAtomic(path, ModEngine2Config.WriteMods(toml, mods.Where(m => m.Name != name).ToList()));
     }
 
+    /// <summary>One-time backup so the user can always recover Mod Engine 2's original config.</summary>
     public static void BackupOnce(string configPath)
     {
         var bak = configPath + ".626bak";

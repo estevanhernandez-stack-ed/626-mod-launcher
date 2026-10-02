@@ -37,6 +37,36 @@ mods = [
         Assert.True(Directory.Exists(Path.Combine(me2, "mod", "randomizer")));
     }
 
+    // Review on #373: rows the listing appends are not installed mods; the scanner's uninstall can't find
+    // them by name and the app reported "Uninstalled" having deleted nothing.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_proxy_loader_or_library_row_is_not_an_installed_mod(bool proxyLoader)
+    {
+        var row = proxyLoader
+            ? new Mod { Name = "REFramework", Location = ProxyLoaderRows.LocationTag, IsLoader = true }
+            : new Mod { Name = "UE4SS shared", Class = "library", Location = "mods" };
+
+        Assert.Equal(UninstallBlock.NotAnInstalledMod, ModUninstall.Refusal(ListingMechanism.Scanner, row)!.Kind);
+    }
+
+    [Fact]
+    public void A_family_with_one_refused_member_deletes_none_of_them()
+    {
+        var g = new GameEntry { Id = "g", GameName = "G", Engine = "ue-pak", GameRoot = _root, DataDir = Path.Combine(_root, "d"),
+            ModLocations = new List<ModLocation> { new("mods", "Mods", "Mods") }, FileExtensions = new List<string> { "pak" } };
+        Directory.CreateDirectory(Path.Combine(_root, "Mods"));
+        var pak = Path.Combine(_root, "Mods", "Faster_5x_P.pak");
+        File.WriteAllText(pak, "x");
+        var ctx = Scanner.GameContext(g);
+        var real = ModListing.Resolve(g).Single();
+        var managed = new Mod { Name = "Faster_10x", ReadOnly = true, Files = new List<string> { "Faster_10x_P.pak" }, Location = "mods" };
+
+        Assert.Throws<InvalidOperationException>(() => ModUninstall.RunAll(ctx, new[] { real, managed }));
+        Assert.True(File.Exists(pak));
+    }
+
     [Fact]
     public void A_mod_another_tool_manages_is_refused_and_running_it_throws()
     {
@@ -46,7 +76,7 @@ mods = [
         var ctx = Scanner.GameContext(g);
         var managed = new Mod { Name = "Managed", ReadOnly = true, Files = new List<string> { "Managed.pak" }, Location = "mods" };
 
-        Assert.Contains("another tool", ModUninstall.Refusal(ctx, managed));
+        Assert.Equal(UninstallBlock.ManagedByAnotherTool, ModUninstall.Refusal(ctx, managed)!.Kind);
         Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, managed));
     }
 }

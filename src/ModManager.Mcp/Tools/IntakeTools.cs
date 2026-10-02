@@ -133,11 +133,16 @@ public static class IntakeTools
                     var diPlan = DirectInject.Plan(play, remaining);
                     intakeResult = DirectInject.Execute(play, DirectInject.ReplacedRoot(play), diPlan, replaceSet);
                     keptCollisions = KeptCollisions(diPlan, replaceSet);
-                    // Re-detect, as the app's drop does, so a new Seamless or Mod Engine 2 shows its launcher.
-                    if (intakeResult.Added.Count > 0 || intakeResult.Updated.Count > 0)
-                        redetected = GameRegistration.Redetect(McpConfig.DataRoot, game.Id);
                 }
                 catch (Exception e) { failed.Add(new { route = "mod", reason = ErrorRemedy.Describe(e) }); }
+
+                // Re-detect, as the app's drop does, so a new Seamless or Mod Engine 2 shows its launcher. Its
+                // own try: the files have landed, and a failed re-scan must not read as a failed install.
+                if (intakeResult is { } placed && (placed.Added.Count > 0 || placed.Updated.Count > 0))
+                {
+                    try { redetected = GameRegistration.Redetect(McpConfig.DataRoot, game.Id); }
+                    catch (Exception e) { skipped.Add(new { route = "rescan", reason = "Installed, but re-detecting the game failed: " + ErrorRemedy.Describe(e) + " Run Re-scan in the app." }); }
+                }
             }
         }
         else

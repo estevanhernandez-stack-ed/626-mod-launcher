@@ -72,6 +72,49 @@ public class GameWriteToolsTests : IDisposable
         Assert.False(File.Exists(Path.Combine(McpConfig.DataRoot, "games.json")));
     }
 
+    // Review on #373: a relative path resolves against whichever process reads it.
+    [Fact]
+    public void A_relative_folder_is_refused()
+    {
+        // A relative path that DOES exist from this process's working folder: still refused.
+        var relative = Path.GetRelativePath(Environment.CurrentDirectory, BepInExGame());
+        Assert.True(Directory.Exists(relative));
+        Assert.Equal("not_found", Json(GameWriteTools.RegisterGame("Valheim", relative)).GetProperty("refusal").GetString());
+        Assert.False(File.Exists(Path.Combine(McpConfig.DataRoot, "games.json")));
+    }
+
+    // Review on #373: an undetectable engine was registered as "custom", a guess the app refuses to make.
+    [Fact]
+    public void A_folder_whose_engine_cant_be_told_is_refused_not_guessed()
+    {
+        var blank = Path.Combine(_root, "Blank");
+        Directory.CreateDirectory(blank);
+
+        var r = Json(GameWriteTools.RegisterGame("Blank", blank));
+
+        Assert.Equal("refused", r.GetProperty("refusal").GetString());
+        Assert.Contains("Pass engine", r.GetProperty("detail").GetString());
+        Assert.Contains(AgentAudit.Read(McpConfig.DataRoot), e => e.Tool == "register_game" && e.Result == "refused");   // logged, launcher-level
+    }
+
+    // Review on #373: a Steam id goes through the app's Steam add, so the curated manifest facts come too.
+    [Fact]
+    public void A_steam_game_gets_its_curated_id_and_mod_folder_like_the_apps_steam_add()
+    {
+        var root = Path.Combine(_root, "Cyberpunk 2077");
+        Directory.CreateDirectory(root);
+
+        // Like the app: the engine isn't on the curated Steam-id map and the empty folder shows none,
+        // so without one it is refused; with one, the curated id and mod folder still come through.
+        Assert.Equal("refused", Json(GameWriteTools.RegisterGame("Cyberpunk 2077", root, steamAppId: "1091500")).GetProperty("refusal").GetString());
+        var r = Json(GameWriteTools.RegisterGame("Cyberpunk 2077", root, engine: "custom", steamAppId: "1091500"));
+
+        Assert.True(r.TryGetProperty("gameId", out _), r.GetRawText());
+        Assert.Equal("cyberpunk-2077", r.GetProperty("gameId").GetString());
+        Assert.Equal("given", r.GetProperty("engineSource").GetString());
+        Assert.Contains(Games().Single().ModLocations, l => l.Path == "archive/pc/mod");
+    }
+
     [Fact]
     public void An_engine_626_does_not_know_is_refused()
         => Assert.Equal("refused", Json(GameWriteTools.RegisterGame("X", BepInExGame(), engine: "frostbyte-typo")).GetProperty("refusal").GetString());

@@ -20,7 +20,9 @@ public static class GameWriteTools
                  + "mods already live and how to launch it with mods (Mod Engine 2, Seamless Co-op), creates the "
                  + "declared mod folder when the game definition names one, and makes it the active game. An install "
                  + "that is already registered is never added twice; it is switched to and alreadyRegistered says so. "
-                 + "Leave engine empty to detect it from the folder. Recorded in the game's agent-log.jsonl.")]
+                 + "With a Steam or EA id it adds through the same curated lookups as the app's store add. Leave engine empty "
+                 + "to detect it; when it can't be told, this refuses rather than guess. Recorded in the game's agent-log.jsonl "
+                 + "(a refusal, which names no game yet, in the launcher's).")]
     public static object RegisterGame(
         [Description("The game's display name.")] string name,
         [Description("Absolute path of the game's install folder.")] string gameRoot,
@@ -36,26 +38,66 @@ public static class GameWriteTools
             ["steamAppId"] = steamAppId ?? "", ["eaContentId"] = eaContentId ?? "",
         };
 
-        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(gameRoot) || !Directory.Exists(gameRoot))
-            return WriteTools.Refuse(tool, null, "", args, AgentRefusal.NotFound,
-                $"No game folder at '{gameRoot}'. Pass the absolute path of the installed game's folder and a name.");
+        // Refusals here name no game yet, so they go to the launcher-level log beside games.json.
+        object RefuseHere(AgentRefusal r, string detail) => WriteTools.Refuse(tool, McpConfig.DataRoot, "", args, r, detail);
 
-        var resolvedEngine = string.IsNullOrWhiteSpace(engine) ? EngineScan.Detect(gameRoot) : engine.Trim().ToLowerInvariant();
-        if (resolvedEngine is not null && !EnginePresets.Presets.ContainsKey(resolvedEngine))
-            return WriteTools.Refuse(tool, null, "", args, AgentRefusal.None,
-                $"'{resolvedEngine}' is not an engine 626 knows. Known: {string.Join(", ", EnginePresets.Presets.Keys)}.");
+        // Absolute only, and stored normalised: a relative path resolves against whichever process
+        // reads it, and the app's working folder is not this server's.
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(gameRoot) || !Path.IsPathRooted(gameRoot.Trim())
+            || !Directory.Exists(gameRoot.Trim()))
+            return RefuseHere(AgentRefusal.NotFound,
+                $"No game folder at '{gameRoot}'. Pass the ABSOLUTE path of the installed game's folder and a name.");
+        var root = Path.GetFullPath(gameRoot.Trim()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        var input = new GameInput
+        var explicitEngine = string.IsNullOrWhiteSpace(engine) ? null : engine.Trim().ToLowerInvariant();
+        if (explicitEngine is not null && !EnginePresets.Presets.ContainsKey(explicitEngine))
+            return RefuseHere(AgentRefusal.None,
+                $"'{explicitEngine}' is not an engine 626 knows. Known: {string.Join(", ", EnginePresets.Presets.Keys)}.");
+
+        // The same planners as the app's store adds, so the curated manifest facts (id, engine, mod
+        // folder, ban risk) come with the game exactly as they would through the app.
+        GameInput? input;
+        string engineSource;
+        if (!string.IsNullOrWhiteSpace(eaContentId))
         {
-            Name = name.Trim(), GameRoot = gameRoot, Engine = resolvedEngine,
-            SteamAppId = string.IsNullOrWhiteSpace(steamAppId) ? null : steamAppId.Trim(),
-            EaContentId = string.IsNullOrWhiteSpace(eaContentId) ? null : eaContentId.Trim(),
-        };
+            input = ModManager.Core.Stores.EaGameImport.Plan(
+                new InstalledGame(ModManager.Core.Stores.EaInstallScan.StoreKind, eaContentId.Trim(), name.Trim(), root),
+                ModManager.Core.Manifest.EffectiveManifest.Current.Games,
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            if (input is null)
+                return RefuseHere(AgentRefusal.None,
+                    $"'{eaContentId}' is not an EA app game 626 knows. The app adds EA games only from its curated list.");
+            engineSource = "curated";
+        }
+        else if (!string.IsNullOrWhiteSpace(steamAppId))
+        {
+            var plan = SteamGameImport.Plan(new SteamImportCandidate(steamAppId.Trim(), name.Trim(), root),
+                explicitEngine ?? EngineScan.Detect(root));
+            if (!plan.Addable || plan.Input is null)
+                return RefuseHere(AgentRefusal.None,
+                    $"626 couldn't tell {name}'s engine from its Steam id or its folder. Pass engine.");
+            input = plan.Input;
+            engineSource = KnownEngines.ByAppId(steamAppId.Trim()) is not null ? "curated" : explicitEngine is not null ? "given" : "detected";
+        }
+        else
+        {
+            var resolvedEngine = explicitEngine ?? EngineScan.Detect(root);
+            if (resolvedEngine is null)
+                return RefuseHere(AgentRefusal.None,
+                    $"626 couldn't tell {name}'s engine from its folder, and registering it as 'custom' would guess. Pass engine.");
+            input = new GameInput { Name = name.Trim(), GameRoot = root, Engine = resolvedEngine };
+            engineSource = explicitEngine is not null ? "given" : "detected";
+        }
 
         GameEntry entry;
         bool already;
         try { entry = GameRegistration.Add(McpConfig.DataRoot, input, out already); }
-        catch (Exception e) { return new { ok = false, refusal = "error", detail = ErrorRemedy.Describe(e) }; }
+        catch (Exception e)
+        {
+            var detail = ErrorRemedy.Describe(e);
+            AgentAudit.Append(McpConfig.DataRoot, new AgentAuditEntry(DateTime.UtcNow, tool, "", args, "error", detail));
+            return new { ok = false, refusal = "error", detail };
+        }
 
         var dataDir = Scanner.DataDirForGame(entry);
         AgentAudit.Append(dataDir, new AgentAuditEntry(DateTime.UtcNow, tool, entry.Id, args,
@@ -69,7 +111,7 @@ public static class GameWriteTools
             alreadyRegistered = already,
             madeActive = true,
             engine = entry.Engine,
-            engineDetected = string.IsNullOrWhiteSpace(engine),
+            engineSource,
             modLocations = entry.ModLocations.Select(l => new
             {
                 name = l.Name,
@@ -111,7 +153,7 @@ public static class GameWriteTools
 
         if (ModUninstall.Refusal(ctx, mod) is { } why)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args,
-                mod.ReadOnly ? AgentRefusal.ManagedByAnotherTool : AgentRefusal.None, why);
+                why.Kind == UninstallBlock.ManagedByAnotherTool ? AgentRefusal.ManagedByAnotherTool : AgentRefusal.None, why.Message);
 
         if (!confirm)
             return WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ConfirmationRequired,
