@@ -48,13 +48,13 @@ public static class WriteTools
 
         var game = RegistryStore.Load(McpConfig.DataRoot).Games.FirstOrDefault(g => g.Id == gameId);
         if (game is null)
-            return Refuse(null, gameId, args, AgentRefusal.NotFound, $"No game with id '{gameId}'.");
+            return Refuse("set_mod_enabled", null, gameId, args, AgentRefusal.NotFound, $"No game with id '{gameId}'.");
 
         var ctx = Scanner.GameContext(game);
         var mod = ModListing.Resolve(game).FirstOrDefault(m =>
             string.Equals(m.Name, modName, StringComparison.OrdinalIgnoreCase));
         if (mod is null)
-            return Refuse(ctx.DataDir, gameId, args, AgentRefusal.NotFound,
+            return Refuse("set_mod_enabled", ctx.DataDir, gameId, args, AgentRefusal.NotFound,
                 $"'{modName}' is not a mod in {gameId}. Call list_mods for the names.");
 
         // Disabling is never gated: getting SAFER needs no friction, and that asymmetry is what makes
@@ -68,7 +68,7 @@ public static class WriteTools
             : AgentWriteRules.CanDisable();
 
         if (!decision.Allowed)
-            return Refuse(ctx.DataDir, gameId, args, decision.Refusal, decision.Detail);
+            return Refuse("set_mod_enabled", ctx.DataDir, gameId, args, decision.Refusal, decision.Detail);
 
         try
         {
@@ -147,17 +147,17 @@ public static class WriteTools
 
     // A refusal is a result, not an exception: the agent gets a code it can branch on, and the same
     // line lands in the audit trail so the user sees what was attempted.
-    private static object Refuse(
-        string? dataDir, string gameId, Dictionary<string, string> args, AgentRefusal refusal, string detail)
+    internal static object Refuse(
+        string tool, string? dataDir, string gameId, Dictionary<string, string> args, AgentRefusal refusal, string detail)
     {
         var code = ToCode(refusal);
         if (dataDir is not null)
             AgentAudit.Append(dataDir, new AgentAuditEntry(
-                DateTime.UtcNow, "set_mod_enabled", gameId, args, code, detail));
+                DateTime.UtcNow, tool, gameId, args, code, detail));
         return new { ok = false, refusal = code, detail };
     }
 
-    private static string ToCode(AgentRefusal r) => r switch
+    internal static string ToCode(AgentRefusal r) => r switch
     {
         AgentRefusal.BanRiskNotAcknowledged => "ban_risk_not_acknowledged",
         AgentRefusal.ManagedByAnotherTool => "managed_by_another_tool",

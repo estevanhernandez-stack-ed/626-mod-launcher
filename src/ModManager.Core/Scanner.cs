@@ -1045,7 +1045,15 @@ public static class Scanner
 
     public static Task<IReadOnlyList<string>> ListProfilesAsync(GameContext c) => Task.FromResult(ListProfiles(c));
     public static Task SaveProfileAsync(string name, GameContext c) { SaveProfile(name, c); return Task.CompletedTask; }
-    public static Task LoadProfileAsync(string name, GameContext c) { LoadProfile(name, c); return Task.CompletedTask; }
+    /// <summary>Apply a saved profile: every change <see cref="ProfilePlan"/> lists, each through the ONE
+    /// toggle router (<see cref="ModToggle"/>), disables first. This used to move every mod through the
+    /// folder lane, so on a direct-inject or Mod Engine 2 game a profile load changed nothing and said
+    /// nothing, the same failure #347 fixed for the agent's toggle. Gates (ban risk) are the caller's.</summary>
+    public static async Task LoadProfileAsync(string name, GameContext c)
+    {
+        foreach (var (mod, enable) in ProfilePlan(name, c))
+            await ModToggle.SetEnabledAsync(c, mod, enable);
+    }
     public static Task DeleteProfileAsync(string name, GameContext c) { DeleteProfile(name, c); return Task.CompletedTask; }
 
     private static IReadOnlyList<string> ListProfiles(GameContext c)
@@ -1055,24 +1063,38 @@ public static class Scanner
     {
         var safe = Profile.SafeProfileName(name);
         Directory.CreateDirectory(c.ProfilesDir);
-        var snapshot = BuildModList(c).Select(m => new ProfileMod(m.Name, m.Enabled)).ToList();
+        // The same listing a load reads (every lane), so a profile records the rows the user sees.
+        var snapshot = ModListing.Resolve(c.Game).Select(m => new ProfileMod(m.Name, m.Enabled)).ToList();
         AtomicJson.WriteJsonAtomic(Path.Combine(c.ProfilesDir, safe + ".json"),
             new ProfileData { SavedAt = DateTime.UtcNow.ToString("o"), Game = c.Game.GameName, Mods = snapshot });
     }
 
-    private static void LoadProfile(string name, GameContext c)
+    /// <summary>
+    /// What loading <paramref name="name"/> would change, without changing it: each mod whose state the
+    /// profile names differently from now, disables first (turning something off can only make room).
+    /// Read from <see cref="ModListing.Resolve"/>, the listing the app and the agent both show, so the
+    /// plan covers every lane. A mod another tool manages is left alone, as it always was; a mod the
+    /// profile does not mention is left as it is. A caller that must gate enabling (the ban-risk ask)
+    /// can see from the plan whether anything would turn ON before it asks.
+    /// </summary>
+    public static IReadOnlyList<(Mod Mod, bool Enable)> ProfilePlan(string name, GameContext c)
     {
         var safe = Profile.SafeProfileName(name);
         var data = JsonSerializer.Deserialize<ProfileData>(File.ReadAllText(Path.Combine(c.ProfilesDir, safe + ".json")), Json);
-        if (data is null) return;
-        var desired = data.Mods.ToDictionary(m => m.Name, m => m.Enabled);
-        foreach (var m in BuildModList(c))
+        if (data is null) return Array.Empty<(Mod, bool)>();
+
+        // First entry wins on a duplicated name (a hand edit) rather than throwing the whole load away.
+        var desired = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var m in data.Mods) desired.TryAdd(m.Name, m.Enabled);
+
+        var changes = new List<(Mod Mod, bool Enable)>();
+        foreach (var m in ModListing.Resolve(c.Game))
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns (matches SetAllMods/ApplyMode)
-            if (!desired.TryGetValue(m.Name, out var want)) continue;
-            if (m.Enabled && !want) DisableMod(m.Name, c);
-            else if (!m.Enabled && want) EnableMod(m.Name, c);
+            if (!desired.TryGetValue(m.Name, out var want) || m.Enabled == want) continue;
+            changes.Add((m, want));
         }
+        return changes.OrderBy(x => x.Enable).ToList();   // false (disable) sorts first
     }
 
     private static void DeleteProfile(string name, GameContext c)
