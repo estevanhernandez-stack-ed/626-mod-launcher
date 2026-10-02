@@ -350,12 +350,17 @@ public class IntakeToolsTests : IDisposable
         Assert.Equal("not_installed", Assert.Single(r.GetProperty("skipped").EnumerateArray()).GetProperty("route").GetString());
     }
 
+    // The app re-detects after a direct-inject drop; the agent's intake now does too (E1, fifth slice).
     [Fact]
-    public void A_direct_inject_install_says_a_rescan_is_needed()
+    public void A_direct_inject_install_re_detects_the_game()
     {
         EldenRing();
+        Assert.Empty(RegistryStore.Load(McpConfig.DataRoot).Games.Single(g => g.Id == "er").LaunchTargets);
+
         var r = Json(IntakeTools.Intake("er", new[] { Loose("SomeMod.dll", "dll") }));
-        Assert.True(r.GetProperty("rescanNeeded").GetBoolean());
+
+        Assert.NotEmpty(r.GetProperty("launchTargets").EnumerateArray());
+        Assert.NotEmpty(RegistryStore.Load(McpConfig.DataRoot).Games.Single(g => g.Id == "er").LaunchTargets);
     }
 
     [Fact]

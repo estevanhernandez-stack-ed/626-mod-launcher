@@ -546,7 +546,7 @@ public sealed partial class MainWindow : Window
 
         var plan = ModManager.Core.SteamGameImport.Plan(
             new ModManager.Core.SteamImportCandidate(game.AppId, game.Name, game.InstallDir),
-            Services.EngineScan.Detect(game.InstallDir));
+            ModManager.Core.EngineScan.Detect(game.InstallDir));
 
         if (plan.Addable && plan.Input is not null)
         {

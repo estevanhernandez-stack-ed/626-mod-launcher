@@ -827,8 +827,10 @@ public sealed partial class MainViewModel : ObservableObject
             // without ME2 are direct-inject (loose files next to the exe) — toggled by name, never
             // deleted; loose-root (decima) games list from the game root via LooseRootListing;
             // everything else is a filesystem scan via the proven Scanner pipeline.
-            var directInject = DirectInjectBacked;
-            var looseRoot = LooseRootBacked;
+            // The lane, worked out once per list: the branches below and every row's uninstall rule.
+            var listingLane = ModListing.MechanismFor(_ctx!.Game, _ctx);
+            var directInject = listingLane == ListingMechanism.DirectInject;
+            var looseRoot = listingLane == ListingMechanism.LooseRoot;
             // Scanner-world only: migrate the data dir, then list, then persist the auto-seeded
             // classification — exactly the two writes the old scanner branch did. The shared
             // read-only resolver (used by the agent-access MCP too) performs neither. Loose-root
@@ -969,7 +971,7 @@ public sealed partial class MainViewModel : ObservableObject
                     canToggle: !unrestorable && (looseRow
                         ? !rep.ReadOnly
                         : rep.IsLoader || !rep.ReadOnly || rep.Loader is "ue4ss" or "bepinex"),
-                    canUninstall: !directInject && !looseRoot && !rep.ReadOnly)
+                    canUninstall: ModUninstall.Refusal(listingLane, rep) is null)
                 {
                     ReadmeFilePath = Scanner.ReadmePathFor(rep.Name, _ctx!),
                     MpOverride = mpOverrides.TryGetValue(rep.Name, out var o) ? o : null,
@@ -1518,14 +1520,15 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
-            foreach (var opt in row.VariantOptions.ToList())
-            {
-                if (ConfigBacked) _me2.Remove(_ctx.Game, opt.ModName);
-                else await Scanner.UninstallModAsync(opt.ModName, _ctx);
-            }
+            // One decision for the family, by the same rule as a single uninstall: every variant is
+            // checked before any is deleted, so a refused member can't leave the family half-deleted.
+            var names = row.VariantOptions.Select(o => o.ModName).ToHashSet(StringComparer.Ordinal);
+            var ctx = _ctx;
+            var members = ModListing.Resolve(ctx.Game).Where(m => names.Contains(m.Name)).ToList();
+            await Task.Run(() => ModUninstall.RunAll(ctx, members));
             _familyLastActive.Remove(familyKey);
+            await ReloadModsAsync();   // first: it resets the status line to the enabled count
             StatusText = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
-            await ReloadModsAsync();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
@@ -4394,10 +4397,12 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            if (ConfigBacked) _me2.Remove(_ctx.Game, row.Mod.Name);
-            else await Scanner.UninstallModAsync(row.Mod.Name, _ctx);
-            StatusText = $"Uninstalled {row.DisplayName}.";
+            // The same rule and the same deletes as the agent's uninstall_mod (ModUninstall).
+            var ctx = _ctx;
+            await Task.Run(() => ModUninstall.Run(ctx, row.Mod));
+            // Reload first: it resets the status line to the enabled count, which would replace this.
             await ReloadModsAsync();
+            StatusText = $"Uninstalled {row.DisplayName}.";
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }

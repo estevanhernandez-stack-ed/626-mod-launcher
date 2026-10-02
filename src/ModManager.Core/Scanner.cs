@@ -577,7 +577,7 @@ public static class Scanner
         DisableEntry(m, c);
     }
 
-    private static void UninstallMod(string name, GameContext c)
+    internal static void UninstallMod(string name, GameContext c)
     {
         var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (m is not null)
