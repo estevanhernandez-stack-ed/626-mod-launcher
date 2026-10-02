@@ -38,6 +38,31 @@ public class ArchiveReaderTests
     }
 
     [Fact]
+    public void Extract_keeps_the_files_date_from_the_archive()
+    {
+        // A17. A dropped REFramework or UE4SS keeps its release date, as Explorer's extraction would, so
+        // StaleLoaders can compare it with the game's build instead of seeing today's install time.
+        var dir = TestSupport.TempDir("arc-zip-date-");
+        var zip = Path.Combine(dir, "dated.zip");
+        var released = new DateTimeOffset(2025, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        using (var stream = File.Create(zip))
+        using (var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("dinput8.dll");
+            entry.LastWriteTime = released;
+            using var es = entry.Open();
+            es.WriteByte(1);
+        }
+
+        var dest = Path.Combine(dir, "out", "dinput8.dll");
+        using (var h = Reader.Open(zip))
+            h.Extract("dinput8.dll", dest, overwrite: true);
+
+        var written = File.GetLastWriteTimeUtc(dest);
+        Assert.True(Math.Abs((written - released.UtcDateTime).TotalSeconds) <= 2, $"stamped {written:O}");
+    }
+
+    [Fact]
     public void Extract_writes_the_right_bytes()
     {
         var dir = TestSupport.TempDir("arc-zip-extract-");

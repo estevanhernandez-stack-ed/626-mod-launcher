@@ -831,6 +831,7 @@ public sealed partial class MainViewModel : ObservableObject
             ReDeployedLocations.Clear();
             SetupNeedsAttention = false; // collapse the setup banner when no game is active
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
+            StaleLoaderMessage = null;
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(HasLoaders));
@@ -1071,11 +1072,12 @@ public sealed partial class MainViewModel : ObservableObject
                     break;
             }
 
-            // A17. A file-date comparison of the version-locked loaders against the game's executable; a
-            // handful of stats, no reads.
-            var stale = StaleLoaders.Find(_ctx);
-            _staleLoaderExeUtc = stale.Count > 0 ? stale.Max(l => l.GameExeUtc) : null;
-            StaleLoaderMessage = StaleLoaders.Summary(stale, _ctx.Game.LoaderCheckedExeUtc);
+            // A17. The version-locked loaders' file dates against the game's executable. Off the UI thread:
+            // it lists the executables in every probe root, and this reload runs on every toggle.
+            var loaderCtx = _ctx;
+            var stale = await Task.Run(() => StaleLoaders.Find(loaderCtx));
+            _staleLoaderExeUtc = stale.Loaders.Count > 0 ? stale.GameExeUtc : null;
+            StaleLoaderMessage = stale.Summary(loaderCtx.Game.LoaderCheckedExeUtc);
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
                 // read as "you don't have Mod Engine 2 (you should)" — which is wrong; for a

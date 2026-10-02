@@ -53,6 +53,32 @@ public class FrameworkInstallerTests : IDisposable
         ForbiddenPaths: new[] { "eldenring.exe" });
 
     [Fact]
+    public void Install_keeps_each_files_release_date_from_the_archive()
+    {
+        // A17. The loader's file date is the only version fact it carries on disk, and StaleLoaders compares
+        // it with the game's executable. Stamping the install time would make a seventeen-month-old loader,
+        // installed after the patch that broke it, read as newer than the game.
+        var released = new DateTimeOffset(2025, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var zipPath = Path.Combine(_tmp, "dated.zip");
+        Directory.CreateDirectory(_tmp);
+        using (var stream = File.Create(zipPath))
+        using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
+            foreach (var name in new[] { "dinput8.dll", "mod_loader_config.ini" })
+            {
+                var entry = zip.CreateEntry(name);
+                entry.LastWriteTime = released;
+                using var es = entry.Open();
+                es.WriteByte(1);
+            }
+        var gameRoot = MakeGameRoot();
+
+        FrameworkInstaller.Install(zipPath, Elm(), gameRoot, MakeGameData());
+
+        var written = File.GetLastWriteTimeUtc(Path.Combine(gameRoot, "dinput8.dll"));
+        Assert.True(Math.Abs((written - released.UtcDateTime).TotalSeconds) <= 2, $"stamped {written:O}");
+    }
+
+    [Fact]
     public void Install_extracts_files_to_game_root()
     {
         var gameRoot = MakeGameRoot();

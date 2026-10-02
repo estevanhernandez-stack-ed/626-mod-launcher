@@ -47,16 +47,18 @@ public class StaleLoadersTests
     {
         var root = WildsShape();
 
-        var stale = Assert.Single(StaleLoaders.Find(Scanner.GameContext(Game(root))));
+        var report = StaleLoaders.Find(Scanner.GameContext(Game(root)));
+        var stale = Assert.Single(report.Loaders);
 
         Assert.Equal("REFramework", stale.Name);
         Assert.Equal(LoaderDate, stale.LoaderUtc);
-        Assert.Equal(GameDate, stale.GameExeUtc);
-        Assert.EndsWith("MonsterHunterWilds.exe", stale.GameExePath);
-        Assert.Contains("2025-03-10", stale.Sentence);
-        Assert.Contains("2026-08-17", stale.Sentence);
-        Assert.Contains("github.com/praydog/REFramework", stale.Sentence);
-        Assert.EndsWith(".", stale.Sentence);
+        Assert.Equal(GameDate, report.GameExeUtc);
+        Assert.EndsWith("MonsterHunterWilds.exe", report.GameExePath);
+        var sentence = Assert.Single(report.Sentences);
+        Assert.Contains("2025-03-10", sentence);
+        Assert.Contains("2026-08-17", sentence);
+        Assert.Contains("github.com/praydog/REFramework", sentence);
+        Assert.EndsWith(".", sentence);
     }
 
     [Fact]
@@ -67,7 +69,7 @@ public class StaleLoadersTests
         Put(root, "Game.exe", GameDate, bytes: 4096);
         Put(root, "dinput8.dll", LoaderDate);
 
-        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))));
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))).Loaders);
     }
 
     [Fact]
@@ -80,7 +82,7 @@ public class StaleLoadersTests
         Put(root, "dxgi.dll", LoaderDate);
         Directory.CreateDirectory(Path.Combine(root, "reshade-shaders"));
 
-        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))));
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))).Loaders);
     }
 
     [Fact]
@@ -88,10 +90,10 @@ public class StaleLoadersTests
     {
         var root = WildsShape();
         File.SetLastWriteTimeUtc(Path.Combine(root, "dinput8.dll"), GameDate.AddDays(3));
-        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))));
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))).Loaders);
 
         File.SetLastWriteTimeUtc(Path.Combine(root, "dinput8.dll"), GameDate.AddHours(-20));
-        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))));
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))).Loaders);
     }
 
     [Fact]
@@ -104,10 +106,11 @@ public class StaleLoadersTests
         Put(root, "R5.exe", GameDate, bytes: 64);
         Put(root, "R5/Binaries/Win64/R5-Win64-Shipping.exe", LoaderDate.AddDays(-30), bytes: 8192);
         Put(root, "R5/Binaries/Win64/ue4ss/UE4SS.dll", LoaderDate);
+        Put(root, "R5/Binaries/Win64/dwmapi.dll", LoaderDate);
         var ctx = Scanner.GameContext(Game(root, "ue-pak", "R5/Content/Paks/~mods"));
 
         Assert.EndsWith("R5-Win64-Shipping.exe", StaleLoaders.GameExecutable(ctx)!.Value.Path);
-        Assert.Empty(StaleLoaders.Find(ctx));
+        Assert.Empty(StaleLoaders.Find(ctx).Loaders);
     }
 
     [Fact]
@@ -116,10 +119,58 @@ public class StaleLoadersTests
         var root = TestSupport.TempDir("stale-");
         Put(root, "R5/Binaries/Win64/R5-Win64-Shipping.exe", GameDate, bytes: 8192);
         Put(root, "R5/Binaries/Win64/ue4ss/UE4SS.dll", LoaderDate);
+        Put(root, "R5/Binaries/Win64/dwmapi.dll", LoaderDate);
 
-        var stale = Assert.Single(StaleLoaders.Find(Scanner.GameContext(Game(root, "ue-pak", "R5/Content/Paks/~mods"))));
+        var stale = Assert.Single(StaleLoaders.Find(Scanner.GameContext(Game(root, "ue-pak", "R5/Content/Paks/~mods"))).Loaders);
 
         Assert.Equal("UE4SS", stale.Name);
+    }
+
+    [Fact]
+    public void A_UE4SS_runtime_without_the_proxy_that_loads_it_is_not_reported()
+    {
+        // A vanilla step-aside moves only dwmapi.dll; the runtime stays and injects nothing. Telling the user
+        // to update a loader that is not running would be noise.
+        var root = TestSupport.TempDir("stale-");
+        Put(root, "R5/Binaries/Win64/R5-Win64-Shipping.exe", GameDate, bytes: 8192);
+        Put(root, "R5/Binaries/Win64/ue4ss/UE4SS.dll", LoaderDate);
+
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root, "ue-pak", "R5/Content/Paks/~mods"))).Loaders);
+    }
+
+    [Fact]
+    public void Mod_Engine_2_is_found_in_the_folder_its_registered_config_sits_in()
+    {
+        // The usual layout: the release extracted into a folder of its own, which LaunchScan finds and
+        // records as ModEngineConfig. It is not in any probe root.
+        var root = TestSupport.TempDir("stale-");
+        Put(root, "Game/eldenring.exe", GameDate, bytes: 4096);
+        Put(root, "ModEngine-2.1.0.0-win64/modengine2/bin/modengine2.dll", LoaderDate);
+        var config = Put(root, "ModEngine-2.1.0.0-win64/config_eldenring.toml", LoaderDate);
+        var game = Game(root, "fromsoft", "mod");
+        game.ModEngineConfig = config;
+
+        var stale = Assert.Single(StaleLoaders.Find(Scanner.GameContext(game)).Loaders);
+
+        Assert.Equal("Mod Engine 2", stale.Name);
+        Assert.EndsWith("modengine2.dll", stale.LoaderPath);
+    }
+
+    [Fact]
+    public void A_same_size_copy_of_the_game_exe_with_an_old_date_is_not_the_build()
+    {
+        // The anti-cheat swap leaves the pre-patch eldenring.exe copied over start_protected_game.exe, with
+        // the copy's old date. Taking it would hide a loader that predates the patch.
+        var root = TestSupport.TempDir("stale-");
+        Put(root, "Game/start_protected_game.exe", LoaderDate.AddDays(-30), bytes: 4096);
+        Put(root, "Game/eldenring.exe", GameDate, bytes: 4000);
+        Put(root, "Game/dinput8.dll", LoaderDate);
+        Put(root, "Game/mod_loader_config.ini", LoaderDate);
+
+        var report = StaleLoaders.Find(Scanner.GameContext(Game(root, "fromsoft", "mod")));
+
+        Assert.EndsWith("eldenring.exe", report.GameExePath);
+        Assert.Single(report.Loaders);
     }
 
     [Fact]
@@ -130,7 +181,7 @@ public class StaleLoadersTests
         Put(root, "Game/dinput8.dll", LoaderDate);
         Put(root, "Game/mod_loader_config.ini", LoaderDate);
 
-        var stale = Assert.Single(StaleLoaders.Find(Scanner.GameContext(Game(root, "fromsoft", "mod"))));
+        var stale = Assert.Single(StaleLoaders.Find(Scanner.GameContext(Game(root, "fromsoft", "mod"))).Loaders);
 
         Assert.Equal("Elden Mod Loader", stale.Name);
     }
@@ -138,24 +189,24 @@ public class StaleLoadersTests
     [Fact]
     public void Marking_checked_holds_until_the_executable_is_rewritten()
     {
-        var stale = StaleLoaders.Find(Scanner.GameContext(Game(WildsShape())));
+        var report = StaleLoaders.Find(Scanner.GameContext(Game(WildsShape())));
 
-        Assert.NotNull(StaleLoaders.Summary(stale, null));
-        Assert.Null(StaleLoaders.Summary(stale, GameDate));
+        Assert.NotNull(report.Summary(null));
+        Assert.Null(report.Summary(GameDate));
         // A patch rewrites the executable, so a check against the build before it no longer covers it.
-        Assert.NotNull(StaleLoaders.Summary(stale, GameDate.AddDays(-7)));
-        Assert.Null(StaleLoaders.Summary(Array.Empty<StaleLoader>(), null));
+        Assert.NotNull(report.Summary(GameDate.AddDays(-7)));
+        Assert.Null(StaleLoaderReport.None.Summary(null));
     }
 
     [Fact]
     public void No_game_folder_or_no_executable_reports_nothing()
     {
-        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(Path.Combine(TestSupport.TempDir("stale-"), "gone")))));
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(Path.Combine(TestSupport.TempDir("stale-"), "gone")))).Loaders);
 
         var root = TestSupport.TempDir("stale-");
         Put(root, "dinput8.dll", LoaderDate);
         Directory.CreateDirectory(Path.Combine(root, "reframework"));
-        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))));
+        Assert.Empty(StaleLoaders.Find(Scanner.GameContext(Game(root))).Loaders);
     }
 
     [Fact]
