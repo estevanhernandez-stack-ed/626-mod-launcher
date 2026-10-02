@@ -472,7 +472,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         try
         {
             var playFolder = DirectInjectService.PlayFolder(g.GameRoot) ?? g.GameRoot;
-            return LoaderScan.Detect(playFolder, g.Engine, g.SteamAppId)
+            return LoaderScan.Detect(playFolder, g)
                 .Select(d => d.Loader.DisplayName)
                 .ToList();
         }

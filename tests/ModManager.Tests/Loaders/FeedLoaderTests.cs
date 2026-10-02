@@ -9,6 +9,10 @@ namespace ModManager.Tests.Loaders;
 [Collection("ManifestState")]
 public class FeedLoaderTests : IDisposable
 {
+    // A registration as the scan sees it. The id is irrelevant to these Steam-scoped cases.
+    private static ModManager.Core.GameEntry G(string engine, string steamAppId)
+        => new() { Id = "game-" + steamAppId, GameName = "g", Engine = engine, SteamAppId = steamAppId };
+
     public void Dispose() => EffectiveManifest.SetRemote(null); // never leak state to other tests
 
     private static string TempPlayFolder(params string[] files)
@@ -37,7 +41,7 @@ public class FeedLoaderTests : IDisposable
         var dir = TempPlayFolder("nrsc_launcher.exe");
         try
         {
-            Assert.Empty(LoaderScan.Detect(dir, "fromsoft", "2622380"));   // before the feed: unknown
+            Assert.Empty(LoaderScan.Detect(dir, G("fromsoft", "2622380")));   // before the feed: unknown
 
             // Through the same gate a fetched feed passes, so this proves the loader survives it.
             var remote = ManifestValidator.Validate(
@@ -46,10 +50,10 @@ public class FeedLoaderTests : IDisposable
             Assert.Empty(remote.RejectedLoaders);
             EffectiveManifest.SetRemote(remote.Manifest);
 
-            var found = Assert.Single(LoaderScan.Detect(dir, "fromsoft", "2622380"));
+            var found = Assert.Single(LoaderScan.Detect(dir, G("fromsoft", "2622380")));
             Assert.Equal("nightreign-seamless", found.Loader.LoaderId);
             Assert.Equal(Path.Combine(dir, "nrsc_launcher.exe"), found.LauncherPath);
-            Assert.Contains(LoaderScan.BanSafeFor("fromsoft", "2622380"), l => l.LoaderId == "nightreign-seamless");
+            Assert.Contains(LoaderScan.BanSafeFor(G("fromsoft", "2622380")), l => l.LoaderId == "nightreign-seamless");
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -57,13 +61,13 @@ public class FeedLoaderTests : IDisposable
     [Fact]
     public void A_ban_safe_claim_the_feed_withdraws_leaves_the_gate()
     {
-        Assert.Contains(LoaderScan.BanSafeFor("fromsoft", "1245620"), l => l.LoaderId == "seamless-coop");
+        Assert.Contains(LoaderScan.BanSafeFor(G("fromsoft", "1245620")), l => l.LoaderId == "seamless-coop");
 
         // The whole loader, restated with the claim withdrawn: a feed loader is always complete.
         var seamless = EmbeddedGameManifest.Current.Loaders.Single(l => l.Id == "seamless-coop");
         EffectiveManifest.SetRemote(new GameManifest { Loaders = new[] { seamless with { BanSafe = false } } });
 
-        Assert.DoesNotContain(LoaderScan.BanSafeFor("fromsoft", "1245620"), l => l.LoaderId == "seamless-coop");
+        Assert.DoesNotContain(LoaderScan.BanSafeFor(G("fromsoft", "1245620")), l => l.LoaderId == "seamless-coop");
         // Still a loader, still detectable and launchable; just no longer recommended as the safe path.
         Assert.Contains(KnownLoaderCatalog.Catalog, l => l.LoaderId == "seamless-coop" && !l.BanSafe);
     }

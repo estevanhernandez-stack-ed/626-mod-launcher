@@ -98,6 +98,16 @@ public static class ManifestValidator
         // and make it vanish from every game without a word.
         if (loader.SteamAppId is { } app && !IsSteamAppId(app))
             return $"loader '{loader.Id}' steamAppId '{app}' is not a Steam app id; leave it out for an engine-wide loader";
+        // Manifest ids are lowercase kebab, so any other spelling could never match a game. An empty
+        // list is refused for the reason an empty steamAppId is: leave the field out for engine-wide.
+        if (loader.GameIds is { } gameIds)
+        {
+            if (gameIds.Count == 0)
+                return $"loader '{loader.Id}' has an empty gameIds list; leave it out for an engine-wide loader";
+            foreach (var gameId in gameIds)
+                if (gameId is null || !IsLoaderId(gameId))
+                    return $"loader '{loader.Id}' gameIds entry '{gameId}' is not a lowercase kebab-case manifest id";
+        }
         if (loader.LauncherExeNames is not { Count: > 0 } exes) return $"loader '{loader.Id}' names no launcher exe";
         foreach (var exe in exes)
             if (!IsBareExeName(exe)) return $"loader '{loader.Id}' launcher name '{exe}' is not a bare .exe filename";

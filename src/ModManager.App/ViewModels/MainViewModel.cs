@@ -1066,7 +1066,7 @@ public sealed partial class MainViewModel : ObservableObject
             // File.Exists — no I/O beyond that. On ban-risk games, these are the primary safe path.
             Loaders.Clear();
             var pf = DirectInjectService.PlayFolder(_ctx.Game.GameRoot);
-            foreach (var d in LoaderScan.Detect(pf, _ctx.Game.Engine, _ctx.Game.SteamAppId))
+            foreach (var d in LoaderScan.Detect(pf, _ctx.Game))
                 Loaders.Add(new DetectedLoaderRow(d.Loader.DisplayName, d.LauncherPath, d.Loader.BanSafe));
             OnPropertyChanged(nameof(HasLoaders));
 
@@ -1330,9 +1330,9 @@ public sealed partial class MainViewModel : ObservableObject
         // it's already installed in the play folder (LauncherPath non-null) or just in the catalog
         // (LauncherPath null → "Get it here"). Pure File.Exists inside Detect — no extra I/O.
         var pf = DirectInjectService.PlayFolder(_ctx.Game.GameRoot);
-        var detected = LoaderScan.Detect(pf, _ctx.Game.Engine, _ctx.Game.SteamAppId)
+        var detected = LoaderScan.Detect(pf, _ctx.Game)
             .ToDictionary(d => d.Loader.LoaderId, StringComparer.Ordinal);
-        var options = LoaderScan.BanSafeFor(_ctx.Game.Engine, _ctx.Game.SteamAppId)
+        var options = LoaderScan.BanSafeFor(_ctx.Game)
             .Select(l => new BanSafeLoaderOption(
                 l.DisplayName,
                 detected.TryGetValue(l.LoaderId, out var det) ? det.LauncherPath : null,

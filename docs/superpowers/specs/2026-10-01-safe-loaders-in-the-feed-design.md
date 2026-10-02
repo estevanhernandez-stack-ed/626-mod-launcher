@@ -41,10 +41,37 @@ A top-level `loaders` list on the manifest, beside `games`:
 **Top-level, not per game.** Mod Engine 2 is engine-wide: it applies to every FromSoft game,
 including ones the manifest has never heard of. A per-game field would have to repeat it on every
 FromSoft entry and still miss the unlisted ones. The fields mirror `KnownLoader` one for one, and
-scoping stays as it is: `engine`, plus an optional `steamAppId`.
+scoping is `engine`, optionally pinned by `steamAppId`, `gameIds`, or both (see Scoping below).
 
 **No schema version bump.** Like `saveLayout` and `safeRoute` before it, an older binary ignores a
 field it does not know, and that is the correct degradation: it keeps its own compiled list.
+
+## Scoping
+
+Added 2026-10-02, after the first cut shipped with Steam-only pins.
+
+A loader always names its `engine`. With no pin it applies to every game on that engine. It can be
+pinned two ways, and either one is enough:
+
+- **`steamAppId`**: one Steam game. A Steam id names a game only on Steam, so this pin never reaches
+  an EA app game (registered with no Steam id on purpose, so Play does not route through `steam://`)
+  or the EA copy of a game sold on both stores.
+- **`gameIds`**: manifest ids, the store-neutral pin. Every registration carries one, so this reaches
+  EA-only games and every store's copy of a multi-store game. It is the same lesson the ban-risk work
+  learned on 2026-09-13: `BanRiskCatalog.Effective(game)` resolves by manifest id as well as Steam id.
+
+So `LoaderScan` takes the whole `GameEntry`, never `(engine, steamAppId)`. The old overloads are gone
+rather than kept beside the new ones, so no caller can quietly stay Steam-only. A game-id pin narrows a
+loader but never moves it to another engine; the engine must still match.
+
+**It must ship in the same release as the `loaders` list itself.** A binary that read `loaders` but not
+`gameIds` would see a `gameIds`-only loader as unpinned and offer it on every game on its engine. That
+is safe today only because no released binary reads `loaders` yet (0.23.0 predates both). If a release
+ever goes out with one and not the other, a feed using `gameIds` needs a `minBinaryVersion` that
+excludes it.
+
+The validator refuses a `gameIds` entry that is not lowercase kebab-case (a manifest id never is) and
+an empty list, which, like an empty `steamAppId`, would be ambiguous between "pinned" and "engine-wide".
 
 ## Descriptive only
 
@@ -118,9 +145,6 @@ it. Honouring it is a launcher change, not a feed one, and a curator should not 
 
 ## Out of scope
 
-- **Scoping by manifest game id.** Today a loader scopes by engine and Steam app id. A game with no
-  Steam id (the EA titles) can have a loader only if it is engine-wide. Adding `gameIds` is a small
-  follow-up when the first such loader exists.
 - **The feed data PR.** The embedded list already carries both loaders, so the feed needs nothing until
   a new loader is curated. That is an `overrides/loaders/` file in `626-game-manifest`, with no
   launcher release.

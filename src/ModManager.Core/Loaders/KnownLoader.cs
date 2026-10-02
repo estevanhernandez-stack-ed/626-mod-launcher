@@ -16,7 +16,12 @@ public sealed record KnownLoader(
     string GetUrl,
     string Author,
     bool BanSafe,
-    bool EditsSaves = false);
+    bool EditsSaves = false,
+    IReadOnlyList<string>? GameIds = null)
+{
+    /// <summary>Pinned to particular games, by Steam id or manifest id. Unpinned means engine-wide.</summary>
+    public bool IsPinned => SteamAppId is not null || GameIds is { Count: > 0 };
+}
 
 /// <summary>
 /// The loaders this binary knows: the manifest's <c>loaders</c> list, embedded snapshot overlaid with
@@ -69,5 +74,6 @@ public static class KnownLoaderCatalog
         GetUrl: l.GetUrl ?? "",
         Author: l.Author ?? "",
         BanSafe: l.BanSafe == true,
-        EditsSaves: l.EditsSaves == true);
+        EditsSaves: l.EditsSaves == true,
+        GameIds: l.GameIds);
 }
