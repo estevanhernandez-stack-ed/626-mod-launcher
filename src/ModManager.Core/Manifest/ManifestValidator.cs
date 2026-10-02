@@ -43,6 +43,15 @@ public static class ManifestValidator
                 rejected.Add(g.Id);
                 continue;
             }
+            // The same gate for every extra tree (B4), but it drops the TREE, not the entry: these are
+            // descriptive, and rejecting the whole entry over one bad tree would throw away its ban-risk,
+            // store-id and modPath corrections with it. An unsafe tree is simply never read.
+            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeRelativePath(t)))
+            {
+                var safe = trees.Where(IsSafeRelativePath).ToList();
+                kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
+                continue;
+            }
             kept.Add(g);
         }
 

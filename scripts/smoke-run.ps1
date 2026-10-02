@@ -140,24 +140,31 @@ Case 'home-updates-entry' 'feat/updates-surface' {
     "present: '$(Get-Text $e)'"
 }
 
-Write-Host '  -- discovery lane (v0.18.1 fix) --' -ForegroundColor White
+Write-Host '  -- one library list (B6) --' -ForegroundColor White
 
-Case 'discovery-lane-present' 'fix/discovery-visible-on-first-run' {
-    $t = Get-Tree $root
-    $exp = Find-ById $t 'LibraryDiscoveryExpander'
-    Assert-True ($null -ne $exp) "LibraryDiscoveryExpander absent"
-    "present, offscreen=$($exp.Current.IsOffscreen)"
+# The discovery expander is gone (B6): installed games 626 doesn't manage are rows in the one list,
+# prefixed UnmanagedGame. so they never mix into the GameRow. walk below, which expects mod state.
+Case 'library-lists-unmanaged-games' 'B6 one list' {
+    $rows = @(Find-AllByIdPrefix (Get-Tree $root) 'UnmanagedGame.')
+    Assert-True ($rows.Count -gt 0) "no unmanaged game rows - every installed game is managed, or the list lost them"
+    $managed = @(Find-AllByIdPrefix (Get-Tree $root) 'GameRow.')
+    "$($rows.Count) unmanaged and $($managed.Count) managed rows in one list"
 }
 
-Case 'discovery-lane-expands' 'fix/discovery-visible-on-first-run' {
-    $t = Get-Tree $root
-    $exp = Find-ById $t 'LibraryDiscoveryExpander'
-    Expand-Node $exp; Wait-Idle 1400
-    $sub = Get-Tree $exp
-    $adds = @($sub | Where-Object { try { $_.Current.Name -like 'Add *' } catch { $false } })
-    Collapse-Node $exp; Wait-Idle 600
-    Assert-True ($adds.Count -gt 0) "expanded but no '+ Add' rows realised"
-    "$($adds.Count) discovered games, state restored"
+Case 'unmanaged-row-offers-play-and-manage' 'B6 one list' {
+    $row = @(Find-AllByIdPrefix (Get-Tree $root) 'UnmanagedGame.') | Select-Object -First 1
+    Assert-True ($null -ne $row) "no unmanaged row to inspect"
+    $names = @(Get-Tree $row | ForEach-Object { try { $_.Current.Name } catch { '' } })
+    $manage = @($names | Where-Object { $_ -like 'Start managing *' })
+    $play = @($names | Where-Object { $_ -like 'Play *' })
+    $id = $row.Current.AutomationId
+    Assert-True ($manage.Count -eq 1) "$id has no 'Start managing' button"
+    # Steam and EA installs launch through their store; a row for any other store has no Play at all.
+    if ($id -like 'UnmanagedGame.steam.*' -or $id -like 'UnmanagedGame.ea.*') {
+        Assert-True ($play.Count -eq 1) "$id is a Steam/EA install with no Play button"
+    }
+    Assert-True (-not ($names | Where-Object { $_ -match '^\d+ mods? ' })) "$id shows mod state for a game 626 doesn't manage"
+    "$id offers '$($manage[0])' and $($play.Count) Play"
 }
 
 Write-Host '  -- navigate to a game (v0.18.0 repaint surface) --' -ForegroundColor White

@@ -65,6 +65,17 @@ public static class ModToggle
         }
     }
 
+    /// <summary>The names in <paramref name="wanted"/> the listing does NOT show in the requested state,
+    /// read with ONE listing however many there are (a loadout can be a hundred changes, and each listing
+    /// walks every mod root). Empty means everything took.</summary>
+    public static IReadOnlyList<string> NotApplied(GameEntry game, IEnumerable<(string Name, bool Enabled)> wanted)
+    {
+        var now = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in ModListing.Resolve(game)) now.TryAdd(m.Name, m.Enabled);
+        return wanted.Where(w => !now.TryGetValue(w.Name, out var on) || on != w.Enabled)
+            .Select(w => w.Name).ToList();
+    }
+
     /// <summary>True when the listing now shows <paramref name="modName"/> in the requested state. A
     /// name the listing does not have is not applied. Callers that report an outcome to someone else —
     /// the MCP tool — check this after writing instead of assuming the write took.</summary>

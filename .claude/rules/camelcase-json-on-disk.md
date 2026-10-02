@@ -80,4 +80,8 @@ The string-contains assertion is what protects you — without it, the round-tri
   serialized with `ManifestJson.Options`; written by the miner to `games-manifest.json`, curated in
   `overrides/loaders/*.json`; covered by `ManifestLoadersTests.Loaders_round_trip_as_camelCase`)
 
+- Game manifest `extraModTrees` (`src/ModManager.Core/Manifest/GameManifest.cs` — `GameManifestEntry.ExtraModTrees`,
+  serialized with `ManifestJson.Options`; curated in `overrides/*.json`; covered by
+  `ModTreesTests.ExtraModTrees_round_trips_as_camelCase`)
+
 If you're adding a new on-disk shape and it isn't in this list, add it.

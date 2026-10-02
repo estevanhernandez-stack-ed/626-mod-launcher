@@ -21,7 +21,7 @@ public static class GameLibraryBuilder
             var key = new GameRecencyKey(g.SteamAppId, g.GameRoot, g.LaunchExe, g.Id);
             var recency = RecencyLadder.Merge(key, sources);
             var ms = modState(g);
-            rows.Add(new GameLibraryRow(g.Id, g.GameName, g.StoreSource, cover(g), recency,
+            rows.Add(new GameLibraryRow(g.Id, g.GameName, StoreOf(g), cover(g), recency,
                 ms.ModCount, ms.EnabledCount, ms.ActiveProfile, tier(g), banRisk(g), loaders(g), g.NexusGameDomain));
         }
         return rows
@@ -29,4 +29,23 @@ public static class GameLibraryBuilder
             .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>Which store a registered game came from. <see cref="GameEntry.StoreSource"/> when it was
+    /// recorded; otherwise the store ids the entry carries say it (B6 review: nothing sets StoreSource
+    /// today, so managed rows had no store while the unmanaged rows beside them did, and a store filter
+    /// dropped every managed game).</summary>
+    public static string? StoreOf(GameEntry g)
+        => !string.IsNullOrWhiteSpace(g.StoreSource) ? g.StoreSource
+            : !string.IsNullOrWhiteSpace(g.SteamAppId) ? "steam"
+            : !string.IsNullOrWhiteSpace(g.EaContentId) ? "ea"
+            : null;
+
+    /// <summary>A store's name as the home shows it, for both kinds of row.</summary>
+    public static string StoreDisplayName(string? store) => store?.ToLowerInvariant() switch
+    {
+        null or "" => "",
+        "steam" => "Steam",
+        "ea" => "EA",
+        _ => char.ToUpperInvariant(store![0]) + store[1..],
+    };
 }

@@ -68,4 +68,38 @@ public class StoreDiscoveryTests
         var install = new InstalledGame("ea", "16425895", "Madden NFL 27", @"C:\Games\Madden NFL 27");
         Assert.Empty(StoreDiscovery.Offerable(new[] { install }, registered, Manifest));
     }
+
+    // B6 review: the library now lists every unmanaged install as a game, so a runtime or
+    // redistributable became a row with a Play button.
+    [Theory]
+    [InlineData("228980", "Steamworks Common Redistributables")]
+    [InlineData("1070560", "Steam Linux Runtime 1.0 (scout)")]
+    [InlineData("2348590", "Proton 9.0")]
+    [InlineData("1493710", "Proton Experimental")]
+    [InlineData("250820", "SteamVR")]
+    public void A_steam_runtime_or_redistributable_is_never_offered(string appId, string name)
+        => Assert.Empty(StoreDiscovery.Offerable(
+            new[] { new InstalledGame("steam", appId, name, "C:") }, Array.Empty<GameEntry>(), Manifest));
+
+    [Fact]
+    public void A_dedicated_server_is_still_offered_because_people_mod_them()
+        => Assert.Single(StoreDiscovery.Offerable(
+            new[] { new InstalledGame("steam", "896660", "Valheim Dedicated Server", "C:") }, Array.Empty<GameEntry>(), Manifest));
+
+    [Fact]
+    public void A_game_whose_name_only_mentions_proton_is_still_a_game()
+        => Assert.Single(StoreDiscovery.Offerable(
+            new[] { new InstalledGame("steam", "42", "Protonaut", "C:") }, Array.Empty<GameEntry>(), Manifest));
+
+    // B6 review: a Steam game added through + Game with the app id box left blank was listed twice,
+    // once managed and once as "not managed". The folder says it is the same game, as it does for EA.
+    // Relative paths, so the check normalises the same way on every platform.
+    [Fact]
+    public void A_steam_install_is_not_offered_when_its_folder_is_already_registered_without_an_app_id()
+    {
+        var registered = new[] { new GameEntry { Id = "cyberpunk", GameRoot = "steamapps/common/Cyberpunk 2077/" } };
+        var installs = new[] { new InstalledGame("steam", "1091500", "Cyberpunk 2077", "steamapps/common/Cyberpunk 2077") };
+
+        Assert.Empty(StoreDiscovery.Offerable(installs, registered, Manifest));
+    }
 }

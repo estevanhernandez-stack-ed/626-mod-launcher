@@ -1045,7 +1045,36 @@ public static class Scanner
 
     public static Task<IReadOnlyList<string>> ListProfilesAsync(GameContext c) => Task.FromResult(ListProfiles(c));
     public static Task SaveProfileAsync(string name, GameContext c) { SaveProfile(name, c); return Task.CompletedTask; }
-    public static Task LoadProfileAsync(string name, GameContext c) { LoadProfile(name, c); return Task.CompletedTask; }
+    /// <summary>Apply a saved profile: every change <see cref="ProfilePlan"/> lists, through
+    /// <see cref="ApplyProfilePlanAsync"/>. Throws, after trying every change, if any failed. Gates
+    /// (ban risk) are the caller's — and a caller that gates should plan, gate, then apply THAT plan, so
+    /// what was asked about is what runs.</summary>
+    public static async Task LoadProfileAsync(string name, GameContext c)
+    {
+        var failed = await ApplyProfilePlanAsync(ProfilePlan(name, c), c);
+        if (failed.Count > 0)
+            throw new IOException($"Couldn't apply {failed.Count} change(s): "
+                + string.Join("; ", failed.Select(f => $"{f.Mod.Name}: {f.Error}")));
+    }
+
+    /// <summary>
+    /// Apply a profile plan the caller already holds, each change through the ONE toggle router
+    /// (<see cref="ModToggle"/>), in the plan's order. This used to move every mod through the folder
+    /// lane, so on a direct-inject or Mod Engine 2 game a profile load changed nothing and said nothing
+    /// — the failure #347 fixed for the agent's toggle. One change failing does not strand the rest:
+    /// every change is tried, and the ones that threw come back so the caller can say which.
+    /// </summary>
+    public static async Task<IReadOnlyList<(Mod Mod, bool Enable, string Error)>> ApplyProfilePlanAsync(
+        IReadOnlyList<(Mod Mod, bool Enable)> plan, GameContext c)
+    {
+        var failed = new List<(Mod, bool, string)>();
+        foreach (var (mod, enable) in plan)
+        {
+            try { await ModToggle.SetEnabledAsync(c, mod, enable); }
+            catch (Exception e) { failed.Add((mod, enable, e.Message)); }
+        }
+        return failed;
+    }
     public static Task DeleteProfileAsync(string name, GameContext c) { DeleteProfile(name, c); return Task.CompletedTask; }
 
     private static IReadOnlyList<string> ListProfiles(GameContext c)
@@ -1055,24 +1084,44 @@ public static class Scanner
     {
         var safe = Profile.SafeProfileName(name);
         Directory.CreateDirectory(c.ProfilesDir);
-        var snapshot = BuildModList(c).Select(m => new ProfileMod(m.Name, m.Enabled)).ToList();
+        // The same listing a load reads (every lane), so a profile records the rows the user sees.
+        var snapshot = ModListing.Resolve(c.Game).Select(m => new ProfileMod(m.Name, m.Enabled)).ToList();
         AtomicJson.WriteJsonAtomic(Path.Combine(c.ProfilesDir, safe + ".json"),
             new ProfileData { SavedAt = DateTime.UtcNow.ToString("o"), Game = c.Game.GameName, Mods = snapshot });
     }
 
-    private static void LoadProfile(string name, GameContext c)
+    /// <summary>
+    /// What loading <paramref name="name"/> would change, without changing it: each mod whose state the
+    /// profile names differently from now, disables first (turning something off can only make room).
+    /// Read from <see cref="ModListing.Resolve"/>, the listing the app and the agent both show, so the
+    /// plan covers every lane. A mod another tool manages is left alone, as it always was; a mod the
+    /// profile does not mention is left as it is. A loader (a proxy DLL, a framework row) is never in
+    /// the plan: a profile names mods, and turning the thing they ride on off is a choice the row toggle
+    /// makes WITH its warning, not one a loadout makes silently. A caller that must gate enabling (the
+    /// ban-risk ask) can see from the plan whether anything would turn ON before it asks.
+    /// </summary>
+    public static IReadOnlyList<(Mod Mod, bool Enable)> ProfilePlan(string name, GameContext c)
     {
         var safe = Profile.SafeProfileName(name);
         var data = JsonSerializer.Deserialize<ProfileData>(File.ReadAllText(Path.Combine(c.ProfilesDir, safe + ".json")), Json);
-        if (data is null) return;
-        var desired = data.Mods.ToDictionary(m => m.Name, m => m.Enabled);
-        foreach (var m in BuildModList(c))
+        // A hand-edited file can say "mods": null, or hold an entry with no name; neither may throw the
+        // whole load away.
+        if (data?.Mods is not { } mods) return Array.Empty<(Mod, bool)>();
+
+        // First entry wins on a duplicated name (a hand edit) rather than throwing the whole load away.
+        var desired = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var m in mods)
+            if (m is not null && !string.IsNullOrEmpty(m.Name)) desired.TryAdd(m.Name, m.Enabled);
+
+        var changes = new List<(Mod Mod, bool Enable)>();
+        foreach (var m in ModListing.Resolve(c.Game))
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns (matches SetAllMods/ApplyMode)
-            if (!desired.TryGetValue(m.Name, out var want)) continue;
-            if (m.Enabled && !want) DisableMod(m.Name, c);
-            else if (!m.Enabled && want) EnableMod(m.Name, c);
+            if (m.IsLoader || m.Location == ProxyLoaderRows.LocationTag) continue; // loaders keep their warning
+            if (!desired.TryGetValue(m.Name, out var want) || m.Enabled == want) continue;
+            changes.Add((m, want));
         }
+        return changes.OrderBy(x => x.Enable).ToList();   // false (disable) sorts first
     }
 
     private static void DeleteProfile(string name, GameContext c)

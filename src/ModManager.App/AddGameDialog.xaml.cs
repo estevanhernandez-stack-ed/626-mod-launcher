@@ -353,6 +353,16 @@ public sealed partial class AddGameDialog : ContentDialog
     private void OnSteamSetup(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not SteamSetupRow row) return;
+        SetUpFor(row.AppId, row.Name, row.InstallDir);
+    }
+
+    /// <summary>Fill the manual form for one installed Steam game the launcher could not add in one step
+    /// (its engine was not detected), and put the user on the engine picker. The set-up list's own rows
+    /// do this; so does the library's Start managing (B6), which opens the dialog already filled for the
+    /// game the user clicked rather than as a blank form.</summary>
+    public void SetUpFor(string appId, string name, string installDir)
+    {
+        var row = new SteamSetupRow(appId, name, null, installDir);
 
         // Clear only what belongs to a DIFFERENT game. Setting up the same game's row - to pull its
         // Steam-resolved folder after applying a profile - is a legitimate order, and blanket-clearing

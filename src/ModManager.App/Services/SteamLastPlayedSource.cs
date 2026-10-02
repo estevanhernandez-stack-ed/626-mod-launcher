@@ -30,12 +30,10 @@ public sealed class SteamLastPlayedSource : ILastPlayedSource
         var match = _scan.Value.FirstOrDefault(g =>
             string.Equals(g.AppId, key.SteamAppId, StringComparison.OrdinalIgnoreCase));
         if (match is null) return null;
-        if (string.IsNullOrEmpty(match.LastPlayed)) return null;
-
-        if (!long.TryParse(match.LastPlayed, out var unixSeconds)) return null;
-        if (unixSeconds <= 0) return null; // pre-2020 / never-played ACFs stamp 0
-
-        var utc = DateTimeOffset.FromUnixTimeSeconds(unixSeconds).UtcDateTime;
-        return new LastPlayed(utc, null, Name);
+        // One reading of the store's timestamp for both kinds of library row (0 = never played; a value
+        // past what a date can hold is unknown, not a crash).
+        return ModManager.Core.Library.LibraryList.FromUnixSeconds(match.LastPlayed) is { } utc
+            ? new LastPlayed(utc, null, Name)
+            : null;
     }
 }

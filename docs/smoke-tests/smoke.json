@@ -95,38 +95,30 @@
    "expect": "LibraryUpdatesEntry is present when any game has pending updates; absent is a legitimate result and is reported as such, not as a failure."
   },
   {
-   "id": "discovery-lane-present",
-   "title": "The discovery lane exists on the home",
-   "surface": "fix/discovery-visible-on-first-run",
+   "id": "library-lists-unmanaged-games",
+   "title": "Installed games 626 doesn't manage are rows in the one library list",
+   "surface": "B6 one list",
    "coverage": "harness",
-   "status": "verified",
-   "lastVerified": {
-    "release": "v0.18.1",
-    "date": "2026-08-17",
-    "by": "harness",
-    "note": "Green on the 2026-08-17 run. Re-run after any change to the surface it touches."
-   },
+   "status": "pending",
+   "lastVerified": null,
    "steps": [],
    "source": "scripts/smoke-run.ps1",
-   "action": "On the library home.",
-   "expect": "LibraryDiscoveryExpander is in the tree, collapsed or not."
+   "action": "On the library home, walk the list for UnmanagedGame.* rows beside the GameRow.* rows.",
+   "expect": "At least one UnmanagedGame.<store>.<id> row is present in the same list as the managed rows, and there is no discovery expander.",
+   "note": "Replaces discovery-lane-present (verified v0.18.1): B6 removed the 'Installed games not added yet' expander in favour of one list. Needs a machine with at least one installed, unmanaged Steam or curated EA game."
   },
   {
-   "id": "discovery-lane-expands",
-   "title": "The discovery lane opens and closes",
-   "surface": "fix/discovery-visible-on-first-run",
+   "id": "unmanaged-row-offers-play-and-manage",
+   "title": "An unmanaged row offers Start managing and Play, and no mod state",
+   "surface": "B6 one list",
    "coverage": "harness",
-   "status": "verified",
-   "lastVerified": {
-    "release": "v0.18.1",
-    "date": "2026-08-17",
-    "by": "harness",
-    "note": "Green on the 2026-08-17 run. Re-run after any change to the surface it touches."
-   },
+   "status": "pending",
+   "lastVerified": null,
    "steps": [],
    "source": "scripts/smoke-run.ps1",
-   "action": "Expand LibraryDiscoveryExpander, count its children, collapse it again.",
-   "expect": "Child count rises when expanded and the expander is left as it was found. Virtualised content is absent until realised — absence while collapsed is not emptiness."
+   "action": "Read the first UnmanagedGame.* row's subtree.",
+   "expect": "Exactly one 'Start managing <name>' button; a 'Play <name>' button for a Steam or EA install; no 'N mods' text.",
+   "note": "Replaces discovery-lane-expands (verified v0.18.1). Read only: clicking either button would launch a game or register one."
   },
   {
    "id": "navigate-to-game",

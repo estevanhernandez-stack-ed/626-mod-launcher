@@ -556,8 +556,9 @@ public sealed partial class MainWindow : Window
 
         // Undetectable engine — the full dialog lets the user pick it. Same flow the + Game button uses,
         // awaited: the caller repaints the home when this returns, and it must not do that with the
-        // dialog still open.
-        await AddGameViaDialogAsync();
+        // dialog still open. Filled for THIS game (B6): Start managing on a named row must not land on
+        // a blank form.
+        await AddGameViaDialogAsync(game);
     }
 
     // OneWay IsOn + this handler: ignore the programmatic set during reload (when the switch
@@ -963,11 +964,14 @@ public sealed partial class MainWindow : Window
     /// directly, which returned at the first await — so the caller's "now repaint the home" step ran
     /// while the dialog was still open, against a library that had not been added to yet.</para>
     /// </summary>
-    private async Task AddGameViaDialogAsync()
+    private async Task AddGameViaDialogAsync(ModManager.Core.InstalledGame? setUpFor = null)
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var steamGames = App.AppHost.Services.GetRequiredService<Services.SteamService>().InstalledGames();
         var dialog = new AddGameDialog(hwnd, steamGames) { XamlRoot = Content.XamlRoot };
+        // Once it is on screen, so the bring-into-view and focus the fill ends with have a tree to act on.
+        if (setUpFor is { } g)
+            dialog.Opened += (_, _) => dialog.SetUpFor(g.AppId, g.Name, g.InstallDir);
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
         // Batch mode wins when there's at least one approved row - register them in order and skip

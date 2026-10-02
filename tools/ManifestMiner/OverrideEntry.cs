@@ -23,6 +23,7 @@ public sealed record OverrideEntry
     public string? Name { get; init; }
     public string? Engine { get; init; }
     public string? ModPath { get; init; }
+    public IReadOnlyList<string>? ExtraModTrees { get; init; }   // B4: other folders a mod also writes to (descriptive)
     public string? NexusDomain { get; init; }
     public int? Featured { get; init; }
     public string? BanRisk { get; init; }

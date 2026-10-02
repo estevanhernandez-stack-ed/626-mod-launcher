@@ -868,6 +868,11 @@ public sealed partial class MainViewModel : ObservableObject
             // written key in lockstep.
             var metaByKey = Scanner.LoadMetadata(_ctx);
             var rows = new List<ModRowViewModel>();
+            // B4, see first: the other folders this game's mods also write to (from the manifest), read
+            // once per reload. Each row then says which of them hold files with its name; toggling still
+            // moves only the primary folder.
+            var modTrees = ModTrees.Build(_ctx.GameRoot, ManifestIdLookup.EntryFor(_ctx.Game)?.ExtraModTrees,
+                _ctx.Locations.Select(l => l.Abs));
             // A multi-variant family (e.g. Faster Ships 5x/10x/20x) collapses to ONE row whose levels
             // are inline toggle chips; a singleton renders as a normal row. Build in variant-group order;
             // OrderAndStampSections then orders + sections per GroupMode.
@@ -987,6 +992,7 @@ public sealed partial class MainViewModel : ObservableObject
                         ? NexusRefresh.ResolveModId(repMeta)
                         : null,
                     NexusConnected = NexusActionsAvailable,
+                    AlsoInTrees = modTrees.For(rep.Name),
                 });
             }
             OrderAndStampSections(rows);
@@ -1659,8 +1665,19 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task<bool> LoadProfileAsync(string name)
     {
         if (_ctx is null) return false;
-        if (!await GateBanRiskEnableAsync()) return false; // un-acked high-risk + cancel -> enable nothing
-        await Scanner.LoadProfileAsync(name, _ctx);
+        // Plan first, then ask only if the plan turns something ON: disabling is never gated, so a
+        // profile that only switches mods off must not be stopped by a cancelled ban-risk prompt. The
+        // plan that was asked about is the plan that runs (no re-read between the two).
+        var plan = Scanner.ProfilePlan(name, _ctx);
+        if (plan.Any(p => p.Enable) && !await GateBanRiskEnableAsync()) return false; // un-acked high-risk + cancel -> enable nothing
+        var failed = await Scanner.ApplyProfilePlanAsync(plan, _ctx);
+        if (failed.Count > 0)
+        {
+            // What did land is real; the list must show it before the dialog reports the rest.
+            await ReloadModsAsync();
+            throw new IOException($"Couldn't apply {failed.Count} change(s): "
+                + string.Join("; ", failed.Select(f => $"{f.Mod.Name}: {f.Error}")));
+        }
         return true;
     }
 

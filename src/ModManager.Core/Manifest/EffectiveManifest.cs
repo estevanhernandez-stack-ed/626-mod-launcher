@@ -141,6 +141,7 @@ public static class EffectiveManifest
             NexusDomain = remote.NexusDomain ?? embedded.NexusDomain,
             CurseforgeGameId = remote.CurseforgeGameId ?? embedded.CurseforgeGameId,
             ModPath = remote.ModPath ?? embedded.ModPath,
+            ExtraModTrees = remote.ExtraModTrees ?? embedded.ExtraModTrees,
             SaveDirHint = remote.SaveDirHint ?? embedded.SaveDirHint,
             FileExtensions = remote.FileExtensions ?? embedded.FileExtensions,
             GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,

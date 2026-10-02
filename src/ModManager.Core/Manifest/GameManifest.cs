@@ -36,6 +36,16 @@ public sealed record GameManifestEntry
     public string? NexusDomain { get; init; }
     public int? CurseforgeGameId { get; init; }
     public string? ModPath { get; init; }             // override to the engine-default mod folder
+
+    /// <summary>
+    /// The other folders, relative to the game root, where this game's mods also put files (B4: a
+    /// Cyberpunk 2077 mod can span <c>archive/pc/mod</c>, <c>r6/scripts</c>, <c>red4ext/plugins</c> and
+    /// <c>bin/x64/plugins</c>; <see cref="ModPath"/> names one). DESCRIPTIVE ONLY, like every field
+    /// here: the launcher SHOWS which of these trees a mod has files in, and toggles only the primary
+    /// folder. Whether a tree may be toggled is a later decision, deliberately not a field yet. Each
+    /// path is gated like <see cref="ModPath"/>: relative, no drive, no "..".
+    /// </summary>
+    public IReadOnlyList<string>? ExtraModTrees { get; init; }
     public string? SaveDirHint { get; init; }          // descriptive save-location hint (e.g. mined from Ludusavi save paths)
     public IReadOnlyList<string>? FileExtensions { get; init; }
     public string? GroupingRule { get; init; }
