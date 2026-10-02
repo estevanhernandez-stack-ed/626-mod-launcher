@@ -207,6 +207,14 @@ public static class DirectInject
         var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(mod.Name));
         var present = mod.Entries.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
 
+        // The slug merges names ("Foo" and "foo-" are both "foo"), so a folder already holding ANOTHER mod's
+        // record is not this mod's to write into, files or no files: writing our record over it would hand
+        // that mod's held entries to this one. The files guard below already refuses an occupied folder;
+        // this one also covers a record with nothing behind it, and says whose the folder is.
+        if (ReadMeta(dir) is { Name: { Length: > 0 } heldName } && !SameMod(heldName, mod.Name))
+            throw new HeldCopyCollisionException(
+                $"626 can't turn \"{mod.Name}\" off: 626 is already holding \"{heldName}\" in the same folder. Nothing was moved.");
+
         // Validate before acting. Files already in holding are an earlier copy; moving over them would
         // collide, and writing a new record over theirs would orphan them even where no name collides.
         if (HoldingFolder.HoldsFiles(dir, MetaFile) || present.Any(e => Exists(Path.Combine(dir, e))))
@@ -265,6 +273,11 @@ public static class DirectInject
         var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(modName));
         var meta = ReadMeta(dir);
         if (meta is null) return;
+        // The slug merges names, so the folder may hold a different mod. The record stores whose it is; a
+        // record from an older build without a name keeps the old behaviour.
+        if (meta.Name is { Length: > 0 } && !SameMod(meta.Name, modName))
+            throw new HeldCopyCollisionException(
+                $"626 can't turn \"{modName}\" on: the files held under that name belong to \"{meta.Name}\". Nothing was moved.");
 
         var held = meta.Entries.Where(e => Exists(Path.Combine(dir, e))).ToList();
         var taken = held.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
@@ -524,6 +537,9 @@ public static class DirectInject
         }
         return result;
     }
+
+    // One mod, as the user names it: case does not make two mods, the slug folder compares the same way.
+    private static bool SameMod(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     private static DisabledMeta? ReadMeta(string dir)
     {

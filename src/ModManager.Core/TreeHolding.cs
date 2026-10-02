@@ -31,8 +31,16 @@ internal static class TreeHolding
     public static string Root(GameContext ctx) => Path.Combine(ctx.DataDir, "disabled-trees");
 
     /// <summary>One mod's holding folder: <see cref="HoldingName.Folder"/>, so <c>Foo.</c> is never held in
-    /// <c>Foo</c>'s folder and <c>CON</c> never names the console device.</summary>
-    public static string ModDir(GameContext ctx, string mod) => Path.Combine(Root(ctx), HoldingName.Folder(mod));
+    /// <c>Foo</c>'s folder and <c>CON</c> never names the console device.
+    /// Throws for a name with no holding folder (<see cref="CanHold"/> is false); every caller asks first or
+    /// goes through <see cref="Held"/> / <see cref="HoldsFiles"/>, which answer "nothing held" for it.</summary>
+    public static string ModDir(GameContext ctx, string mod)
+        => Path.Combine(Root(ctx), HoldingName.Folder(mod)
+            ?? throw new InvalidOperationException(HoldingName.TooLongMessage(mod)));
+
+    /// <summary>False for a risky name too long to encode (<see cref="HoldingName.Folder"/> is null): such a
+    /// mod has no holding folder, so nothing can be held for it.</summary>
+    public static bool CanHold(string mod) => HoldingName.Folder(mod) is not null;
 
     /// <summary>Where an entry of <paramref name="tree"/> is held while the mod is off.</summary>
     public static string PathFor(GameContext ctx, string mod, string tree, string entry)
@@ -49,6 +57,7 @@ internal static class TreeHolding
     public static IReadOnlyList<HeldEntry> Held(GameContext ctx, string mod, IEnumerable<string>? declaredTrees)
     {
         var result = new List<HeldEntry>();
+        if (!CanHold(mod)) return result;
         var modDir = ModDir(ctx, mod);
         BeforeReadForTests?.Invoke(modDir);
         if (declaredTrees is null || !Directory.Exists(modDir)) return result;
@@ -78,13 +87,17 @@ internal static class TreeHolding
     /// mod's folder. A folder of empty folders holds nothing.</summary>
     public static bool HoldsFiles(GameContext ctx, string mod)
     {
+        if (!CanHold(mod)) return false;
         var modDir = ModDir(ctx, mod);
         BeforeReadForTests?.Invoke(modDir);
         return HoldingFolder.HoldsFiles(modDir, NoRecord);
     }
 
     /// <summary>Remove the mod's holding folder once no file remains under it; a file never goes.</summary>
-    public static void RemoveIfEmpty(GameContext ctx, string mod) => HoldingFolder.RemoveIfNoFiles(ModDir(ctx, mod));
+    public static void RemoveIfEmpty(GameContext ctx, string mod)
+    {
+        if (CanHold(mod)) HoldingFolder.RemoveIfNoFiles(ModDir(ctx, mod));
+    }
 
     private static string NormalizeTree(string? tree) => (tree ?? "").Replace('\\', '/').Trim('/');
 

@@ -65,17 +65,31 @@ public class HoldingNameTests
 
         Assert.StartsWith(HoldingName.Prefix, folder);
         Assert.Equal(HoldingName.Prefix + Convert.ToHexStringLower(System.Text.Encoding.UTF8.GetBytes(name)), folder);
-        Assert.True(FolderNames.NamesOneFolder(folder));
+        Assert.True(FolderNames.NamesOneFolder(folder!));
     }
 
-    [Fact]
-    public void A_name_longer_than_200_characters_is_encoded_and_200_is_not()
+    // An ordinary name is never encoded, whatever its length: it behaves exactly as it always did.
+    [Theory]
+    [InlineData(201)]
+    [InlineData(230)]
+    [InlineData(255)]
+    public void A_long_ordinary_name_is_still_its_own_folder(int length)
     {
-        var ok = new string('a', 200);
-        var tooLong = new string('a', 201);
+        var name = new string('a', length);
+        Assert.Equal(name, HoldingName.Folder(name));
+    }
 
-        Assert.Equal(ok, HoldingName.Folder(ok));
-        Assert.StartsWith(HoldingName.Prefix, HoldingName.Folder(tooLong));
+    // ~626~ plus two hex digits a byte must fit NTFS's 255-character name: 125 bytes is the most.
+    [Fact]
+    public void A_risky_name_whose_encoding_would_pass_255_characters_has_no_folder()
+    {
+        var fits = new string('a', 124) + ".";      // 125 bytes -> 5 + 250 = 255
+        var tooLong = new string('a', 125) + ".";   // 126 bytes -> 257
+
+        Assert.Equal(255, HoldingName.Folder(fits)!.Length);
+        Assert.Null(HoldingName.Folder(tooLong));
+        Assert.Null(HoldingName.Folder(new string('a', 129) + "."));
+        Assert.Null(HoldingName.Folder(new string('é', 63) + "."));   // 127 bytes, 64 characters
     }
 
     [Fact]
@@ -99,7 +113,7 @@ public class HoldingNameTests
     [Theory]
     [MemberData(nameof(RoundTripNames))]
     public void Every_name_round_trips(string name)
-        => Assert.Equal(name, HoldingName.ModName(HoldingName.Folder(name)));
+        => Assert.Equal(name, HoldingName.ModName(HoldingName.Folder(name)!));
 
     [Fact]
     public void No_two_names_share_a_folder()

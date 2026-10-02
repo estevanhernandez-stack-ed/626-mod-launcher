@@ -170,8 +170,9 @@ existing `disabled/<Mod>`, not inside it.
   reading the data folder may not). An ordinary name is its own folder, unchanged, so every folder an older build made works
   with no migration. A name that is not safe as written (empty or whitespace, a trailing dot or space, an
   invalid file-name character, a device name on the part before the first dot, `.` or `..`, a name already
-  starting with `~626~`, or longer than 200 characters) is held in `~626~` plus the lowercase hex of its
-  UTF-8 bytes: `Foo.` in `~626~466f6f2e`. Lone surrogates are carried through (WTF-8) so two names never
+  starting with `~626~`) is held in `~626~` plus the lowercase hex of its UTF-8 bytes: `Foo.` in
+  `~626~466f6f2e`. An ordinary name is never encoded, whatever its length. A risky name over 125 bytes would
+  encode past NTFS's 255-character limit, so it has no holding folder and turning it off refuses. Lone surrogates are carried through (WTF-8) so two names never
   share a folder. `HoldingName.ModName` reverses it for the listing (`ListDisabled`, the library-inference
   disabled keys, a restore point's re-enable); a `~626~` folder with malformed hex is skipped rather than
   guessed at. A tagged encoding was chosen over a lossy slug or a hash because it is reversible from the
@@ -332,12 +333,22 @@ still listed; a later family member's failure leaves no orphan behind.
   `disabled/<name>` and `disabled-trees/<name>` from the raw mod name, so `Foo.` landed in `Foo`'s folders.
   Both now go through `HoldingName`. `GuardNoBasePakMove` sized files through a plain join; it now sizes
   through `FolderNames.ExactPath`, so a `\\?\`-made sidecar is sized as itself.
-- **Still open, from the same audit.** The direct-inject and loose-root holding folders
-  (`EnginePresets.Slugify(mod.Name)`) do merge distinct names (`Foo` / `foo-` / `Foo.` are all `foo`), and
-  `con` is a device. Not switched to `HoldingName`: every folder an existing user has held under a slug
-  would stop being found by name. The collision refusal on turn-off keeps it from losing files. Also, two
-  ORDINARY names differing only in case (`Foo`, `foo`, from two mod locations) still share a folder, as
-  they always have; `HoldingName` does not change case.
+- **Closed: a slug folder answers only to its own mod.** The direct-inject and loose-root holding folders
+  (`EnginePresets.Slugify(mod.Name)`) merge distinct names (`Foo` / `foo-` / `Foo.` are all `foo`), and `con`
+  is a device on Windows 10. They stay slug-named: switching to `HoldingName` would stop every folder an
+  existing user holds from being found by name. Instead the held record (`__626mod.json`, which already
+  stored `name`) is checked both ways, ignoring case. Turning on a name whose slug folder holds a different
+  mod's record refuses. Turning off into a slug folder holding another mod's record refuses, including a
+  record with no files behind it, which the files-only collision guard let through. A record without a
+  name (older builds) keeps the old behaviour.
+- **Closed: long names.** An ordinary name is never encoded, whatever its length. A risky name whose
+  `~626~` folder would pass 255 characters (over 125 UTF-8 bytes) has no holding folder: turning it off
+  refuses before anything moves ("its name is too long to hold safely"), and uninstalling it has nothing
+  held to delete.
+- **Still open: case-only names.** Two ORDINARY names differing only in case (`Foo` and `foo`, from two mod
+  locations) still share one holding folder, as they always have; `HoldingName` does not change case.
+- **Still open: DisableEntry's own moves** join `loc.Abs` and the scanned file name plainly. They can only
+  alias for a live entry a `\\?\`-aware tool created; worth the same `FolderNames.ExactPath` treatment.
 - **Safe Clear and extra trees.** Replaying a restore point used to copy the archived `disabled-trees`
   back after a mods-active end state, holding a second copy of entries that were live again (fixed: the
   replay skips it, as it skips `disabled`). What is still open: Safe Clear's vanilla move doesn't know

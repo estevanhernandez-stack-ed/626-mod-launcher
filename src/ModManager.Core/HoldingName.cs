@@ -22,8 +22,8 @@ internal static class HoldingName
     /// <summary>What every encoded folder name starts with.</summary>
     public const string Prefix = "~626~";
 
-    /// <summary>The longest name kept as its own folder.</summary>
-    public const int MaxPlainLength = 200;
+    /// <summary>The longest folder name NTFS allows. An encoded name that would pass it has no folder.</summary>
+    public const int MaxFolderLength = 255;
 
     private static readonly HashSet<string> DeviceNames = BuildDeviceNames();
 
@@ -40,9 +40,21 @@ internal static class HoldingName
     }
 
     /// <summary>The holding folder for <paramref name="modName"/>: the name itself when Windows keeps it as
-    /// one folder exactly as written, otherwise the <see cref="Prefix"/> encoding. Never empty.</summary>
-    public static string Folder(string modName)
-        => IsPlain(modName) ? modName : Prefix + Convert.ToHexStringLower(Wtf8Encode(modName));
+    /// one folder exactly as written, whatever its length, otherwise the <see cref="Prefix"/> encoding. Never
+    /// empty. Null when the name is risky and its encoding would pass <see cref="MaxFolderLength"/> (a risky
+    /// name over 125 UTF-8 bytes): such a mod has no holding folder, so turning it off refuses and uninstalling
+    /// it has nothing held.</summary>
+    public static string? Folder(string modName)
+    {
+        if (IsPlain(modName)) return modName;
+        var bytes = Wtf8Encode(modName);
+        return Prefix.Length + bytes.Length * 2 > MaxFolderLength ? null : Prefix + Convert.ToHexStringLower(bytes);
+    }
+
+    /// <summary>The refusal for turning off a mod whose name has no holding folder.</summary>
+    public static string TooLongMessage(string modName)
+        => $"626 can't turn \"{modName}\" off: its name is too long to hold safely. Rename the file and try again. "
+           + "Nothing was moved.";
 
     /// <summary>
     /// The mod a holding folder belongs to. A <see cref="Prefix"/> name followed by the lowercase hex of a
@@ -69,7 +81,7 @@ internal static class HoldingName
     // encoded folder.
     private static bool IsPlain(string name)
     {
-        if (string.IsNullOrWhiteSpace(name) || name.Length > MaxPlainLength) return false;
+        if (string.IsNullOrWhiteSpace(name)) return false;
         if (name is "." or "..") return false;
         if (name.EndsWith('.') || name.EndsWith(' ')) return false;
         if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;

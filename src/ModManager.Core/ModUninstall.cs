@@ -109,7 +109,7 @@ public static class ModUninstall
         foreach (var m in mods)
         {
             if (string.IsNullOrWhiteSpace(m.Name)) continue;   // refused by the run, with the no-name message
-            if (HeldDir(ctx, m.Name) is not { } dir) continue;   // unreachable: every name has a folder
+            if (HeldDir(ctx, m.Name) is not { } dir) continue;   // a name too long to hold has no folder
             try
             {
                 TreeHolding.BeforeReadForTests?.Invoke(dir);
@@ -229,8 +229,9 @@ public static class ModUninstall
     /// <item><b>Throws</b> when the folder would resolve outside the root. The encoding makes that impossible
     /// (<c>..</c> is held in <c>~626~2e2e</c>); the guard stays because the delete behind it is recursive.
     /// Also throws when the root isn't strictly under the data folder, or is a link.</item>
-    /// <item><b>Null</b> when the folder still could not name one folder as written. Unreachable by
-    /// construction, kept so a future change to the encoding can't turn into a delete of the wrong folder.</item>
+    /// <item><b>Null</b> for a risky name too long to encode (turning it off refuses, so nothing is held), and
+    /// when the folder still could not name one folder as written: unreachable by construction, kept so a
+    /// future change to the encoding can't turn into a delete of the wrong folder.</item>
     /// </list>
     /// The path is built by joining and never by resolving, because <c>Path.GetFullPath</c> expands an
     /// existing folder's 8.3 alias. The folder itself may be a link: the delete removes it as one.
@@ -243,7 +244,8 @@ public static class ModUninstall
             throw new InvalidOperationException(
                 $"626's holding folder {root} is not inside its data folder {dataDir}, so nothing in it was deleted.");
 
-        var folder = HoldingName.Folder(modName);
+        // A risky name too long to encode has no holding folder, so nothing is held for it.
+        if (HoldingName.Folder(modName) is not { } folder) return null;
         if (FolderNames.Escapes(root, folder))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{modName}\": that name leads outside 626's holding folder {root}. Nothing was changed.");
@@ -264,7 +266,7 @@ public static class ModUninstall
     /// path would.
     /// </summary>
     private static bool HeldPresent(GameContext ctx, string modName)
-        => FolderNames.HasEntryNamed(TreeHolding.Root(ctx), HoldingName.Folder(modName));
+        => HoldingName.Folder(modName) is { } folder && FolderNames.HasEntryNamed(TreeHolding.Root(ctx), folder);
 
 }
 

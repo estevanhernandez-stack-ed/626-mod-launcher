@@ -97,7 +97,9 @@ public sealed class ExtraTreeRows
     // second must never be reported as files being there.
     private (IReadOnlyList<TreeHolding.HeldEntry> Entries, TreeLeftover? Unknown) Held(string modName)
     {
-        if (_ctx is null || string.IsNullOrEmpty(modName)) return (Array.Empty<TreeHolding.HeldEntry>(), null);
+        // A name too long to hold has no holding folder, so nothing can be held for it.
+        if (_ctx is null || string.IsNullOrEmpty(modName) || !TreeHolding.CanHold(modName))
+            return (Array.Empty<TreeHolding.HeldEntry>(), null);
         var dir = TreeHolding.ModDir(_ctx, modName);
         try
         {

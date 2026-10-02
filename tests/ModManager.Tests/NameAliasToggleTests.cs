@@ -48,7 +48,7 @@ public class NameAliasToggleTests : IDisposable
             p => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))),
             StringComparer.Ordinal);
 
-    private string Held(string modName) => Path.Combine(Disabled, HoldingName.Folder(modName));
+    private string Held(string modName) => Path.Combine(Disabled, HoldingName.Folder(modName)!);
 
     [Fact]
     public async Task Both_names_list_as_separate_rows()
@@ -141,6 +141,49 @@ public class NameAliasToggleTests : IDisposable
         Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Disabled, "Foo", "Foo_P.pak")));
         Assert.True(File.Exists(Path.Combine(Disabled, "Foo", "meta.json")));
         Assert.Single(await Rows(), m => m.Name == "Foo" && !m.Enabled);
+    }
+
+    // An ordinary name is never encoded, whatever its length, so a long one works exactly as before.
+    [Fact]
+    public async Task A_230_character_ordinary_name_turns_off_and_on_in_its_own_named_folder()
+    {
+        var name = new string('L', 230);
+        File.WriteAllText(Path.Combine(Mods, name + "_P.pak"), "LONG MOD");
+        var before = GameHashes();
+
+        await Scanner.DisableModAsync(name, Ctx());
+
+        Assert.Equal("LONG MOD", File.ReadAllText(Path.Combine(Disabled, name, name + "_P.pak")));
+        Assert.Single(await Rows(), m => m.Name == name && !m.Enabled);
+
+        await Scanner.EnableModAsync(name, Ctx());
+
+        Assert.Equal(before, GameHashes());
+        Assert.Empty(Directory.GetFileSystemEntries(Disabled));
+    }
+
+    // A RISKY name too long to encode in 255 characters has no holding folder: turning it off refuses,
+    // before anything moves, and uninstalling it has nothing held to delete.
+    [Fact]
+    public async Task A_130_character_name_ending_in_a_dot_refuses_to_turn_off_and_moves_nothing()
+    {
+        var name = new string('D', 129) + ".";
+        File.WriteAllText(Path.Combine(Mods, name + "_P.pak"), "DOTTED LONG");
+        var before = GameHashes();
+        Assert.Single(await Rows(), m => m.Name == name);
+
+        var e = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => Scanner.DisableModAsync(name, Ctx()));
+
+        Assert.Equal($"626 can't turn \"{name}\" off: its name is too long to hold safely. Rename the file and try again. "
+                     + "Nothing was moved.", e.Message);
+        Assert.Equal(before, GameHashes());
+        Assert.False(Directory.Exists(Disabled) && Directory.GetFileSystemEntries(Disabled).Length > 0);
+
+        var row = ModListing.Resolve(Game()).Single(m => m.Name == name);
+        Assert.Empty(ModUninstall.Preview(Ctx(), row).HeldFolders);
+        ModUninstall.Run(Ctx(), row);
+        Assert.False(File.Exists(Path.Combine(Mods, name + "_P.pak")));
+        Assert.Equal("PLAIN FOO", File.ReadAllText(Path.Combine(Mods, "Foo_P.pak")));
     }
 
     // What an earlier build left: disabled/Bar with its record, an ordinary name, so the same folder.

@@ -599,8 +599,9 @@ public static class Scanner
         if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException(ModUninstall.NoNameMessage);
         // The guard is on the folder the name is held in (HoldingName), which never leaves the root by
         // construction: ".." is held in its own encoded folder. Kept as the last word before a recursive delete.
+        // Null for a risky name too long to encode: it has no holding folder, so nothing held is deleted.
         var heldFolder = HoldingName.Folder(name);
-        if (FolderNames.Escapes(c.DisabledRoot, heldFolder))
+        if (heldFolder is not null && FolderNames.Escapes(c.DisabledRoot, heldFolder))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{name}\": that name leads outside 626's folder for turned-off mods. Nothing was changed.");
 
@@ -642,7 +643,7 @@ public static class Scanner
         // The turned-off copy is in the mod's holding folder (HoldingName: the name itself, or its encoding
         // when Windows would not keep the name as written, so Foo. is never held in, or deleted from, Foo's).
         // Only when disabled/ lists an entry by that real name, so an 8.3 alias never reaches the long name.
-        if (FolderNames.HasEntryNamed(c.DisabledRoot, heldFolder))
+        if (heldFolder is not null && FolderNames.HasEntryNamed(c.DisabledRoot, heldFolder))
             DeletePath(Path.Combine(c.DisabledRoot, heldFolder));
         // A folder whose real name ends in a dot or space can only have been made by a \\?\-aware tool, never
         // by 626, which encodes such a name. It still lists under that name, so it still goes with the mod,
@@ -712,7 +713,10 @@ public static class Scanner
         GuardNoBasePakMove(m, loc);
         // HoldingName: "Foo." and "Foo " get folders of their own instead of the "Foo" Windows would normalise
         // them onto, and CON its own instead of the console device.
-        var dest = Path.Combine(c.DisabledRoot, HoldingName.Folder(m.Name));
+        // A risky name too long to encode has no holding folder: refused here, before anything moves.
+        var destFolder = HoldingName.Folder(m.Name)
+            ?? throw new InvalidOperationException(HoldingName.TooLongMessage(m.Name));
+        var dest = Path.Combine(c.DisabledRoot, destFolder);
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
 
         // Refuse, moving nothing, when an earlier turned-off copy of this mod is already held. The
@@ -938,7 +942,7 @@ public static class Scanner
     /// </summary>
     public static TreeLeftover? ExtraTreeLeftover(GameContext c, string modName)
     {
-        if (string.IsNullOrEmpty(modName)) return null;
+        if (string.IsNullOrEmpty(modName) || !TreeHolding.CanHold(modName)) return null;
         var dir = TreeHolding.ModDir(c, modName);
         try { return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null; }
         catch { return new TreeLeftover(dir, Readable: false); }
@@ -974,7 +978,10 @@ public static class Scanner
             return new EnableOutcome(name, true, false, null);
         }
 
-        var src = Path.Combine(c.DisabledRoot, HoldingName.Folder(name));
+        // A name with no holding folder (risky and too long to encode) can never have been turned off.
+        if (HoldingName.Folder(name) is not { } srcFolder)
+            return new EnableOutcome(name, false, true, "no readable disabled metadata");
+        var src = Path.Combine(c.DisabledRoot, srcFolder);
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }
         catch { return new EnableOutcome(name, false, true, "no readable disabled metadata"); }

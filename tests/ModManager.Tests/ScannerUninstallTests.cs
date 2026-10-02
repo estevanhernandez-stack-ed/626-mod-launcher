@@ -129,7 +129,7 @@ public class ScannerUninstallTests
         var (primary, _, c) = Setup();
         await Scanner.DisableModAsync("cool", c);
         var coolsCopy = Path.Combine(c.DisabledRoot, "cool", "cool.pak");
-        var own = Path.Combine(c.DisabledRoot, HoldingName.Folder(name));
+        var own = Path.Combine(c.DisabledRoot, HoldingName.Folder(name)!);
         Directory.CreateDirectory(own);
         File.WriteAllText(Path.Combine(own, "held.pak"), "OWN");
 
