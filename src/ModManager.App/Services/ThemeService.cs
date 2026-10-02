@@ -30,7 +30,7 @@ public sealed class ThemeService
     // MainViewModel's ctor — F-080); Default covers first-run, a cleared setting, and a deleted
     // user theme. Anyone on 0.17.0 who never chose a theme will move to navy on update, which is
     // the intended effect.
-    public Theme Default => _themes.FirstOrDefault(t => t.Id == "626-labs") ?? _themes[0];
+    public Theme Default => CoreThemes.PickActive(_themes, null).Active;
 
     private static string UserDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder", "themes");
@@ -38,17 +38,8 @@ public sealed class ThemeService
     private static List<Theme> BuildList()
         => CoreThemes.BuildThemeList(CoreThemes.BuiltinThemes, LoadUserThemes()).ToList();
 
-    private static IEnumerable<(string Id, RawTheme Data)> LoadUserThemes()
-    {
-        var outList = new List<(string, RawTheme)>();
-        if (!Directory.Exists(UserDir)) return outList;
-        foreach (var f in Directory.GetFiles(UserDir, "*.json"))
-        {
-            try { outList.Add((Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), CoreThemes.ParseRawTheme(File.ReadAllText(f)))); }
-            catch { /* skip a bad theme file */ }
-        }
-        return outList;
-    }
+    // Core reads the folder, so the agent's list_themes lists exactly what this list holds.
+    private static IEnumerable<(string Id, RawTheme Data)> LoadUserThemes() => CoreThemes.LoadUserThemes(UserDir).Themes;
 
     public void Reload() => _themes = BuildList();
 

@@ -102,8 +102,7 @@ public sealed class DirectInjectService
     {
         var folder = PlayFolder(game.GameRoot);
         if (folder is null) return new IntakeResult();
-        var replacedRoot = Path.Combine(folder, "_626", "replaced");
-        return DirectInject.Execute(folder, replacedRoot, plan, replace);
+        return DirectInject.Execute(folder, DirectInject.ReplacedRoot(folder), plan, replace);
     }
 
     /// <summary>Toggle one direct-inject mod by name. Bulk callers (enable all, profiles) use this; the

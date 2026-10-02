@@ -416,8 +416,7 @@ public sealed partial class SavesDialog : ContentDialog
     /// acknowledgment hasn't been ticked. One check, shared by every gated save-write path so they
     /// cannot drift on which risk level or which ack file they consult.</summary>
     private bool SaveWriteNeedsPrompt()
-        => BanRiskRules.ShouldGateSaveWrite(BanRiskCatalog.Effective(_game),
-            BanRiskAckStore.IsAcked(_dataDir, _game.Id, BanRiskAck.WriteSaves));
+        => SaveWritePolicy.NeedsAcknowledgment(_game, _dataDir);
 
     /// <summary>Show the shared save-write risk prompt and act on the answer: record the ack when
     /// ticked, status-line the outcome on cancel or failure. Never hides or re-shows SavesDialog -

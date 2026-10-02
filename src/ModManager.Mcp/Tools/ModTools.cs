@@ -130,9 +130,9 @@ public static class ModTools
         });
     }
 
-    private static GameEntry? Find(string gameId)
+    internal static GameEntry? Find(string gameId)
         => RegistryStore.Load(McpConfig.DataRoot).Games.FirstOrDefault(g => g.Id == gameId);
 
-    private static object UnknownGame(string gameId)
+    internal static object UnknownGame(string gameId)
         => new { error = new { code = "unknown_game", message = $"No registered game with id '{gameId}'.", hint = "Call list_games for valid ids." } };
 }

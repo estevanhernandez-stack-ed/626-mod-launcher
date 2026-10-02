@@ -215,6 +215,54 @@ public static class Themes
         return warnings;
     }
 
+    /// <summary>The theme a first run opens on, a cleared setting falls back to, and a deleted user
+    /// theme falls back to. The app (its startup restore, its Settings reload and ThemeService.Default)
+    /// and the agent's list_themes all resolve through <see cref="PickActive"/>.</summary>
+    public const string DefaultThemeId = "626-labs";
+
+    /// <summary>A user theme file the picker leaves out, and why: it is not theme JSON, or it is
+    /// missing required colors (which ones).</summary>
+    public sealed record UnusableThemeFile(string File, string Reason);
+
+    /// <summary>What <see cref="LoadUserThemes"/> read: the usable themes by id (the file name,
+    /// lowercased) and every file the picker will not offer, with the reason.</summary>
+    public sealed record UserThemeLoad(IReadOnlyList<(string Id, RawTheme Data)> Themes, IReadOnlyList<UnusableThemeFile> Unusable);
+
+    /// <summary>Every <c>*.json</c> in the user-theme folder. A missing folder is no themes. A file that
+    /// is not theme JSON, or that <see cref="NormalizeTheme"/> would drop for missing required colors,
+    /// is left out and named in <see cref="UserThemeLoad.Unusable"/> with the reason, so "why isn't my
+    /// theme offered" has an answer.</summary>
+    public static UserThemeLoad LoadUserThemes(string dir)
+    {
+        var themes = new List<(string, RawTheme)>();
+        var unusable = new List<UnusableThemeFile>();
+        if (!Directory.Exists(dir)) return new UserThemeLoad(themes, unusable);
+        foreach (var f in Directory.GetFiles(dir, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            RawTheme raw;
+            try { raw = ParseRawTheme(File.ReadAllText(f)); }
+            catch { unusable.Add(new UnusableThemeFile(Path.GetFileName(f), "not theme JSON")); continue; }
+            var missing = RequiredFields.Where(r => !raw.Tokens.ContainsKey(r)).ToList();
+            if (missing.Count > 0)
+            {
+                unusable.Add(new UnusableThemeFile(Path.GetFileName(f), "missing required colors: " + string.Join(", ", missing)));
+                continue;
+            }
+            themes.Add((Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), raw));
+        }
+        return new UserThemeLoad(themes, unusable);
+    }
+
+    /// <summary>The theme showing for a saved pick: the saved id when it is in the list, else
+    /// <see cref="DefaultThemeId"/>, else the first theme. <c>SavedMissing</c> says a saved pick was
+    /// not found (a deleted or broken user theme), which is why the default is showing instead.</summary>
+    public static (Theme Active, bool SavedMissing) PickActive(IReadOnlyList<Theme> themes, string? savedId)
+    {
+        var saved = string.IsNullOrWhiteSpace(savedId) ? null : themes.FirstOrDefault(t => t.Id == savedId);
+        var active = saved ?? themes.FirstOrDefault(t => t.Id == DefaultThemeId) ?? themes[0];
+        return (active, !string.IsNullOrWhiteSpace(savedId) && saved is null);
+    }
+
     /// <summary>Built-ins merged with user/agent themes; user wins on id collision.</summary>
     public static IReadOnlyList<Theme> BuildThemeList(
         IReadOnlyDictionary<string, RawTheme> builtins,

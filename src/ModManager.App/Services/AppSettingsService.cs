@@ -1,6 +1,6 @@
 using System.IO;
-using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModManager.Core;
 
 namespace ModManager.App.Services;
 
@@ -99,25 +99,23 @@ public sealed class AppSettingsService
 
     public AppSettingsService()
     {
-        Path = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ModManagerBuilder", "app-settings.json");
+        Path = AppSettingsFile.PathIn(System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModManagerBuilder"));
 
-        // One read, one parse; each key then falls back to its own default on its own (a missing or
-        // mistyped key never resets the others). A missing or corrupt file is all defaults.
-        using var doc = TryParse(Path);
-        var root = doc?.RootElement;
-        _backdrop = ReadString(root, "backdrop")?.ToLowerInvariant() switch
+        // Core reads the file (one parse, per-key defaults), so the agent's get_app_settings reports
+        // exactly what this instance starts from.
+        var snapshot = AppSettingsFile.Read(Path);
+        _backdrop = snapshot.Backdrop switch
         {
             "mica"    => WindowBackdropKind.Mica,
             "acrylic" => WindowBackdropKind.Acrylic,
             _         => WindowBackdropKind.Solid,
         };
-        _autoUpdateDefinitions = ReadBool(root, "autoUpdateDefinitions", true);
-        _autoCheckModUpdates = ReadBool(root, "autoCheckModUpdates", true);
-        _keepPluginsUpdated = ReadBool(root, "keepPluginsUpdated", true);
-        _closeToTray = ReadBool(root, "closeToTray", false);
-        _themeId = ReadString(root, "themeId") is { } id && !string.IsNullOrWhiteSpace(id) ? id : null;   // no saved pick
+        _autoUpdateDefinitions = snapshot.AutoUpdateDefinitions;
+        _autoCheckModUpdates = snapshot.AutoCheckModUpdates;
+        _keepPluginsUpdated = snapshot.KeepPluginsUpdated;
+        _closeToTray = snapshot.CloseToTray;
+        _themeId = snapshot.ThemeId;
     }
 
     public void SetBackdrop(WindowBackdropKind kind)
@@ -127,24 +125,6 @@ public sealed class AppSettingsService
         Save("backdrop", kind.ToString().ToLowerInvariant());
         BackdropChanged?.Invoke(this, EventArgs.Empty);
     }
-
-    private static JsonDocument? TryParse(string path)
-    {
-        try { return File.Exists(path) ? JsonDocument.Parse(File.ReadAllText(path)) : null; }
-        catch { return null; }   // corrupt — defaults
-    }
-
-    private static bool ReadBool(JsonElement? root, string key, bool fallback)
-        => root is { ValueKind: JsonValueKind.Object } r && r.TryGetProperty(key, out var v)
-           && v.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? v.GetBoolean()
-            : fallback;
-
-    private static string? ReadString(JsonElement? root, string key)
-        => root is { ValueKind: JsonValueKind.Object } r && r.TryGetProperty(key, out var v)
-           && v.ValueKind == JsonValueKind.String
-            ? v.GetString()
-            : null;
 
     private void Save(string key, JsonNode? value)
     {
