@@ -137,4 +137,45 @@ public class OverridesValidateTests
     [Fact]
     public void A_normal_digits_EaContentId_is_accepted()
         => Assert.Empty(OverridesValidate.Check(new[] { E(id: "madden-nfl-27", ea: "16425895") }));
+
+    // Review on 626-game-manifest#27: the launcher's gate drops an unsafe tree, so a curated one would
+    // vanish from the signed feed and nobody would hear about it. The build refuses it instead.
+    [Theory]
+    [InlineData("/r6/scripts")]
+    [InlineData("D:/mods")]
+    [InlineData("r6/../../escape")]
+    [InlineData(".")]
+    public void A_curated_extra_tree_the_launcher_would_drop_fails_the_build(string bad)
+    {
+        var entry = E(id: "cyberpunk-2077", steam: "1091500", path: "cyberpunk-2077.json")
+            with { ExtraModTrees = new[] { "r6/scripts", bad } };
+
+        var p = Assert.Single(OverridesValidate.Check(new[] { entry }));
+        Assert.Contains("cyberpunk-2077.json", p.Message);
+        Assert.Contains($"'{bad}'", p.Message);
+    }
+
+    [Theory]
+    [InlineData("\\r6\\scripts", "is absolute")]     // rooted on Windows, where the feed is read
+    [InlineData("...", "only dots or spaces")]
+    [InlineData("./", "is the game root")]
+    [InlineData("r6/../..", "'..'")]
+    public void The_build_failure_names_the_rule_the_tree_broke(string bad, string why)
+    {
+        var entry = E(id: "cyberpunk-2077", steam: "1091500", path: "cyberpunk-2077.json")
+            with { ExtraModTrees = new[] { bad } };
+
+        Assert.Contains(why, Assert.Single(OverridesValidate.Check(new[] { entry })).Message);
+    }
+
+    [Fact]
+    public void Curated_extra_trees_below_the_game_root_pass()
+        => Assert.Empty(OverridesValidate.Check(new[]
+        {
+            E(id: "cyberpunk-2077", steam: "1091500") with
+            {
+                ModPath = "archive/pc/mod",
+                ExtraModTrees = new[] { "r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods" },
+            },
+        }));
 }

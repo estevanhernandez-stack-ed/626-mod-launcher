@@ -46,11 +46,14 @@ public static class ManifestValidator
             // The same gate for every extra tree (B4), but it drops the TREE, not the entry: these are
             // descriptive, and rejecting the whole entry over one bad tree would throw away its ban-risk,
             // store-id and modPath corrections with it. An unsafe tree is simply never read.
-            if (g.ExtraModTrees is { } trees && trees.Any(t => !IsSafeRelativePath(t)))
+            if (g.ExtraModTrees is { } trees)
             {
-                var safe = trees.Where(IsSafeRelativePath).ToList();
-                kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
-                continue;
+                var safe = trees.Where(IsSafeExtraTree).ToList();
+                if (safe.Count != trees.Count)
+                {
+                    kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
+                    continue;
+                }
             }
             kept.Add(g);
         }
@@ -150,6 +153,29 @@ public static class ManifestValidator
 
     private static bool IsSteamAppId(string app)
         => app.Length > 0 && app.All(char.IsAsciiDigit);
+
+    /// <summary>
+    /// Why an <see cref="GameManifestEntry.ExtraModTrees"/> entry may not be read (B4), or null when it
+    /// may. A tree must name a folder below the game root, and the verdict must be the same on every OS:
+    /// the miner signs the feed on Linux and the launcher reads it on Windows. So a leading slash or
+    /// backslash counts as absolute whatever <see cref="Path.IsPathRooted"/> says here, and a segment of
+    /// only dots or spaces ("...", " ") is refused because Windows strips it to nothing. Which trees are
+    /// the game's own mod folders, or hold them, is a runtime question <see cref="ModTrees.Build"/>
+    /// answers with the real locations, not this gate.
+    /// </summary>
+    public static string? ExtraTreeProblem(string? tree)
+    {
+        if (string.IsNullOrWhiteSpace(tree)) return "is empty";
+        if (tree[0] is '/' or '\\' || Path.IsPathRooted(tree)) return "is absolute";
+        if (tree.Contains(':')) return "is drive-qualified";
+        var segments = tree.Split('/', '\\').Where(seg => seg.Length > 0 && seg != ".").ToList();
+        if (segments.Contains("..")) return "climbs out with '..'";
+        if (segments.Any(seg => seg.TrimEnd('.', ' ').Length == 0)) return "has a segment of only dots or spaces";
+        if (segments.Count == 0) return "is the game root, not a folder below it";
+        return null;
+    }
+
+    public static bool IsSafeExtraTree(string? tree) => ExtraTreeProblem(tree) is null;
 
     private static bool IsSafeRelativePath(string path)
     {

@@ -96,6 +96,34 @@ public class ModTreesTests : IDisposable
         Assert.Equal(new[] { "r6/scripts" }, trees.For("CoolMod"));
     }
 
+    // Review on #370: which trees are the game's own folders is known only at runtime (engine preset,
+    // the user's choice, a second location), so Build decides it with the real locations.
+    [Theory]
+    [InlineData("archive")]         // holds the mod folder: would list "pc" as a mod's other home
+    [InlineData("archive/pc")]
+    [InlineData("archive/pc/mod/sub")]   // inside it: those files move with the main folder
+    [InlineData(".")]               // the game root
+    public void A_tree_that_holds_or_sits_inside_an_own_mod_folder_or_is_the_root_is_skipped(string tree)
+    {
+        Dir("archive/pc/mod/sub/CoolMod");
+        Dir("archive/pc/CoolMod");
+        Dir("archive/CoolMod");
+        Dir("CoolMod");
+        Dir("r6/scripts/CoolMod");
+        var own = new[] { Path.Combine(_root, "archive", "pc", "mod") };
+
+        Assert.Equal(new[] { "r6/scripts" }, ModTrees.Build(_root, new[] { tree, "r6/scripts" }, own).For("CoolMod"));
+    }
+
+    [Fact]
+    public void A_sibling_that_only_shares_a_prefix_with_an_own_folder_still_counts()
+    {
+        Dir("archived/CoolMod");
+        var own = new[] { Path.Combine(_root, "archive") };
+
+        Assert.Equal(new[] { "archived" }, ModTrees.Build(_root, new[] { "archived" }, own).For("CoolMod"));
+    }
+
     // ---- the manifest field ----
 
     [Fact]
@@ -127,6 +155,14 @@ public class ModTreesTests : IDisposable
     [InlineData("../escape")]
     [InlineData("r6/../../escape")]
     [InlineData("D:relative")]
+    [InlineData(".")]           // the game root itself, not a tree below it (review on 626-game-manifest#27)
+    [InlineData("./")]
+    [InlineData("")]
+    [InlineData("...")]         // Windows strips a dots-or-spaces segment to nothing: the root again
+    [InlineData(" ")]
+    [InlineData("r6/ /scripts")]
+    [InlineData("/r6/scripts")] // rooted on every OS, not only where Path.IsPathRooted says so
+    [InlineData("\\r6\\scripts")]
     public void An_unsafe_extra_tree_is_dropped_and_the_entry_kept(string bad)
     {
         // Descriptive data: one bad tree must not throw away the entry's ban-risk and store corrections.
