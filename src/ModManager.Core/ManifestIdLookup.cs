@@ -30,39 +30,48 @@ public static class ManifestIdLookup
     // dictionary rebuilt only when EffectiveManifest.Generation advances, instead of on every call.
     // AddGameDialog's constructor calls this once per installed Steam game (via SteamGameImport.Plan)
     // on the UI thread, alongside the already-cached KnownEngines.ByAppId / KnownModPaths.ByAppId.
-    private static IReadOnlyDictionary<string, string>? _map;
-    private static IReadOnlyDictionary<string, string>? _eaMap;
+    // One snapshot per generation: both store maps and the entries themselves, so a caller that resolves
+    // a store id and then reads the entry it names never mixes two feeds.
+    private sealed record Snapshot(
+        IReadOnlyDictionary<string, string> Steam,
+        IReadOnlyDictionary<string, string> Ea,
+        IReadOnlyDictionary<string, GameManifestEntry> ById);
+
+    private static Snapshot? _snap;
     private static int _mapGen = -1;
     private static readonly object _gate = new();
 
     private static IReadOnlyDictionary<string, string> Map => Maps().Steam;
 
-    private static (IReadOnlyDictionary<string, string> Steam, IReadOnlyDictionary<string, string> Ea) Maps()
+    private static Snapshot Maps()
     {
         lock (_gate)
         {
             var gen = EffectiveManifest.Generation;
-            if (_map is null || _eaMap is null || _mapGen != gen)
+            if (_snap is null || _mapGen != gen)
             {
-                (_map, _eaMap) = Build();
+                _snap = Build();
                 _mapGen = gen;
             }
-            return (_map, _eaMap);
+            return _snap;
         }
     }
 
-    private static (IReadOnlyDictionary<string, string>, IReadOnlyDictionary<string, string>) Build()
+    private static Snapshot Build()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         var ea = new Dictionary<string, string>(StringComparer.Ordinal);
+        var byId = new Dictionary<string, GameManifestEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var g in EffectiveManifest.Current.Games)
         {
             if (g.Stores.SteamAppId is { } appId)
                 map.TryAdd(appId, g.Id); // first-entry-wins on a duplicate app id — pinned by a test above
             if (g.Stores.EaContentId is { } contentId)
                 ea.TryAdd(contentId, g.Id);
+            if (!string.IsNullOrEmpty(g.Id))
+                byId.TryAdd(g.Id, g);
         }
-        return (map, ea);
+        return new Snapshot(map, ea, byId);
     }
 
     /// <summary>Which manifest entry (from <see cref="EffectiveManifest.Current"/>) claims this EA app
@@ -84,13 +93,52 @@ public static class ManifestIdLookup
     public static IReadOnlySet<string> IdsFor(GameEntry game)
     {
         // One snapshot of both maps, so the Steam and EA answers come from the same feed generation.
-        var (steam, ea) = Maps();
+        var (steam, ea, _) = Maps();
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrEmpty(game.Id)) ids.Add(game.Id);
         if (!string.IsNullOrWhiteSpace(game.SteamAppId) && steam.TryGetValue(game.SteamAppId, out var bySteam)) ids.Add(bySteam);
         if (!string.IsNullOrWhiteSpace(game.EaContentId) && ea.TryGetValue(game.EaContentId, out var byEa)) ids.Add(byEa);
         return ids;
     }
+
+    /// <summary>
+    /// The one manifest entry that describes this registration, or null. This is the join that lets a
+    /// manifest correction (file extensions, grouping, mod path) reach a game the user already added.
+    ///
+    /// <para><b>Store identity first.</b> The entry claiming the registration's Steam app id, else the
+    /// one claiming its EA content id, else the entry with its own id. A store id names exactly one
+    /// game; the own id is only as good as however it was made. A second store copy is <c>&lt;id&gt;-2</c>
+    /// and an older registration is a slug of its display name, which can collide with a different
+    /// game's manifest id ("doom" for Doom Eternal).</para>
+    ///
+    /// <para><b>A contradiction is no match.</b> When the own id names an entry that claims a different
+    /// id on a store the registration also carries, the two are different games, and null is the
+    /// honest answer. A correction from the wrong game would point the scan, and intake, at a folder
+    /// this game does not use.</para>
+    /// </summary>
+    public static GameManifestEntry? EntryFor(GameEntry? game)
+    {
+        if (game is null) return null;
+        var snap = Maps();
+
+        if (!string.IsNullOrWhiteSpace(game.SteamAppId)
+            && snap.Steam.TryGetValue(game.SteamAppId, out var bySteam)
+            && snap.ById.TryGetValue(bySteam, out var steamEntry))
+            return steamEntry;
+        if (!string.IsNullOrWhiteSpace(game.EaContentId)
+            && snap.Ea.TryGetValue(game.EaContentId, out var byEa)
+            && snap.ById.TryGetValue(byEa, out var eaEntry))
+            return eaEntry;
+
+        if (string.IsNullOrEmpty(game.Id) || !snap.ById.TryGetValue(game.Id, out var own)) return null;
+        if (Contradicts(game.SteamAppId, own.Stores.SteamAppId)) return null;
+        if (Contradicts(game.EaContentId, own.Stores.EaContentId)) return null;
+        return own;
+    }
+
+    private static bool Contradicts(string? registered, string? claimed)
+        => !string.IsNullOrWhiteSpace(registered) && !string.IsNullOrWhiteSpace(claimed)
+           && !string.Equals(registered, claimed, StringComparison.Ordinal);
 
     /// <summary>The cached variant: which manifest entry (from <see cref="EffectiveManifest.Current"/>)
     /// claims this Steam app id, or null. Same answer as the two-argument overload called with the

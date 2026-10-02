@@ -60,7 +60,8 @@ public static class Scanner
         // .archive mods on disk as zero mods, because the entry still said "pak". Read-only: the
         // stored entry is never rewritten, so what the user chose stays visible and editable.
         // See RegistrationRefresh for why the untouched-preset-default test is the safe rule.
-        var manifestEntry = EffectiveManifest.Current.Games.FirstOrDefault(g => g.Id == game.Id);
+        // Joined through store identity, not the raw id: a second store copy is "<id>-2" (A30).
+        var manifestEntry = ManifestIdLookup.EntryFor(game);
         var preset = game.Engine is not null && EnginePresets.Presets.TryGetValue(game.Engine, out var ep)
             ? ep : null;
         // A marked field is a choice the user stated outright; it outranks the untouched-default

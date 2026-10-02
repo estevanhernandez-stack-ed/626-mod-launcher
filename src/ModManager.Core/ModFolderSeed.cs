@@ -27,7 +27,8 @@ public static class ModFolderSeed
         if (game is null) return null;
         exists ??= Directory.Exists;
 
-        var curated = EffectiveManifest.Current.Games.FirstOrDefault(g => g.Id == game.Id)?.ModPath;
+        // The same join Scanner.GameContext makes, so the folder created is the folder it scans (A30).
+        var curated = ManifestIdLookup.EntryFor(game)?.ModPath;
         if (string.IsNullOrWhiteSpace(curated)) return null;   // not the manifest's claim -> not ours to create
 
         // The user saying "this is my folder" outranks the manifest, exactly as it does in

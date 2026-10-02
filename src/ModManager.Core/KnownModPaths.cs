@@ -53,14 +53,4 @@ public static class KnownModPaths
     /// <summary>The curated mod folder for a Steam app id, or null when the manifest states none.</summary>
     public static string? ByAppId(string? steamAppId)
         => !string.IsNullOrEmpty(steamAppId) && Map.TryGetValue(steamAppId, out var p) ? p : null;
-
-    /// <summary>The curated mod folder for a manifest game id, or null. Used by the refresh path,
-    /// which keys on game id rather than app id because a registration always has one and may not
-    /// have the other.</summary>
-    public static string? ById(string? gameId)
-    {
-        if (string.IsNullOrEmpty(gameId)) return null;
-        var g = EffectiveManifest.Current.Games.FirstOrDefault(x => x.Id == gameId);
-        return string.IsNullOrWhiteSpace(g?.ModPath) ? null : g!.ModPath;
-    }
 }
