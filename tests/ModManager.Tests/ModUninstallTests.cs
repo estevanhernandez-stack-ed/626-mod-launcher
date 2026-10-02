@@ -79,16 +79,18 @@ mods = [
         Assert.Equal(UninstallBlock.ManagedByAnotherTool, ModUninstall.Refusal(ctx, managed)!.Kind);
         Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, managed));
     }
-    // B4 stage two: a turned-off mod can hold its extra-tree entries in disabled-trees/<Mod>. Uninstall knows
-    // only the main files and disabled/<Mod>, so it would leave those orphaned, and a later install of the same
-    // mod would refuse to turn off on them. Refused until Este rules on whether uninstall deletes them.
+    // B4 stage two: a turned-off mod can hold its extra-tree entries in disabled-trees/<Mod>, and a live one
+    // can hold leftovers there. Este, 2026-10-02: "let them know what it's going to do and let them choose to
+    // cancel or to proceed." So uninstall previews the held folder and then deletes it with the mod.
     private (GameEntry Game, GameContext Ctx) TreeGame()
     {
         var gameRoot = Path.Combine(_root, "cp");
         Directory.CreateDirectory(Path.Combine(gameRoot, "archive", "pc", "mod"));
         Directory.CreateDirectory(Path.Combine(gameRoot, "r6", "scripts", "CoolMod"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "r6", "tweaks"));
         File.WriteAllText(Path.Combine(gameRoot, "archive", "pc", "mod", "CoolMod.archive"), "MAIN");
         File.WriteAllText(Path.Combine(gameRoot, "r6", "scripts", "CoolMod", "main.reds"), "SCRIPTS");
+        File.WriteAllText(Path.Combine(gameRoot, "r6", "tweaks", "CoolMod.yaml"), "TWEAK");
         File.WriteAllText(Path.Combine(gameRoot, "archive", "pc", "mod", "Plain.archive"), "PLAIN");
         var g = new GameEntry
         {
@@ -96,48 +98,56 @@ mods = [
             FileExtensions = new[] { "archive" },
             ModLocations = new[] { new ModLocation("mods", "Mods", "archive/pc/mod") },
         };
-        return (g, Scanner.GameContext(g, extraModTrees: new[] { "r6/scripts" }));
+        return (g, Scanner.GameContext(g, extraModTrees: new[] { "r6/scripts", "r6/tweaks" }));
+    }
+
+    // A held folder for a mod that is not the one being uninstalled: it must survive.
+    private static string HoldForSomeoneElse(GameContext ctx)
+    {
+        var other = Path.Combine(TreeHolding.ModDir(ctx, "Bystander"), "r6", "scripts", "Bystander", "b.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(other)!);
+        File.WriteAllText(other, "BYSTANDER");
+        return other;
     }
 
     [Fact]
-    public async Task A_turned_off_mod_with_held_extra_tree_files_is_refused_and_nothing_is_deleted()
+    public async Task A_turned_off_mod_with_held_extras_is_uninstalled_with_its_held_folder()
     {
         var (g, ctx) = TreeGame();
         await Scanner.DisableModAsync("CoolMod", ctx);
-        var held = Path.Combine(ctx.DataDir, "disabled-trees", "CoolMod", "r6", "scripts", "CoolMod", "main.reds");
-        Assert.True(File.Exists(held)); // pre-condition
+        var heldDir = TreeHolding.ModDir(ctx, "CoolMod");
+        Assert.True(File.Exists(Path.Combine(heldDir, "r6", "scripts", "CoolMod", "main.reds"))); // pre-condition
+        var bystander = HoldForSomeoneElse(ctx);
         var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
 
-        var why = ModUninstall.Refusal(ctx, row);
+        Assert.Null(ModUninstall.Refusal(ctx, row));
+        ModUninstall.Run(ctx, row);
 
-        Assert.NotNull(why);
-        Assert.Equal(UninstallBlock.HeldInOtherFolders, why!.Kind);
-        Assert.Equal("Turn \"CoolMod\" on first: some of its files are held in other folders.", why.Message);
-        var e = Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
-        Assert.Equal(why.Message, e.Message);
-        Assert.Equal("SCRIPTS", File.ReadAllText(held));
-        Assert.True(File.Exists(Path.Combine(ctx.DisabledRoot, "CoolMod", "CoolMod.archive")));
+        Assert.False(Directory.Exists(heldDir));
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == "CoolMod");
+        Assert.False(Directory.Exists(Path.Combine(ctx.DisabledRoot, "CoolMod")));
+        Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
     }
 
     [Fact]
-    public void A_live_mod_with_leftovers_held_is_refused_with_the_move_or_remove_instruction()
+    public void A_live_mod_with_leftovers_held_is_uninstalled_with_its_held_folder()
     {
         var (g, ctx) = TreeGame();
         var leftoverDir = TreeHolding.ModDir(ctx, "Plain");
         var leftover = Path.Combine(leftoverDir, "r6", "scripts", "Plain", "old.reds");
         Directory.CreateDirectory(Path.GetDirectoryName(leftover)!);
         File.WriteAllText(leftover, "LEFT");
+        var bystander = HoldForSomeoneElse(ctx);
         var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
         Assert.True(row.Enabled); // pre-condition: the mod is on
 
-        var why = ModUninstall.Refusal(ctx, row);
+        Assert.Null(ModUninstall.Refusal(ctx, row));
+        ModUninstall.Run(ctx, row);
 
-        Assert.NotNull(why);
-        Assert.Equal(UninstallBlock.HeldInOtherFolders, why!.Kind);
-        Assert.Equal($"Move or remove the files held in {leftoverDir} first: 626 can't tell where they belong.", why.Message);
-        var e = Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
-        Assert.Equal(why.Message, e.Message);
-        Assert.Equal("LEFT", File.ReadAllText(leftover));
+        Assert.False(Directory.Exists(leftoverDir));
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == "Plain");
+        Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
+        Assert.Equal("MAIN", File.ReadAllText(Path.Combine(ctx.GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
     }
 
     [Fact]
@@ -152,5 +162,211 @@ mods = [
 
         Assert.False(Directory.Exists(Path.Combine(ctx.DisabledRoot, "Plain")));
         Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(ctx.GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+    }
+
+    // ---- Preview ----
+
+    [Fact]
+    public async Task Preview_lists_the_held_folder_and_its_trees_and_reads_nothing_away()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
+
+        var preview = ModUninstall.Preview(ctx, row);
+
+        var mod = Assert.Single(preview.Mods);
+        Assert.Equal("CoolMod", mod.Name);
+        Assert.Equal(row.Files, mod.Files);
+        var held = Assert.Single(preview.HeldFolders);
+        Assert.Equal("CoolMod", held.ModName);
+        Assert.Equal(TreeHolding.ModDir(ctx, "CoolMod"), held.Path);
+        Assert.Equal(new[] { "r6/scripts", "r6/tweaks" }, held.Trees);
+        Assert.False(held.Unreadable);
+        Assert.False(preview.HeldFolderUnreadable);
+        // Read-only: everything held is still held.
+        Assert.True(File.Exists(Path.Combine(held.Path, "r6", "scripts", "CoolMod", "main.reds")));
+        Assert.True(File.Exists(Path.Combine(held.Path, "r6", "tweaks", "CoolMod.yaml")));
+    }
+
+    [Fact]
+    public void Preview_of_a_mod_holding_nothing_has_no_held_folders()
+    {
+        var (g, ctx) = TreeGame();
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+
+        var preview = ModUninstall.Preview(ctx, row);
+
+        Assert.Equal("Plain", Assert.Single(preview.Mods).Name);
+        Assert.Empty(preview.HeldFolders);
+    }
+
+    [Fact]
+    public void Preview_lists_a_held_folder_whose_files_fit_no_declared_tree()
+    {
+        var (g, ctx) = TreeGame();
+        var stray = Path.Combine(TreeHolding.ModDir(ctx, "Plain"), "r6", "gone", "Plain", "x.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(stray)!);
+        File.WriteAllText(stray, "STRAY");
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+
+        var held = Assert.Single(ModUninstall.Preview(ctx, row).HeldFolders);
+
+        Assert.Equal(TreeHolding.ModDir(ctx, "Plain"), held.Path);
+        Assert.Empty(held.Trees);
+        Assert.True(File.Exists(stray));
+    }
+
+    [Fact]
+    public void Preview_says_so_when_the_holding_folder_cant_be_read()
+    {
+        var (g, ctx) = TreeGame();
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+        TreeHolding.BeforeReadForTests = _ => throw new UnauthorizedAccessException("no");
+        UninstallPreview preview;
+        try { preview = ModUninstall.Preview(ctx, row); }
+        finally { TreeHolding.BeforeReadForTests = null; }
+
+        var held = Assert.Single(preview.HeldFolders);
+        Assert.True(held.Unreadable);
+        Assert.True(preview.HeldFolderUnreadable);
+        Assert.Equal(TreeHolding.ModDir(ctx, "Plain"), held.Path);
+    }
+
+    [Fact]
+    public async Task Preview_of_a_family_covers_every_member()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var rows = ModListing.Resolve(g).ToList();
+
+        var preview = ModUninstall.Preview(ctx, rows);
+
+        Assert.Equal(rows.Select(r => r.Name), preview.Mods.Select(m => m.Name));
+        Assert.Equal("CoolMod", Assert.Single(preview.HeldFolders).ModName);
+    }
+
+    // ---- The confirm dialog's held sentence (strings verbatim from the brief) ----
+
+    private static UninstallPreview With(params UninstallHeldFolder[] held)
+        => new(new[] { new UninstallPreviewMod("CoolMod", new[] { "CoolMod.archive" }) }, held);
+
+    [Fact]
+    public void The_held_sentence_names_the_trees_of_one_held_folder()
+        => Assert.Equal("626 is also holding some of its files in r6/scripts, r6/tweaks, and will delete those too.",
+            With(new UninstallHeldFolder("CoolMod", @"D:\d\disabled-trees\CoolMod", new[] { "r6/scripts", "r6/tweaks" }, false)).HeldSentence());
+
+    [Fact]
+    public void The_held_sentence_for_an_unreadable_folder_names_its_path()
+        => Assert.Equal(@"626 couldn't read D:\d\disabled-trees\CoolMod to see what it's holding for it; anything there will be deleted too.",
+            With(new UninstallHeldFolder("CoolMod", @"D:\d\disabled-trees\CoolMod", Array.Empty<string>(), true)).HeldSentence());
+
+    [Fact]
+    public void The_held_sentence_names_the_folder_when_its_files_fit_no_tree()
+        => Assert.Equal(@"626 is also holding some of its files in D:\d\disabled-trees\CoolMod, and will delete those too.",
+            With(new UninstallHeldFolder("CoolMod", @"D:\d\disabled-trees\CoolMod", Array.Empty<string>(), false)).HeldSentence());
+
+    [Fact]
+    public void The_held_sentence_aggregates_a_family_without_repeating_a_tree()
+        => Assert.Equal("626 is also holding some of its files in r6/scripts, r6/tweaks, and will delete those too.",
+            With(new UninstallHeldFolder("A", @"D:\d\disabled-trees\A", new[] { "r6/scripts" }, false),
+                 new UninstallHeldFolder("B", @"D:\d\disabled-trees\B", new[] { "r6/scripts", "r6/tweaks" }, false)).HeldSentence());
+
+    [Fact]
+    public void Nothing_held_means_no_held_sentence()
+        => Assert.Null(With().HeldSentence());
+
+    // ---- Safety rails on the held-folder delete ----
+
+    [Theory]
+    [InlineData("..\\x")]
+    [InlineData("..")]
+    [InlineData(".")]
+    public void A_mod_name_that_resolves_outside_the_holding_root_throws_and_deletes_nothing(string name)
+    {
+        var (g, ctx) = TreeGame();
+        var outside = Path.Combine(ctx.DataDir, "x", "keep.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
+        File.WriteAllText(outside, "KEEP");
+        var bystander = HoldForSomeoneElse(ctx);
+        var pak = Path.Combine(ctx.GameRoot, "archive", "pc", "mod", "Plain.archive");
+        var row = new Mod { Name = name, Location = "mods", Enabled = true, Files = new List<string> { "Plain.archive" } };
+
+        var e = Assert.ThrowsAny<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
+
+        Assert.Contains("holding folder", e.Message);   // refused by the containment rail, not by chance
+
+        Assert.Equal("KEEP", File.ReadAllText(outside));
+        Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
+        Assert.Equal("PLAIN", File.ReadAllText(pak));
+    }
+
+    [Fact]
+    public async Task A_junction_inside_the_held_folder_is_removed_as_a_link_and_its_target_survives()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var heldDir = TreeHolding.ModDir(ctx, "CoolMod");
+        var target = Path.Combine(_root, "elsewhere");
+        Directory.CreateDirectory(Path.Combine(target, "deep"));
+        File.WriteAllText(Path.Combine(target, "t.txt"), "NOT 626'S");
+        File.WriteAllText(Path.Combine(target, "deep", "d.txt"), "NOT 626'S EITHER");
+        MakeJunction(Path.Combine(heldDir, "r6", "scripts", "link"), target);
+        var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
+
+        ModUninstall.Run(ctx, row);
+
+        Assert.False(Directory.Exists(heldDir));
+        Assert.Equal("NOT 626'S", File.ReadAllText(Path.Combine(target, "t.txt")));
+        Assert.Equal("NOT 626'S EITHER", File.ReadAllText(Path.Combine(target, "deep", "d.txt")));
+    }
+
+    [Fact]
+    public async Task A_held_folder_that_is_itself_a_junction_is_removed_as_a_link()
+    {
+        var (g, ctx) = TreeGame();
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+        var target = Path.Combine(_root, "elsewhere2");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "t.txt"), "NOT 626'S");
+        Directory.CreateDirectory(TreeHolding.Root(ctx));
+        MakeJunction(TreeHolding.ModDir(ctx, "Plain"), target);
+        await Task.CompletedTask;
+
+        ModUninstall.Run(ctx, row);
+
+        Assert.False(Directory.Exists(TreeHolding.ModDir(ctx, "Plain")));
+        Assert.Equal("NOT 626'S", File.ReadAllText(Path.Combine(target, "t.txt")));
+    }
+
+    [Fact]
+    public async Task A_held_folder_still_there_after_the_delete_throws_naming_it()
+    {
+        var (g, ctx) = TreeGame();
+        await Scanner.DisableModAsync("CoolMod", ctx);
+        var heldDir = TreeHolding.ModDir(ctx, "CoolMod");
+        var row = ModListing.Resolve(g).Single(m => m.Name == "CoolMod");
+        ModUninstall.DeleteHeldForTests = _ => { };   // a delete that does nothing
+        IOException e;
+        try { e = Assert.Throws<IOException>(() => ModUninstall.Run(ctx, row)); }
+        finally { ModUninstall.DeleteHeldForTests = null; }
+
+        Assert.Contains(heldDir, e.Message);
+    }
+
+    // The same idiom as SafeMoveFallbackTests: a real junction, made by mklink.
+    private static void MakeJunction(string link, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var err = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0 && Directory.Exists(link),
+            $"Could not create a junction for this test (mklink exit {p.ExitCode}): {err}");
     }
 }
