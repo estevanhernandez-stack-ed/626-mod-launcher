@@ -1513,6 +1513,29 @@ public sealed partial class MainViewModel : ObservableObject
         finally { row.IsBusy = false; }
     }
 
+    // The family's variants as the listing reports them now, so the preview and the delete see the same mods.
+    private static List<Mod> FamilyMembers(GameContext ctx, ModRowViewModel row)
+    {
+        var names = row.VariantOptions.Select(o => o.ModName).ToHashSet(StringComparer.Ordinal);
+        return ModListing.Resolve(ctx.Game).Where(m => names.Contains(m.Name)).ToList();
+    }
+
+    /// <summary>What uninstalling this row will delete (its family's variants for a family row), for the
+    /// confirm dialog: the same <see cref="ModUninstall.Preview(GameContext, IReadOnlyList{Mod})"/> the agent's
+    /// uninstall_mod reads. Reads the disk: one directory walk per mod, before a modal, so on the UI thread.
+    /// Null when there is no game or the preview refuses; a refusal is said in the status line.</summary>
+    public UninstallPreview? PreviewUninstall(ModRowViewModel row)
+    {
+        if (_ctx is null) return null;
+        try
+        {
+            return row.HasVariantOptions
+                ? ModUninstall.Preview(_ctx, FamilyMembers(_ctx, row))
+                : ModUninstall.Preview(_ctx, row.Mod);
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return null; }
+    }
+
     /// <summary>Permanently uninstall every variant in a family. Gated by a confirm dialog in the
     /// view that names the count. Also clears the family's last-active memory so a future variant
     /// add doesn't auto-enable into a stale slot.</summary>
@@ -1525,9 +1548,8 @@ public sealed partial class MainViewModel : ObservableObject
             var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
             // One decision for the family, by the same rule as a single uninstall: every variant is
             // checked before any is deleted, so a refused member can't leave the family half-deleted.
-            var names = row.VariantOptions.Select(o => o.ModName).ToHashSet(StringComparer.Ordinal);
             var ctx = _ctx;
-            var members = ModListing.Resolve(ctx.Game).Where(m => names.Contains(m.Name)).ToList();
+            var members = FamilyMembers(ctx, row);
             await Task.Run(() => ModUninstall.RunAll(ctx, members));
             _familyLastActive.Remove(familyKey);
             await ReloadModsAsync();   // first: it resets the status line to the enabled count
