@@ -344,6 +344,7 @@ public static class Scanner
 
     private static IReadOnlyList<Mod> BuildModList(GameContext c)
     {
+        ScanCostProbe.CountModList();
         var outMap = new Dictionary<string, Mod>();
         // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
@@ -533,9 +534,14 @@ public static class Scanner
     /// mods, and rolls back a partial move.</para>
     /// </summary>
     public static Task SetAppendedRowEnabledAsync(Mod row, bool enabled, GameContext c)
+        => SetAppendedRowEnabledAsync(row, enabled, c, scope: null);
+
+    /// <summary><see cref="SetAppendedRowEnabledAsync(Mod, bool, GameContext)"/> inside a bulk operation,
+    /// reusing what its <see cref="BulkScope"/> already read. Null is the single-row toggle.</summary>
+    internal static Task SetAppendedRowEnabledAsync(Mod row, bool enabled, GameContext c, BulkScope? scope)
     {
-        if (enabled) EnableMod(row.Name, c);
-        else DisableEntry(row, c);
+        if (enabled) EnableMod(row.Name, c, scope);
+        else DisableEntry(row, c, scope);
         return Task.CompletedTask;
     }
 
@@ -560,8 +566,14 @@ public static class Scanner
     /// a turn-on was skipped. Null for a loader manifest flip or a turn-off, which report no outcome.
     /// </summary>
     internal static Task<EnableOutcome?> SetLoaderModEnabledWithOutcomeAsync(string name, bool enabled, GameContext c)
+        => SetLoaderModEnabledWithOutcomeAsync(name, enabled, c, scope: null);
+
+    /// <summary><see cref="SetLoaderModEnabledWithOutcomeAsync(string, bool, GameContext)"/> inside a bulk
+    /// operation: the row is found in the operation's one listing (<see cref="BulkScope.Find"/>) instead of a
+    /// fresh one per lookup. Null is the single-row toggle, which lists fresh exactly as before.</summary>
+    internal static Task<EnableOutcome?> SetLoaderModEnabledWithOutcomeAsync(string name, bool enabled, GameContext c, BulkScope? scope)
     {
-        var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        var m = scope is null ? BuildModList(c).FirstOrDefault(x => x.Name == name) : scope.Find(name);
         if (m?.Loader == "ue4ss")
         {
             // Manifest flip only — never a content move. Allowed regardless of ReadOnly.
@@ -576,9 +588,9 @@ public static class Scanner
             return Task.FromResult<EnableOutcome?>(null);
         }
         // Non-loader mod: fall back to the normal gated path (ReadOnly guard applies).
-        if (enabled) return Task.FromResult<EnableOutcome?>(EnableMod(name, c));
-        var m2 = BuildModList(c).FirstOrDefault(x => x.Name == name);
-        if (m2 is not null) DisableEntry(m2, c);
+        if (enabled) return Task.FromResult<EnableOutcome?>(EnableMod(name, c, scope));
+        var m2 = scope is null ? BuildModList(c).FirstOrDefault(x => x.Name == name) : scope.Find(name);
+        if (m2 is not null) DisableEntry(m2, c, scope);
         return Task.FromResult<EnableOutcome?>(null);
     }
 
@@ -702,7 +714,7 @@ public static class Scanner
         }
     }
 
-    private static void DisableEntry(Mod m, GameContext c)
+    private static void DisableEntry(Mod m, GameContext c, BulkScope? scope = null)
     {
         // Owned mods are read-only — another tool manages their files. Skip, not error: this
         // is called from bulk loops (SetAllMods, ApplyMode, LoadProfile) where owned = expected.
@@ -766,7 +778,7 @@ public static class Scanner
         // B4 stage two: the mod's same-named entries in the game's extra trees (Cyberpunk's r6/scripts,
         // red4ext/plugins, ...) go to disabled-trees/<Mod> in the same operation. Decided and checked
         // BEFORE anything moves, so a refusal leaves both the game and the holding areas as they were.
-        var extras = ExtraTreeMovesFor(m, c);
+        var extras = ExtraTreeMovesFor(m, c, scope);
         var treesDir = TreeHolding.ModDir(c, m.Name);
         if (c.ExtraModTrees is { Count: > 0 })
         {
@@ -929,19 +941,92 @@ public static class Scanner
     /// its row says; then <see cref="ModTrees.MovableFor"/>: one claimant, nothing protected inside, tree not
     /// owned by another tool. A game that declares no extra trees pays nothing, not even the mod-list read.
     /// </summary>
-    private static IReadOnlyList<ModTreeEntry> ExtraTreeMovesFor(Mod m, GameContext c)
+    private static IReadOnlyList<ModTreeEntry> ExtraTreeMovesFor(Mod m, GameContext c, BulkScope? scope)
     {
         if (c.ExtraModTrees is not { Count: > 0 }) return Array.Empty<ModTreeEntry>();
-        // The toggle is already on the scanner's lane, so it never asks which lane this is.
-        return ExtraTreeRowsWithNames(c).MovesFor(m).Movable;
+        // The toggle is already on the scanner's lane, so it never asks which lane this is. A bulk operation
+        // hands over the selection it made once; a single toggle makes a fresh one.
+        return (scope?.Rows ?? ExtraTreeRowsWithNames(c)).MovesFor(m).Movable;
     }
+
+    /// <summary>
+    /// What one bulk operation (enable-all, disable-all, a loadout mode, a profile load) reads once and every
+    /// toggle in it reuses: the mod list, the lookup of a row by name, and the extra-tree selection with its
+    /// claimant names and library inference. Without it each toggle re-read all three, so a bulk operation on
+    /// a game with extra trees cost one full listing and one read of every tree per mod. Both are read on
+    /// first use, so a game with no extra trees still never reads a tree, and a lane that is not the
+    /// scanner's never lists anything through here.
+    ///
+    /// <para><b>Why one read serves the whole operation.</b> It is read before the operation's first write
+    /// (ApplyMode reads it up front; elsewhere the first toggle reads it before it moves anything), and what
+    /// it reads is not changed by the other toggles in the same operation, with the one deliberate exception
+    /// in the second point:</para>
+    /// <list type="bullet">
+    /// <item>A movable extra-tree entry is unique to its mod: <see cref="ModTrees.MovableFor"/> moves an entry
+    /// only when its key equals the mod's and no other row's name reduces to that key (the single-claimant
+    /// rule). So no other mod's toggle can move, or restore, an entry this mod's selection names: turning
+    /// another mod off takes only entries keyed to THAT mod, and turning one on restores only what its own
+    /// turn-off held, keyed the same way. The entries the selection lists for this mod are still exactly
+    /// where it read them when this mod's turn comes.</item>
+    /// <item>The claimant names are the ones the rows showed when the operation began, and that is deliberate.
+    /// Nearly always they could not change anyway: a turned-off row keeps its name (a mod lists from its
+    /// holding folder under the same name, one turned on lists from its files under it again, a library turned
+    /// off lists as a held mod of the same name). The one way a name can appear mid-operation is a turned-off
+    /// mod whose row name differs from its files' stem leaving a stem-paired folder orphaned: under
+    /// <c>strip_underscore_p_suffix</c>, <c>Bar_P.pak</c> lists as row <c>Bar</c> and pairs <c>Bar_P/</c>;
+    /// once Bar is off, library inference emits <c>Bar_P</c>, whose key contests a mod <c>BarP</c>. A fresh
+    /// read per mod held BarP's entries back only when Bar happened to go first, so the outcome depended on
+    /// name order. The start-of-operation set is what the rows said before anything moved, gives the same
+    /// answer in any order, and stays reversible: what moves is held under BarP and comes back with it.
+    /// <c>BulkToggleTreeGameCostTests</c> pins this case.</item>
+    /// <item>Ownership and the protected-folder rule are not snapshotted: <see cref="ExtraTreeRows.Select"/>
+    /// still asks about ownership per call, and the protected rule is about paths, not contents.</item>
+    /// <item>A row's own facts that the toggles read by name (read-only, loader, location, files) come from
+    /// its location and its own files, which no other mod's toggle changes. Each mod is toggled once per
+    /// operation. This is the same snapshot <c>SetAllMods</c> and <c>ApplyMode</c> already handed every
+    /// turn-off as its row.</item>
+    /// </list>
+    /// <para>Single-row toggles never use a scope; they build fresh, as before.</para>
+    /// </summary>
+    internal sealed class BulkScope
+    {
+        private readonly GameContext _c;
+        private IReadOnlyList<Mod>? _listing;
+        private Dictionary<string, Mod>? _byName;
+        private ExtraTreeRows? _rows;
+
+        /// <param name="listing">The operation's own <c>BuildModList</c> result when it already has one, so it
+        /// is not read twice. Must be an unmodified <c>BuildModList</c> result.</param>
+        internal BulkScope(GameContext c, IReadOnlyList<Mod>? listing = null)
+        {
+            _c = c;
+            _listing = listing;
+        }
+
+        private IReadOnlyList<Mod> Listing => _listing ??= BuildModList(_c);
+
+        /// <summary>The row <c>BuildModList(c).FirstOrDefault(x =&gt; x.Name == name)</c> would find.</summary>
+        internal Mod? Find(string name)
+        {
+            if (_byName is null)
+            {
+                _byName = new Dictionary<string, Mod>(StringComparer.Ordinal);
+                foreach (var m in Listing) _byName.TryAdd(m.Name, m);
+            }
+            return _byName.TryGetValue(name, out var row) ? row : null;
+        }
+
+        /// <summary>The extra-tree selection, built once from the same listing.</summary>
+        internal ExtraTreeRows Rows => _rows ??= ExtraTreeRowsWithNames(_c, Listing);
+    }
+
+    private static ExtraTreeRows ExtraTreeRowsWithNames(GameContext c) => ExtraTreeRowsWithNames(c, BuildModList(c));
 
     // Every row's name is a possible claimant, the rows the listing APPENDS (libraries, proxy loaders)
     // included: BuildModList has never heard of them, and without them a library and a mod whose names
     // reduce to one key would hand the library's entry to the mod.
-    private static ExtraTreeRows ExtraTreeRowsWithNames(GameContext c)
+    private static ExtraTreeRows ExtraTreeRowsWithNames(GameContext c, IReadOnlyList<Mod> listed)
     {
-        var listed = BuildModList(c);
         var names = listed.Select(r => r.Name).Concat(ModListing.AppendedRowNames(c, listed))
             .Distinct(StringComparer.Ordinal).ToList();
         return new(c, ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)),
@@ -995,11 +1080,12 @@ public static class Scanner
     /// longer declares. A failure is <c>Enabled == false</c> (skipped) or a thrown exception.</para></summary>
     public sealed record EnableOutcome(string Name, bool Enabled, bool Skipped, string? Reason);
 
-    private static EnableOutcome EnableMod(string name, GameContext c)
+    private static EnableOutcome EnableMod(string name, GameContext c, BulkScope? scope = null)
     {
         // Loader-driven mods (e.g. UE4SS Conductor) are never moved to the disabled holding folder;
         // their enable state lives in the manifest. Key on m.Loader for symmetry with DisableEntry.
-        var live = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        // In a bulk operation the row comes from its one listing (BulkScope says why that is the same row).
+        var live = scope is null ? BuildModList(c).FirstOrDefault(x => x.Name == name) : scope.Find(name);
         // Owned mods are content read-only; their manifest is flipped only via the explicit per-row
         // path (SetLoaderModEnabledAsync), never through a bulk/profile-reachable EnableMod call.
         // Mirrors DisableEntry, which guards ReadOnly first.
@@ -1221,22 +1307,31 @@ public static class Scanner
 
     private static void SetAllMods(bool enabled, GameContext c)
     {
-        foreach (var m in BuildModList(c))
+        var listed = BuildModList(c);
+        // One scope for the whole operation, seeded with the listing the loop walks: no second read.
+        var scope = new BulkScope(c, listed);
+        foreach (var m in listed)
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns
             if (m.Enabled == enabled) continue;
-            if (enabled) EnableMod(m.Name, c); else DisableEntry(m, c);
+            if (enabled) EnableMod(m.Name, c, scope); else DisableEntry(m, c, scope);
         }
     }
 
     private static void ApplyMode(string mode, GameContext c)
     {
+        // Not seeded with ListWithClass's rows: those carry Class and metadata, and the claimant names and
+        // library inference have always been computed from a plain BuildModList. The scope reads its own.
+        var scope = new BulkScope(c);
+        // Read before anything moves: the loop can turn mods on and off in one pass, and the selection is the
+        // picture from before the first of them. A game with no extra trees reads nothing here.
+        if (c.ExtraModTrees is { Count: > 0 }) _ = scope.Rows;
         foreach (var m in ListWithClass(c))
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns
             var want = Classification.ModeFilter(mode, m.Class ?? "both");
-            if (m.Enabled && !want) DisableEntry(m, c);
-            else if (!m.Enabled && want) EnableMod(m.Name, c);
+            if (m.Enabled && !want) DisableEntry(m, c, scope);
+            else if (!m.Enabled && want) EnableMod(m.Name, c, scope);
         }
     }
 
@@ -1439,9 +1534,12 @@ public static class Scanner
         IReadOnlyList<(Mod Mod, bool Enable)> plan, GameContext c)
     {
         var failed = new List<(Mod, bool, string)>();
+        // One scope for the whole plan, so the scanner's lane lists once rather than once or twice per change.
+        // Read on first use: a plan on another lane never touches it. ModToggle still picks every lane.
+        var scope = new BulkScope(c);
         foreach (var (mod, enable) in plan)
         {
-            try { await ModToggle.SetEnabledAsync(c, mod, enable); }
+            try { await ModToggle.SetEnabledAsync(c, mod, enable, scope); }
             catch (Exception e) { failed.Add((mod, enable, e.Message)); }
         }
         return failed;

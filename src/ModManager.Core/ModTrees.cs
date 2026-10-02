@@ -39,6 +39,7 @@ public sealed class ModTrees
     /// The game root itself and anything outside it are skipped too.</param>
     public static ModTrees Build(string? gameRoot, IEnumerable<string>? trees, IEnumerable<string>? ownLocations = null)
     {
+        ScanCostProbe.CountTrees();
         var index = new ModTrees();
         if (string.IsNullOrWhiteSpace(gameRoot) || trees is null) return index;
 
