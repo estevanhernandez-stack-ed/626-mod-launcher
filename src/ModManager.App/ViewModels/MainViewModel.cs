@@ -1543,20 +1543,34 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null || !row.HasVariantOptions) return;
         IsBusy = true;
+        string? status = null;
+        var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
         try
         {
-            var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
             // One decision for the family, by the same rule as a single uninstall: every variant is
             // checked before any is deleted, so a refused member can't leave the family half-deleted.
             var ctx = _ctx;
             var members = FamilyMembers(ctx, row);
             await Task.Run(() => ModUninstall.RunAll(ctx, members));
             _familyLastActive.Remove(familyKey);
-            await ReloadModsAsync();   // first: it resets the status line to the enabled count
-            StatusText = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
+            status = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
         }
-        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsBusy = false; }
+        catch (HeldFolderLeftException e)
+        {
+            // The variants are gone; only some held files are left. Forget the family like a clean uninstall.
+            _familyLastActive.Remove(familyKey);
+            status = ErrorRemedy.Describe(e);
+        }
+        catch (Exception e) { status = ErrorRemedy.Describe(e); }
+        finally
+        {
+            // Reload whatever happened, so the rows show what is really on disk after a partial failure, and
+            // first, because it resets the status line to the enabled count.
+            try { await ReloadModsAsync(); }
+            catch (Exception e) { status ??= ErrorRemedy.Describe(e); }
+            if (status is not null) StatusText = status;
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -4420,17 +4434,24 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         IsBusy = true;
+        string? status = null;
         try
         {
             // The same rule and the same deletes as the agent's uninstall_mod (ModUninstall).
             var ctx = _ctx;
             await Task.Run(() => ModUninstall.Run(ctx, row.Mod));
-            // Reload first: it resets the status line to the enabled count, which would replace this.
-            await ReloadModsAsync();
-            StatusText = $"Uninstalled {row.DisplayName}.";
+            status = $"Uninstalled {row.DisplayName}.";
         }
-        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsBusy = false; }
+        catch (Exception e) { status = ErrorRemedy.Describe(e); }
+        finally
+        {
+            // Reload whatever happened, so the row shows what is really on disk after a partial failure, and
+            // first, because it resets the status line to the enabled count, which would replace the answer.
+            try { await ReloadModsAsync(); }
+            catch (Exception e) { status ??= ErrorRemedy.Describe(e); }
+            if (status is not null) StatusText = status;
+            IsBusy = false;
+        }
     }
 
     // ---------- config cockpit ----------
