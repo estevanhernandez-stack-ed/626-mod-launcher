@@ -424,10 +424,9 @@ public class DataDirMoveExecuteTests
         public void Report(T value) => report(value);
     }
 
-    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies. A
-    // bare Assert.Empty right after Execute returns would pass even against an implementation that DID
-    // tick on the rename path, since Progress<T> dispatch is asynchronous — give it a drain window
-    // first so the test can actually fail against the behaviour it exists to forbid.
+    // A rename is instantaneous; reporting a fake tick would only invite a progress bar that lies.
+    // Reported inline, so an empty list right after Execute is conclusive: with Progress<T> it needed a
+    // drain window, because its dispatch is asynchronous and a bare assert would pass against a tick.
     [Fact]
     public void A_rename_reports_no_progress()
     {
@@ -435,11 +434,10 @@ public class DataDirMoveExecuteTests
         var to = Path.Combine(Path.GetDirectoryName(from)!, "renamed-" + Guid.NewGuid().ToString("N"));
         var seen = new List<(int, int)>();
 
-        var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new Progress<(int, int)>(p => { lock (seen) seen.Add(p); }));
+        var result = DataDirMove.Execute(DataDirMove.Plan(from, to), new InlineProgress<(int, int)>(seen.Add));
 
         Assert.True(result.Moved);
-        SpinWait.SpinUntil(() => { lock (seen) return seen.Count > 0; }, TimeSpan.FromSeconds(1));
-        lock (seen) Assert.Empty(seen);
+        Assert.Empty(seen);
     }
 
     // The plan is taken before the dialog and before the confirm; the copy runs afterwards. If a file
