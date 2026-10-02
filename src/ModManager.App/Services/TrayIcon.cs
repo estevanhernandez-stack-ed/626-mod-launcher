@@ -21,6 +21,14 @@ internal sealed class TrayIcon : IDisposable
     public event Action? OpenRequested;
     public event Action? QuitRequested;
 
+    /// <summary>Raised when Explorer restarted and the icon could not be put back. A hidden window
+    /// with no icon has no way back, so the shell shows it.</summary>
+    public event Action? Lost;
+
+    /// <summary>Whether the icon is in the notification area right now. Hiding the window is only
+    /// safe while this is true.</summary>
+    public bool IsAdded => _added;
+
     private const string ClassName = "ModManager.App.TrayIcon";
     private const uint WM_NULL = 0x0000;
     private const uint WM_LBUTTONUP = 0x0202;
@@ -74,13 +82,23 @@ internal sealed class TrayIcon : IDisposable
         }
         if (_icon == IntPtr.Zero) _icon = LoadIconW(IntPtr.Zero, (IntPtr)IDI_APPLICATION);
 
-        Add();
+        // Refuse rather than exist without an icon: that would let the window hide with no way back.
+        if (!Add())
+        {
+            Dispose();
+            throw new InvalidOperationException("Couldn't add the launcher's icon to the notification area.");
+        }
     }
 
-    private void Add()
+    private bool Add()
     {
         var data = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP);
-        _added = Shell_NotifyIconW(NIM_ADD, ref data);
+        // Shell_NotifyIcon can report failure while Explorer is busy or starting, sometimes after the
+        // icon went in anyway. MODIFY succeeds exactly when it did (and a second ADD would then fail
+        // and leave a ghost icon nothing deletes); otherwise one more ADD.
+        return _added = Shell_NotifyIconW(NIM_ADD, ref data)
+                        || Shell_NotifyIconW(NIM_MODIFY, ref data)
+                        || Shell_NotifyIconW(NIM_ADD, ref data);
     }
 
     private NOTIFYICONDATAW Data(uint flags) => new()
@@ -110,8 +128,8 @@ internal sealed class TrayIcon : IDisposable
             }
             if (msg == self._taskbarCreated && self._taskbarCreated != 0)
             {
-                // Explorer restarted and took every icon with it. Put ours back.
-                self.Add();
+                // Explorer restarted and took every icon with it. Put ours back, or say it is gone.
+                if (!self.Add()) self.Lost?.Invoke();
                 return IntPtr.Zero;
             }
         }
@@ -162,7 +180,7 @@ internal sealed class TrayIcon : IDisposable
 
     private delegate IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    private const uint NIM_ADD = 0, NIM_DELETE = 2;
+    private const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2;
     private const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4;
     private const uint MF_STRING = 0x0, MF_SEPARATOR = 0x800;
     private const uint TPM_RIGHTBUTTON = 0x2, TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100;

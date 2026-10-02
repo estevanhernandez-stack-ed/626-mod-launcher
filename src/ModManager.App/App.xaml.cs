@@ -22,6 +22,9 @@ public partial class App : Application
     /// walking the visual tree.</summary>
     public static Window? MainWindow { get; private set; }
 
+    /// <summary>The AppInstance key the tray window holds, so a relaunch can find it (close to tray, B1).</summary>
+    public const string InstanceKey = "main";
+
     private Window? _window;
 
     public App()

@@ -54,4 +54,31 @@ public class AppSettingsCloseToTrayTests
             if (backup is null) File.Delete(path); else File.WriteAllText(path, backup);
         }
     }
+
+    [Fact]
+    public void A_second_window_saving_another_setting_keeps_the_first_windows_closeToTray()
+    {
+        // B1 review: Save used to dump every in-memory value, so a second launcher window that never
+        // saw the change would write its stale closeToTray back the next time it saved anything,
+        // and the startup redirect (which reads the file) would stop finding the tray instance.
+        var original = new AppSettingsService();
+        var (tray, plugins) = (original.CloseToTray, original.KeepPluginsUpdated);
+        try
+        {
+            new AppSettingsService().SetCloseToTray(false);
+            var stale = new AppSettingsService();     // a window opened before the change
+            new AppSettingsService().SetCloseToTray(true);
+
+            stale.SetKeepPluginsUpdated(!stale.KeepPluginsUpdated);
+
+            var json = File.ReadAllText(stale.Path);
+            Assert.Contains("\"closeToTray\":true", json);
+            Assert.True(new AppSettingsService().CloseToTray);
+        }
+        finally
+        {
+            new AppSettingsService().SetCloseToTray(tray);
+            new AppSettingsService().SetKeepPluginsUpdated(plugins);
+        }
+    }
 }
