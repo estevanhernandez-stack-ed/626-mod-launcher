@@ -638,4 +638,154 @@ public class MultiTreeToggleTests : IDisposable
         Assert.Equal("STRAY", File.ReadAllText(stray));
         Assert.False(Directory.Exists(Path.Combine(HeldTrees, "r6", "scripts")));
     }
+
+    // ---------- final review: the toggle outcome (F3) ----------
+
+    [Fact]
+    public async Task A_skipped_turn_on_reports_not_applied_with_the_reason()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        File.WriteAllText(Path.Combine(GameRoot, "r6", "tweaks", "__folder_managed_by_vortex"), "");
+        var row = Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod");
+
+        var outcome = await ModToggle.SetEnabledWithOutcomeAsync(Ctx(), row, enabled: true);
+
+        Assert.False(outcome.Applied);
+        Assert.Equal("target folder now owned by another tool", outcome.Reason);
+        Assert.False(ModToggle.IsApplied(Game(), "CoolMod", true));
+    }
+
+    [Fact]
+    public async Task A_normal_turn_on_and_off_report_applied_with_no_reason()
+    {
+        var row = Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod");
+        var off = await ModToggle.SetEnabledWithOutcomeAsync(Ctx(), row, enabled: false);
+        Assert.True(off.Applied);
+        Assert.Null(off.Reason);
+
+        row = Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod");
+        var on = await ModToggle.SetEnabledWithOutcomeAsync(Ctx(), row, enabled: true);
+        Assert.True(on.Applied);
+        Assert.Null(on.Reason);
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+    }
+
+    [Fact]
+    public async Task A_turn_on_that_leaves_files_held_is_applied_and_carries_the_warning()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        var stray = Path.Combine(HeldTrees, "r6", "old", "CoolMod.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(stray)!);
+        File.WriteAllText(stray, "STRAY");
+        var row = Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod");
+
+        var outcome = await ModToggle.SetEnabledWithOutcomeAsync(Ctx(), row, enabled: true);
+
+        Assert.True(outcome.Applied);
+        Assert.NotNull(outcome.Reason);
+        Assert.Contains("files remain", outcome.Reason);
+    }
+
+    [Fact]
+    public async Task SetEnabledAsync_still_skips_an_owned_tree_turn_on_without_throwing()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        File.WriteAllText(Path.Combine(GameRoot, "r6", "tweaks", "__folder_managed_by_vortex"), "");
+        var row = Assert.Single(await Scanner.BuildModListAsync(Ctx()), m => m.Name == "CoolMod");
+
+        await ModToggle.SetEnabledAsync(Ctx(), row, enabled: true);
+
+        Assert.False(ModToggle.IsApplied(Game(), "CoolMod", true));
+        Assert.True(File.Exists(Path.Combine(HeldMain, "meta.json")));
+    }
+
+    // ---------- final review: enable's post-teardown block (F4) ----------
+
+    [Fact]
+    public async Task A_failure_pruning_the_emptied_holding_folders_still_turns_the_mod_on()
+    {
+        await Scanner.DisableModAsync("CoolMod", Ctx());
+        Scanner.BeforeEnablePruneForTests = _ => throw new IOException("prune failed");
+        Scanner.EnableOutcome outcome;
+        try { outcome = await Scanner.EnableModWithOutcomeAsync("CoolMod", Ctx()); }
+        finally { Scanner.BeforeEnablePruneForTests = null; }
+
+        // The main holding folder and its meta.json are already gone by then; throwing would report a live
+        // mod as a failed turn-on. Best effort, like the teardown it follows.
+        Assert.True(outcome.Enabled);
+        Assert.False(outcome.Skipped);
+        Assert.Equal("MAIN", File.ReadAllText(Path.Combine(GameRoot, "archive", "pc", "mod", "CoolMod.archive")));
+        Assert.Equal("SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "CoolMod", "main.reds")));
+        Assert.True(ModToggle.IsApplied(Game(), "CoolMod", true));
+    }
+}
+
+/// <summary>
+/// Final review F5: the toggle uses the row-level rule. A library row (appended by the listing, not by
+/// <c>BuildModList</c>) moves nothing in the extra trees, exactly as its row text says, and its name still
+/// counts as a claimant for another row's entries.
+/// </summary>
+public class MultiTreeLibraryRowTests : IDisposable
+{
+    private readonly string _root = TestSupport.TempDir("mmb-multitree-lib-");
+    private string GameRoot => Path.Combine(_root, "game");
+    private string DataDir => Path.Combine(_root, "data");
+    private string Mods => Path.Combine(GameRoot, "scripts");
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch { }
+    }
+
+    private void Put(string rel, string content)
+    {
+        var p = Path.Combine(GameRoot, rel);
+        Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+        File.WriteAllText(p, content);
+    }
+
+    private GameEntry Game() => new()
+    {
+        Id = "multi-tree-lib", Engine = "custom", GameRoot = GameRoot, DataDir = DataDir,
+        FileExtensions = new[] { "lua" },
+        ModLocations = new[] { new ModLocation("mods", "Mods", "scripts") },
+    };
+
+    private GameContext Ctx() => Scanner.GameContext(Game(), extraModTrees: new[] { "r6/scripts" });
+
+    [Fact]
+    public async Task A_library_row_turned_off_leaves_its_same_named_extra_tree_entry_live()
+    {
+        // An idle library: its one dependent is turned off, so the row is switchable.
+        Put("scripts/CoolLib/init.lua", "-- library");
+        var held = Path.Combine(DataDir, "disabled", "overlay");
+        Directory.CreateDirectory(held);
+        File.WriteAllText(Path.Combine(held, "overlay.lua"), "local c = require(\"CoolLib\")");
+        Put("r6/scripts/CoolLib/lib.reds", "LIB-SCRIPTS");
+        var row = Assert.Single(ModListing.Resolve(Game()), m => m.Name == "CoolLib" && m.Class == "library");
+        Assert.False(row.ReadOnly); // pre-condition: an idle library can be turned off
+
+        Assert.Empty(Scanner.ExtraTreeRowsFor(Ctx()).MovesFor(row).Movable);
+        await ModToggle.SetEnabledAsync(Ctx(), row, enabled: false);
+
+        Assert.False(Directory.Exists(Path.Combine(Mods, "CoolLib")));   // the library itself did turn off
+        Assert.Equal("LIB-SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "CoolLib", "lib.reds")));
+        Assert.False(Directory.Exists(Path.Combine(DataDir, "disabled-trees", "CoolLib")));
+    }
+
+    [Fact]
+    public async Task A_library_row_counts_as_a_claimant_for_another_rows_same_key_entry()
+    {
+        // Cool_Lib.lua is a scanner row; CoolLib/ is an unpaired folder, so a library row the listing appends.
+        // Both reduce to one name key, so r6/scripts/CoolLib can't be told to be Cool_Lib's alone.
+        Put("scripts/CoolLib/init.lua", "-- library");
+        Put("scripts/Cool_Lib.lua", "-- a mod");
+        Put("r6/scripts/CoolLib/lib.reds", "LIB-SCRIPTS");
+        Assert.Contains(ModListing.Resolve(Game()), m => m.Name == "CoolLib" && m.Class == "library");
+
+        await Scanner.DisableModAsync("Cool_Lib", Ctx());
+
+        Assert.False(File.Exists(Path.Combine(Mods, "Cool_Lib.lua")));
+        Assert.Equal("LIB-SCRIPTS", File.ReadAllText(Path.Combine(GameRoot, "r6", "scripts", "CoolLib", "lib.reds")));
+    }
 }

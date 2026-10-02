@@ -53,43 +53,8 @@ public static class ModListing
     /// </summary>
     private static IReadOnlyList<Mod> LibraryRowsFor(GameContext ctx, IReadOnlyList<Mod> alreadyListed)
     {
-        var primary = ctx.Locations.FirstOrDefault();
-        if (primary is null || !Directory.Exists(primary.Abs)) return Array.Empty<Mod>();
-
-        // Not in a folder the GAME owns. Calling an unexplained directory a library is sound reasoning
-        // inside a folder dedicated to mods - an unpaired folder in ~mods really is probably a library.
-        // It is unsound when the mod location IS the game root, where an unexplained directory is just
-        // the game: Death Stranding 2 listed LocalCacheWinGame, steaminput, tools, uds and the user's
-        // own _MODS_STAGING as mods, and read "15 of 15 enabled" on an install with nine (A23).
-        //
-        // A directory in the game root still becomes a row on EVIDENCE - a lane that lists it, or an
-        // install manifest claiming it (A25). What it never does is become one by sitting there.
-        if (IsGameRoot(primary.Abs, ctx.GameRoot)) return Array.Empty<Mod>();
-
-        string[] files, dirs;
-        try
-        {
-            files = Directory.GetFiles(primary.Abs).Select(Path.GetFileName).Where(f => f is not null).Select(f => f!).ToArray();
-            dirs = Directory.GetDirectories(primary.Abs).Select(Path.GetFileName).Where(d => d is not null).Select(d => d!).ToArray();
-        }
-        catch { return Array.Empty<Mod>(); }
-        if (dirs.Length == 0) return Array.Empty<Mod>();   // no folders -> nothing to infer, nothing to scan
-
-        var claimed = ModInstallRegistry.List(ctx.DataDir).SelectMany(m => m.Files);
-        var disabled = DisabledKeys(ctx);
-        var inferred = ModTreeInference.Group(files, dirs, claimed, disabled);
-
-        // Only libraries, and only ones no lane already produced. A folder a lane lists is that lane's
-        // to describe.
-        // Matched on the files a row OWNS as well as its name. Matching names alone missed the case
-        // where a lane claims a directory under a different name: the ReShade row is called "ReShade"
-        // and owns "reshade-shaders", so the folder was listed twice - once inside ReShade, once as its
-        // own library row. That double claim is not cosmetic. Play vanilla moved the directory (rightly,
-        // under the row that owns it) even though the library row was ReadOnly and excluded, which means
-        // a directory belonging to two rows is protected only as strongly as its weakest claim.
-        var listed = ClaimedBy(alreadyListed);
-        var libraries = inferred.Where(r => r.Kind == InferredKind.Library && !listed.Contains(r.Key)).ToList();
-        if (libraries.Count == 0) return Array.Empty<Mod>();
+        var (primary, libraries) = LibraryCandidates(ctx, alreadyListed);
+        if (primary is null || libraries.Count == 0) return Array.Empty<Mod>();
 
         // Sources from the mod folder AND the holding folder. A disabled mod's files are stepped
         // aside, so scanning only what is live conflates "nothing needs this" with "its dependent is
@@ -138,6 +103,60 @@ public static class ModListing
             });
         }
         return rows;
+    }
+
+    /// <summary>
+    /// The names of the rows <see cref="Resolve"/> appends to <paramref name="listed"/> (proxy loaders,
+    /// libraries), without describing them. For a caller that needs every row's NAME and nothing else: the
+    /// extra-tree toggle counts an appended row as a claimant of its same-named entries, and building full
+    /// library rows would scan every Lua source for dependents on each turn-off.
+    /// </summary>
+    internal static IReadOnlyList<string> AppendedRowNames(GameContext ctx, IReadOnlyList<Mod> listed)
+        => ProxyLoaderRowsFor(ctx.Game, listed).Select(m => m.Name)
+            .Concat(LibraryCandidates(ctx, listed).Libraries.Select(l => l.Key))
+            .ToList();
+
+    // The unpaired folders in the primary mod location no lane produced: what becomes a library row.
+    private static (ModLocationCtx? Primary, IReadOnlyList<InferredMod> Libraries) LibraryCandidates(
+        GameContext ctx, IReadOnlyList<Mod> alreadyListed)
+    {
+        var none = ((ModLocationCtx?)null, (IReadOnlyList<InferredMod>)Array.Empty<InferredMod>());
+        var primary = ctx.Locations.FirstOrDefault();
+        if (primary is null || !Directory.Exists(primary.Abs)) return none;
+
+        // Not in a folder the GAME owns. Calling an unexplained directory a library is sound reasoning
+        // inside a folder dedicated to mods - an unpaired folder in ~mods really is probably a library.
+        // It is unsound when the mod location IS the game root, where an unexplained directory is just
+        // the game: Death Stranding 2 listed LocalCacheWinGame, steaminput, tools, uds and the user's
+        // own _MODS_STAGING as mods, and read "15 of 15 enabled" on an install with nine (A23).
+        //
+        // A directory in the game root still becomes a row on EVIDENCE - a lane that lists it, or an
+        // install manifest claiming it (A25). What it never does is become one by sitting there.
+        if (IsGameRoot(primary.Abs, ctx.GameRoot)) return none;
+
+        string[] files, dirs;
+        try
+        {
+            files = Directory.GetFiles(primary.Abs).Select(Path.GetFileName).Where(f => f is not null).Select(f => f!).ToArray();
+            dirs = Directory.GetDirectories(primary.Abs).Select(Path.GetFileName).Where(d => d is not null).Select(d => d!).ToArray();
+        }
+        catch { return none; }
+        if (dirs.Length == 0) return none;   // no folders -> nothing to infer, nothing to scan
+
+        var claimed = ModInstallRegistry.List(ctx.DataDir).SelectMany(m => m.Files);
+        var disabled = DisabledKeys(ctx);
+        var inferred = ModTreeInference.Group(files, dirs, claimed, disabled);
+
+        // Only libraries, and only ones no lane already produced. A folder a lane lists is that lane's
+        // to describe.
+        // Matched on the files a row OWNS as well as its name. Matching names alone missed the case
+        // where a lane claims a directory under a different name: the ReShade row is called "ReShade"
+        // and owns "reshade-shaders", so the folder was listed twice - once inside ReShade, once as its
+        // own library row. That double claim is not cosmetic. Play vanilla moved the directory (rightly,
+        // under the row that owns it) even though the library row was ReadOnly and excluded, which means
+        // a directory belonging to two rows is protected only as strongly as its weakest claim.
+        var listed = ClaimedBy(alreadyListed);
+        return (primary, inferred.Where(r => r.Kind == InferredKind.Library && !listed.Contains(r.Key)).ToList());
     }
 
     /// <summary>Everything the already-listed rows account for: their names AND the files they own.

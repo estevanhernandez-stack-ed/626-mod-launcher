@@ -1418,20 +1418,23 @@ public sealed partial class MainViewModel : ObservableObject
             // and library rows are claimed first there, then the game's listing mechanism decides. An
             // idle library is the only library that reaches here - any other state leaves it ReadOnly
             // and the toggle is never offered. The gates above stay here: how to ask is the view's call.
-            await ModToggle.SetEnabledAsync(_ctx, row.Mod, row.Enabled);
+            var outcome = await ModToggle.SetEnabledWithOutcomeAsync(_ctx, row.Mod, row.Enabled);
             // Warn when toggling an owned UE4SS mod — manifest flip succeeded, but the managing
             // tool may overwrite it on its next deploy (mirrors the config edit-with-warning rule).
             var wasOwnedLoader = row.Mod.ReadOnly && row.Mod.Loader is "ue4ss" or "bepinex";
             await ReloadModsAsync();
             if (wasOwnedLoader && !string.IsNullOrEmpty(row.Mod.Managed))
                 StatusText = $"Toggled {row.Mod.Name} via the loader — managed by {row.Mod.Managed.ToUpperInvariant()}, may be overwritten on its next deploy.";
+            // A skipped turn-on (target folder now owned by another tool, unreadable metadata) does not
+            // throw. Without this the row just reloaded as off with no word why. The reason is a lowercase
+            // clause from Core.
+            if (row.Enabled && !outcome.Applied && !string.IsNullOrEmpty(outcome.Reason))
+                AnswerStatus($"{row.Mod.Name} is still off: {outcome.Reason}.");
             // B4 stage two: a turn-on can succeed and still leave files in disabled-trees/<Mod> (under a
-            // tree the game no longer declares). ModToggle returns no outcome, so ask Core directly; the
-            // mod is on, and the user is told where the rest is rather than finding out on the next off.
-            // "On" is read from the RELOADED row: a skipped turn-on (folder now owned by another tool,
-            // unreadable metadata) does not throw, and must never be reported as on.
-            var reloaded = _allRows.FirstOrDefault(r => string.Equals(r.Mod.Name, row.Mod.Name, StringComparison.Ordinal));
-            if (row.Enabled && reloaded?.Mod.Enabled == true
+            // tree the game no longer declares). The mod is on, and the user is told where the rest is
+            // rather than finding out on the next off. ExtraTreeLeftover gives the folder and whether it
+            // could be read, which the outcome's warning text doesn't separate.
+            else if (row.Enabled && outcome.Applied && outcome.Reason is not null
                 && Scanner.ExtraTreeLeftover(_ctx, row.Mod.Name) is { } leftover)
                 AnswerStatus(ModTreesText.LeftoverStatus(row.Mod.Name, leftover));
         }

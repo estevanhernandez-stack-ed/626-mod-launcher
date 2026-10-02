@@ -541,6 +541,14 @@ public static class Scanner
     /// through DisableEntry/EnableMod which keep their ReadOnly guard, so owned mods are skipped.
     /// </summary>
     public static Task SetLoaderModEnabledAsync(string name, bool enabled, GameContext c)
+        => SetLoaderModEnabledWithOutcomeAsync(name, enabled, c);
+
+    /// <summary>
+    /// <see cref="SetLoaderModEnabledAsync"/>, also handing back the <see cref="EnableOutcome"/> when the
+    /// call went through <see cref="EnableMod"/> (a non-loader mod turned on), so the row toggle can say why
+    /// a turn-on was skipped. Null for a loader manifest flip or a turn-off, which report no outcome.
+    /// </summary>
+    internal static Task<EnableOutcome?> SetLoaderModEnabledWithOutcomeAsync(string name, bool enabled, GameContext c)
     {
         var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (m?.Loader == "ue4ss")
@@ -548,17 +556,19 @@ public static class Scanner
             // Manifest flip only — never a content move. Allowed regardless of ReadOnly.
             try { Ue4ssManifest.SetEnabled(LocByName(m.Location, c).Abs, name, enabled); }
             catch (Exception e) { throw new InvalidOperationException($"Couldn't {(enabled ? "enable" : "disable")} \"{name}\" ({e.Message})", e); }
-            return Task.CompletedTask;
+            return Task.FromResult<EnableOutcome?>(null);
         }
         if (m?.Loader == "bepinex")
         {
             try { BepInExPlugins.SetEnabled(LocByName(m.Location, c).Abs, name, enabled); }
             catch (Exception e) { throw new InvalidOperationException($"Couldn't {(enabled ? "enable" : "disable")} \"{name}\" ({e.Message})", e); }
-            return Task.CompletedTask;
+            return Task.FromResult<EnableOutcome?>(null);
         }
         // Non-loader mod: fall back to the normal gated path (ReadOnly guard applies).
-        if (enabled) EnableMod(name, c); else { var m2 = BuildModList(c).FirstOrDefault(x => x.Name == name); if (m2 is not null) DisableEntry(m2, c); }
-        return Task.CompletedTask;
+        if (enabled) return Task.FromResult<EnableOutcome?>(EnableMod(name, c));
+        var m2 = BuildModList(c).FirstOrDefault(x => x.Name == name);
+        if (m2 is not null) DisableEntry(m2, c);
+        return Task.FromResult<EnableOutcome?>(null);
     }
 
     /// <summary>
@@ -835,20 +845,36 @@ public static class Scanner
     [ThreadStatic] internal static Action<string>? BeforeEnableRollbackMoveForTests;
 
     /// <summary>
-    /// The extra-tree entries that move with <paramref name="m"/> (B4 stage two), decided by
-    /// <see cref="ModTrees.MovableFor"/>: one claimant, nothing protected inside, tree not owned by
-    /// another tool. A game that declares no extra trees pays nothing, not even the mod-list read.
+    /// Tests only: called with the mod's <c>disabled-trees</c> folder as <see cref="EnableMod"/> starts pruning
+    /// it after the holding teardown, so a test can make that best-effort step fail. Thread-static for the
+    /// same reason.
+    /// </summary>
+    [ThreadStatic] internal static Action<string>? BeforeEnablePruneForTests;
+
+    /// <summary>
+    /// The extra-tree entries that move with <paramref name="m"/> (B4 stage two): the row's own text rule,
+    /// <see cref="ExtraTreeRows.MovesFor"/>, so a library, proxy-loader or loader-driven row moves nothing, as
+    /// its row says; then <see cref="ModTrees.MovableFor"/>: one claimant, nothing protected inside, tree not
+    /// owned by another tool. A game that declares no extra trees pays nothing, not even the mod-list read.
     /// </summary>
     private static IReadOnlyList<ModTreeEntry> ExtraTreeMovesFor(Mod m, GameContext c)
     {
         if (c.ExtraModTrees is not { Count: > 0 }) return Array.Empty<ModTreeEntry>();
         // The toggle is already on the scanner's lane, so it never asks which lane this is.
-        return ExtraTreeRowsWithNames(c).Select(m).Movable;
+        return ExtraTreeRowsWithNames(c).MovesFor(m).Movable;
     }
 
+    // Every row's name is a possible claimant, the rows the listing APPENDS (libraries, proxy loaders)
+    // included: BuildModList has never heard of them, and without them a library and a mod whose names
+    // reduce to one key would hand the library's entry to the mod.
     private static ExtraTreeRows ExtraTreeRowsWithNames(GameContext c)
-        => new(c, ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)),
-            BuildModList(c).Select(r => r.Name).ToList(), laneMovesExtras: true);
+    {
+        var listed = BuildModList(c);
+        var names = listed.Select(r => r.Name).Concat(ModListing.AppendedRowNames(c, listed))
+            .Distinct(StringComparer.Ordinal).ToList();
+        return new(c, ModTrees.Build(c.GameRoot, c.ExtraModTrees, c.Locations.Select(l => l.Abs)),
+            names, laneMovesExtras: true);
+    }
 
     /// <summary>
     /// The extra-tree picture for every row of a game (B4 stage two), built once: the declared trees read
@@ -1059,14 +1085,23 @@ public static class Scanner
         // Every held extra has moved out, so this removes the folders they left; a file never goes. The tree
         // folders are pruned one by one first, so a leftover elsewhere in the mod's folder (below) does not
         // keep the restored trees' empty shells around as well.
-        var treesRoot = Path.GetFullPath(TreeHolding.ModDir(c, name));
-        foreach (var x in heldExtras)
-            for (var d = Path.GetDirectoryName(Path.GetFullPath(x.AbsPath));
-                 d is not null && d.Length > treesRoot.Length
-                     && d.StartsWith(treesRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-                 d = Path.GetDirectoryName(d))
-                HoldingFolder.RemoveIfNoFiles(d);
-        TreeHolding.RemoveIfEmpty(c, name);
+        //
+        // Best effort, like the teardown above it, and for a sharper reason: by now the mod is live and its
+        // meta.json is gone. An exception here would report a mod that is on as a failed turn-on, with no
+        // record left to turn it on again from. An empty folder left behind is harmless.
+        try
+        {
+            BeforeEnablePruneForTests?.Invoke(TreeHolding.ModDir(c, name));
+            var treesRoot = Path.GetFullPath(TreeHolding.ModDir(c, name));
+            foreach (var x in heldExtras)
+                for (var d = Path.GetDirectoryName(Path.GetFullPath(x.AbsPath));
+                     d is not null && d.Length > treesRoot.Length
+                         && d.StartsWith(treesRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                     d = Path.GetDirectoryName(d))
+                    HoldingFolder.RemoveIfNoFiles(d);
+            TreeHolding.RemoveIfEmpty(c, name);
+        }
+        catch { /* best effort */ }
 
         // Files still under disabled-trees/<Mod> sit under a tree the manifest no longer declares, where Held
         // does not look. The mod is on, but saying nothing would leave them stranded where no toggle finds
