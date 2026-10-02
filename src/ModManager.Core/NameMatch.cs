@@ -143,6 +143,24 @@ public static partial class NameMatch
         return union != 0 ? (double)inter / union : 0;
     }
 
+    /// <summary>
+    /// <see cref="PickBestMatch{T}"/> for a query cleaned from an arbitrary FILENAME, which may be a
+    /// vanilla game file. Below two tokens the fuzzy threshold is too permissive: "Skyrim" (from
+    /// <c>Data/Skyrim.esm</c>) scores exactly 0.5 against "Skyrim Together". So a one-token query
+    /// needs an exact token-sequence match; two or more tokens score as usual. The name index and
+    /// discovery's live search both use this rule, so a file can't be placed by one and refused by
+    /// the other.
+    /// </summary>
+    public static T? PickForFileName<T>(string query, IEnumerable<T>? candidates, Func<T, string?> name)
+        where T : class
+    {
+        var queryTokens = Tokenize(query);
+        if (queryTokens.Count == 0) return null;
+        if (queryTokens.Count < 2)
+            return (candidates ?? Enumerable.Empty<T>()).FirstOrDefault(c => queryTokens.SequenceEqual(Tokenize(name(c))));
+        return PickBestMatch(query, candidates, name);
+    }
+
     /// <summary>Best candidate (by name) for <paramref name="query"/>, or null if none clears the threshold.</summary>
     public static T? PickBestMatch<T>(string query, IEnumerable<T>? candidates, Func<T, string?> name, double threshold = 0.5)
         where T : class

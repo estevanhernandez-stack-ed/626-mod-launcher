@@ -2717,75 +2717,57 @@ public sealed partial class MainViewModel : ObservableObject
     /// <para>Gated exactly like the row search: no source, no connection, or no domain means the
     /// proposals come back untouched rather than annotated with a guess.</para>
     /// </summary>
-    private async Task<IReadOnlyList<AdoptionProposal>> NameSweptCandidatesAsync(
-        IReadOnlyList<AdoptionProposal> proposals, GameContext ctx, CancellationToken ct)
+    private async Task<DiscoveryNameSearchResult?> NameSweptCandidatesAsync(
+        IReadOnlyList<AdoptionProposal> proposals, GameContext ctx, int cap, CancellationToken ct)
     {
-        var worth = AdoptionProposal.WorthSearching(proposals).ToList();
-        if (worth.Count == 0) return proposals;
-        if (NexusSource is not IModTextSearch search || !_nexus.IsConnected) return proposals;
+        if (!AdoptionProposal.WorthSearching(proposals).Any()) return null;
+        if (NexusSource is not IModTextSearch search || !_nexus.IsConnected) return null;
         var domain = NexusDomains.Effective(ctx.Game);
-        if (string.IsNullOrWhiteSpace(domain)) return proposals;
+        if (string.IsNullOrWhiteSpace(domain)) return null;
 
-        var named = new Dictionary<string, SourceSearchHit>(StringComparer.OrdinalIgnoreCase);
-        var done = 0;
-        foreach (var p in worth)
-        {
-            if (ct.IsCancellationRequested) break;
-            AmbientStatus($"Naming what we found — {++done} of {worth.Count}…");
-
-            var query = NameMatch.CleanModName(p.Candidate.FileName);
-            try
-            {
-                // Same ladder as the row search: the precise name first, widening only when nothing
-                // came back. Scoring always against the FULL query, so retrieval widens and
-                // acceptance does not.
-                foreach (var rung in NameMatch.QueryLadder(query))
-                {
-                    if (ct.IsCancellationRequested) break;
-                    var hits = await search.SearchAsync(domain!, rung);
-                    if (NameMatch.PickBestMatch(query, hits, h => h.Name) is { } hit)
-                    { named[p.Candidate.RelativePath] = hit; break; }
-                }
-            }
-            catch (SourceRateLimitException) { break; } // throttled: stop asking, keep what we have
-            catch { /* this candidate stays unnamed; the rest still get their turn */ }
-        }
-
-        return named.Count == 0
-            ? proposals
-            : proposals.Select(p => named.TryGetValue(p.Candidate.RelativePath, out var hit)
-                    ? AdoptionProposal.FromSearch(p.Candidate, hit)
-                    : p)
-                .ToList();
+        // Built here, on the UI thread, so each report lands back on it (the workers run concurrently).
+        var progress = new Progress<LooseIdentifyProgress>(p =>
+            AmbientStatus($"Naming what we found — {p.Completed} of {p.Total}…"));
+        // The index is NOT grown here: these are guesses until the user approves them, and a rejected
+        // guess grown now would come back next sweep as a stronger, call-free NameIndex proposal.
+        // ApplyDiscoveriesAsync grows it with what was approved.
+        return await DiscoveryNameSearch.NameAsync(
+            proposals, SearchWithTimeout(search, domain!), cap, LooseIdentify.DefaultConcurrency, progress, ct);
     }
 
-    private async Task<IReadOnlyList<LooseIdentifyProposal>?> SearchUnnamedRowsAsync(
-        GameContext ctx, IProgress<LooseIdentifyProgress> progress, CancellationToken ct)
-    {
-        if (NexusSource is not IModTextSearch search) { StatusText = NexusNotConnectedMessage; return null; }
-        if (!_nexus.IsConnected) { StatusText = NexusNotConnectedMessage; return null; }
-        var domain = NexusDomains.Effective(ctx.Game);
-        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return null; }
-
-        var candidates = LooseIdentify.Candidates(_allRows.Select(r => r.Mod).ToList(), Scanner.LoadMetadata(ctx));
-        if (candidates.Count == 0) { StatusText = "No loose mods need identifying."; return null; }
-
-        // The search delegate still self-timeouts per call: a hung Nexus request yields "no
-        // hits" for that row after ~10s instead of stalling one of the workers forever. The
-        // abandoned call gets its fault observed on completion so a late failure never
-        // surfaces as an unobserved-task exception. Cancellation stops NEW rows immediately;
-        // rows already in flight finish (or time out), so Stop settles within ~10s worst case.
-        // Core's CleanQuery passes through untouched — that's NameMatch's contract, not noise
-        // for the App to re-clean.
-        var rateLimited = false;
-        var proposals = await LooseIdentify.ProposeAsync(candidates, async query =>
+    /// <summary>The search a name pass hands to Core: one call, given up on after ~10s rather than
+    /// stalling a worker forever. The abandoned call's fault is observed on
+    /// completion so a late failure never surfaces as an unobserved-task exception. Cancellation
+    /// stops new queries at once; ones in flight finish or time out, so Stop settles within ~10s.</summary>
+    private static Func<string, Task<IReadOnlyList<SourceSearchHit>>> SearchWithTimeout(IModTextSearch search, string domain)
+        => async query =>
         {
-            var call = search.SearchAsync(domain!, query);
+            var call = search.SearchAsync(domain, query);
             if (await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10))) == call)
                 return await call;
             _ = call.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
-            return Array.Empty<SourceSearchHit>();
-        }, LooseIdentify.DefaultConcurrency, progress, ct, onRateLimited: () => rateLimited = true);
+            // Thrown, not "no hits": an empty page would send the ladder on to its next rung, so a
+            // hung Nexus cost three timeouts per mod; and a mod we never heard back about must not
+            // be counted as one Nexus has no match for. Core marks the row failed and moves on.
+            throw new TimeoutException("Nexus didn't answer in time.");
+        };
+
+    private async Task<(IReadOnlyList<LooseIdentifyProposal>? Found, bool RateLimited)> SearchUnnamedRowsAsync(
+        GameContext ctx, IProgress<LooseIdentifyProgress> progress, CancellationToken ct)
+    {
+        if (NexusSource is not IModTextSearch search) { StatusText = NexusNotConnectedMessage; return (null, false); }
+        if (!_nexus.IsConnected) { StatusText = NexusNotConnectedMessage; return (null, false); }
+        var domain = NexusDomains.Effective(ctx.Game);
+        if (string.IsNullOrWhiteSpace(domain)) { StatusText = "This game has no Nexus domain set."; return (null, false); }
+
+        var candidates = LooseIdentify.Candidates(_allRows.Select(r => r.Mod).ToList(), Scanner.LoadMetadata(ctx));
+        if (candidates.Count == 0) { StatusText = "No loose mods need identifying."; return (null, false); }
+
+        // The search self-timeouts per call (SearchWithTimeout). Core's CleanQuery passes through
+        // untouched — that's NameMatch's contract, not noise for the App to re-clean.
+        var rateLimited = false;
+        var proposals = await LooseIdentify.ProposeAsync(candidates, SearchWithTimeout(search, domain!),
+            LooseIdentify.DefaultConcurrency, progress, ct, onRateLimited: () => rateLimited = true);
 
         if (rateLimited)
         {
@@ -2794,7 +2776,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = proposals.Count == 0
                 ? "Nexus rate-limited us before anything could be searched. Try again later."
                 : $"Nexus rate-limited us after {proposals.Count} of {candidates.Count}. Review what was found, then run it again later for the rest.";
-            return proposals.Count == 0 ? null : proposals;
+            return (proposals.Count == 0 ? null : proposals, true);
         }
 
         if (proposals.Count == 0)
@@ -2803,12 +2785,12 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = ct.IsCancellationRequested
                 ? "Stopped before anything was searched. Nothing changed."
                 : "No matches found on Nexus for these mods.";
-            return null;
+            return (null, false);
         }
 
         if (ct.IsCancellationRequested)
             StatusText = $"Stopped after {proposals.Count} of {candidates.Count}. Review what was found, or run it again for the rest.";
-        return proposals;
+        return (proposals, false);
     }
 
     /// <summary>Loose-root name-search identify, step 2 of 2: persist ONLY the user-approved pairs.
@@ -2891,6 +2873,7 @@ public sealed partial class MainViewModel : ObservableObject
             // passes will overwrite the status line before the user reads any of it — a user who
             // took the trouble to pick a folder has to be told what it contributed, at the end.
             string? downloadsNote = null;
+            string? sweptNote = null;   // what the name searches left undone: cap, stop, throttle (B2)
             if (!string.IsNullOrWhiteSpace(downloadsFolder) && !cts.IsCancellationRequested)
             {
                 StatusText = "Matching your downloads folder…";
@@ -2919,16 +2902,22 @@ public sealed partial class MainViewModel : ObservableObject
             string? searchNote = null;
             if (!cts.IsCancellationRequested)
             {
-                var found = await SearchUnnamedRowsAsync(ctx, searchProgress, cts.Token);
-                if (found is null) searchNote = StatusText;
-                else identifications = found;
+                var (found, rowsThrottled) = await SearchUnnamedRowsAsync(ctx, searchProgress, cts.Token);
+                if (rowsThrottled) sweptNote = StatusText;   // the throttle, said; kept past the final line
+                else if (found is null) searchNote = StatusText;
+                if (found is not null) identifications = found;
 
                 // Swept files are not rows yet, so the pass above — which searches _allRows — never
                 // sees them. Without this they are proposed as "not identified", adopted, become
                 // rows, and only a SECOND run names them, with nothing telling the user that a
-                // second run was worth doing. Same tier, same ladder, same review gate.
-                if (!cts.IsCancellationRequested)
-                    adoptions = await NameSweptCandidatesAsync(adoptions, ctx, cts.Token);
+                // second run was worth doing. Same tier, same ladder, same review gate. Not after a
+                // throttle: the next call would only meet it again.
+                if (!cts.IsCancellationRequested && !rowsThrottled
+                    && await NameSweptCandidatesAsync(adoptions, ctx, DiscoveryNameSearch.RequestedCap, cts.Token) is { } swept)
+                {
+                    adoptions = swept.Proposals;
+                    sweptNote = DiscoveryNameSearch.Note(swept, auto: false);
+                }
             }
 
             var stopped = cts.IsCancellationRequested;
@@ -2940,6 +2929,7 @@ public sealed partial class MainViewModel : ObservableObject
                     Filled = filled,
                     Stopped = stopped,
                     DownloadsNote = downloadsNote,
+                    NameSearchNote = sweptNote,
                     NothingHappenedLine = searchNote,
                 });
                 return;
@@ -2995,6 +2985,7 @@ public sealed partial class MainViewModel : ObservableObject
                 AdoptionNote = adoptionNote,
                 IdentifyNote = identifyNote,
                 DownloadsNote = downloadsNote,
+                NameSearchNote = sweptNote,
             });
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
@@ -3142,14 +3133,53 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // BuildDiscoveryProposalsAsync sets StatusText itself for every "nothing found" reason,
-        // gated on auto exactly as this method used to gate it inline before the split.
-        var proposals = await BuildDiscoveryProposalsAsync(ctx, CancellationToken.None, auto);
-        if (proposals.Count == 0) return;
+        // The long-op slot, from the sweep through the review (B2 review). The sweep now makes real
+        // network calls (md5, then the live name search), so it gets the busy ring and a Stop button
+        // like every other long run, and while it holds the slot "Identify my mods" can't start a
+        // second review dialog inside it (WinUI allows one ContentDialog at a time). The silent
+        // add-game sweep never contends for the slot: if something else holds it, it stays out.
+        using var cts = new CancellationTokenSource();
+        if (auto && _longOp.IsHeld) return;
+        if (!TryBeginLongOp(cts, "Finding existing mods")) return;
 
-        if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
-        proposals = await ResolveAdoptionReachAsync(proposals, ctx);
-        var outcome = await ReviewDiscoveries(proposals);
+        // What the line said before the sweep ("Added {name}." on the add-game path). The search's
+        // progress ticker writes over it, and the silent sweep must leave it as it found it.
+        var before = StatusText;
+        string? searchNote = null;
+        IReadOnlyList<AdoptionProposal> proposals;
+        DiscoveryReviewOutcome outcome;
+        try
+        {
+            // BuildDiscoveryProposalsAsync sets StatusText itself for every "nothing found" reason,
+            // gated on auto exactly as this method used to gate it inline before the split.
+            proposals = await BuildDiscoveryProposalsAsync(ctx, cts.Token, auto);
+            if (proposals.Count == 0) return;
+
+            // Tier 2b (B2): what the name index couldn't place gets a live name search, capped. The
+            // silent add-game sweep honours the same "check Nexus automatically" preference the index
+            // seed does, and searches fewer: it stands between the user and their new game.
+            if ((!auto || _appSettings.AutoCheckModUpdates) && !cts.IsCancellationRequested)
+            {
+                var cap = auto ? DiscoveryNameSearch.AutoCap : DiscoveryNameSearch.RequestedCap;
+                if (await NameSweptCandidatesAsync(proposals, ctx, cap, cts.Token) is { } swept)
+                {
+                    proposals = swept.Proposals;
+                    searchNote = DiscoveryNameSearch.Note(swept, auto);
+                }
+            }
+            if (auto) StatusText = before;
+
+            if (ReviewDiscoveries is null) return; // unwired view -> nothing adopted, but the sweep itself still ran
+            proposals = await ResolveAdoptionReachAsync(proposals, ctx);
+            outcome = await ReviewDiscoveries(proposals);
+        }
+        finally { EndLongOp(); }
+
+        // Said after whatever the rest of this run puts on the status line, never instead of it.
+        void SayWhatTheSearchLeft()
+        {
+            if (searchNote is not null) StatusText = string.IsNullOrWhiteSpace(StatusText) ? searchNote : $"{StatusText} {searchNote}";
+        }
 
         // Install, not adopt. The user picked the action that matches what these files actually
         // are — downloads that were never deployed — and it routes through the ordinary intake
@@ -3161,6 +3191,7 @@ public sealed partial class MainViewModel : ObservableObject
                 .Select(p => Path.Combine(ctx.GameRoot, p.Candidate.RelativePath))
                 .ToList();
             await AddModsAsync(paths);
+            SayWhatTheSearchLeft();
             return;
         }
 
@@ -3168,6 +3199,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         // ApplyDiscoveriesAsync sets StatusText itself for the write outcome, same auto gating.
         await ApplyDiscoveriesAsync(approved, proposals.Count, ctx, auto);
+        SayWhatTheSearchLeft();
     }
 
     /// <summary>Sweep + classify + tier-match, stopping BEFORE review. Split out of
@@ -3419,6 +3451,17 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Scanner.WriteManyMeta(ctx, writes);
+
+        // Names the user approved from a live search grow this game's index, so the next sweep places
+        // those mods with no call (the spec's "grow"). Approved only: a rejected guess must not come
+        // back as index evidence. Off the UI thread: Grow loads and atomically rewrites the index file.
+        var approvedHits = approved.Where(p => p.Evidence == AdoptionEvidence.NameSearch && p.Hit is not null)
+            .Select(p => p.Hit!).ToList();
+        if (approvedHits.Count > 0)
+        {
+            var dataDir = ctx.DataDir;
+            await Task.Run(() => _nameIndex.Grow(dataDir, approvedHits));
+        }
 
         var adoptedCount = writes.Select(w => w.ModKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
         StatusText = adoptedCount == 1

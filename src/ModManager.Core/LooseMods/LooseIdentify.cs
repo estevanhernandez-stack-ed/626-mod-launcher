@@ -85,11 +85,40 @@ public static class LooseIdentify
         CancellationToken ct = default,
         Action? onRateLimited = null)
     {
-        if (candidates.Count == 0) return Array.Empty<LooseIdentifyProposal>();
+        var searched = await SearchEachAsync(candidates, m => m.Base, search, maxConcurrency, progress, ct, onRateLimited)
+            .ConfigureAwait(false);
+        return searched.Select(r => new LooseIdentifyProposal(r.Item.Base, r.Query, r.Match)).ToList();
+    }
 
+    /// <summary>
+    /// The engine under <see cref="ProposeAsync"/>, for any list of things that have a name: clean
+    /// each name, walk the query ladder, keep the best hit. Every rule <see cref="ProposeAsync"/>
+    /// documents is this method's — order preserved, cancellation keeps finished results, a rate
+    /// limit stops the run (raising <paramref name="onRateLimited"/> once) instead of reporting
+    /// the rows it never asked about as misses, any other throw costs only its own row. Discovery's
+    /// swept candidates (B2) run through here too, so the two searches cannot drift apart.
+    /// </summary>
+    /// <param name="pick">How a page of hits is scored against the full query; defaults to
+    /// <see cref="NameMatch.PickBestMatch{T}"/>. Discovery passes <see cref="NameMatch.PickForFileName{T}"/>,
+    /// because its queries come from arbitrary filenames.</param>
+    /// <returns>One result per item that settled, in the order the items were given. <c>Failed</c>
+    /// marks an item whose search threw (a timeout, a network error): it was asked about, but its
+    /// "no match" is not a finding about the mod.</returns>
+    public static async Task<IReadOnlyList<(T Item, string Query, SourceSearchHit? Match, bool Failed)>> SearchEachAsync<T>(
+        IReadOnlyList<T> items,
+        Func<T, string> nameOf,
+        Func<string, Task<IReadOnlyList<SourceSearchHit>>> search,
+        int maxConcurrency = DefaultConcurrency,
+        IProgress<LooseIdentifyProgress>? progress = null,
+        CancellationToken ct = default,
+        Action? onRateLimited = null,
+        Func<string, IReadOnlyList<SourceSearchHit>, SourceSearchHit?>? pick = null)
+    {
+        if (items.Count == 0) return Array.Empty<(T, string, SourceSearchHit?, bool)>();
+        pick ??= static (query, hits) => NameMatch.PickBestMatch(query, hits, h => h.Name);
         // Slot i holds candidate i's proposal, so the result order never depends on completion
         // order. A slot stays null only if its row was never started (cancelled before it ran).
-        var slots = new LooseIdentifyProposal?[candidates.Count];
+        var slots = new (T Item, string Query, SourceSearchHit? Match, bool Failed)?[items.Count];
         var next = -1;
         var completed = 0;
         // Set by whichever worker meets the throttle first; read by all of them so the run winds
@@ -102,11 +131,12 @@ public static class LooseIdentify
             while (true)
             {
                 var index = Interlocked.Increment(ref next);
-                if (index >= candidates.Count || ct.IsCancellationRequested) return;
+                if (index >= items.Count || ct.IsCancellationRequested) return;
                 if (Volatile.Read(ref throttled) == 1) return;
 
-                var query = NameMatch.CleanModName(candidates[index].Base);
+                var query = NameMatch.CleanModName(nameOf(items[index]));
                 SourceSearchHit? match = null;
+                var failed = false;
                 try
                 {
                     // SEARCH BROAD, SCORE NARROW. A filename carries every word the author used,
@@ -120,7 +150,7 @@ public static class LooseIdentify
                     {
                         if (ct.IsCancellationRequested) break;
                         var hits = await search(rung).ConfigureAwait(false);
-                        match = NameMatch.PickBestMatch(query, hits, h => h.Name);
+                        match = pick(query, hits);
                         if (match is not null) break; // stop paying for calls the moment one lands
                     }
                 }
@@ -139,19 +169,20 @@ public static class LooseIdentify
                     // Any OTHER throwing search must never take down the whole run — this row
                     // simply gets no proposal; every other candidate still gets its own attempt.
                     match = null;
+                    failed = true;
                 }
 
-                slots[index] = new LooseIdentifyProposal(candidates[index].Base, query, match);
+                slots[index] = (items[index], query, match, failed);
                 progress?.Report(new LooseIdentifyProgress(
-                    Interlocked.Increment(ref completed), candidates.Count));
+                    Interlocked.Increment(ref completed), items.Count));
             }
         }
 
         // Never spin up more workers than there is work for them to do.
-        var workers = Math.Clamp(maxConcurrency, 1, candidates.Count);
+        var workers = Math.Clamp(maxConcurrency, 1, items.Count);
         await Task.WhenAll(Enumerable.Range(0, workers).Select(_ => WorkerAsync())).ConfigureAwait(false);
 
-        return slots.Where(p => p is not null).Select(p => p!).ToList();
+        return slots.Where(p => p is not null).Select(p => p!.Value).ToList();
     }
 
     /// <summary>Maps an APPROVED search hit to the <see cref="ModMeta"/> fields to persist. Merge-in
