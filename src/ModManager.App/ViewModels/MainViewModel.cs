@@ -609,32 +609,40 @@ public sealed partial class MainViewModel : ObservableObject
         _nameIndex = nameIndex;
         ThemeOptions = themes.Themes;
         // Restore the user's saved pick (F-080); Default (the flagship) covers first-run, a
-        // cleared setting, and a saved id whose theme has since been deleted. The restore gate
-        // keeps this path from PERSISTING: first-run must not pin the current default as if the
-        // user chose it, and a transiently unreadable user theme must not overwrite a good saved
-        // id with the fallback (B4.5 review catch). Only real picks save.
-        _restoringTheme = true;
-        try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, appSettings.ThemeId).Active; }
-        finally { _restoringTheme = false; }
+        // cleared setting, and a saved id whose theme has since been deleted.
+        RestoreThemeSelection(appSettings.ThemeId);
 
         // A theme saved outside this window (an agent's apply_theme, another launcher window) shows
         // here as it happens, not at the next start (agent-access law 10).
-        appSettings.ThemeSavedElsewhere += (_, id) => _dispatcherQueue?.TryEnqueue(() => OnThemeSavedElsewhere(id));
+        appSettings.ThemeSavedElsewhere += (_, _) => _dispatcherQueue?.TryEnqueue(OnThemeSavedElsewhere);
         appSettings.WatchForOutsideChanges();
     }
 
     private bool _restoringTheme;
 
-    private void OnThemeSavedElsewhere(string savedId)
+    /// <summary>Select the theme for a saved id without saving it again or warning about it: the
+    /// startup restore, a Settings reload, and a pick saved outside this window. The gate keeps these
+    /// from PERSISTING: first-run must not pin the current default as if the user chose it, and a
+    /// transiently unreadable user theme must not overwrite a good saved id with the fallback (B4.5
+    /// review catch). Only real picks save.</summary>
+    private void RestoreThemeSelection(string? savedId)
     {
-        // Reload first: an agent may have picked a user theme file this window has not listed yet.
-        // Selected under the restore gate because the pick is already on disk, so it must not be saved
-        // again, and a saved id with no usable theme falls back the way it does at start.
-        _themes.Reload();
-        ThemeOptions = _themes.Themes;
         _restoringTheme = true;
         try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, savedId).Active; }
         finally { _restoringTheme = false; }
+    }
+
+    private void OnThemeSavedElsewhere()
+    {
+        // The saved id as it stands NOW, not when the file event fired: a pick made in this window
+        // since then is newer and already showing, and a queued switch must not put the older one back.
+        var savedId = _appSettings.ThemeId;
+        if (savedId is null || SelectedTheme?.Id == savedId) return;
+
+        // Reload first: an agent may have picked a user theme file this window has not listed yet.
+        _themes.Reload();
+        ThemeOptions = _themes.Themes;
+        RestoreThemeSelection(savedId);
         if (SelectedTheme is not { } showing) return;
         StatusText = showing.Id == savedId
             ? $"Theme switched to {showing.Name}. It was changed outside this window."
@@ -733,9 +741,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Reload() rebuilds instances, so this reassign ALWAYS fires the setter even when the id
         // is unchanged — gate it like the startup restore or every Settings close re-persists and
         // re-warns as if the user picked a theme (B5-B8 review, S3).
-        _restoringTheme = true;
-        try { SelectedTheme = ModManager.Core.Themes.PickActive(ThemeOptions, SelectedTheme?.Id).Active; }
-        finally { _restoringTheme = false; }
+        RestoreThemeSelection(SelectedTheme?.Id);
     }
 
     // LoadAsync rebuilds the games dropdown (Games.Clear + repopulate) and is NON-atomic — it awaits

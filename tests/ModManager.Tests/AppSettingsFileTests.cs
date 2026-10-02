@@ -179,6 +179,62 @@ public class AppSettingsFileTests : IDisposable
         Assert.True(lost.Length == 0, "Lost: " + string.Join(", ", lost));
     }
 
+    [Fact]
+    public void WriteKey_says_what_it_replaced_and_does_not_rewrite_an_unchanged_value()
+    {
+        var first = AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        var stamp = File.GetLastWriteTimeUtc(FilePath);
+        var again = AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        var stampAfterAgain = File.GetLastWriteTimeUtc(FilePath);
+        var next = AppSettingsFile.WriteKey(FilePath, "themeId", "ember");
+
+        Assert.Equal((null, true, false), (first.Previous?.ToString(), first.Written, first.StartedOver));
+        Assert.Equal(("forge", false), (again.Previous?.ToString(), again.Written));
+        Assert.Equal(stamp, stampAfterAgain);
+        Assert.Equal(("forge", true), (next.Previous?.ToString(), next.Written));
+    }
+
+    [Fact]
+    public void WriteKey_reports_starting_a_corrupt_file_over()
+    {
+        File.WriteAllText(FilePath, "[1, 2]");
+
+        Assert.True(AppSettingsFile.WriteKey(FilePath, "themeId", "forge").StartedOver);
+    }
+
+    [Fact]
+    public void A_key_written_twice_by_hand_saves_last_wins_as_it_reads()
+    {
+        // JsonNode.Parse accepts the duplicate but throws on first touch of the object, which made every
+        // save of a file Read reads fine fail.
+        File.WriteAllText(FilePath, "{\"themeId\":\"a\",\"backdrop\":\"mica\",\"themeId\":\"b\"}");
+        Assert.Equal("b", AppSettingsFile.Read(FilePath).ThemeId);
+
+        var w = AppSettingsFile.WriteKey(FilePath, "closeToTray", true);
+
+        Assert.False(w.StartedOver);
+        var s = AppSettingsFile.Read(FilePath);
+        Assert.Equal(("b", "mica", true), (s.ThemeId, s.Backdrop, s.CloseToTray));
+    }
+
+    [Fact]
+    public async Task A_writer_that_cannot_get_the_lock_gives_up_in_time_and_writes_nothing()
+    {
+        AppSettingsFile.WriteKey(FilePath, "themeId", "forge");
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var holder = Task.Run(() => AppSettingsFile.WithLock(FilePath, () => { holding.Set(); release.Wait(TimeSpan.FromSeconds(10)); }));
+        holding.Wait();
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<IOException>(() => AppSettingsFile.WriteKey(FilePath, "themeId", "ember"));
+            Assert.InRange(clock.Elapsed, AppSettingsFile.LockTimeout - TimeSpan.FromMilliseconds(100), AppSettingsFile.LockTimeout + TimeSpan.FromSeconds(1));
+            Assert.Equal("forge", AppSettingsFile.Read(FilePath).ThemeId);
+        }
+        finally { release.Set(); await holder; }
+    }
+
     // ---- ThemeChangedOnDisk: when a running window follows a pick made outside it ----
 
     private static AppSettingsSnapshot Snap(string? themeId, string state = "ok")

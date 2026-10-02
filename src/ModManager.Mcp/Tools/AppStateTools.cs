@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Server;
 using ModManager.Core;
 using ModManager.Core.Agent;
@@ -90,26 +91,34 @@ public static class AppStateTools
         }
 
         var path = AppSettingsFile.PathIn(McpConfig.DataRoot);
-        var before = AppSettingsFile.Read(path);
-        var (wasShowing, _) = CoreThemes.PickActive(themes, before.ThemeId);
-        var changed = before.ThemeId != wanted.Id;
 
         void Audit(string result, string detail) =>
             AgentAudit.Append(McpConfig.DataRoot, new AgentAuditEntry(DateTime.UtcNow, tool, "", args, result, detail));
 
-        if (changed)
+        // What it replaced is read under the write's own lock, so it is the pick this one overwrote, not
+        // a read taken a moment earlier. An unchanged id is not rewritten.
+        AppSettingsFile.KeyWrite write;
+        try { write = AppSettingsFile.WriteKey(path, "themeId", wanted.Id); }
+        catch (Exception e)
         {
-            try { AppSettingsFile.WriteKey(path, "themeId", wanted.Id); }
-            catch (Exception e)
-            {
-                var detail = ErrorRemedy.Describe(e);
-                Audit("error", detail);
-                return new { ok = false, refusal = "error", detail };
-            }
+            var detail = ErrorRemedy.Describe(e);
+            Audit("error", detail);
+            return new { ok = false, refusal = "error", detail };
         }
+        // As the app reads it: a saved id that isn't a string, or is blank, is no pick.
+        var previousSaved = write.Previous is JsonValue v && v.TryGetValue<string>(out var prevId) && !string.IsNullOrWhiteSpace(prevId)
+            ? prevId
+            : null;
+        var (wasShowing, _) = CoreThemes.PickActive(themes, write.StartedOver ? null : previousSaved);
 
-        // Verify by reading back the way the app will at its next start or file event.
+        // Verify by reading back the way the app will at its next start or file event. A read that
+        // lands on another writer's rename is tried again before calling it not applied.
         var after = AppSettingsFile.Read(path);
+        for (var attempt = 1; after.FileState != "ok" && attempt < 4; attempt++)
+        {
+            Thread.Sleep(50 * attempt);
+            after = AppSettingsFile.Read(path);
+        }
         var (nowShowing, _) = CoreThemes.PickActive(themes, after.ThemeId);
         if (nowShowing.Id != wanted.Id)
         {
@@ -119,18 +128,18 @@ public static class AppStateTools
             return new { ok = false, refusal = "not_applied", detail = notApplied };
         }
 
-        var done = changed ? $"Theme set to {wanted.Name} (was {wasShowing.Name})." : $"{wanted.Name} was already the saved theme.";
+        var done = write.Written ? $"Theme set to {wanted.Name} (was {wasShowing.Name})." : $"{wanted.Name} was already the saved theme.";
         Audit("ok", done);
         return new
         {
             ok = true,
             themeId = wanted.Id,
             name = wanted.Name,
-            changed,
+            changed = write.Written,
             previousThemeId = wasShowing.Id,
-            previousSavedThemeId = before.ThemeId,
+            previousSavedThemeId = write.StartedOver ? null : previousSaved,
             // A corrupt file already read as all defaults; saving started it over with just this key.
-            settingsFileStartedOver = changed && before.FileState == "unreadable",
+            settingsFileStartedOver = write.StartedOver,
             contrastWarnings = CoreThemes.ContrastReport(wanted),
             detail = done,
             hint = "contrastWarnings are advisory, as in the app: the theme applies either way. A running launcher "

@@ -13,7 +13,7 @@ public enum WindowBackdropKind { Solid, Mica, Acrylic }
 /// NexusService / AvatarService). Persisted to <c>%APPDATA%\ModManagerBuilder\app-settings.json</c>.
 /// Tolerant load — a missing or corrupt file resolves to defaults, never throws.
 /// </summary>
-public sealed class AppSettingsService
+public sealed class AppSettingsService : IDisposable
 {
     public string Path { get; }
 
@@ -95,19 +95,24 @@ public sealed class AppSettingsService
 
     public void SetThemeId(string id)
     {
+        // Saved under the same gate the watcher reads under, and _themeId moves only once the save
+        // has landed. So the watcher never sees this window's own pick as an outside change (it reads
+        // either the old file with the old id or the new file with the new id), and a save that
+        // failed doesn't later look like someone else putting the old theme back.
         lock (_themeGate)
         {
             if (_themeId == id) return;
+            try { AppSettingsFile.WriteKey(Path, "themeId", id); }
+            catch { return; /* best-effort persist, as every setting: the window still shows the pick */ }
             _themeId = id;
         }
-        Save("themeId", id);
     }
 
-    /// <summary>Raised, on a background thread, with the saved theme id when app-settings.json starts
-    /// naming a different theme from this window's: an agent's apply_theme, or a pick in another
-    /// launcher window. The shell switches to it so the user sees the change as it happens (agent-access
-    /// law 10). <see cref="ThemeId"/> already holds the new id when this fires.</summary>
-    public event EventHandler<string>? ThemeSavedElsewhere;
+    /// <summary>Raised, on a background thread, when app-settings.json starts naming a different theme
+    /// from this window's: an agent's apply_theme, or a pick in another launcher window. The shell
+    /// switches to <see cref="ThemeId"/> (read when it handles this, not when it was raised, so a pick
+    /// made in between wins) so the user sees the change as it happens (agent-access law 10).</summary>
+    public event EventHandler? ThemeSavedElsewhere;
 
     private FileSystemWatcher? _watcher;
 
@@ -133,21 +138,25 @@ public sealed class AppSettingsService
         catch { _watcher = null; /* best-effort: without it, an outside pick shows at next start */ }
     }
 
+    public void Dispose()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+    }
+
     private void OnSettingsFileEvent(object sender, FileSystemEventArgs e)
     {
         try
         {
             // Core decides (and tests) what counts: a clean read naming a theme other than this
-            // window's. This window's own saves read back as its own id and do nothing.
-            var snapshot = AppSettingsFile.Read(Path);
-            string? changed;
+            // window's. Read and compared under the gate SetThemeId saves under (see there).
             lock (_themeGate)
             {
-                changed = AppSettingsFile.ThemeChangedOnDisk(snapshot, _themeId);
+                var changed = AppSettingsFile.ThemeChangedOnDisk(AppSettingsFile.Read(Path), _themeId);
                 if (changed is null) return;
                 _themeId = changed;
             }
-            ThemeSavedElsewhere?.Invoke(this, changed);
+            ThemeSavedElsewhere?.Invoke(this, EventArgs.Empty);
         }
         catch { /* a watcher callback must never take the app down */ }
     }
@@ -188,6 +197,6 @@ public sealed class AppSettingsService
         // picks made this write frequent, and a kill mid-write would reset every toggle. Keys stay
         // camelCase, named by each setter.
         try { AppSettingsFile.WriteKey(Path, key, value); }
-        catch { /* best-effort persist; in-memory state still holds */ }
+        catch { /* best-effort persist (a busy lock or an unwritable file); in-memory state still holds */ }
     }
 }

@@ -87,41 +87,74 @@ public static class AppSettingsFile
         }
     }
 
+    /// <summary>What <see cref="WriteKey"/> found and did: the key's value before (null when absent),
+    /// whether it wrote (an unchanged value is not rewritten), and whether it started the file over
+    /// because it wasn't JSON. Read under the same lock as the write, so it is what the write replaced.</summary>
+    public sealed record KeyWrite(JsonNode? Previous, bool Written, bool StartedOver);
+
+    /// <summary>How long a writer waits for another (the other process, or another thread here) before
+    /// giving up and writing nothing. Short, because the app saves on the UI thread.</summary>
+    public static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(2);
+
     /// <summary>Save ONE key, merged into what is on disk. Never a dump of one caller's memory: the app
     /// and the agent's server are separate processes, and a second launcher window holds its own copy
     /// of every setting, so rewriting them all would put stale values back over another writer's
     /// changes (B1 review: the startup redirect reads closeToTray from this file). A file that is not
     /// JSON reads as all defaults already, so it is started over. A file that can't be opened right now
-    /// is NOT started over: that throws, so a sharing clash never wipes every other setting. The read,
-    /// merge and write happen under a lock file (as games.json's do), so two writers saving different
-    /// keys at once lose neither. Atomic temp-write and rename, so a kill mid-write never truncates it.
-    /// Throws when the file can't be read or written, or the lock isn't free within a few seconds.</summary>
-    public static void WriteKey(string path, string key, JsonNode? value)
+    /// is NOT started over: that throws, so a sharing clash never wipes every other setting. A key
+    /// written twice by hand reads last-wins, as <see cref="Read"/> reads it. Done under
+    /// <see cref="WithLock"/>, so two writers saving different keys at once lose neither, with an atomic
+    /// temp-write and rename, so a kill mid-write never truncates it. Throws when the file can't be read
+    /// or written, or the lock isn't free within <see cref="LockTimeout"/>.</summary>
+    public static KeyWrite WriteKey(string path, string key, JsonNode? value)
     {
-        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-        lock (Gate)
-        {
-            using var held = ModManager.Core.Persistence.FileLock.Acquire(path + ".lock", TimeSpan.FromSeconds(5),
-                e => new IOException("Another launcher window is saving its settings. Nothing was changed; try again.", e));
-            WriteKeyLocked(path, key, value);
-        }
+        KeyWrite result = null!;
+        WithLock(path, () => result = WriteKeyLocked(path, key, value));
+        return result;
     }
+
+    /// <summary>Run <paramref name="action"/> holding the app-settings lock: the in-process gate and the
+    /// lock file beside the file, so another launcher window or the agent's server waits too. For
+    /// anything that replaces or deletes the file outside <see cref="WriteKey"/> (restore points).
+    /// Bounded by <see cref="LockTimeout"/>; past it, throws and runs nothing.</summary>
+    public static void WithLock(string path, Action action)
+    {
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path))!);
+        var deadline = DateTime.UtcNow + LockTimeout;
+        if (!Monitor.TryEnter(Gate, LockTimeout)) throw Busy(null);
+        try
+        {
+            var left = deadline - DateTime.UtcNow;
+            using var held = ModManager.Core.Persistence.FileLock.Acquire(path + ".lock",
+                left > TimeSpan.Zero ? left : TimeSpan.Zero, Busy);
+            action();
+        }
+        finally { Monitor.Exit(Gate); }
+    }
+
+    private static IOException Busy(Exception? inner)
+        => new("Another launcher window is saving its settings. Nothing was changed; try again.", inner);
 
     // In-process half of the lock: a FileShare.None lock file alone does not order two threads of one
     // process on every platform.
     private static readonly object Gate = new();
 
-    private static void WriteKeyLocked(string path, string key, JsonNode? value)
+    private static KeyWrite WriteKeyLocked(string path, string key, JsonNode? value)
     {
         JsonObject root;
+        var startedOver = false;
         if (!File.Exists(path)) root = new JsonObject();
         else
         {
             var text = ReadShared(path);
-            try { root = JsonNode.Parse(text) as JsonObject ?? new JsonObject(); }
-            catch (JsonException) { root = new JsonObject(); }   // corrupt: start over rather than refuse to save
+            try { root = ParseLastWins(text); }
+            catch (JsonException) { root = new JsonObject(); startedOver = true; }   // corrupt: start over rather than refuse to save
         }
-        root[key] = value;
+
+        var previous = root[key]?.DeepClone();
+        if (!startedOver && root.ContainsKey(key) && JsonNode.DeepEquals(previous, value))
+            return new KeyWrite(previous, Written: false, StartedOver: false);
+        root[key] = value?.DeepClone();
 
         var tmp = $"{path}.{Guid.NewGuid():N}.tmp";
         try
@@ -132,14 +165,28 @@ public static class AppSettingsFile
             for (var attempt = 1; ; attempt++)
             {
                 try { File.Move(tmp, path, overwrite: true); break; }
-                catch (IOException) when (attempt < 5) { Thread.Sleep(40 * attempt); }
-                catch (UnauthorizedAccessException) when (attempt < 5) { Thread.Sleep(40 * attempt); }
+                catch (IOException) when (attempt < 4) { Thread.Sleep(30 * attempt); }
+                catch (UnauthorizedAccessException) when (attempt < 4) { Thread.Sleep(30 * attempt); }
             }
         }
         finally
         {
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
         }
+        return new KeyWrite(previous, Written: true, StartedOver: startedOver);
+    }
+
+    // The settings object rebuilt property by property, a later duplicate replacing an earlier one.
+    // JsonNode.Parse accepts a duplicate key but throws on first touch of the object, which would make
+    // every save fail on a hand-edited file that Read reads fine. Not an object counts as not JSON.
+    private static JsonObject ParseLastWins(string text)
+    {
+        using var doc = JsonDocument.Parse(text);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("app-settings.json is not a JSON object.");
+        var root = new JsonObject();
+        foreach (var prop in doc.RootElement.EnumerateObject())
+            root[prop.Name] = JsonNode.Parse(prop.Value.GetRawText());
+        return root;
     }
 
     /// <summary>The theme a running window should switch to because <c>app-settings.json</c> changed
