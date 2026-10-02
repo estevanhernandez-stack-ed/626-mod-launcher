@@ -92,7 +92,7 @@ public static partial class SaveModInstaller
         var worldExisted = Directory.Exists(worldDir);   // empty, by the check above
         try
         {
-            SaveManager.Backup(saveProfilesDir, snapshotsDir, "before-savemod", auto: true); // snapshot FIRST
+            SnapshotBeforeWrite(saveProfilesDir, snapshotsDir, target, "before-savemod"); // snapshot FIRST
             Directory.CreateDirectory(worldDir);
             ExtractWorld(zipPath, worldGuid, worldDir, overwrite: false);
         }
@@ -146,7 +146,7 @@ public static partial class SaveModInstaller
     {
         RequireSafeGuid(worldGuid); // refuse a traversal worldGuid BEFORE touching the save tree
         var target = ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden); // guarded
-        SaveManager.Backup(saveProfilesDir, snapshotsDir, "before-savemod-reset", auto: true); // snapshot FIRST
+        SnapshotBeforeWrite(saveProfilesDir, snapshotsDir, target, "before-savemod-reset"); // snapshot FIRST
 
         var worldDir = SafeWorldDir(target, worldGuid);
         if (Directory.Exists(worldDir)) Directory.Delete(worldDir, recursive: true);
@@ -160,7 +160,7 @@ public static partial class SaveModInstaller
     {
         RequireSafeGuid(worldGuid); // refuse a traversal worldGuid BEFORE touching the save tree
         var target = ResolveWorldsTarget(saveProfilesDir, saveModPath, forbidden); // guarded
-        SaveManager.Backup(saveProfilesDir, snapshotsDir, "before-savemod-remove", auto: true); // snapshot FIRST
+        SnapshotBeforeWrite(saveProfilesDir, snapshotsDir, target, "before-savemod-remove"); // snapshot FIRST
 
         var worldDir = SafeWorldDir(target, worldGuid);
         if (Directory.Exists(worldDir)) Directory.Delete(worldDir, recursive: true);
@@ -229,11 +229,46 @@ public static partial class SaveModInstaller
     {
         if (!Directory.Exists(saveProfilesDir))
             throw new InvalidOperationException("No save profile found — open the game once.");
-        var dirs = Directory.GetDirectories(saveProfilesDir);
+
+        // A save folder registered INSIDE a profile belongs to that profile. Windrose's curated hint is
+        // ...\SaveProfiles\<id>\RocksDB_v2 (the store the game writes now), so the profile is the folder
+        // holding that RocksDB* folder. Only the folder itself and two levels above it are looked at, so a
+        // RocksDB-named folder far up the path can't be mistaken for one.
+        var probe = new DirectoryInfo(System.IO.Path.GetFullPath(saveProfilesDir));
+        for (var depth = 0; depth < 3 && probe.Parent is not null; depth++, probe = probe.Parent)
+            if (IsRocksDbFolder(probe.Name)) return probe.Parent.FullName;
+
+        // The profiles folder itself: one profile per player, beside the game's own "<id>_Backups" copies,
+        // which are not profiles.
+        var dirs = Directory.GetDirectories(saveProfilesDir)
+            .Where(d => !System.IO.Path.GetFileName(d).EndsWith("_Backups", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
         if (dirs.Length == 0) throw new InvalidOperationException("No save profile found — open the game once.");
         if (dirs.Length > 1) throw new InvalidOperationException("Multiple save profiles found — not yet supported.");
         return dirs[0];
     }
+
+    private static bool IsRocksDbFolder(string name)
+        => name.Equals("RocksDB", StringComparison.OrdinalIgnoreCase)
+           || name.StartsWith("RocksDB_", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Snapshot before a save-mod write, of whatever covers the folder being written. When the Worlds
+    /// target is inside the registered save folder, that whole folder, as before: the Saves dialog lists the
+    /// snapshot and restores it into the same place. When it isn't (a save folder registered inside the profile,
+    /// like Windrose's RocksDB_v2, while worlds go into RocksDB\&lt;version&gt;\Worlds), the Worlds folder itself,
+    /// kept under <c>&lt;snapshots&gt;\save-mods</c>: a snapshot of one folder listed beside the other's could be
+    /// restored into the wrong one, which wipes it. Every snapshot records its folder (SaveManager refuses to
+    /// restore it anywhere else).</summary>
+    public static SaveSnapshot SnapshotBeforeWrite(string saveProfilesDir, string snapshotsDir, string worldsTarget, string label)
+    {
+        if (IsUnder(System.IO.Path.GetFullPath(saveProfilesDir), System.IO.Path.GetFullPath(worldsTarget)))
+            return SaveManager.Backup(saveProfilesDir, snapshotsDir, label, auto: true);
+        return SaveManager.Backup(worldsTarget, SaveModSnapshotsDir(snapshotsDir), label, auto: true);
+    }
+
+    /// <summary>Where <see cref="SnapshotBeforeWrite"/> keeps snapshots of a Worlds folder outside the registered
+    /// save folder.</summary>
+    public static string SaveModSnapshotsDir(string snapshotsDir) => System.IO.Path.Combine(snapshotsDir, "save-mods");
 
     // The RocksDB version subdir to substitute for {version}: highest by System.Version, else
     // ordinal-desc. Throws if there is no RocksDB\ or it has no subdir.

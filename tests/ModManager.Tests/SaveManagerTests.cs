@@ -82,4 +82,67 @@ public class SaveManagerTests
         Directory.Delete(saveDir, true);
         Assert.ThrowsAny<Exception>(() => SaveManager.Backup(saveDir, snaps));
     }
+
+    // ---- Snapshots record their folder, and a restore refuses another one ----
+    // How a Windrose profile came to sit nested inside its own RocksDB_v2: the save folder moved, and a
+    // snapshot of the old folder was restored into the new one, which emptied it and unpacked one level off.
+
+    [Fact]
+    public void A_snapshot_records_the_folder_it_was_taken_from()
+    {
+        var (saveDir, snaps) = Fixture();
+        File.WriteAllText(Path.Combine(saveDir, "slot1.dat"), "V1");
+
+        var snap = SaveManager.Backup(saveDir, snaps, "v1");
+
+        Assert.Equal(Path.GetFullPath(saveDir), SaveManager.SourceOf(snap.Path));
+    }
+
+    [Fact]
+    public void A_snapshot_still_holds_files_and_empty_folders_as_before()
+    {
+        var (saveDir, snaps) = Fixture();
+        Directory.CreateDirectory(Path.Combine(saveDir, "Worlds", "A"));
+        File.WriteAllText(Path.Combine(saveDir, "Worlds", "A", "level.db"), "W");
+        Directory.CreateDirectory(Path.Combine(saveDir, "Empty"));
+
+        var snap = SaveManager.Backup(saveDir, snaps);
+
+        using var zip = ZipFile.OpenRead(snap.Path);
+        Assert.Equal(new[] { "Empty/", "Worlds/A/level.db" }, zip.Entries.Select(e => e.FullName).OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Restoring_a_snapshot_of_another_folder_is_refused_and_changes_nothing()
+    {
+        var (saveDir, snaps) = Fixture();
+        var parent = Path.GetDirectoryName(saveDir)!;
+        var profiles = Path.Combine(parent, "SaveProfiles");
+        Directory.CreateDirectory(Path.Combine(profiles, "123", "RocksDB"));
+        var ofProfiles = SaveManager.Backup(profiles, snaps, "old folder");
+        File.WriteAllText(Path.Combine(saveDir, "live.db"), "LIVE");
+
+        var e = Assert.Throws<InvalidOperationException>(() => SaveManager.Restore(ofProfiles.Path, saveDir, snaps));
+        Assert.Throws<InvalidOperationException>(() => SaveManager.RestoreType(ofProfiles.Path, saveDir, snaps, ".db"));
+
+        Assert.Contains("taken from", e.Message);
+        Assert.Equal("LIVE", File.ReadAllText(Path.Combine(saveDir, "live.db")));
+        Assert.False(Directory.Exists(Path.Combine(saveDir, "123")));
+        Assert.Single(SaveManager.ListSnapshots(snaps));   // no before-restore snapshot either: refused first
+    }
+
+    [Fact]
+    public void A_snapshot_from_before_626_recorded_its_folder_restores_as_it_always_has()
+    {
+        var (saveDir, snaps) = Fixture();
+        Directory.CreateDirectory(snaps);
+        var legacy = Path.Combine(snaps, "20260101-000000__old.zip");
+        using (var zip = ZipFile.Open(legacy, ZipArchiveMode.Create))
+        using (var w = new StreamWriter(zip.CreateEntry("slot1.dat").Open())) w.Write("OLD");
+
+        Assert.Null(SaveManager.SourceOf(legacy));
+        SaveManager.Restore(legacy, saveDir, snaps);
+
+        Assert.Equal("OLD", File.ReadAllText(Path.Combine(saveDir, "slot1.dat")));
+    }
 }

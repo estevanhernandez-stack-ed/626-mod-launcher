@@ -4153,7 +4153,8 @@ public sealed partial class MainViewModel : ObservableObject
             // Reload first: it resets the status line to the enabled count, which would replace this
             // drop's outcome the moment it was shown (the direct-inject branch already reloads first).
             await ReloadModsAsync();
-            StatusText = string.Join(". ", statusParts)
+            // Parts that end in their own period (a save-mod reason does) would print "..".
+            StatusText = string.Join(". ", statusParts.Select(part => part.TrimEnd('.')))
                 + (r.Updated.Count > 0 ? " — old versions kept, revert anytime." : "")
                 + (identified > 0 ? $". Identified {identified} on CurseForge" : "")
                 + (nexusIdentified > 0 ? $", {nexusIdentified} on Nexus" : "")

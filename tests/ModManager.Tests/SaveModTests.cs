@@ -373,6 +373,67 @@ public class SaveModTests : IDisposable
         Assert.True(File.Exists(legacy));
     }
 
+    // ---------------- A save folder registered inside the profile (Windrose: ...\<id>\RocksDB_v2) ----------------
+
+    // Windrose's curated hint names the store the game writes now; worlds still install into the profile's
+    // RocksDB\<version>\Worlds, beside it. Este's tree, with the game's own <id>_Backups beside the profile and a
+    // stray profile nested inside RocksDB_v2 (the old restore bug) that must not count as a second profile.
+    private string MakeWindroseTree()
+    {
+        var prof = MakeSaveTree(version: "0.10.0");
+        Directory.CreateDirectory(Path.Combine(Profiles, "76561198000000000_Backups"));
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds"));
+        Directory.CreateDirectory(Path.Combine(prof, "RocksDB_v2", "76561198000000000", "RocksDB"));
+        return prof;
+    }
+
+    [Fact]
+    public void A_save_folder_inside_the_profile_installs_into_that_profiles_worlds()
+    {
+        var prof = MakeWindroseTree();
+        var registered = Path.Combine(prof, "RocksDB_v2");
+
+        SaveModInstaller.InstallWorld(registered, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+
+        Assert.Equal("W", File.ReadAllText(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds", Guid32, "level.db")));
+        Assert.False(Directory.Exists(Path.Combine(prof, "RocksDB_v2", "0.10.0", "Worlds", Guid32)));   // never the live store
+        Assert.Equal("GAME-OWNED", File.ReadAllText(Path.Combine(prof, "RocksDB_v2", "sacred.db")));
+    }
+
+    [Fact]
+    public void The_games_own_backups_folder_beside_the_profile_is_not_a_second_profile()
+    {
+        var prof = MakeWindroseTree();
+
+        Assert.Equal(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds"), SaveModInstaller.ResolveWorldsTarget(Profiles, null, null));
+    }
+
+    [Fact]
+    public void Writing_outside_the_registered_folder_snapshots_the_worlds_folder_apart_from_the_saves_list()
+    {
+        var prof = MakeWindroseTree();
+        var registered = Path.Combine(prof, "RocksDB_v2");
+
+        SaveModInstaller.InstallWorld(registered, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+        SaveModInstaller.RemoveWorld(registered, Snaps, Guid32, null, null);
+
+        Assert.Empty(SaveManager.ListSnapshots(Snaps));   // nothing the Saves dialog would restore into RocksDB_v2
+        var kept = SaveManager.ListSnapshots(SaveModInstaller.SaveModSnapshotsDir(Snaps));
+        Assert.Equal(2, kept.Count);
+        Assert.All(kept, k => Assert.Equal(Path.Combine(prof, "RocksDB", "0.10.0", "Worlds"), SaveManager.SourceOf(k.Path)));
+        Assert.Throws<InvalidOperationException>(() => SaveManager.Restore(kept[0].Path, registered, Snaps));
+    }
+
+    [Fact]
+    public void Writing_inside_the_registered_folder_snapshots_it_into_the_saves_list_as_before()
+    {
+        MakeSaveTree(version: "0.10.0");
+
+        SaveModInstaller.InstallWorld(Profiles, Snaps, Store, MakeZip("world.zip", ($"Worlds/{Guid32}/level.db", "W")), Guid32, null, null);
+
+        Assert.Equal(Path.GetFullPath(Profiles), SaveManager.SourceOf(SaveManager.ListSnapshots(Snaps).Single().Path));
+    }
+
     // ---------------- RemoveWorld ----------------
 
     [Fact]

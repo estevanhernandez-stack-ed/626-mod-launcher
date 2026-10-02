@@ -154,6 +154,7 @@ public static partial class SaveManager
                 $"{worldId} with somebody else's world.");
 
         var worldDir = Path.Combine(saveDir, worldId);
+        RequireSameSource(snapshotZip, worldDir);
 
         // Same guarantee as the whole-folder restore, smaller blast radius.
         if (Directory.Exists(worldDir) && Directory.EnumerateFileSystemEntries(worldDir).Any())
@@ -344,14 +345,69 @@ public static partial class SaveManager
         while (File.Exists(path))
             path = System.IO.Path.Combine(snapshotsDir, (safe.Length > 0 ? $"{stamp}__{safe}-{n++}" : $"{stamp}-{n++}") + ".zip");
 
-        ZipFile.CreateFromDirectory(saveDir, path);
+        ZipFolder(saveDir, path);
         return new SaveSnapshot(path, System.IO.Path.GetFileName(path), safe, takenUtc, new FileInfo(path).Length, IsAutoLabel(safe));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Which folder a snapshot is of. A restore deletes everything in the folder it restores into and
+    // unpacks the snapshot there, so a snapshot of one folder restored into another wipes the second and
+    // fills it with the first's contents, one level off. That is how a Windrose profile came to sit
+    // nested inside its own RocksDB_v2: the game's save folder moved (the curated hint now names
+    // <id>\RocksDB_v2), and a snapshot of the old folder was restored into the new one. Every snapshot
+    // now carries its folder in the zip's comment, and every restore checks it.
+    // ---------------------------------------------------------------------------------------------
+
+    private const string SourcePrefix = "626-save-source:";
+
+    /// <summary>The folder a snapshot was taken from, or null for one taken before 626 recorded it (or a
+    /// zip 626 didn't make).</summary>
+    public static string? SourceOf(string snapshotZip)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(snapshotZip);
+            var comment = zip.Comment ?? "";
+            return comment.StartsWith(SourcePrefix, StringComparison.Ordinal) ? comment[SourcePrefix.Length..] : null;
+        }
+        catch (InvalidDataException) { return null; }
+    }
+
+    /// <summary>Refuse to restore a snapshot into a folder other than the one it was taken from. A snapshot
+    /// from before 626 recorded its folder can't be checked and restores as it always has.</summary>
+    private static void RequireSameSource(string snapshotZip, string intoDir)
+    {
+        var source = SourceOf(snapshotZip);
+        if (source is null) return;
+        if (!string.Equals(Normalize(source), Normalize(intoDir), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"That snapshot was taken from {source}, not {intoDir}. Restoring it here would empty this folder and "
+                + "fill it with another folder's contents. Nothing was changed.");
+    }
+
+    private static string Normalize(string dir)
+        => Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    // What ZipFile.CreateFromDirectory does (every file, and empty folders as folder entries, paths relative to
+    // the folder), plus the source comment, written in the same pass.
+    private static void ZipFolder(string dir, string zipPath)
+    {
+        var root = new DirectoryInfo(dir);
+        using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+        foreach (var entry in root.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(root.FullName, entry.FullName).Replace('\\', '/');
+            if (entry is FileInfo) zip.CreateEntryFromFile(entry.FullName, rel);
+            else if (entry is DirectoryInfo d && !d.EnumerateFileSystemInfos().Any()) zip.CreateEntry(rel + "/");
+        }
+        zip.Comment = SourcePrefix + Normalize(dir);
     }
 
     public static void Restore(string snapshotZip, string saveDir, string snapshotsDir)
     {
         if (!File.Exists(snapshotZip))
             throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
+        RequireSameSource(snapshotZip, saveDir);
 
         // Safety: snapshot the current save state before we overwrite it (auto-tagged).
         if (Directory.Exists(saveDir) && Directory.EnumerateFileSystemEntries(saveDir).Any())
@@ -415,6 +471,7 @@ public static partial class SaveManager
     public static void RestoreType(string snapshotZip, string saveDir, string snapshotsDir, string extension)
     {
         if (!File.Exists(snapshotZip)) throw new FileNotFoundException($"Snapshot not found: {snapshotZip}");
+        RequireSameSource(snapshotZip, saveDir);
 
         if (Directory.Exists(saveDir) && Directory.EnumerateFileSystemEntries(saveDir).Any())
             Backup(saveDir, snapshotsDir, "before-restore", auto: true);
