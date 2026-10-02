@@ -155,8 +155,12 @@ public static class WriteTools
     // line lands in the audit trail so the user sees what was attempted.
     internal static object Refuse(
         string tool, string? dataDir, string gameId, Dictionary<string, string> args, AgentRefusal refusal, string detail)
+        => Refuse(tool, dataDir, gameId, args, ToCode(refusal), detail);
+
+    // A code no AgentRefusal names (already_installed, error): written and returned the same way.
+    internal static object Refuse(
+        string tool, string? dataDir, string gameId, Dictionary<string, string> args, string code, string detail)
     {
-        var code = ToCode(refusal);
         if (dataDir is not null)
             AgentAudit.Append(dataDir, new AgentAuditEntry(
                 DateTime.UtcNow, tool, gameId, args, code, detail));

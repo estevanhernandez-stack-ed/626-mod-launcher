@@ -3,8 +3,9 @@ using System.IO.Compression;
 namespace ModManager.Core;
 
 /// <summary>Outcome of a single archive drop through the save-mod fast-path. NeedsAcknowledgment:
-/// it is a save mod for a game whose save writes are gated, and nothing was written.</summary>
-public enum SaveModDropOutcome { Installed, NotASaveMod, Failed, NeedsAcknowledgment }
+/// it is a save mod for a game whose save writes are gated, and nothing was written. AlreadyInstalled: its
+/// world is already in the save folder, and nothing was written (the reason says what the user can do).</summary>
+public enum SaveModDropOutcome { Installed, NotASaveMod, Failed, NeedsAcknowledgment, AlreadyInstalled }
 
 /// <summary>One archive's verdict + the world GUID (when installed) + a reason (when failed).</summary>
 public sealed record SaveModDropVerdict(
@@ -91,14 +92,30 @@ public static class SaveModFlow
                 saveProfilesDir, snapshotsDir, dataDir,
                 path, verdict.WorldGuid!, saveModPath, forbidden);
             var name = System.IO.Path.GetFileNameWithoutExtension(path);
-            SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name, path, DateTime.UtcNow));
+            // The record points at the kept copy, which reset reads: the download may be deleted.
+            SaveModStore.Upsert(dataDir, new SaveModEntry(verdict.WorldGuid!, name,
+                SaveModInstaller.KeptZipPath(dataDir, verdict.WorldGuid!, path), DateTime.UtcNow));
             return new SaveModDropVerdict(path, SaveModDropOutcome.Installed, verdict.WorldGuid, null);
+        }
+        catch (WorldAlreadyPresentException e)
+        {
+            return new SaveModDropVerdict(path, SaveModDropOutcome.AlreadyInstalled, verdict.WorldGuid,
+                AlreadyInstalledReason(dataDir, verdict.WorldGuid!, e.WorldDir));
         }
         catch (Exception e)
         {
             return new SaveModDropVerdict(path, SaveModDropOutcome.Failed, verdict.WorldGuid, e.Message);
         }
     }
+
+    /// <summary>Why a world that is already in the save folder wasn't installed, and what to do: reset or remove it
+    /// when 626 installed it (it is in the Saves list), else move the folder away, since 626 has no record of it.</summary>
+    public static string AlreadyInstalledReason(string dataDir, string worldGuid, string worldDir)
+        => SaveModStore.Load(dataDir).Any(e => string.Equals(e.Guid, worldGuid, StringComparison.OrdinalIgnoreCase))
+            ? $"World {worldGuid} is already installed. Nothing was changed. Reset it to start it over from its kept zip, "
+              + "or remove it first to install this one."
+            : $"A world with id {worldGuid} is already in the save folder ({worldDir}), and 626 didn't install it, so it "
+              + "won't write over it. Nothing was changed. Move that folder somewhere else first to install this one.";
 
     private static bool IsArchive(string p)
     {
