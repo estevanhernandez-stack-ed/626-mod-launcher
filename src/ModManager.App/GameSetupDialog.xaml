@@ -77,10 +77,16 @@
                               SelectionChanged="OnEngineChanged" DisplayMemberPath="Label" />
 
                     <!-- Label text is restated in SeedFields when the game declares more than one mod
-                         location: this box edits the FIRST one, and the read-only half above renders
-                         all of them, so an unqualified "Mod folder" would read as covering all three. -->
+                         location: the box edits whichever the picker below names, and the read-only half
+                         above renders all of them, so an unqualified "Mod folder" would read as covering
+                         all three. -->
                     <TextBlock x:Name="ModPathLabel" Text="Mod folder (relative to the game folder)"
                                Foreground="{StaticResource ThemeInkDim}" />
+                    <!-- Which declared location the box below edits. Shown only for a game with more
+                         than one; each keeps its own typed path while you switch (A6). -->
+                    <ComboBox AutomationProperties.AutomationId="SetupModLocationBox" AutomationProperties.Name="Which mod folder"
+                              x:Name="ModLocationBox" HorizontalAlignment="Stretch" Visibility="Collapsed"
+                              SelectionChanged="OnModLocationChanged" />
                     <TextBox AutomationProperties.AutomationId="SetupModPathBox" AutomationProperties.Name="Mod folder" x:Name="ModPathBox" TextChanged="OnFieldChanged" />
 
                     <TextBlock Text="File extensions (comma separated)" Foreground="{StaticResource ThemeInkDim}" />

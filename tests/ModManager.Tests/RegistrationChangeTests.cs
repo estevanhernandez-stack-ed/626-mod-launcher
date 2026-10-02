@@ -531,8 +531,8 @@ public class RegistrationChangeTests
         Assert.Contains(GameEntry.UserSetModLocations, corrected.FieldsToPin);
     }
 
-    // The setup dialog only edits the first location today. A user whose SECOND location is wrong had
-    // no repair path at all; the rule itself is index-agnostic so the dialog can grow one.
+    // A user whose SECOND location is wrong had no repair path at all (A6); the rule is index-agnostic,
+    // and the setup dialog now has a picker for it.
     [Fact]
     public void The_second_location_can_be_corrected_without_touching_the_first()
     {
@@ -544,6 +544,43 @@ public class RegistrationChangeTests
         Assert.Equal(new ModLocation("mods2", "mods2", "Game/mod2-fixed"), edited[1]);
         Assert.Equal(stored[2], edited[2]);
     }
+
+    // A6: the dialog now keeps one typed path per location. Untouched boxes carry their locations over
+    // exactly, so a rename with every box as it was reads as no change at all.
+    [Fact]
+    public void Editing_every_box_unchanged_changes_no_location()
+    {
+        var stored = ThreeLocations();
+
+        var edited = RegistrationChange.EditLocations(stored, stored.Select(l => l.Path).ToArray());
+
+        Assert.Equal(stored, edited);
+    }
+
+    [Fact]
+    public void Each_box_edits_its_own_location()
+    {
+        var stored = ThreeLocations();
+        var typed = stored.Select(l => l.Path).ToArray();
+        typed[2] = "  Game/mod3-fixed ";
+
+        var edited = RegistrationChange.EditLocations(stored, typed);
+
+        Assert.Equal(stored[0], edited[0]);
+        Assert.Equal(stored[1], edited[1]);
+        Assert.Equal(new ModLocation("mods3", "mods3", "Game/mod3-fixed"), edited[2]);
+    }
+
+    [Fact]
+    public void With_nothing_stored_only_the_first_box_counts()
+    {
+        Assert.Empty(RegistrationChange.EditLocations(Array.Empty<ModLocation>(), new[] { "  " }));
+        Assert.Single(RegistrationChange.EditLocations(Array.Empty<ModLocation>(), new[] { "Mods" }));
+    }
+
+    [Fact]
+    public void A_box_count_that_does_not_match_the_locations_is_refused()
+        => Assert.Throws<ArgumentException>(() => RegistrationChange.EditLocations(ThreeLocations(), new[] { "a" }));
 
     [Fact]
     public void No_stored_location_and_a_blank_path_proposes_no_location_and_pins_nothing()
