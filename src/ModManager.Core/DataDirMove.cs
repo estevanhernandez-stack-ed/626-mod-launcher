@@ -109,10 +109,24 @@ public static class DataDirMove
 
         try
         {
+            // The parent folders this move is about to create, so a failure can take back exactly
+            // those and nothing else (M1: a failed cross-drive move left an empty _626mods on the far
+            // drive). Taken BEFORE anything is created; staging sits beside the target, so one list
+            // covers both paths.
+            var createdParents = MissingParents(plan.To);
+
             if (plan.Kind == DataDirMoveKind.Rename)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(plan.To)!);
-                Directory.Move(plan.From, plan.To);
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(plan.To)!);
+                    Directory.Move(plan.From, plan.To);
+                }
+                catch
+                {
+                    RemoveIfEmpty(createdParents);
+                    throw;
+                }
                 return new DataDirMoveResult { Moved = true, SourceRemoved = true, Error = null };
             }
 
@@ -140,6 +154,7 @@ public static class DataDirMove
                 // staging tree puts the user exactly back where they started.
                 try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
                 catch { /* nothing further we can safely do */ }
+                RemoveIfEmpty(createdParents);
                 throw;
             }
 
@@ -234,6 +249,38 @@ public static class DataDirMove
 
         mismatch = "";
         return true;
+    }
+
+    /// <summary>The folders above <paramref name="path"/> that do not exist yet, nearest first - the
+    /// ones a move would create on its way to the target.</summary>
+    private static List<string> MissingParents(string path)
+    {
+        var missing = new List<string>();
+        var dir = Path.GetDirectoryName(path);
+        while (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            missing.Add(dir);
+            dir = Path.GetDirectoryName(dir);
+        }
+        return missing;
+    }
+
+    /// <summary>Rollback tidy-up: remove the folders a failed move created, nearest first, and only
+    /// while each is completely empty. A non-recursive delete of an empty folder cannot take a file
+    /// with it, and the first one that holds anything - something else wrote there meanwhile - stops
+    /// the walk, since every folder above it holds that one.</summary>
+    private static void RemoveIfEmpty(IReadOnlyList<string> createdNearestFirst)
+    {
+        foreach (var dir in createdNearestFirst)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+                if (Directory.EnumerateFileSystemEntries(dir).Any()) return;
+                Directory.Delete(dir);
+            }
+            catch { return; /* a leftover empty folder is untidy, never unsafe */ }
+        }
     }
 
     /// <summary>Every file under <paramref name="src"/>, counted and sized. The expensive half of a

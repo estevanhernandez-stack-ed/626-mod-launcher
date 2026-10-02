@@ -139,6 +139,56 @@ public static class DiscoverySweep
             => HashCode.Combine(v.Kind, StringComparer.OrdinalIgnoreCase.GetHashCode(v.Key));
     }
 
+    /// <summary>
+    /// The mod folders the sweep treats as engine-shaped territory: EVERY location the mod list reads,
+    /// as resolved by <c>Scanner.GameContext</c>, rebased onto the game root.
+    ///
+    /// <para>RESOLVED, NOT RAW (B2). The sweep already took its extensions from the resolved context
+    /// (<c>ctx.DeclaredExts</c>) and its folders from <c>ctx.Game.ModLocations</c> - the stored
+    /// registration. Once the game definition corrected a stale path the two halves described
+    /// different games: the sweep looked in a folder the launcher never lists from, and never called a
+    /// file in the folder it does list engine-shaped. <c>ctx.Locations</c> is the list the scanner
+    /// walks, so a folder the sweep calls a mod folder is one the launcher will actually list from
+    /// after adoption. Folders-form locations (one folder per mod, like the appended UE4SS mods
+    /// folder) are skipped: the scanner never lists a loose file there, so no row would follow.</para>
+    ///
+    /// <para>The stale raw folder is deliberately NOT swept as well. Engine-shaped is a promise that
+    /// adopting the file gives it a row; a file under a folder the scanner does not read would be
+    /// adopted into nothing. An archive or a signature file there is still found, by the rules that
+    /// do not depend on a mod folder at all.</para>
+    ///
+    /// <para>Every path (all locations, not just the first: a UE4SS game can have both ~mods and
+    /// LogicMods) is rebased with <see cref="RelativeToRoot"/>; one that resolves outside the game
+    /// folder is dropped. A paks-root location (the mod folder IS Content/Paks, e.g. Witchfire) keeps
+    /// its flag so <see cref="Classify"/> can refuse the game's own shipped paks.</para>
+    /// </summary>
+    public static IReadOnlyList<DiscoverySweepModPath> ModPathsFor(GameContext ctx)
+    {
+        var modPaths = new List<DiscoverySweepModPath>();
+        foreach (var loc in ctx.Locations)
+            // A folders-form location lists one FOLDER per mod, never a loose file by extension, so an
+            // engine-extension file inside one would not become a row - and engine-shaped promises a
+            // row. The appended UE4SS mods folder is exactly this shape (m3).
+            if (loc.Form != "folders" && RelativeToRoot(loc.Abs, ctx.GameRoot) is { } rel)
+                modPaths.Add(new DiscoverySweepModPath(rel, loc.Form == "paks-root"));
+        return modPaths;
+    }
+
+    /// <summary>Rebase a path that may be absolute OR relative onto "relative to
+    /// <paramref name="gameRoot"/>, forward-slashed" - the shape the skip and mod-path matching
+    /// expects. Null input, a path that resolves outside the root, or one on another drive (which
+    /// makes <see cref="Path.GetRelativePath(string,string)"/> hand back an absolute path unchanged)
+    /// all return null, so the caller drops it rather than pass through something that would either
+    /// never match or match the wrong thing.</summary>
+    public static string? RelativeToRoot(string? path, string gameRoot)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        var abs = Path.IsPathRooted(path) ? path : Path.Combine(gameRoot, path);
+        var rel = Path.GetRelativePath(gameRoot, abs).Replace('\\', '/');
+        if (rel == "." || rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
+        return rel;
+    }
+
     private static bool IsSkipped(string path, IReadOnlyList<string> skipFolders)
         => skipFolders.Any(folder =>
             path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase)

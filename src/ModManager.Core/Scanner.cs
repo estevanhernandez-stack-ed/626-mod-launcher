@@ -169,6 +169,12 @@ public static class Scanner
         {
             Form = string.IsNullOrEmpty(loc.Form) ? defaultForm : loc.Form,
             Managed = loc.Managed,
+            // RefreshedModLocations keeps the stored list's count and order and only rewrites a
+            // Path, so index idx IS the stored entry. Carrying both spellings here is what lets a
+            // reader tell "the registration's own location, corrected" from "added by the launcher"
+            // without re-deriving the correction (B1: matching on the corrected path missed it).
+            StoredPath = idx < game.ModLocations.Count ? game.ModLocations[idx].Path : null,
+            DeclaredPath = loc.Path,
         }).ToList();
 
         // When the launcher owns a UE4SS install, its ue4ss\Mods folder is a real, launcher-managed

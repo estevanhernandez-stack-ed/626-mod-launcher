@@ -3321,29 +3321,18 @@ public sealed partial class MainViewModel : ObservableObject
         // ctx.TakenOver is already the resolved, loaded set (Scanner.GameContext loads it once from
         // taken-over.json) — reuse it instead of re-reading the file. It's ABSOLUTE paths
         // (TakenOverStore.Add(dataDir, folderAbs)), but DiscoverySweep's skip-matching is RELATIVE to
-        // the swept root, so each entry is rebased against GameRoot via RelativeToGameRoot (also
+        // the swept root, so each entry is rebased against GameRoot via DiscoverySweep.RelativeToRoot (also
         // drops a path that resolves outside the root, or onto another drive entirely).
         var skipFolders = new List<string> { "_626mods", "loose-disabled", "disabled" };
         foreach (var takenOverAbs in ctx.TakenOver)
-            if (RelativeToGameRoot(takenOverAbs, ctx.GameRoot) is { } rel)
+            if (DiscoverySweep.RelativeToRoot(takenOverAbs, ctx.GameRoot) is { } rel)
                 skipFolders.Add(rel);
 
-        // Sweep EVERY configured mod location, not just the first — ModLocator.Detect persists all
-        // existing candidate folders, so a UE4SS game can have both ~mods AND LogicMods at once.
-        // Hand-installed Blueprint mods sitting only in LogicMods would otherwise stay invisible,
-        // exactly the case this feature exists to catch. Each location's path can itself be
-        // absolute (Scanner.GameContext resolves it that way when Path.IsPathRooted), so rebase
-        // each one the same way as the taken-over folders. PaksRoot flags the loader-less UE-pak
-        // form (ModLocation.Form == "paks-root", e.g. Witchfire) where the mod folder IS
-        // Content/Paks itself — DiscoverySweep uses it to refuse the game's own shipped paks
-        // (PakClassifier.IsBaseGamePak), the one property this feature must never violate.
-        var modPaths = new List<DiscoverySweepModPath>();
-        foreach (var loc in ctx.Game.ModLocations)
-            if (RelativeToGameRoot(loc.Path, ctx.GameRoot) is { } rel)
-                modPaths.Add(new DiscoverySweepModPath(rel, loc.Form == "paks-root"));
-
         var options = new DiscoverySweepOptions(
-            ModPaths: modPaths,
+            // EVERY location the mod list reads, resolved the way the scanner resolves it — not the
+            // raw registration, which a game-definition correction can leave pointing at a folder the
+            // launcher never lists from (B2). See DiscoverySweep.ModPathsFor.
+            ModPaths: DiscoverySweep.ModPathsFor(ctx),
             // Not a preset lookup and not ctx.Exts: the manifest ships per-game overrides (e.g.
             // Cyberpunk 2077 -> ["archive"], not the "custom" preset's ["pak"]), and ctx.Exts is
             // normalized empty->["pak"] and regex-escaped (Scanner.cs), which would make EngineShaped
@@ -3654,23 +3643,6 @@ public sealed partial class MainViewModel : ObservableObject
             return new[] { Scanner.ModKeyFor(p.Candidate.FileName, ctx) };
 
         return new[] { Path.GetFileNameWithoutExtension(p.Candidate.FileName) };
-    }
-
-    /// <summary>Rebase a registry-supplied path (which may be absolute OR relative — the same
-    /// ambiguity <see cref="Scanner.GameContext"/> resolves for <c>ModLocationCtx.Abs</c>) onto
-    /// "relative to <paramref name="gameRoot"/>, forward-slashed" — the shape
-    /// <see cref="DiscoverySweep"/>'s skip/mod-path matching expects. Null input, a path that
-    /// resolves outside the root, or a path on another drive (which makes
-    /// <see cref="Path.GetRelativePath(string,string)"/> hand back an absolute path unchanged) all
-    /// return null — the caller drops it rather than pass through something that would either never
-    /// match or match the wrong thing.</summary>
-    private static string? RelativeToGameRoot(string? path, string gameRoot)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return null;
-        var abs = Path.IsPathRooted(path) ? path : Path.Combine(gameRoot, path);
-        var rel = Path.GetRelativePath(gameRoot, abs).Replace('\\', '/');
-        if (rel == "." || rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
-        return rel;
     }
 
     /// <summary>One-click endorse ⇄ abstain for a Nexus-identified row — the give-back half of the

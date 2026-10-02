@@ -93,7 +93,7 @@ public sealed record GameShape
     /// something the registration says, so its absence is not a registration defect — and the banner's
     /// only action is a dialog that edits the registration, which could not fix it.</para>
     /// </summary>
-    public bool NeedsAttention => Attention(ModCount, DeclaredLocations);
+    public bool NeedsAttention => Attention(ModCount, DeclaredLocations, GameRoot);
 
     /// <summary>
     /// The same predicate as <see cref="NeedsAttention"/>, for a caller that already has the context
@@ -107,10 +107,36 @@ public sealed record GameShape
     /// that line.</para>
     /// </summary>
     public static bool NeedsAttentionFor(GameContext ctx, int modCount)
-        => Attention(modCount, DeclaredFor(ctx));
+        => Attention(modCount, DeclaredFor(ctx), ctx.GameRoot);
 
-    private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared)
-        => modCount == 0 && declared.Any(d => d.Declared && !d.Exists);
+    /// <summary>The one predicate. A location the game's DEFINITION corrected
+    /// (<see cref="DeclaredLocation.CorrectedFrom"/> set) is skipped: its path is the definition's, not
+    /// one the user chose, and a definition's folder that is not on disk means "not started", not
+    /// "broken" (Este, 2026-08-18, recorded in ModFolderSeed). It stays declared everywhere else.
+    /// "Not started" needs a game to have started on, though: with the game folder itself missing or
+    /// wrong, a corrected location counts again, so the chip still leads to the dialog that fixes the
+    /// folder. Nor is it "not started" when the user's files still sit in the registration's OWN
+    /// pre-correction folder: Elden Ring with 5 mods in <c>mod</c>, no <c>mods</c>, and an empty list
+    /// is exactly the case the chip exists for. That is the same condition the leftover-files note
+    /// reads (<see cref="StoredFolderLeftovers"/>), so the note and the chip cannot disagree.</summary>
+    private static bool Attention(int modCount, IReadOnlyList<DeclaredLocation> declared, string gameRoot)
+    {
+        if (modCount != 0) return false;
+        var rootThere = !string.IsNullOrEmpty(gameRoot) && Directory.Exists(gameRoot);
+        return declared.Any(d => d.Declared && !d.Exists
+            && (d.CorrectedFrom is null || !rootThere || StoredFolderLeftovers(d, gameRoot) > 0));
+    }
+
+    /// <summary>How many files sit in a corrected location's ORIGINAL folder (the path the
+    /// registration stores), which the launcher no longer reads. Zero when nothing was corrected, the
+    /// folder is absent or empty, or it contains the corrected folder (the game root, say), where the
+    /// count would include the very files the launcher does read.</summary>
+    private static int StoredFolderLeftovers(DeclaredLocation d, string gameRoot)
+    {
+        if (!d.Declared || d.CorrectedFrom is null) return 0;
+        var storedAbs = Scanner.LocationAbs(gameRoot, d.CorrectedFrom);
+        return IsInside(d.Absolute, storedAbs) ? 0 : FileCountUnder(storedAbs);
+    }
 
     /// <summary>
     /// The locations the scanner will actually look in, each tagged with whether the REGISTRATION
@@ -128,19 +154,37 @@ public sealed record GameShape
     /// missed every one of them, so the location read as launcher-derived and the banner went silent
     /// on the one shape it exists for: nothing found, and the folder the registration names is not on
     /// disk. Both sides resolve through <c>Scanner.LocationAbs</c> so they cannot disagree.</para>
+    ///
+    /// <para>NOT MATCHED ON THE CORRECTED PATH EITHER (B1). The context's path is the one AFTER a
+    /// game-definition correction, so matching it against the stored list missed every corrected
+    /// location: Elden Ring stores <c>mod</c>, the definition says <c>mods</c>, and the registration's
+    /// own folder read as launcher-added - which also silenced the SETUP chip, since only declared
+    /// entries count. <c>Scanner.GameContext</c> now tags each registration location with both
+    /// spellings, so declared means "came from the registration's list", corrected or not. The path
+    /// match stays only as the fallback for a context built without those tags.</para>
     /// </summary>
     private static List<DeclaredLocation> DeclaredFor(GameContext ctx)
         => ctx.Locations.Select(l =>
         {
-            var stored = ctx.Game.ModLocations.FirstOrDefault(
-                m => PathEquals(Scanner.LocationAbs(ctx.GameRoot, m.Path), l.Abs));
+            var effective = l.DeclaredPath;
+            var stored = l.StoredPath;
+            if (effective is null)
+            {
+                var match = ctx.Game.ModLocations.FirstOrDefault(
+                    m => PathEquals(Scanner.LocationAbs(ctx.GameRoot, m.Path), l.Abs));
+                effective = stored = match?.Path;
+            }
+            var declared = effective is not null;
             return new DeclaredLocation
             {
                 Name = l.Name,
-                Path = stored?.Path ?? l.Abs,
+                Path = effective ?? l.Abs,
                 Absolute = l.Abs,
                 Exists = !string.IsNullOrEmpty(l.Abs) && Directory.Exists(l.Abs),
-                Declared = stored is not null,
+                Declared = declared,
+                CorrectedFrom = declared && stored is not null && !RegistrationRefresh.SamePath(stored, effective)
+                    ? stored
+                    : null,
             };
         }).ToList();
 
@@ -245,9 +289,20 @@ public sealed record GameShape
         // that is missing is a registration the user can correct; a derived one is the launcher's own
         // folder, and telling them their registration declares it would send them editing a field
         // that does not exist.
+        // m2. A correction moved the launcher off the registration's own folder; files still sitting
+        // there are no longer read, and nothing else would ever say so.
+        foreach (var d in declared)
+        {
+            var leftover = StoredFolderLeftovers(d, gameRoot);
+            if (leftover > 0)
+                notes.Add($"The registration's own '{d.CorrectedFrom}' folder holds {leftover} "
+                          + $"file{(leftover == 1 ? "" : "s")} the launcher no longer reads.");
+        }
+
         foreach (var d in declared.Where(d => !d.Exists))
             notes.Add(d.Declared
                 ? $"Declared mod location '{d.Path}' does not exist on disk ({d.Absolute})."
+                  + (d.CorrectedFrom is { } was ? $" The game's definition corrected it from '{was}'." : "")
                 : $"The launcher's own '{d.Name}' folder is not on disk ({d.Absolute}) — the "
                   + "registration does not declare it and does not need to.");
 
@@ -340,6 +395,14 @@ public sealed record GameShape
         catch { return false; }
     }
 
+    /// <summary>Files anywhere under a folder; zero when it is absent or cannot be read.</summary>
+    private static int FileCountUnder(string? dir)
+    {
+        if (string.IsNullOrEmpty(dir)) return 0;
+        try { return Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Count() : 0; }
+        catch { return 0; }
+    }
+
     private static string Norm(string? p)
     {
         if (string.IsNullOrWhiteSpace(p)) return "";
@@ -353,9 +416,10 @@ public sealed record DeclaredLocation
 {
     public required string Name { get; init; }
 
-    /// <summary>The relative path as stored in the registration (e.g. <c>mod</c>) when
-    /// <see cref="Declared"/>; the absolute path otherwise, since a derived location has no stored
-    /// path and rendering its NAME in a path slot presents a label as a folder.</summary>
+    /// <summary>The relative path the scanner uses when <see cref="Declared"/>: the registration's
+    /// stored path, or the game definition's correction of it (see <see cref="CorrectedFrom"/>). The
+    /// absolute path otherwise, since a derived location has no stored path and rendering its NAME in
+    /// a path slot presents a label as a folder.</summary>
     public required string Path { get; init; }
 
     public required string Absolute { get; init; }
@@ -366,6 +430,12 @@ public sealed record DeclaredLocation
     /// launcher owns a UE4SS install. A reader must not attribute a derived entry to the user's
     /// registration: there is no field for it, and no edit that could change it.</summary>
     public bool Declared { get; init; } = true;
+
+    /// <summary>What the registration itself stores for this location when the game's definition
+    /// corrected it (Elden Ring stores <c>mod</c>, the definition says <c>mods</c>), so a reader can
+    /// say both. Null when the stored path is the one the scanner uses, and always null for a derived
+    /// location.</summary>
+    public string? CorrectedFrom { get; init; }
 }
 
 /// <summary>A directory mods were actually found in.</summary>
