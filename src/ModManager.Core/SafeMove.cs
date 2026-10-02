@@ -90,7 +90,15 @@ public static class SafeMove
         catch { RemoveWhatThisCallCreated(dest, createdParents); throw; }
 
         // One delete is all or nothing, so a failure here leaves the source whole: only the copy goes.
-        try { File.Delete(src); }
+        // A file the game wrote to since its copy no longer matches it, and deleting it would lose what
+        // changed, so that counts as a failed delete too.
+        try
+        {
+            FallbackStepForTests?.Invoke("delete", src);
+            if (new FileInfo(src).Length != new FileInfo(dest).Length)
+                throw new IOException($"\"{src}\" changed after it was copied, so it was not deleted. Nothing was moved.");
+            File.Delete(src);
+        }
         catch { RemoveWhatThisCallCreated(dest, createdParents); throw; }
     }
 

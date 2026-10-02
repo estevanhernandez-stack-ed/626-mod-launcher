@@ -283,6 +283,26 @@ public class SafeMoveFallbackTests
     }
 
     [Fact]
+    public void Single_file_changed_after_its_copy_is_not_deleted()
+    {
+        var root = TestSupport.TempDir("safemove-fb-");
+        var src = Path.Combine(root, "a.log");
+        File.WriteAllText(src, "LINE1");
+        var dest = Path.Combine(root, "held", "a.log");
+
+        SafeMove.FallbackStepForTests = (step, path) =>
+        {
+            if (step == "delete" && path == src) File.AppendAllText(src, "+LINE2");
+        };
+        try { Assert.ThrowsAny<IOException>(() => SafeMove.MoveByCopy(src, dest)); }
+        finally { SafeMove.FallbackStepForTests = null; }
+
+        Assert.Equal("LINE1+LINE2", File.ReadAllText(src));
+        Assert.False(File.Exists(dest));
+        Assert.False(Directory.Exists(Path.Combine(root, "held")));
+    }
+
+    [Fact]
     public void Fast_path_rename_is_unchanged_for_a_folder()
     {
         var root = TestSupport.TempDir("safemove-fb-");
