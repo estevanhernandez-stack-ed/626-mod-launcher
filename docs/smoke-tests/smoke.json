@@ -2057,8 +2057,76 @@
     "**`Check setup…` refuses while anything else is running.** Start a long operation (an identify"
    ],
    "source": "docs/smoke-tests/pending.md#L1503",
-   "note": "Shipped and exercised in normal use across the releases it went out in. Este, asked to triage: \"I thought we finished that list.\" Recorded on his word - no test, harness case or dated note stands behind it here, which is exactly what this field is for. Anything that later proves untrue is a gap in the record, not a lie in it.",
+   "note": "Shipped and exercised in normal use across the releases it went out in. Este, asked to triage: \"I thought we finished that list.\" Recorded on his word - no test, harness case or dated note stands behind it here, which is exactly what this field is for. Anything that later proves untrue is a gap in the record, not a lie in it. 2026-10-02: driven live by an agent on Nebuchadnezzar against v0.23.0 (repair-smoke on test/registration-repair-smoke): 13 of 15 steps pass, step 1 fails on its 'Set to look in' line (bug filed), step 13 not exercised; the A5 sweep step fails on its mod-path half (bug filed). See pending.md. Steps 1, 3, 7 and 8 are now the harness cases repair-elden-ring-reads-healthy, repair-save-gating, repair-cancel-is-inert and repair-windrose-location-count-readonly.",
    "humanReason": "Prose section inherited from pending.md: its steps need a person at the app. Where a harness case now covers it, the note says which."
+  },
+  {
+   "id": "repair-elden-ring-reads-healthy",
+   "title": "Check setup reads Elden Ring as healthy drift, with no SETUP chip",
+   "surface": "PR (feat/registration-repair-ui) step 1",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "Green on the 2026-10-02 scoped run (-Only). Read-only: open, read, close by CloseButton, games.json hash unchanged."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Open Elden Ring, More > Check setup, read the diagnosis, close it by AutomationId CloseButton.",
+   "expect": "Mods found is not None, Loaded by names Elden Mod Loader, the verdict says the drift is not damage, Save is disabled, no StateChip.setup-drift, and games.json is byte-identical after the close."
+  },
+  {
+   "id": "repair-windrose-location-count-readonly",
+   "title": "The mod-folder picker offers every declared location, counted from games.json",
+   "surface": "PR (feat/registration-repair-ui) step 8",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "Green on the 2026-10-02 scoped run: games.json declares 2, the picker offers 2, the label says 'this game has 2'."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Read Windrose's declared mod-location count from games.json, open Check setup, expand Edit setup, count SetupModLocationBox items without selecting, close by CloseButton.",
+   "expect": "The picker's item count equals the games.json count, the Mod folder label names that number, Save is disabled, and games.json is byte-identical after the close."
+  },
+  {
+   "id": "repair-cancel-is-inert",
+   "title": "Closing the setup dialog after typing writes nothing",
+   "surface": "PR (feat/registration-repair-ui) step 7",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "Green on the 2026-10-02 scoped run, on a throwaway fixture game registered and removed by the case."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Register a throwaway UE-pak fixture under artifacts/smoke/repair-fixture through the MCP register_game tool, open its Check setup, type into the name, folder, extensions and Steam id boxes (so a data-dir move is planned), then Close. Remove the fixture in a finally.",
+   "expect": "games.json hash and every fixture file (path, size, write time) unchanged after Close; no dialog left open."
+  },
+  {
+   "id": "repair-save-gating",
+   "title": "Save is off with no change, off with a reason for a blank folder, on for a real change",
+   "surface": "PR (feat/registration-repair-ui) step 3",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "Green on the 2026-10-02 scoped run, on the throwaway fixture game."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "On the throwaway fixture: open Edit setup; blank the game folder, restore it; blank the mod folder, restore it; change the grouping rule; Close without saving. Remove the fixture in a finally.",
+   "expect": "Save disabled with nothing changed; disabled with 'A game folder is required' for a blank folder and 'A mod folder can't be blank' for a blank mod folder; disabled again once both are back to their stored values (nothing to save); enabled on the grouping change; games.json unchanged."
   },
   {
    "id": "pr-fix-library-repaint-after-add-the-library-home-repaints-a",
