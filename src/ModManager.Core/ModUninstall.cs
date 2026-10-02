@@ -44,10 +44,13 @@ public static class ModUninstall
         bool holds;
         try { holds = TreeHolding.HoldsFiles(ctx, mod.Name); }
         catch { holds = false; }
-        return holds
-            ? new(UninstallBlock.HeldInOtherFolders,
-                $"Turn \"{mod.Name}\" on first: some of its files are held in other folders.")
-            : null;
+        if (!holds) return null;
+        // A mod that is already on can't be fixed by turning it on: these are leftovers (the manifest dropped
+        // a tree while it was off), so the instruction is to sort out the folder.
+        return new(UninstallBlock.HeldInOtherFolders,
+            mod.Enabled
+                ? $"Move or remove the files held in {TreeHolding.ModDir(ctx, mod.Name)} first: 626 can't tell where they belong."
+                : $"Turn \"{mod.Name}\" on first: some of its files are held in other folders.");
     }
 
     /// <summary>The lane's rules only, for the row deciding whether to offer Uninstall. It does not look for

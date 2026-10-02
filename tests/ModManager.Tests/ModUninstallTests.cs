@@ -120,6 +120,27 @@ mods = [
     }
 
     [Fact]
+    public void A_live_mod_with_leftovers_held_is_refused_with_the_move_or_remove_instruction()
+    {
+        var (g, ctx) = TreeGame();
+        var leftoverDir = TreeHolding.ModDir(ctx, "Plain");
+        var leftover = Path.Combine(leftoverDir, "r6", "scripts", "Plain", "old.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(leftover)!);
+        File.WriteAllText(leftover, "LEFT");
+        var row = ModListing.Resolve(g).Single(m => m.Name == "Plain");
+        Assert.True(row.Enabled); // pre-condition: the mod is on
+
+        var why = ModUninstall.Refusal(ctx, row);
+
+        Assert.NotNull(why);
+        Assert.Equal(UninstallBlock.HeldInOtherFolders, why!.Kind);
+        Assert.Equal($"Move or remove the files held in {leftoverDir} first: 626 can't tell where they belong.", why.Message);
+        var e = Assert.Throws<InvalidOperationException>(() => ModUninstall.Run(ctx, row));
+        Assert.Equal(why.Message, e.Message);
+        Assert.Equal("LEFT", File.ReadAllText(leftover));
+    }
+
+    [Fact]
     public async Task A_turned_off_mod_with_no_held_extras_uninstalls_as_before()
     {
         var (g, ctx) = TreeGame();

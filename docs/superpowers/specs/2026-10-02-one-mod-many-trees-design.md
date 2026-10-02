@@ -250,10 +250,13 @@ before. The row text was verified by a UIA walk in both states.
   back after a mods-active end state, holding a second copy of entries that were live again (fixed: the
   replay skips it, as it skips `disabled`). What is still open: Safe Clear's vanilla move doesn't know
   extra trees, so a mod's entries there stay in the game.
-- **Uninstall with held extras is refused.** A turned-off mod with files in `disabled-trees/<Mod>` can't
-  be uninstalled ("Turn <Mod> on first: some of its files are held in other folders."), because the
-  delete knows only the main files and would orphan them. Pending Este's call on whether uninstall
-  should delete them.
+- **Uninstall with held extras is refused.** A mod with files in `disabled-trees/<Mod>` can't be
+  uninstalled, because the delete knows only the main files and would orphan them. The message depends on
+  whether the mod is on. Turned off: `Turn "<Mod>" on first: some of its files are held in other folders.`
+  Already on, so the files are leftovers (the manifest dropped a tree while it was off) and turning it on
+  would not clear them: `Move or remove the files held in <path> first: 626 can't tell where they belong.`,
+  with `<path>` the `disabled-trees/<Mod>` folder. Pending Este's call on whether uninstall should delete
+  them.
 - **The cross-volume fallback is untested on real hardware.** `SafeMove`'s copy-then-delete is covered by
   unit tests, not by a real two-drive install (smoke entry "B4 cross-volume").
 - **Bulk disable cost is O(n²) on tree games.** Each `DisableEntry` builds the mod list to find claimants.
