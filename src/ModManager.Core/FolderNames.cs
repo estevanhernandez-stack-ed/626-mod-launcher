@@ -7,6 +7,10 @@ namespace ModManager.Core;
 /// an 8.3 alias (<c>OTHERL~1</c>) opens the long-named folder it abbreviates. A join of root and name is
 /// therefore only the mod's own folder when the name is one folder as written AND the root lists an entry
 /// by that real name. Uninstall's deletes ask here before touching a folder by name.
+///
+/// <para>626's own holding folders sidestep the normalisation entirely: they are named by
+/// <see cref="HoldingName.Folder"/>, which encodes any name Windows would not keep as written. These checks
+/// stay as the guards around a delete, applied to that encoded name.</para>
 /// </summary>
 internal static class FolderNames
 {
@@ -40,6 +44,21 @@ internal static class FolderNames
         => Directory.Exists(root)
            && new DirectoryInfo(root).EnumerateFileSystemInfos()
                .Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The real name of the entry <paramref name="root"/> lists for <paramref name="name"/>, matched
+    /// case-insensitively as Windows opens it, or null when there is none. Listed without a search pattern,
+    /// so an 8.3 alias never matches.</summary>
+    public static string? RealEntryName(string root, string name)
+        => Directory.Exists(root)
+            ? new DirectoryInfo(root).EnumerateFileSystemInfos()
+                .FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))?.Name
+            : null;
+
+    /// <summary>True when <paramref name="root"/> lists an entry whose real name is exactly
+    /// <paramref name="name"/>, case included. For an encoded holding folder: <c>~626~466F6F2E</c> is a different
+    /// mod's folder from <c>~626~466f6f2e</c>, although Windows would open either for the other.</summary>
+    public static bool HasEntryNamedExactly(string root, string name)
+        => string.Equals(RealEntryName(root, name), name, StringComparison.Ordinal);
 
     /// <summary>
     /// The path to give the file system for an entry the scan enumerated by its real relative name. When a

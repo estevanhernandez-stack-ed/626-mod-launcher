@@ -46,7 +46,10 @@ public static partial class RestorePointEngine
     private static IReadOnlyList<Scanner.EnableOutcome> ReEnableAll(GameContext c)
     {
         var outcomes = new List<Scanner.EnableOutcome>();
-        foreach (var name in DirectoryNames(c.DisabledRoot))
+        // A holding folder is the mod's name or its HoldingName encoding ("Foo." is held in ~626~466f6f2e);
+        // the toggle wants the name. An older build's raw-named hold (disabled/Aux) decodes to itself and the
+        // toggle reads it through HoldingName.LegacyPath.
+        foreach (var name in DirectoryNames(c.DisabledRoot).Select(HoldingName.ModName).Distinct(StringComparer.Ordinal))
             outcomes.Add(Scanner.EnableModWithOutcomeAsync(name, c).GetAwaiter().GetResult());
         return outcomes;
     }

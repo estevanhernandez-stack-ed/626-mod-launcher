@@ -109,7 +109,7 @@ public static class ModUninstall
         foreach (var m in mods)
         {
             if (string.IsNullOrWhiteSpace(m.Name)) continue;   // refused by the run, with the no-name message
-            if (HeldDir(ctx, m.Name) is not { } dir) continue;   // a name that can't own a held folder
+            if (HeldDir(ctx, m.Name) is not { } dir) continue;   // a name too long to hold has no folder
             try
             {
                 TreeHolding.BeforeReadForTests?.Invoke(dir);
@@ -156,8 +156,9 @@ public static class ModUninstall
     ///
     /// <para>Every mod is checked first, so a refused member stops the whole family before anything is
     /// deleted. The checks are <see cref="Refusal(GameContext, Mod)"/> and containment (<see cref="HeldDir"/>):
-    /// the name must name a folder directly inside the holding root, which must not be a link. The folder is
-    /// only touched when the root lists an entry by that real name, so an 8.3 alias never reaches it.</para>
+    /// the mod's holding folder (<see cref="HoldingName.Folder"/>) must be directly inside the holding root,
+    /// which must not be a link. The folder is only touched when the root lists an entry by that real name,
+    /// so an 8.3 alias never reaches it.</para>
     ///
     /// <para>Each mod's held folder goes right after that mod's own uninstall succeeds, so a failure there
     /// leaves it intact and the mod still listed, and a later member's failure leaves no orphan. It is deleted
@@ -220,20 +221,20 @@ public static class ModUninstall
     }
 
     /// <summary>
-    /// The mod's holding folder, or null when the name can't own one. Three answers:
+    /// The mod's holding folder: <see cref="HoldingName.Folder"/> under <see cref="TreeHolding.Root"/>, the
+    /// folder turning it off would use. A name Windows would not keep as written (a trailing dot or space,
+    /// <c>:</c> or a separator, <c>..</c>, a device name) has its own encoded folder, so <c>Foo.</c> never
+    /// reaches <c>Foo</c>'s. Two other answers:
     /// <list type="bullet">
-    /// <item><b>Throws</b> for a genuine escape: the name resolves outside <see cref="TreeHolding.Root"/>
-    /// (<c>..</c>, <c>.</c>, <c>..\x</c>, a drive-relative or rooted name). The main uninstall would misbehave
-    /// too: it deletes <c>disabled/&lt;name&gt;</c> recursively, and for <c>..</c> that is the whole data folder.
+    /// <item><b>Throws</b> when the folder would resolve outside the root. The encoding makes that impossible
+    /// (<c>..</c> is held in <c>~626~2e2e</c>); the guard stays because the delete behind it is recursive.
     /// Also throws when the root isn't strictly under the data folder, or is a link.</item>
-    /// <item><b>Null</b> for a name that stays inside but can't name one folder there as written: a trailing
-    /// dot or space (Windows strips them, so <c>Foo.</c> would land on <c>Foo</c>), <c>:</c> or another
-    /// invalid character, or a separator (<c>x\..\Foo</c>). Such a mod holds nothing: no preview line, no
-    /// delete, and its uninstall goes ahead exactly as it did before held folders existed.</item>
-    /// <item><b>The path</b> otherwise, built by joining and never by resolving, because
-    /// <c>Path.GetFullPath</c> expands an existing folder's 8.3 alias. The folder itself may be a link: the
-    /// delete removes it as one.</item>
+    /// <item><b>Null</b> for a risky name too long to encode (turning it off refuses, so nothing is held), and
+    /// when the folder still could not name one folder as written: unreachable by construction, kept so a
+    /// future change to the encoding can't turn into a delete of the wrong folder.</item>
     /// </list>
+    /// The path is built by joining and never by resolving, because <c>Path.GetFullPath</c> expands an
+    /// existing folder's 8.3 alias. The folder itself may be a link: the delete removes it as one.
     /// </summary>
     internal static string? HeldDir(GameContext ctx, string modName)
     {
@@ -243,26 +244,40 @@ public static class ModUninstall
             throw new InvalidOperationException(
                 $"626's holding folder {root} is not inside its data folder {dataDir}, so nothing in it was deleted.");
 
-        if (FolderNames.Escapes(root, modName))
+        // Null for a risky name too long to encode.
+        var folder = HoldingName.Folder(modName);
+        if (folder is not null && FolderNames.Escapes(root, folder))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{modName}\": that name leads outside 626's holding folder {root}. Nothing was changed.");
 
-        if (!FolderNames.NamesOneFolder(modName)) return null;
+        // An older build's hold under the raw name (disabled-trees/Aux, which Windows 11 allows) when there is
+        // no encoded one: read and deleted by its exact real name, like the toggle reads it.
+        // Exactly, case included: another mod's raw "~626~466F6F2E" is not Foo.'s "~626~466f6f2e".
+        var encodedPresent = folder is not null && FolderNames.HasEntryNamedExactly(root, folder);
+        var dir = !encodedPresent && HoldingName.LegacyPath(root, modName) is { } legacy ? legacy
+            : folder is not null && FolderNames.NamesOneFolder(folder)
+              && !(folder != modName && HoldingName.Shadowed(root, folder, out _)) ? Path.Combine(root, folder)
+            : null;
+        if (dir is null) return null;
 
         if (Directory.Exists(root) && LinkSafeDelete.IsLink(new DirectoryInfo(root)))
             throw new InvalidOperationException(
                 $"626 won't delete what it holds for \"{modName}\": the holding folder {root} is a link, so it may lead "
                 + "somewhere else. Nothing was changed.");
-        return Path.Combine(root, modName);
+        return dir;
     }
 
     /// <summary>
-    /// True when the holding root has an entry whose real name is the mod's name (case-insensitive, as
-    /// Windows is). Listed without a search pattern, so an 8.3 short name never matches: a mod literally named
-    /// <c>OTHERL~1</c> does not reach <c>Other Long Name Mod</c>, though opening that path would.
+    /// True when the holding root has an entry whose real name is the mod's holding folder name
+    /// (case-insensitive, as Windows is). Listed without a search pattern, so an 8.3 short name never matches:
+    /// a mod literally named <c>OTHERL~1</c> does not reach <c>Other Long Name Mod</c>, though opening that
+    /// path would.
     /// </summary>
     private static bool HeldPresent(GameContext ctx, string modName)
-        => FolderNames.HasEntryNamed(TreeHolding.Root(ctx), modName);
+        => (HoldingName.Folder(modName) is { } folder
+            && (folder == modName ? FolderNames.HasEntryNamed(TreeHolding.Root(ctx), folder)
+                                  : FolderNames.HasEntryNamedExactly(TreeHolding.Root(ctx), folder)))
+           || HoldingName.LegacyPath(TreeHolding.Root(ctx), modName) is not null;
 
 }
 

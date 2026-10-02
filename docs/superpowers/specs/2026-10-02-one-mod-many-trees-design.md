@@ -161,6 +161,30 @@ existing `disabled/<Mod>`, not inside it.
   newer build restores them. That is no worse than today.
 - **Collision.** Turning off refuses, moving nothing, when `disabled-trees/<Mod>` already holds files,
   the same rule `HoldingFolder.HoldsFiles` applies to the main holding folder.
+- **The folder name is not always the mod's name (`HoldingName`, `fix/toggle-name-alias`).** Both holding
+  roots, `disabled/<Mod>` and `disabled-trees/<Mod>`, name the folder with `HoldingName.Folder(modName)`.
+  Mod names come from file names, and Windows opens a path after normalising it: a trailing dot or space is
+  stripped and `CON`, `NUL`, `COM1` and the rest (with or without an extension) are devices. So `Foo _P.pak`
+  (the mod `Foo `) was held in `Foo`'s folder, `Foo..archive` (`Foo.`) likewise, and `CON_P.pak` could reach
+  the console device (Windows 11 relaxed the device rule for a full path; Windows 10 did not, and other tools
+  reading the data folder may not). An ordinary name is its own folder, unchanged, so an older build's
+  hold of an ordinary name needs no migration. A name that is not safe as written (empty or whitespace, a trailing dot or space, an
+  invalid file-name character, a device name on the part before the first dot (`CONIN$` and `CONOUT$` included), `.` or `..`, a name already
+  starting with `~626~`) is held in `~626~` plus the lowercase hex of its UTF-8 bytes: `Foo.` in
+  `~626~466f6f2e`. An ordinary name is never encoded, whatever its length. A risky name over 125 bytes would
+  encode past NTFS's 255-character limit, so it has no holding folder and turning it off refuses. Lone surrogates are carried through (WTF-8) so two names that differ
+  other than by case never share a folder. `HoldingName.ModName` is the exact inverse, used wherever a
+  folder name is read back as a mod (`ListDisabled`, the library-inference disabled keys, held library
+  dependents, a restore point's re-enable): a `~626~` folder decodes only when `Folder` of the decoded name
+  gives it back. Anything else, a hand-made or malformed `~626~` folder included, is a raw name.
+  - **Legacy holds are read through a fallback, not migrated.** Windows 11 lets a plain `CreateDirectory`
+    make `disabled/Aux`, `disabled/CON` or `disabled/Con.Fix`, so an older build may have held such a mod
+    under its raw name, in `disabled` and (v0.23.0) `disabled-trees`. Those names now encode, so the
+    toggle would look only in `~626~...` and leave the row stuck off. `HoldingName.LegacyPath` finds the
+    raw-named folder by its exact real name when the encoded one has no record (`disabled`) or does not
+    exist (`disabled-trees`). Turn-on reads and tears it down there, uninstall deletes it, and a new
+    turn-off refuses while it holds files (a record-only legacy hold protects nothing: the new hold goes to the encoded folder, which the listing and turn-on prefer, and the old record is left alone). A raw prefixed folder reaches the same fallback. A tagged encoding was chosen over a lossy slug or a hash because it is reversible from the
+  folder name alone (the layout stays the record) and changes nothing for the names that were already safe.
 - **A move across volumes undoes itself.** When the game and the data folder sit on different drives, a
   move can't be a rename and falls back to copy then delete. That fallback (`SafeMove`) now removes its
   own partial copy if it fails, and refuses a source that contains a link, so a junction can't drag a
@@ -276,27 +300,27 @@ about. The app's confirm dialog and the agent's `uninstall_mod` both read it.
 mod's own uninstall succeeds. A failure in the main uninstall leaves the held extras intact and the mod
 still listed; a later family member's failure leaves no orphan behind.
 
-- **Containment.** Checked for every mod before anything is deleted, with three outcomes.
-  - **Refused (throws, nothing deleted).** A genuine escape, where the name resolves outside
-    `TreeHolding.Root(ctx)` (`..`, `.`, `..\x`). Refused rather than let through, because the main
-    uninstall would misbehave on the same name: it deletes `disabled/<name>` recursively, and for `..`
-    that is the whole data folder. Also refused: a root that isn't strictly under the data folder, or is a
-    link.
-  - **Nothing held.** A name that stays inside but can't name one folder there as written: a trailing dot
-    or space (Windows strips them, so `Foo.` would land on `Foo`), `:` or another invalid character, or a
-    separator (`x\..\Foo`). No preview line and no delete. The uninstall goes ahead exactly as it did before
-    held folders existed. Refusing these instead made such Mod Engine 2 mods impossible to uninstall.
-  - **The folder.** Any other name. The check is textual on purpose: `Path.GetFullPath` expands an existing
-    folder's 8.3 alias, so comparing the resolved name would misread a mod named `OTHERL~1`.
-- **Real names only.** The folder is touched only when the root lists an entry with the mod's real name
-  (enumerated without a search pattern). A mod literally named `OTHERL~1` never reaches `Other Long Name
-  Mod`, although opening that path would.
+- **Containment.** Checked for every mod before anything is deleted, on the mod's holding folder name
+  (`HoldingName.Folder`), not its raw name.
+  - **The folder.** Every name has one. A name that can't be a folder as written (`Foo.`, `Foo `, `Foo:alt`,
+    `x\..\Foo`, `..`, `CON`) is held in its own `~626~` folder, so it reaches that and never the folder
+    Windows would normalise it onto. #376 first shipped this as "such a name holds nothing"; once the
+    toggle held such names in encoded folders, that rule would have left their held files behind, so it
+    became "it uses its encoded folder". The check is textual on purpose: `Path.GetFullPath` expands an
+    existing folder's 8.3 alias, so comparing the resolved name would misread a mod named `OTHERL~1`.
+  - **Refused (throws, nothing deleted).** A holding folder name that would resolve outside
+    `TreeHolding.Root(ctx)`. The encoding makes that impossible (`..` is `~626~2e2e`); the guard stays
+    because the delete behind it walks a whole tree. Before the encoding, `..`, `.` and `..\x` were refused
+    here. Also refused: a root that isn't strictly under the data folder, or is a link.
+- **Real names only.** The folder is touched only when the root lists an entry with the holding folder's
+  real name (enumerated without a search pattern). A mod literally named `OTHERL~1` never reaches `Other
+  Long Name Mod`, although opening that path would.
 - **The same guards on the main uninstall.** `Scanner.UninstallMod` had the same alias hole in its delete of
   `disabled/<name>`: uninstalling `Foo.` (from `Foo..archive`), `Foo ` or an 8.3 alias recursively deleted
-  `Foo`'s turned-off copy, and `..` reached the data folder. It now shares `FolderNames` with the held-folder
-  delete. A name that leads outside `disabled` is refused before anything is deleted. The turned-off copy is
-  deleted only when the name is one folder as written and `disabled` lists it by that real name; otherwise
-  there is no copy of this mod's, and the rest of the uninstall proceeds. The live-file loop deletes each
+  `Foo`'s turned-off copy, and `..` reached the data folder. It now deletes `disabled/<HoldingName.Folder>`,
+  only when `disabled` lists it by that real name, behind the same escape guard. A folder whose real name
+  ends in a dot or space can only come from a `\\?\`-aware tool, never from 626; it lists under that name
+  and is deleted through its exact path, so its lookalike never is. The live-file loop deletes each
   scanned entry by its exact name (`\\?\` when a segment ends in a dot or space).
 - **No following links.** `LinkSafeDelete` walks the tree without descending into a reparse point. A
   junction or symlink is removed as the link (`Directory.Delete(path)` non-recursively, after clearing a
@@ -313,6 +337,27 @@ still listed; a later family member's failure leaves no orphan behind.
 
 ## Follow-ups
 
+- **Closed: toggles held aliasing names in one folder** (`fix/toggle-name-alias`). Turning off and on built
+  `disabled/<name>` and `disabled-trees/<name>` from the raw mod name, so `Foo.` landed in `Foo`'s folders.
+  Both now go through `HoldingName`. `GuardNoBasePakMove` sized files through a plain join; it now sizes
+  through `FolderNames.ExactPath`, so a `\\?\`-made sidecar is sized as itself.
+- **Closed: a slug folder answers only to its own mod.** The direct-inject and loose-root holding folders
+  (`EnginePresets.Slugify(mod.Name)`) merge distinct names (`Foo` / `foo-` / `Foo.` are all `foo`), and `con`
+  is a device on Windows 10. They stay slug-named: switching to `HoldingName` would stop every folder an
+  existing user holds from being found by name. Instead the held record (`__626mod.json`, which already
+  stored `name`) is checked both ways, ignoring case. Turning on a name whose slug folder holds a different
+  mod's record refuses. Turning off into a slug folder whose record belongs to another mod refuses while
+  any of that mod's entries is still held ("Turn <it> on first"); a stale record with none of its entries
+  left is treated as empty and replaced. A record without a
+  name (older builds) keeps the old behaviour.
+- **Closed: long names.** An ordinary name is never encoded, whatever its length. A risky name whose
+  `~626~` folder would pass 255 characters (over 125 UTF-8 bytes) has no holding folder: turning it off
+  refuses before anything moves ("its name is too long to hold safely"), and uninstalling it has nothing
+  held to delete.
+- **Still open: case-only names.** Two ORDINARY names differing only in case (`Foo` and `foo`, from two mod
+  locations) still share one holding folder, as they always have; `HoldingName` does not change case.
+- **Still open: DisableEntry's own moves** join `loc.Abs` and the scanned file name plainly. They can only
+  alias for a live entry a `\\?\`-aware tool created; worth the same `FolderNames.ExactPath` treatment.
 - **Safe Clear and extra trees.** Replaying a restore point used to copy the archived `disabled-trees`
   back after a mods-active end state, holding a second copy of entries that were live again (fixed: the
   replay skips it, as it skips `disabled`). What is still open: Safe Clear's vanilla move doesn't know

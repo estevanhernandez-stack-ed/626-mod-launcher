@@ -472,9 +472,14 @@ public static class Scanner
     private static IReadOnlyList<DisabledEntry> ListDisabled(GameContext c)
     {
         var result = new List<DisabledEntry>();
-        foreach (var name in SafeReadDirs(c.DisabledRoot))
+        // One entry per mod, the encoded hold winning over an older build's raw-named one (HoldingName.Listed).
+        foreach (var (folder, name) in HoldingName.Listed(SafeReadDirs(c.DisabledRoot)))
         {
-            var dir = Path.Combine(c.DisabledRoot, name);
+            // The folder is the mod's name, or its HoldingName encoding when Windows would not keep that name
+            // as written. Any other folder (an older build's disabled/Aux, a hand-made ~626~ name) is listed by
+            // its raw name, and turning it on reaches it through HoldingName.LegacyPath.
+            // By its real name: a folder only a \\?\-aware tool could make (Foo.) is read as itself.
+            var dir = FolderNames.ExactPath(c.DisabledRoot, folder);
             var location = c.Locations.Count > 0 ? c.Locations[0].Name : "";
             var hadOnServer = new Dictionary<string, bool>();
             var isFolder = false;
@@ -593,7 +598,11 @@ public static class Scanner
         // delete below joins the name onto that root, and for ".." that join is the whole data folder.
         // An empty key used to join onto disabled/ as disabled/ itself: every turned-off mod, deleted.
         if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException(ModUninstall.NoNameMessage);
-        if (FolderNames.Escapes(c.DisabledRoot, name))
+        // The guard is on the folder the name is held in (HoldingName), which never leaves the root by
+        // construction: ".." is held in its own encoded folder. Kept as the last word before a recursive delete.
+        // Null for a risky name too long to encode: it has no holding folder, so nothing held is deleted.
+        var heldFolder = HoldingName.Folder(name);
+        if (heldFolder is not null && FolderNames.Escapes(c.DisabledRoot, heldFolder))
             throw new InvalidOperationException(
                 $"626 won't uninstall \"{name}\": that name leads outside 626's folder for turned-off mods. Nothing was changed.");
 
@@ -632,15 +641,22 @@ public static class Scanner
                 foreach (var manifest in ModInstallRegistry.ClaimsOn(c.DataDir, f))
                     ModInstallRegistry.Remove(c.DataDir, manifest.InstallId);
         }
-        // The turned-off copy, only when it is this mod's own: disabled/ lists an entry by that real name.
-        // Otherwise there is no copy of this mod's to delete, and joining the name would reach a different
-        // mod's (Foo. opens Foo, an 8.3 alias opens the long name). An entry whose real name ends in a dot or
-        // space (a \\?\-aware tool made it) is deleted through its exact path, so the real Foo. goes and its
-        // lookalike Foo never does. A name with a separator or ':' can't match a listed entry at all.
-        if (FolderNames.HasEntryNamed(c.DisabledRoot, name))
-            DeletePath(FolderNames.NamesOneFolder(name)
-                ? Path.Combine(c.DisabledRoot, name)
-                : FolderNames.ExactPath(c.DisabledRoot, name));
+        // The turned-off copy is in the mod's holding folder (HoldingName: the name itself, or its encoding
+        // when Windows would not keep the name as written, so Foo. is never held in, or deleted from, Foo's).
+        // Only when disabled/ lists an entry by that real name, so an 8.3 alias never reaches the long name.
+        // By its exact real name, case included: "~626~466F6F2E" (another mod's raw folder) is not Foo.'s.
+        // Stricter than turn-on, which opens an ordinary name without case: a delete errs toward leaving a
+        // case-variant folder behind, a restore toward finding it.
+        if (heldFolder is not null && FolderNames.HasEntryNamedExactly(c.DisabledRoot, heldFolder))
+            DeletePath(Path.Combine(c.DisabledRoot, heldFolder));
+        // A folder whose real name ends in a dot or space can only have been made by a \\?\-aware tool, never
+        // by 626, which encodes such a name. It still lists under that name, so it still goes with the mod,
+        // through its exact path: the real Foo. goes and its lookalike Foo never does. A name with a separator
+        // or ':' can't match a listed entry at all.
+        // The same goes for an older build's hold under a raw name that now encodes (Windows 11 allows
+        // disabled/Aux): HoldingName.LegacyPath, by its exact real name.
+        if (HoldingName.LegacyPath(c.DisabledRoot, name) is { } legacy)
+            DeletePath(legacy);
     }
 
     /// <summary>Delete one entry the scan enumerated under <paramref name="baseDir"/>, by its real relative
@@ -669,7 +685,9 @@ public static class Scanner
             long size = 0;
             foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
             {
-                try { var len = new FileInfo(Path.Combine(root, f)).Length; if (len > size) size = len; }
+                // By its real name: a \\?\-made sidecar such as "Foo_P.sig." is sized as itself, not as the
+                // lookalike its plain join would open.
+                try { var len = new FileInfo(FolderNames.ExactPath(root, f)).Length; if (len > size) size = len; }
                 catch { /* missing in this root — try the next */ }
             }
             if (PakClassifier.IsBaseGamePak(Path.GetFileName(f), size))
@@ -698,13 +716,40 @@ public static class Scanner
         }
         var loc = LocByName(m.Location, c);
         GuardNoBasePakMove(m, loc);
-        var dest = Path.Combine(c.DisabledRoot, m.Name);
+        // HoldingName: "Foo." and "Foo " get folders of their own instead of the "Foo" Windows would normalise
+        // them onto, and CON its own instead of the console device.
+        // A risky name too long to encode has no holding folder: refused here, before anything moves.
+        var destFolder = HoldingName.Folder(m.Name)
+            ?? throw new InvalidOperationException(HoldingName.TooLongMessage(m.Name));
+        var dest = Path.Combine(c.DisabledRoot, destFolder);
         var files = m.IsFolder ? new List<string> { m.Files[0] } : m.Files;
 
         // Refuse, moving nothing, when an earlier turned-off copy of this mod is already held. The
         // listing shows only the live copy when both exist, so the user cannot see the held one. This
         // used to collide mid-move and the rollback ran a recursive delete over the holding folder,
         // destroying that copy; a folder mod that did not collide was silently merged into it instead.
+        //
+        // A folder Windows would open for this mod's encoded name but whose real name differs is ANOTHER mod's
+        // (an older build's raw "~626~466F6F2E" where Foo.'s "~626~466f6f2e" would go): never written into.
+        // Checked in both holding roots, for a risky name only: two ordinary names differing in case have
+        // always shared a folder, and that is unchanged.
+        if (destFolder != m.Name)
+            foreach (var root in new[] { c.DisabledRoot, TreeHolding.Root(c) })
+                if (HoldingName.Shadowed(root, destFolder, out var other))
+                    throw new HeldCopyCollisionException(
+                        $"Couldn't turn \"{m.Name}\" off: its holding folder would be {Path.Combine(root, other!)}, which "
+                        + $"626 holds for \"{HoldingName.ModName(other!)}\". Nothing was moved. Turn that mod on first.");
+
+        // An older build's hold under the raw name (disabled/Aux) is such a copy too, and the refusal names it.
+        // A legacy hold with only its record protects nothing, exactly like a lone record in the encoded folder
+        // (HoldsFiles ignores meta.json): the turn-off goes ahead into the encoded folder, the old record is left
+        // where it is, and the listing and turn-on both prefer the encoded hold.
+        if (HoldingName.LegacyPath(c.DisabledRoot, m.Name) is { } legacyHeld
+            && HoldingFolder.HoldsFiles(legacyHeld, "meta.json"))
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{m.Name}\" off: an earlier turned-off copy of it is already held in {legacyHeld}, "
+                + "and the mod list only shows the copy that is live. Nothing was moved. Move or remove one of "
+                + "the two copies first.");
         if (HoldingFolder.HoldsFiles(dest, "meta.json")
             || files.Any(f => File.Exists(Path.Combine(dest, f)) || Directory.Exists(Path.Combine(dest, f))))
             throw new HeldCopyCollisionException(
@@ -925,8 +970,15 @@ public static class Scanner
     public static TreeLeftover? ExtraTreeLeftover(GameContext c, string modName)
     {
         if (string.IsNullOrEmpty(modName)) return null;
-        var dir = TreeHolding.ModDir(c, modName);
-        try { return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null; }
+        // Named without reading the disk; CanHold lists disabled-trees for a risky name, so it sits inside the
+        // try and a failed read reports the folder as unreadable rather than throwing out of the turn-on.
+        var dir = TreeHolding.NominalDir(c, modName);
+        try
+        {
+            if (!TreeHolding.CanHold(c, modName)) return null;
+            dir = TreeHolding.ModDir(c, modName);
+            return TreeHolding.HoldsFiles(c, modName) ? new TreeLeftover(dir, Readable: true) : null;
+        }
         catch { return new TreeLeftover(dir, Readable: false); }
     }
 
@@ -960,7 +1012,22 @@ public static class Scanner
             return new EnableOutcome(name, true, false, null);
         }
 
-        var src = Path.Combine(c.DisabledRoot, name);
+        // A name with no holding folder (risky and too long to encode) can never have been turned off.
+        // Where it is held: its HoldingName folder, or, when that has no record, an older build's hold under
+        // the raw name (Windows 11 let a plain CreateDirectory make disabled/Aux). Read and torn down by its
+        // exact real name. A name with no folder of either kind was never turned off.
+        var srcFolder = HoldingName.Folder(name);
+        // An ordinary name opens its folder the way Windows does, without case: a turn-off of MyMod into a
+        // stale disabled/mymod lands there, and the turn-on must find it the same way. An ENCODED folder counts
+        // only by its exact name, case included: Windows would open another mod's raw "~626~466F6F2E" for
+        // Foo.'s "~626~466f6f2e". Same split as ModUninstall.HeldPresent.
+        var src = srcFolder is null
+                  || (srcFolder != name && !FolderNames.HasEntryNamedExactly(c.DisabledRoot, srcFolder)) ? null
+            : Path.Combine(c.DisabledRoot, srcFolder);
+        if ((src is null || !File.Exists(Path.Combine(src, "meta.json")))
+            && HoldingName.LegacyPath(c.DisabledRoot, name) is { } legacySrc)
+            src = legacySrc;
+        if (src is null) return new EnableOutcome(name, false, true, "no readable disabled metadata");
         DisabledMeta? meta;
         try { meta = JsonSerializer.Deserialize<DisabledMeta>(File.ReadAllText(Path.Combine(src, "meta.json")), Json); }
         catch { return new EnableOutcome(name, false, true, "no readable disabled metadata"); }

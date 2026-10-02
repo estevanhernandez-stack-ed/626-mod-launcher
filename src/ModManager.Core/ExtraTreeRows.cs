@@ -98,9 +98,14 @@ public sealed class ExtraTreeRows
     private (IReadOnlyList<TreeHolding.HeldEntry> Entries, TreeLeftover? Unknown) Held(string modName)
     {
         if (_ctx is null || string.IsNullOrEmpty(modName)) return (Array.Empty<TreeHolding.HeldEntry>(), null);
-        var dir = TreeHolding.ModDir(_ctx, modName);
+        // Named without reading the disk, so a folder that can't be read is still named in the row.
+        var dir = TreeHolding.NominalDir(_ctx, modName);
         try
         {
+            // Inside the try: for a risky name, finding the folder lists disabled-trees, and a failed read is
+            // "626 couldn't read", not a crash. A name too long to hold has no folder, so nothing is held.
+            if (!TreeHolding.CanHold(_ctx, modName)) return (Array.Empty<TreeHolding.HeldEntry>(), null);
+            dir = TreeHolding.ModDir(_ctx, modName);
             var entries = TreeHolding.Held(_ctx, modName, _ctx.ExtraModTrees);
             if (entries.Count > 0) return (entries, null);
             return (entries, TreeHolding.HoldsFiles(_ctx, modName) ? new TreeLeftover(dir, Readable: true) : null);

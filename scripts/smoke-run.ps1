@@ -732,6 +732,125 @@ Case 'uninstall-confirm-and-forget' 'A26 - the record goes with the file' {
     "uninstalled through its confirm dialog; row, file and record all gone"
 }
 
+# Two mods whose names Windows reads as one folder. Under Windrose's UE-pak rule 'B4AliasProbe_P.pak' is
+# the mod 'B4AliasProbe' and 'B4AliasProbe _P.pak' is 'B4AliasProbe ' - trailing space. Windows strips a
+# trailing space from a path segment, so before the holding-name fix the second was held in the FIRST's
+# folder. Now it gets '~626~' + the hex of its UTF-8 bytes. Probes go straight into ~mods (not through
+# intake, so no install record), and the finally removes them and anything held for these two names ONLY.
+$aliasProbes = [ordered]@{ 'B4AliasProbe' = 'B4AliasProbe_P.pak'; 'B4AliasProbe ' = 'B4AliasProbe _P.pak' }
+$aliasDisabled = Join-Path $wrData 'disabled'
+
+# Mirrors HoldingName.Folder for these two names: an ordinary name is its own folder; one ending in a dot
+# or space is encoded. (The other risky classes - device names, invalid characters - don't apply here.)
+function Get-AliasHoldingFolder([string]$Name) {
+    if ($Name.EndsWith(' ') -or $Name.EndsWith('.')) {
+        return '~626~' + (-join ([Text.Encoding]::UTF8.GetBytes($Name) | ForEach-Object { $_.ToString('x2') }))
+    }
+    return $Name
+}
+
+# The row by its bound id, compared case- AND whitespace-exactly: 'ModRow.B4AliasProbe' and
+# 'ModRow.B4AliasProbe ' differ only by the trailing space, and a looser match would hand back the
+# wrong row. Realises the row first if the list virtualised it away.
+function Find-AliasRow([string]$Name) {
+    $id = "ModRow.$Name"
+    $null = Test-RowPresent (Get-Tree $root) $id
+    @(Get-Tree $root | Where-Object { try { $_.Current.AutomationId -ceq $id } catch { $false } }) | Select-Object -First 1
+}
+
+# The row's own toggle, found inside the row: both probes can prettify to the same display name, so a
+# tree-wide "Disable <name>" match could pick the other one.
+function Find-AliasToggle([string]$Name) {
+    $row = Find-AliasRow $Name
+    if (-not $row) { return $null }
+    @(Get-Tree $row | Where-Object { try { $null -ne (Get-ToggleState $_) } catch { $false } }) | Select-Object -First 1
+}
+
+function Reset-AliasProbes {
+    foreach ($n in $aliasProbes.Keys) {
+        $f = $aliasProbes[$n]
+        Remove-Item -LiteralPath (Join-Path $wrMods $f) -Force -EA SilentlyContinue
+        $held = Join-Path $aliasDisabled (Get-AliasHoldingFolder $n)
+        if (Test-Path -LiteralPath $held) { Remove-Item -LiteralPath $held -Recurse -Force -EA SilentlyContinue }
+    }
+}
+
+Case 'alias-names-hold-apart' 'fix/toggle-name-alias - holding-folder names Windows cannot alias' {
+    Reset-AliasProbes
+    $hashes = @{}
+    try {
+        $i = 0
+        foreach ($n in $aliasProbes.Keys) {
+            $i++
+            $p = Join-Path $wrMods $aliasProbes[$n]
+            Set-Content -LiteralPath $p -Value "SMOKE626 alias probe $i, inert" -Encoding ascii
+            $hashes[$n] = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash
+        }
+
+        # Explicitly Windrose, then a reload so the probes are read.
+        $t = Get-Tree $root
+        if (-not (Find-ById $t 'AddModsButton')) {
+            $homeBtn = Find-ById $t 'HomeButton'
+            if ($homeBtn) { Invoke-Node $homeBtn; Wait-Idle 2500 }
+        }
+        $wr = Find-ById (Get-Tree $root) 'GameRow.windrose'
+        if ($wr) { Invoke-Node $wr; Wait-Idle 4000 }
+        Assert-OnGameView (Get-Tree $root)
+        Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 4000
+        Assert-NoModal $root
+
+        $rows = @($aliasProbes.Keys | ForEach-Object { Find-AliasRow $_ })
+        Assert-True ($null -ne $rows[0]) "no ModRow.B4AliasProbe after reload"
+        Assert-True ($null -ne $rows[1]) "no 'ModRow.B4AliasProbe ' (trailing space) after reload - the id may be trimmed, or the two collapsed into one row"
+        Assert-True (-not [System.Windows.Automation.Automation]::Compare($rows[0], $rows[1])) "both ids resolved to the SAME element"
+
+        foreach ($n in $aliasProbes.Keys) {
+            $tog = Find-AliasToggle $n
+            Assert-True ($null -ne $tog) "no toggle in the row for '$n'"
+            Assert-True ((Get-ToggleState $tog) -eq 'On') "'$n' is not on to start with"
+            Set-Toggle $tog; Wait-Idle 4000
+            Assert-NoModal $root
+            Assert-True ((Get-ToggleState (Find-AliasToggle $n)) -eq 'Off') "'$n' did not turn off"
+        }
+
+        $folders = @($aliasProbes.Keys | ForEach-Object { Get-AliasHoldingFolder $_ })
+        foreach ($k in 0..1) {
+            $n = @($aliasProbes.Keys)[$k]
+            $heldFile = Join-Path (Join-Path $aliasDisabled $folders[$k]) $aliasProbes[$n]
+            Assert-True (Test-Path -LiteralPath $heldFile) "'$n' is not held in disabled\$($folders[$k])"
+            Assert-True (-not (Test-Path -LiteralPath (Join-Path $wrMods $aliasProbes[$n]))) "'$n' is still live after turning off"
+        }
+        $plainHeld = @(Get-ChildItem -LiteralPath (Join-Path $aliasDisabled $folders[0]) -File | Where-Object Name -ne 'meta.json')
+        Assert-True ($plainHeld.Count -eq 1) "disabled\$($folders[0]) holds $($plainHeld.Count) probe file(s) - the two were merged"
+
+        foreach ($n in $aliasProbes.Keys) {
+            Set-Toggle (Find-AliasToggle $n); Wait-Idle 4000
+            Assert-NoModal $root
+            Assert-True ((Get-ToggleState (Find-AliasToggle $n)) -eq 'On') "'$n' did not turn back on"
+        }
+        foreach ($k in 0..1) {
+            $n = @($aliasProbes.Keys)[$k]
+            $live = Join-Path $wrMods $aliasProbes[$n]
+            Assert-True (Test-Path -LiteralPath $live) "'$n' is not back in ~mods"
+            Assert-True ((Get-FileHash -LiteralPath $live -Algorithm SHA256).Hash -eq $hashes[$n]) "'$n' came back with different bytes"
+            Assert-True (-not (Test-Path -LiteralPath (Join-Path $aliasDisabled $folders[$k]))) "disabled\$($folders[$k]) outlived the turn-on"
+        }
+        "held apart in disabled\$($folders[0]) and disabled\$($folders[1]); both back byte-identical, both holding folders gone"
+    }
+    finally {
+        # Every path, a failed assertion included: turn on whatever is still off, then remove the probes
+        # and anything held for these two names, and reload so Windrose shows as it was found.
+        foreach ($n in $aliasProbes.Keys) {
+            try {
+                $tog = Find-AliasToggle $n
+                if ($tog -and (Get-ToggleState $tog) -eq 'Off' -and -not (Test-ModalOpen $root)) { Set-Toggle $tog; Wait-Idle 3000 }
+            } catch {}
+        }
+        Reset-AliasProbes
+        try { if (-not (Test-ModalOpen $root)) { Invoke-Node (Find-ById (Get-Tree $root) 'RefreshButton'); Wait-Idle 3000 } } catch {}
+    }
+}
+
 Case 'loadout-segments-filter-only' 'Wave 6 - the segments filter, they do not move files' {
     # The whole of wave 6, as an assertion. These three buttons used to call Scanner.ApplyMode, which
     # enables every mod matching the mode and disables the rest - a bulk file operation behind a

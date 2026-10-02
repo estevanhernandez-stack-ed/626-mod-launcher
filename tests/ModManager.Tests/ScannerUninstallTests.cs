@@ -122,15 +122,20 @@ public class ScannerUninstallTests
     [InlineData("..")]
     [InlineData(".")]
     [InlineData("..\\..\\x")]
-    public async Task A_name_that_leads_outside_the_disabled_root_is_refused_and_nothing_is_deleted(string name)
+    public async Task A_name_that_would_lead_outside_the_disabled_root_reaches_only_its_own_encoded_folder(string name)
     {
+        // Such a name is held in its own HoldingName folder (".." in ~626~2e2e), which can't leave disabled/.
+        // Before the encoding this was refused outright, because joining ".." onto disabled/ is the data folder.
         var (primary, _, c) = Setup();
         await Scanner.DisableModAsync("cool", c);
         var coolsCopy = Path.Combine(c.DisabledRoot, "cool", "cool.pak");
+        var own = Path.Combine(c.DisabledRoot, HoldingName.Folder(name)!);
+        Directory.CreateDirectory(own);
+        File.WriteAllText(Path.Combine(own, "held.pak"), "OWN");
 
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Scanner.UninstallModAsync(name, c));
+        await Scanner.UninstallModAsync(name, c);
 
-        Assert.Contains("leads outside", e.Message);
+        Assert.False(Directory.Exists(own));
         Assert.Equal("X", File.ReadAllText(coolsCopy));
         Assert.True(Directory.Exists(c.DataDir));
     }
