@@ -2541,7 +2541,18 @@ tests cover the fallback; a real two-drive install does not yet.
 Why it matters: a copy-then-delete is the one move that can leave two copies or half of one, and it only
 happens across volumes.
 
-**Not yet verified.**
+**Verified 2026-10-02 by the agent sweep (v0.23.0 build of 6925ad8), fixture only, no real data moved.**
+`G:\626-smoke-fixtures\XVolGame` laid out like Cyberpunk: `archive/pc/mod` with `XVolModA.archive` and
+`XVolModB.archive`, `r6/scripts/XVolModA` (with a nested `sub\helper.reds`), `r6/tweaks/XVolModA`, and an
+unrelated `r6/scripts/OtherScript`. Registered by hand in `games.json` (under a backup) with `dataDir` on
+C: and `manifestId: "cyberpunk-2077"`, which gives it the five extra trees without a Steam id, so it never
+collides with the real Cyberpunk registration. XVolModA off through its row: the row read
+`Also turned off in r6/scripts, r6/tweaks`, the game kept 3 files (XVolModB, the exe, OtherScript), and C:
+held `disabled\XVolModA\XVolModA.archive` plus `disabled-trees\XVolModA\r6\scripts\...` and `...\r6\tweaks\...`.
+On again: the row read `Also has files in r6/scripts, r6/tweaks`, all 7 files back with identical relative
+paths and SHA-256, and both holding folders gone. The data folder was deleted afterwards; the G: fixture
+could not be (a safety hook refuses deletes on G:\), so `G:\626-smoke-fixtures` is still on disk for Este
+to remove by hand.
 
 ## B4U: uninstall confirm names held folders
 
@@ -2564,3 +2575,65 @@ where the user can't see it. The dialog is the only place they learn it goes too
 **Verified 2026-10-02 by the agent on Nebuchadnezzar.** Dialog text: `Permanently delete "Black Chrome UA"?
 This removes the mod's files and can't be undone. 626 is also holding some of its files in r6/scripts,
 r6/tweaks, bin/x64/plugins/cyber_engine_tweaks/mods, and will delete those too.`
+
+## Agent sweep 2026-10-02: B6 one list, alias holding names
+
+Harness cases, run with `smoke-run.ps1 -Only` on the v0.23.0 build of master `6925ad8`.
+
+- **library-lists-unmanaged-games: PASS 2026-10-02.** 10 `UnmanagedGame.steam.*` rows and 17 `GameRow.*`
+  rows under the same parent in ALL GAMES, interleaved by recency. A separate UIA walk found no
+  `LibraryDiscoveryExpander` and no id containing `Discovery`.
+- **unmanaged-row-offers-play-and-manage: PASS 2026-10-02.** Read only, nothing pressed.
+  `UnmanagedGame.steam.300` (Day of Defeat: Source) reads `Not managed by 626`, with exactly one
+  `Start managing Day of Defeat: Source`, one `Play Day of Defeat: Source`, and no `N mods` text.
+- **alias-names-hold-apart: PASS 2026-10-02.** Held apart in `disabled\B4AliasProbe` and
+  `disabled\~626~4234416c69617350726f626520`, both back byte-identical, both holding folders gone. Windrose
+  `~mods` afterwards: 36 files, every hash as before.
+
+## OLD LOADER chip (A17, #383)
+
+Two harness cases, `old-loader-chip-round-trip` and `old-loader-ue4ss-needs-its-proxy`, both on throwaway
+games registered through `register_game` and removed through the app's Remove this game.
+
+1. **REFramework fixture.** A 4 MB exe dated now, a small exe dated two years ago, and `dinput8.dll` beside
+   a `reframework\` folder, both dated a year ago. Open it and select `StateChip.stale-loader`.
+   Expected: `StateChipDetail` names `dinput8.dll`'s date, the LARGE exe's date and the REFramework releases
+   URL, and reads exactly what `get_game_shape` says. The sentence is selectable.
+2. **Mark as checked** (`StateChipAction`). Expected: the chip goes; `games.json` gains
+   `loaderCheckedExeUtc` on the fixture only; it stays gone after Refresh and after reopening the game;
+   `get_game_shape` adds `The user marked loaders as checked against this build.`
+3. **Move the exe's date forward** and Refresh. Expected: the chip is back.
+4. **UE fixture** with `Binaries/Win64/ue4ss/UE4SS.dll` and no `dwmapi.dll`. Expected: no chip. Add
+   `dwmapi.dll` and Refresh: the chip shows.
+
+**Verified 2026-10-02 by the agent sweep (v0.23.0 build of 6925ad8): both PASS.** The REFramework chip read
+`REFramework (dinput8.dll, 2025-10-02) is older than the game's executable (OldLoaderGame.exe, 2026-10-02).
+... (https://github.com/praydog/REFramework/releases).` Selectable, checked by UIA: `StateChipDetail`
+exposes TextPattern with `SupportedTextSelection=Single`, and `DocumentRange.Select()` then
+`GetSelection()` returned the whole sentence; the control, `AppStatusText`, reports `None` and throws on
+`Select`. Every other `games.json` entry was byte-identical across the click. With `dwmapi.dll` added the UE
+chip read `UE4SS (UE4SS.dll, 2025-10-02) is older than the game's executable
+(UeLoaderGame-Win64-Shipping.exe, 2026-10-02). ...`. Seen on the way, read only: real Elden Ring also
+shows OLD LOADER (`Elden Mod Loader (dinput8.dll, 2026-05-27)` against `eldenring.exe, 2026-09-11`).
+
+## Save mods: Reset and Remove from the Saves dialog (#380)
+
+1. Back up and hash `%LOCALAPPDATA%\R5\Saved\SaveProfiles`. Windrose not running.
+2. Install a throwaway `Worlds/00000000000000000000000000C0FFEE/level.db` zip (`install_save_mod`).
+3. Saves, the save-mod row, **Reset**. Expected: a note naming `save-mods\worlds\<guid>` and how to undo
+   (unzip the newest one into the world folder); exactly one snapshot there, under the game's SavesDir;
+   nothing new in the Saves list.
+4. **Remove save mod.** Expected: the world is deleted, and so is `<dataDir>\save-mods\<guid>`.
+5. Delete the test snapshot folder. Expected: the SaveProfiles hash equals the pre-run hash.
+
+**Run 2026-10-02 by the agent sweep (v0.23.0 build of 6925ad8): file outcomes PASS, note FAIL.** One
+`before-savemod-reset` snapshot in `saves\save-mods\worlds\00000000000000000000000000C0FFEE`; the two
+top-level zips unchanged and still the only Saves rows. Remove deleted the world and
+`save-mods\00000000000000000000000000C0FFEE` (and took its own `before-savemod-remove` snapshot).
+SaveProfiles afterwards: 779 files and the directory tree identical to the pre-run copy. The note did not
+say how to undo. Exact App text: `Reset SmokeCoffeeWorld — previous state snapshotted first (in
+c:/program files (x86)/steam\_626mods\windrose\saves\save-mods\worlds\00000000000000000000000000C0FFEE, not
+in this list).` The `to undo, unzip the newest one into <world folder>` sentence exists only in the MCP's
+`reset_save_mod` result. Repro: steps 1 to 3 above, read the dialog's `StatusText`. Also found: the row's
+Reset and Remove buttons have no AutomationId and no per-row name, so two save mods would give two
+identical `Reset` buttons, and the row's ListItem name is the `SaveModRow` record's `ToString()`.
