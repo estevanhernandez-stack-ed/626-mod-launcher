@@ -58,7 +58,7 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `FrameworkInstaller` / `FrameworkRegistry` install manifests (`src/ModManager.Core/Frameworks/`)
 - Profile / loadout state (`src/ModManager.Core/GameProfile.cs`, `Profile.cs`)
 - Theme files (`src/ModManager.Core/Themes.cs`)
-- Registry / settings (`src/ModManager.Core/Registry.cs`; `GameEntry.manifestId`, the entry a game was added as, covered by `ManifestIdentityTests.ManifestId_round_trips_as_camelCase_and_is_omitted_when_null`)
+- Registry / settings (`src/ModManager.Core/Registry.cs`; `GameEntry.manifestId`, the entry a game was added as, covered by `ManifestIdentityTests.ManifestId_round_trips_as_camelCase_and_is_omitted_when_null`; `GameEntry.loaderCheckedExeUtc`, the executable date the stale-loader chip was marked checked against, covered by `StaleLoadersTests.LoaderCheckedExeUtc_round_trips_as_camelCase`)
 - Tool registry (`src/ModManager.Core/Tools/ToolRegistry.cs`)
 - `ModMeta` `installedUtc` + `sourceConfidence` (`src/ModManager.Core/Mod.cs`)
 - Restore-point manifest (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs`), including the

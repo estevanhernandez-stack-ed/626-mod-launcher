@@ -272,7 +272,8 @@ public sealed record GameShape
             ContentRoots = roots,
             Loaders = loaders,
             Alignment = alignment,
-            Notes = BuildNotes(mechanism, declared, roots, loaders, alignment, playFolder, ctx.GameRoot, mods.Count),
+            Notes = BuildNotes(mechanism, declared, roots, loaders, alignment, playFolder, ctx.GameRoot, mods.Count,
+                StaleLoaders.Find(ctx), game.LoaderCheckedExeUtc),
         };
     }
 
@@ -281,7 +282,7 @@ public sealed record GameShape
     private static List<string> BuildNotes(
         ListingMechanism mechanism, List<DeclaredLocation> declared, List<ContentRoot> roots,
         List<string> loaders, LocationAlignment alignment, string? playFolder, string gameRoot,
-        int modCount)
+        int modCount, StaleLoaderReport stale, DateTime? loaderCheckedExeUtc)
     {
         var notes = new List<string>();
 
@@ -313,6 +314,12 @@ public sealed record GameShape
         if (loaders.Count > 0)
             notes.Add($"Loader present: {string.Join(", ", loaders)} — sibling mods load from its folder, "
                       + "which the registration does not need to declare.");
+
+        // A17. The same sentence the OLD LOADER chip shows. An agent gets it whether or not the user has
+        // marked it checked, with that fact attached, so it can tell "not looked at" from "looked at".
+        var checkedNow = stale.CheckedAgainst(loaderCheckedExeUtc);
+        foreach (var sentence in stale.Sentences)
+            notes.Add(sentence + (checkedNow ? " The user marked loaders as checked against this build." : ""));
 
         notes.Add(alignment switch
         {

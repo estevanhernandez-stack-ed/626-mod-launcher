@@ -167,6 +167,11 @@ public static class FrameworkInstaller
             using (var src = entry.Open())
             using (var dst = File.Create(absTarget))
                 src.CopyTo(dst);
+            // Keep the release's own date, as an archive tool would: it is the only "which version is this"
+            // a loader carries on disk, and StaleLoaders compares it with the game's build (A17). An entry
+            // with no date reads as 1980 in zip; stamping that would make every install look ancient.
+            if (entry.LastWriteTime.Year > 1980)
+                File.SetLastWriteTimeUtc(absTarget, entry.LastWriteTime.UtcDateTime);
             installed.Add(relNorm);
         }
 

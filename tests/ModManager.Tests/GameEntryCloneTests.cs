@@ -45,6 +45,7 @@ public class GameEntryCloneTests
         LastKnownSteamBuildId = "18752634",
         StoreSource = "steam",
         LastLaunchedUtc = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc),
+        LoaderCheckedExeUtc = new DateTime(2026, 8, 17, 9, 0, 0, DateTimeKind.Utc),
         UserSet = new[] { GameEntry.UserSetModLocations },
         ManifestId = "madden-nfl-27",
     };

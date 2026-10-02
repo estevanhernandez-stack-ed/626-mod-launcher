@@ -62,7 +62,9 @@ public sealed class SharpCompressArchiveReader : IArchiveReader
             var dir = Path.GetDirectoryName(destAbs);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-            entry.WriteToFile(destAbs, new ExtractionOptions { Overwrite = overwrite });
+            // PreserveFileTime: a file keeps its release date, as an archive tool would leave it. For a loader
+            // that date is the only version fact on disk, and StaleLoaders compares it with the game's (A17).
+            entry.WriteToFile(destAbs, new ExtractionOptions { Overwrite = overwrite, PreserveFileTime = true });
         }
 
         public void Dispose() => _archive.Dispose();
