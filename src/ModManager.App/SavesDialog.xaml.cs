@@ -124,8 +124,6 @@ public sealed partial class SavesDialog : ContentDialog
     private readonly string _savesDir;
     private readonly string _dataDir;
     private readonly IReadOnlyList<SaveType> _saveTypes;
-    private readonly string? _engine;
-    private readonly string? _steamAppId;
     private readonly string? _saveModPath;
     private readonly IReadOnlyList<string>? _saveModForbidden;
     private string? _saveDir;
@@ -145,9 +143,7 @@ public sealed partial class SavesDialog : ContentDialog
         _savesDir = ctx.SavesDir;
         _dataDir = ctx.DataDir;
         _saveDir = ctx.SaveDir; // detection (Ludusavi-first) is done by the caller before opening
-        _engine = ctx.Game.Engine;
-        _steamAppId = ctx.Game.SteamAppId;
-        _saveTypes = GameSaveTypesCatalog.Resolve(_engine, _steamAppId).SaveTypes;
+        _saveTypes = GameSaveTypesCatalog.Resolve(_game).SaveTypes;
         _saveModPath = ctx.Game.SaveModPath;
         _saveModForbidden = ctx.Game.SaveModForbidden;
         AutoBackupCheck.IsChecked = ctx.Game.AutoBackupOnLaunch;
@@ -195,7 +191,7 @@ public sealed partial class SavesDialog : ContentDialog
     // fixed for.
     private void RefreshWorlds()
     {
-        var isWorlds = GameSaveTypesCatalog.Resolve(_engine, _steamAppId).Layout == SaveLayout.Worlds;
+        var isWorlds = GameSaveTypesCatalog.Resolve(_game).Layout == SaveLayout.Worlds;
         if (!isWorlds || string.IsNullOrEmpty(_saveDir))
         {
             WorldsHeading.Visibility = Visibility.Collapsed;
@@ -216,7 +212,7 @@ public sealed partial class SavesDialog : ContentDialog
             SaveManager.ListWorldSnapshots(_savesDir, w.Name).Count,
             w.NameBudgetBytes,
             w.HasOwnSave,
-            SaveSeamCatalog.CanShare(_steamAppId))).ToList();
+            SaveSeamCatalog.CanShareFor(_game))).ToList();
 
         WorldList.ItemsSource = rows;
         WorldsHeading.Visibility = Visibility.Visible;
@@ -287,11 +283,12 @@ public sealed partial class SavesDialog : ContentDialog
     }
 
     /// <summary>
-    /// Cyberpunk 2077. Dispatching on the Steam app id rather than the engine, because a READER is
+    /// Cyberpunk 2077. Dispatching on the manifest id rather than the engine, because a READER is
     /// compiled code and cannot live in the manifest - and because engine predicts nothing about save
-    /// format: four ue-pak games on one machine have four unrelated shapes.
+    /// format: four ue-pak games on one machine have four unrelated shapes. The manifest id, not the
+    /// Steam app id, so a copy from another store (no Steam id) or a second copy (<c>-2</c>) reads too.
     /// </summary>
-    private const string Cyberpunk2077AppId = "1091500";
+    private const string Cyberpunk2077Id = "cyberpunk-2077";
 
     private void RefreshCharacters()
     {
@@ -302,7 +299,8 @@ public sealed partial class SavesDialog : ContentDialog
         // Games we can describe but would never write. Listing is not editing, and treating them as
         // the same job is why this section used to tell Cyberpunk players their 93 saves "aren't
         // itemized yet".
-        if (!string.IsNullOrEmpty(_saveDir) && _steamAppId == Cyberpunk2077AppId)
+        if (!string.IsNullOrEmpty(_saveDir)
+            && string.Equals(ManifestIdLookup.EntryFor(_game)?.Id, Cyberpunk2077Id, StringComparison.Ordinal))
         {
             foreach (var c in ModManager.Core.Characters.CyberpunkCharacters.ReadCharacters(_saveDir!))
                 rows.Add(new CharacterRow(c.Id, c.Headline, c.Detail, MadeWithMods: c.MadeWithMods));
@@ -959,7 +957,7 @@ public sealed partial class SavesDialog : ContentDialog
         if (sender is not FrameworkElement fe || fe.Tag is not SaveWorldRow row) return;
         if (string.IsNullOrEmpty(_saveDir)) { StatusText.Text = "Set a save folder first."; return; }
 
-        var seam = SaveSeamCatalog.ByAppId(_steamAppId);
+        var seam = SaveSeamCatalog.For(_game);
         if (seam.Count == 0) return;      // the button should not exist; belt and braces
 
         try

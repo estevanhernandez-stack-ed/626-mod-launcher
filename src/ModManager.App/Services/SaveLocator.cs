@@ -12,6 +12,22 @@ namespace ModManager.App.Services;
 public static class SaveLocator
 {
     /// <summary>
+    /// Authoritative-first, for a registered game: the curated hint resolved through every identity the
+    /// game carries (<see cref="SaveDirHints.For"/>), so an EA app game with no Steam id still gets its
+    /// hand-checked folder. Then Ludusavi's templates (Steam-keyed), then the folder heuristics.
+    /// </summary>
+    public static Task<string?> DetectAsync(LudusaviService ludusavi, GameEntry game, string? steamUserId = null)
+        => DetectAsync(ludusavi, game.GameName, game.Engine, game.GameRoot, game.SteamAppId,
+            SaveDirHints.For(game),
+            // The signed-in Steam user names a Steam game's save subfolder and nothing else's. Handing it
+            // to a game with no Steam id would resolve a <storeUserId> hint to a folder that is not its.
+            string.IsNullOrEmpty(game.SteamAppId) ? null : steamUserId,
+            // An EA app install lives under Program Files\EA Games, which gets no read beyond
+            // installerdata.xml (EA slice one). The heuristic's project-name discovery lists the install
+            // folder, so an EA game skips it and keeps the name and engine guesses only.
+            listInstallFolder: string.IsNullOrEmpty(game.EaContentId));
+
+    /// <summary>
     /// Authoritative-first: resolve the Ludusavi save templates for the Steam app id, then fall
     /// back to the folder heuristics. Best-effort — anything missing degrades to the heuristic.
     /// Pass <paramref name="steamUserId"/> (64-bit SteamID) so templates that reference
@@ -19,24 +35,30 @@ public static class SaveLocator
     /// without it those templates return null and the caller falls back to the heuristic which
     /// doesn't know about the Steam-user-id subfolder.
     /// </summary>
-    public static async Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine, string? gameRoot, string? steamAppId, string? steamUserId = null)
+    public static Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine, string? gameRoot, string? steamAppId, string? steamUserId = null)
+        => DetectAsync(ludusavi, gameName, engine, gameRoot, steamAppId, SaveDirHints.ByAppId(steamAppId), steamUserId,
+            listInstallFolder: true);
+
+    private static async Task<string?> DetectAsync(LudusaviService ludusavi, string gameName, string? engine,
+        string? gameRoot, string? steamAppId, string? curatedHint, string? steamUserId, bool listInstallFolder)
     {
+        var tokens = WindowsTokens(gameRoot, steamUserId);
+
+        // The CURATED hint first. Ludusavi lists every path a game touches and we take the first
+        // that exists, which is usually right and occasionally precisely wrong - Stellaris resolves
+        // to the game's config directory that way, because it is listed first and it does exist.
+        // A hand-checked hint beats a first match, and it is the folder saveLayout describes. It needs
+        // no Steam id: the caller resolved it from whatever identity the game has.
+        if (curatedHint is not null)
+        {
+            var hinted = LudusaviPaths.Resolve(curatedHint, tokens);
+            try { if (hinted is not null && Directory.Exists(hinted)) return hinted; }
+            catch { /* fall through to Ludusavi's own list */ }
+        }
+
+        // Ludusavi's catalogue is keyed by Steam app id, so this half stays Steam-only.
         if (!string.IsNullOrEmpty(steamAppId))
         {
-            var tokens = WindowsTokens(gameRoot, steamUserId);
-
-            // The CURATED hint first. Ludusavi lists every path a game touches and we take the first
-            // that exists, which is usually right and occasionally precisely wrong - Stellaris resolves
-            // to the game's config directory that way, because it is listed first and it does exist.
-            // A hand-checked hint beats a first match, and it is the folder saveLayout describes.
-            var curated = ModManager.Core.SaveDirHints.ByAppId(steamAppId);
-            if (curated is not null)
-            {
-                var hinted = ModManager.Core.LudusaviPaths.Resolve(curated, tokens);
-                try { if (hinted is not null && Directory.Exists(hinted)) return hinted; }
-                catch { /* fall through to Ludusavi's own list */ }
-            }
-
             foreach (var template in await ludusavi.SaveTemplatesAsync(steamAppId))
             {
                 var resolved = LudusaviPaths.Resolve(template, tokens);
@@ -44,7 +66,7 @@ public static class SaveLocator
                 try { if (Directory.Exists(resolved)) return resolved; } catch { /* skip */ }
             }
         }
-        return Detect(gameName, engine, gameRoot);
+        return Detect(gameName, engine, listInstallFolder ? gameRoot : null);
     }
 
     private static Dictionary<string, string> WindowsTokens(string? gameRoot, string? steamUserId)

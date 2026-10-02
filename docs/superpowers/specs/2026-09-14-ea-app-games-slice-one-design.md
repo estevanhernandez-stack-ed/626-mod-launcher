@@ -258,3 +258,22 @@ signals any process. No change.
 - Merging a game detected in both stores into one row. No copy on this machine is in both.
 - Anything that writes to an EA game, its saves or its folders. The launcher reads here and hands Play
   to the EA app.
+
+## Addendum, 2026-10-02: the save lookups resolve by game
+
+Groundwork for the save-snapshot slice, built ahead of it. The saves panel asked `SaveDirHints`,
+`SaveLayoutCatalog`, `SaveSeamCatalog` and `GameSaveTypesCatalog` by Steam app id only, so a registered EA
+game could never get a curated save folder, layout or seam, whatever the feed said. Each now has a by-game
+form that resolves through `ManifestIdLookup.EntryFor` (Steam id, then EA content id, then own id; A30),
+and the saves panel, the save-file drop path and `SaveLocator` use it. So the `saveDirHint` data PR above
+now reaches these games the day it merges, with no launcher release.
+
+Two boundary fixes rode along in `SaveLocator`, on the path an EA add already took:
+
+- An EA game's save detection no longer lists its install folder. The heuristic's project-name discovery
+  did, which this spec rules out ("no read beyond installerdata.xml").
+- The signed-in Steam user is passed only for a game with a Steam id, so a `<storeUserId>` hint never
+  resolves to a Steam folder for an EA game.
+
+Still out of scope: name-pattern save types, which need the save listing to match names as well as
+extensions.

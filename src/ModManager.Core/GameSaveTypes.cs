@@ -49,6 +49,11 @@ public static class GameSaveTypesCatalog
     public static GameSaveTypes Resolve(string? engine, string? steamAppId)
         => new(engine ?? "", SaveTypesFor(engine), SaveLayoutCatalog.ByAppId(steamAppId));
 
+    /// <summary>The same, for a registered game: the layout is resolved through every identity the
+    /// game carries, so an EA app game (no Steam id) and a second store copy get their entry's.</summary>
+    public static GameSaveTypes Resolve(GameEntry game)
+        => new(game.Engine ?? "", SaveTypesFor(game.Engine), SaveLayoutCatalog.For(game));
+
     private static IReadOnlyList<SaveType> SaveTypesFor(string? engine) => engine switch
     {
         // FromSoftware (Elden Ring et al.): vanilla .sl2, Seamless Co-op .co2, Reforged .err.

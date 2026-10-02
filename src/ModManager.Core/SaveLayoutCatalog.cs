@@ -3,7 +3,7 @@ using ModManager.Core.Manifest;
 namespace ModManager.Core;
 
 /// <summary>
-/// Live Steam-app-id -> save layout map, a facade over <see cref="EffectiveManifest"/> (twin of
+/// Live game -> save layout lookup, a facade over <see cref="EffectiveManifest"/> (twin of
 /// <see cref="BanRiskCatalog"/>).
 ///
 /// <para><b>This replaces a single hardcoded app id.</b> The layout used to be
@@ -22,10 +22,6 @@ namespace ModManager.Core;
 /// </summary>
 public static class SaveLayoutCatalog
 {
-    private static IReadOnlyDictionary<string, SaveLayout>? _map;
-    private static int _mapGen = -1;
-    private static readonly object _gate = new();
-
     /// <summary>Parse a manifest value. Anything unrecognised — including a word from a newer feed
     /// this binary has never heard of — is the default, never a throw.</summary>
     public static SaveLayout Parse(string? value)
@@ -33,40 +29,13 @@ public static class SaveLayoutCatalog
             ? SaveLayout.Worlds
             : SaveLayout.TypedFiles;
 
-    private static IReadOnlyDictionary<string, SaveLayout> Map
-    {
-        get
-        {
-            lock (_gate)
-            {
-                var gen = EffectiveManifest.Generation;
-                if (_map is null || _mapGen != gen)
-                {
-                    _map = Build();
-                    _mapGen = gen;
-                }
-                return _map;
-            }
-        }
-    }
-
-    private static IReadOnlyDictionary<string, SaveLayout> Build()
-    {
-        var map = new Dictionary<string, SaveLayout>(StringComparer.Ordinal);
-        foreach (var g in EffectiveManifest.Current.Games)
-        {
-            // Only entries that actually declare something. An absent value is not a claim, and
-            // storing the default for it would erase the one distinction the data still holds.
-            if (string.IsNullOrWhiteSpace(g.SaveLayout)) continue;
-            if (g.Stores.SteamAppId is { Length: > 0 } appId) map[appId] = Parse(g.SaveLayout);
-        }
-        return map;
-    }
-
     /// <summary>The declared layout for a Steam app id, or <see cref="SaveLayout.TypedFiles"/> when
     /// the feed says nothing.</summary>
     public static SaveLayout ByAppId(string? steamAppId)
-        => !string.IsNullOrEmpty(steamAppId) && Map.TryGetValue(steamAppId!, out var l)
-            ? l
-            : SaveLayout.TypedFiles;
+        => Parse(ManifestIdLookup.EntryBySteamAppId(steamAppId)?.SaveLayout);
+
+    /// <summary>The declared layout for a registered game, resolved through every identity it carries
+    /// (<see cref="ManifestIdLookup.EntryFor"/>), or <see cref="SaveLayout.TypedFiles"/>.</summary>
+    public static SaveLayout For(GameEntry? game)
+        => Parse(ManifestIdLookup.EntryFor(game)?.SaveLayout);
 }
