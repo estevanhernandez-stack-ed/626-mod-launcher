@@ -133,7 +133,9 @@ A tree is only a place to look. An entry in it moves with a mod when every one o
 - it sits at the top of a declared tree, and its name equals the mod's (stage one's comparison, unchanged)
 - no other row of the game has the same name key, so exactly one mod claims it
 - it is not, and does not hold, another declared tree or one of the game's own mod folders
-- the tree is not inside a folder another tool owns (`ToolOwnership`)
+- the tree is not inside a folder another tool owns (`ToolOwnership`). `ReDeployed` counts as owned: a
+  folder the user took over and the other manager deployed back into holds that manager's files again,
+  not 626's to move
 - the row itself is not read-only
 
 An entry that fails any rule stays where it is, as every entry does today, and the row still lists it.
@@ -167,21 +169,29 @@ existing `disabled/<Mod>`, not inside it.
 ### The operation
 
 It all runs through the existing `Scanner.DisableEntry` and `Scanner.EnableMod`; there is no second path.
-Bulk toggles, loadouts, profiles and the MCP's `set_mod_enabled` reach it unchanged. Safe Clear does not:
-it runs through `RestorePointEngine`, not `DisableEntry` or `EnableMod`, so it does not yet know a mod's
-extra trees. It is listed under "Follow-ups".
+Bulk toggles, loadouts, profiles and the MCP's `set_mod_enabled` reach it unchanged. Safe Clear's
+mods-active end state re-enables through `EnableMod` too. Its vanilla move does not: it runs through
+`RestorePointEngine`, which does not yet know a mod's extra trees. It is listed under "Follow-ups".
 
 **Off:**
 1. Work out the movable entries (the rules above) and check every holding destination before anything moves.
 2. Move the main files (unchanged).
 3. Move each extra entry into `disabled-trees`, added to the same rollback list.
-4. If anything fails, move every moved item back, extras first. Nothing stays held, and no record is
-   written. If an item cannot go back, today's stranded handling applies, and the message names it.
+4. If anything fails, move every moved item back, newest first, so extras come back before the main
+   files. When every item goes back, nothing stays held and no record is written. When a main file can't go
+   back, today's stranded handling applies and the message names it. When an extra can't go back, the
+   rollback STOPS there: the main files stay held with a `meta.json`, so the mod lists as off, and the
+   message names what is held where. Moving the main files back would list the mod as on while part of it
+   sits in `disabled-trees`, where no toggle looks for a live mod; held with a record, turning it on
+   restores the main files and every held extra together.
 5. Write `meta.json` and clear mirrors (unchanged).
 
 **On:**
 1. Check every destination, main and extra, before anything is written. A collision refuses and changes
-   nothing.
+   nothing. Ownership is checked again here, for the main location and for every tree with a held entry:
+   a tree another tool took (or re-deployed into, which counts as owned) while the mod was off skips the
+   whole turn-on, with "target folder now owned by another tool", rather than bringing the mod back with
+   one tree missing. The row's status says so: "<Mod> is still off: <reason>."
 2. Restore the main files (unchanged).
 3. Move each held extra entry back to `<gameRoot>/<tree>/<entry>`.
 4. If anything fails, undo the extras already restored, then remove the main copies this run created
@@ -203,6 +213,7 @@ manifest's order, each once.
 | Live, some held back, name can't be told apart (contested or protected) | the same line | Adds: Files in r6/tweaks stay where they are: 626 can't tell they belong only to this mod. |
 | Live, some held back, another tool owns the folder | the same line | Adds: Files in red4ext/plugins stay where they are: another tool manages that folder. (Plural: those folders.) |
 | Live, a tree where one entry moves and another is kept | the tree is listed once | The sentence opens "Some files in" instead of "Files in". |
+| Live, files still held in `disabled-trees` (a leftover) | the line, then `Some files are held in <path>.` | Adds: 626 can't tell which folders these came from. |
 | Off, held in `disabled-trees` | `Also turned off in r6/scripts, r6/tweaks` | 626 turned these off with the mod. Turning it on puts them back. |
 | Off, entries still live (turned off before stage two) | `Files in r6/tweaks are still on.` | These files didn't move when the mod was turned off. Turn it on and off again to move them. |
 | Off, both held and still live | `Also turned off in r6/scripts. Files in r6/tweaks are still on.` | The held tooltip, then: Files in r6/tweaks didn't move when the mod was turned off. Turn it on and off again to move them. |
@@ -235,8 +246,20 @@ before. The row text was verified by a UIA walk in both states.
 
 ## Follow-ups
 
-- **Safe Clear and extra trees.** Safe Clear runs through `RestorePointEngine`, which does not know a
-  mod's extra trees, so it doesn't clear or restore them.
+- **Safe Clear and extra trees.** Replaying a restore point used to copy the archived `disabled-trees`
+  back after a mods-active end state, holding a second copy of entries that were live again (fixed: the
+  replay skips it, as it skips `disabled`). What is still open: Safe Clear's vanilla move doesn't know
+  extra trees, so a mod's entries there stay in the game.
+- **Uninstall with held extras is refused.** A turned-off mod with files in `disabled-trees/<Mod>` can't
+  be uninstalled ("Turn <Mod> on first: some of its files are held in other folders."), because the
+  delete knows only the main files and would orphan them. Pending Este's call on whether uninstall
+  should delete them.
+- **The cross-volume fallback is untested on real hardware.** `SafeMove`'s copy-then-delete is covered by
+  unit tests, not by a real two-drive install (smoke entry "B4 cross-volume").
+- **Bulk disable cost is O(n²) on tree games.** Each `DisableEntry` builds the mod list to find claimants.
+  A bulk toggle should build `ExtraTreeRows` once and pass it down.
+- **`isOwned` isn't ancestor-aware for extra trees.** Ownership is resolved on the tree folder itself; a
+  marker in an ancestor of a declared tree isn't seen.
 - **A warning on one toggle path only.** An `EnableOutcome` warning shows on the single-row toggle. Bulk
   enable doesn't surface it.
 - **Per-reload cost on tree games.** A reload on a game with extra trees runs a second `BuildModList`.

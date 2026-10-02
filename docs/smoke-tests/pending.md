@@ -2390,3 +2390,24 @@ believed it was off while part of it still loaded.
 **Verified 2026-10-02 by the agent on Nebuchadnezzar:** BlackChrome on Este's install. 31 files in three
 trees moved off; turning it back on left 2,527 files across the six folders byte-identical. The row text
 was checked by UIA in both states.
+
+## B4 cross-volume: data dir on a different drive from the game
+
+When the game and 626's data folder sit on different drives, a turn-off can't move an extra-tree entry by
+rename. `SafeMove` falls back to copy then delete, and removes its own partial copy if that fails. Unit
+tests cover the fallback; a real two-drive install does not yet.
+
+1. **Put them on different drives.** Move 626's data folder to another drive (Settings), or use a machine
+   where the game and the data folder already differ.
+2. **Pick a mod** on Cyberpunk 2077 with folders named after it in at least two extra trees
+   (`r6/scripts`, `r6/tweaks`). Record a hash of every file under those trees and `archive/pc/mod`.
+3. **Turn it off.** The row reads `Also turned off in ...`. The entries are under
+   `<dataDir>/disabled-trees/<Mod>/...` on the other drive, and gone from the game.
+4. **Turn it on.** The entries are back in the game, and `disabled/<Mod>` and `disabled-trees/<Mod>` are
+   gone.
+5. **Compare.** Every hash from step 2 matches: a byte-identical round trip.
+
+Why it matters: a copy-then-delete is the one move that can leave two copies or half of one, and it only
+happens across volumes.
+
+**Not yet verified.**
