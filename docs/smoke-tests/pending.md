@@ -2411,3 +2411,25 @@ Why it matters: a copy-then-delete is the one move that can leave two copies or 
 happens across volumes.
 
 **Not yet verified.**
+
+## B4U: uninstall confirm names held folders
+
+Uninstall no longer refuses a mod whose extra-tree entries are held in `disabled-trees/<Mod>`. The confirm
+dialog says what it will delete, held folders included, and the user can cancel.
+
+1. **Pick a mod** on Cyberpunk 2077 with entries in extra trees (`r6/scripts`, `r6/tweaks`, the CET mods
+   folder). Record a hash of every file under those trees and `archive/pc/mod`.
+2. **Turn it off.** Its extra-tree entries move to `<dataDir>/disabled-trees/<Mod>/...`.
+3. **Click Uninstall** on its row and read the dialog.
+4. **Press Cancel.** Nothing moves: `disabled/<Mod>` and `disabled-trees/<Mod>` are as they were.
+5. **Turn it back on**, and compare every hash from step 1.
+
+Expected: the dialog lists `r6/scripts`, `r6/tweaks` and the CET mods folder; Cancel changes nothing; the
+round trip is byte-identical.
+
+Why it matters: uninstall is the one destructive mod operation, and the held folder sits outside the game,
+where the user can't see it. The dialog is the only place they learn it goes too.
+
+**Verified 2026-10-02 by the agent on Nebuchadnezzar.** Dialog text: `Permanently delete "Black Chrome UA"?
+This removes the mod's files and can't be undone. 626 is also holding some of its files in r6/scripts,
+r6/tweaks, bin/x64/plugins/cyber_engine_tweaks/mods, and will delete those too.`

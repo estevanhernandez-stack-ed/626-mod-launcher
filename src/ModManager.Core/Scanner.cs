@@ -589,6 +589,14 @@ public static class Scanner
 
     internal static void UninstallMod(string name, GameContext c)
     {
+        // A name that leads outside disabled/ is refused before anything is deleted: the turned-off-copy
+        // delete below joins the name onto that root, and for ".." that join is the whole data folder.
+        // An empty key used to join onto disabled/ as disabled/ itself: every turned-off mod, deleted.
+        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException(ModUninstall.NoNameMessage);
+        if (FolderNames.Escapes(c.DisabledRoot, name))
+            throw new InvalidOperationException(
+                $"626 won't uninstall \"{name}\": that name leads outside 626's folder for turned-off mods. Nothing was changed.");
+
         var m = BuildModList(c).FirstOrDefault(x => x.Name == name);
         if (m is not null)
         {
@@ -603,10 +611,12 @@ public static class Scanner
             // paks-root location, even if classification was wrong or a stale Mod reaches here. No-op for
             // every other form (the scan also filters base paks out, so this can't be hit by name).
             GuardNoBasePakMove(m, loc);
+            // The scan's own entries, by their real names: an odd name (trailing dot or space) is deleted
+            // exactly, never the lookalike entry Windows would normalise its path onto.
             foreach (var f in m.Files)
             {
-                DeletePath(Path.Combine(loc.Abs, f));
-                foreach (var mp in loc.Mirrors) DeletePath(Path.Combine(mp, f));
+                DeleteEntryExactly(loc.Abs, f);
+                foreach (var mp in loc.Mirrors) DeleteEntryExactly(mp, f);
             }
 
             // Forget the install records that claimed those files. The write site is careful never to
@@ -622,9 +632,20 @@ public static class Scanner
                 foreach (var manifest in ModInstallRegistry.ClaimsOn(c.DataDir, f))
                     ModInstallRegistry.Remove(c.DataDir, manifest.InstallId);
         }
-        var held = Path.Combine(c.DisabledRoot, name);
-        if (Directory.Exists(held)) DeleteDir(held);
+        // The turned-off copy, only when it is this mod's own: disabled/ lists an entry by that real name.
+        // Otherwise there is no copy of this mod's to delete, and joining the name would reach a different
+        // mod's (Foo. opens Foo, an 8.3 alias opens the long name). An entry whose real name ends in a dot or
+        // space (a \\?\-aware tool made it) is deleted through its exact path, so the real Foo. goes and its
+        // lookalike Foo never does. A name with a separator or ':' can't match a listed entry at all.
+        if (FolderNames.HasEntryNamed(c.DisabledRoot, name))
+            DeletePath(FolderNames.NamesOneFolder(name)
+                ? Path.Combine(c.DisabledRoot, name)
+                : FolderNames.ExactPath(c.DisabledRoot, name));
     }
+
+    /// <summary>Delete one entry the scan enumerated under <paramref name="baseDir"/>, by its real relative
+    /// name (see <see cref="FolderNames.ExactPath"/>).</summary>
+    internal static void DeleteEntryExactly(string baseDir, string relative) => DeletePath(FolderNames.ExactPath(baseDir, relative));
 
     private static void DeletePath(string p)
     {

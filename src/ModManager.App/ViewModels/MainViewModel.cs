@@ -1546,6 +1546,36 @@ public sealed partial class MainViewModel : ObservableObject
         finally { row.IsBusy = false; }
     }
 
+    // An uninstall's answer, plus a reload that failed after it: the uninstall did what its line says, and the
+    // list on screen may be stale, so both are said rather than one hiding the other.
+    private static string WithReloadFailure(string? status, Exception reloadFailure)
+        => status is null
+            ? ErrorRemedy.Describe(reloadFailure)
+            : $"{status} The list couldn't refresh: {ErrorRemedy.Describe(reloadFailure)}";
+
+    // The family's variants as the listing reports them now, so the preview and the delete see the same mods.
+    private static List<Mod> FamilyMembers(GameContext ctx, ModRowViewModel row)
+    {
+        var names = row.VariantOptions.Select(o => o.ModName).ToHashSet(StringComparer.Ordinal);
+        return ModListing.Resolve(ctx.Game).Where(m => names.Contains(m.Name)).ToList();
+    }
+
+    /// <summary>What uninstalling this row will delete (its family's variants for a family row), for the
+    /// confirm dialog: the same <see cref="ModUninstall.Preview(GameContext, IReadOnlyList{Mod})"/> the agent's
+    /// uninstall_mod reads. Reads the disk: one directory walk per mod, before a modal, so on the UI thread.
+    /// Null when there is no game or the preview refuses; a refusal is said in the status line.</summary>
+    public UninstallPreview? PreviewUninstall(ModRowViewModel row)
+    {
+        if (_ctx is null) return null;
+        try
+        {
+            return row.HasVariantOptions
+                ? ModUninstall.Preview(_ctx, FamilyMembers(_ctx, row))
+                : ModUninstall.Preview(_ctx, row.Mod);
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); return null; }
+    }
+
     /// <summary>Permanently uninstall every variant in a family. Gated by a confirm dialog in the
     /// view that names the count. Also clears the family's last-active memory so a future variant
     /// add doesn't auto-enable into a stale slot.</summary>
@@ -1553,21 +1583,34 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null || !row.HasVariantOptions) return;
         IsBusy = true;
+        string? status = null;
+        var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
         try
         {
-            var familyKey = string.IsNullOrEmpty(row.Mod.BaseTitle) ? row.DisplayName : row.Mod.BaseTitle!;
             // One decision for the family, by the same rule as a single uninstall: every variant is
             // checked before any is deleted, so a refused member can't leave the family half-deleted.
-            var names = row.VariantOptions.Select(o => o.ModName).ToHashSet(StringComparer.Ordinal);
             var ctx = _ctx;
-            var members = ModListing.Resolve(ctx.Game).Where(m => names.Contains(m.Name)).ToList();
+            var members = FamilyMembers(ctx, row);
             await Task.Run(() => ModUninstall.RunAll(ctx, members));
             _familyLastActive.Remove(familyKey);
-            await ReloadModsAsync();   // first: it resets the status line to the enabled count
-            StatusText = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
+            status = $"Uninstalled {row.DisplayName} and {row.VariantOptions.Count} variant{(row.VariantOptions.Count == 1 ? "" : "s")}.";
         }
-        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsBusy = false; }
+        catch (HeldFolderLeftException e)
+        {
+            // The variants are gone; only some held files are left. Forget the family like a clean uninstall.
+            _familyLastActive.Remove(familyKey);
+            status = ErrorRemedy.Describe(e);
+        }
+        catch (Exception e) { status = ErrorRemedy.Describe(e); }
+        finally
+        {
+            // Reload whatever happened, so the rows show what is really on disk after a partial failure, and
+            // first, because it resets the status line to the enabled count.
+            try { await ReloadModsAsync(); }
+            catch (Exception e) { status = WithReloadFailure(status, e); }
+            if (status is not null) StatusText = status;
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -4431,17 +4474,24 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         IsBusy = true;
+        string? status = null;
         try
         {
             // The same rule and the same deletes as the agent's uninstall_mod (ModUninstall).
             var ctx = _ctx;
             await Task.Run(() => ModUninstall.Run(ctx, row.Mod));
-            // Reload first: it resets the status line to the enabled count, which would replace this.
-            await ReloadModsAsync();
-            StatusText = $"Uninstalled {row.DisplayName}.";
+            status = $"Uninstalled {row.DisplayName}.";
         }
-        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
-        finally { IsBusy = false; }
+        catch (Exception e) { status = ErrorRemedy.Describe(e); }
+        finally
+        {
+            // Reload whatever happened, so the row shows what is really on disk after a partial failure, and
+            // first, because it resets the status line to the enabled count, which would replace the answer.
+            try { await ReloadModsAsync(); }
+            catch (Exception e) { status = WithReloadFailure(status, e); }
+            if (status is not null) StatusText = status;
+            IsBusy = false;
+        }
     }
 
     // ---------- config cockpit ----------

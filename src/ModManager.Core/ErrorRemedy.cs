@@ -20,6 +20,9 @@ public static class ErrorRemedy
         // Already says what happened, that nothing moved, and what to do. The generic remedy below
         // would add "try again after a Refresh", which cannot help: the fix is choosing a copy.
         HeldCopyCollisionException => e.Message,
+        // Already says the mod went, which folder is left, and what to do; the in-use wording below would
+        // hide the folder.
+        HeldFolderLeftException => e.Message,
         // Win32 error codes discriminate first — exception MESSAGES are localized to the OS
         // language, so English fragments only serve as a fallback for non-Win32 IOExceptions.
         IOException io when Win32(io) is 32 or 33 || Mentions(io, "being used by another process") =>
