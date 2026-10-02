@@ -29,10 +29,18 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this);
 
+        // One mod, one row (C5): a name match for a key an adoption will already write folds into
+        // that adoption's row instead of standing as a second pre-checked change. The apply would drop
+        // it anyway (LooseIdentify.ExcludeKeys); the dialog now says so rather than counting it.
+        var covered = IdentifyReviewOverlap.CoveredKeys(newToList);
+        var alsoNamed = nowIdentified
+            .Where(i => covered.ContainsKey(i.ModKey))
+            .GroupBy(i => covered[i.ModKey])
+            .ToDictionary(g => g.Key, g => g.Where(i => i.Match is not null).Select(i => i.Match!.Name).ToList());
+
         foreach (var p in newToList)
         {
             var identified = p.Evidence != AdoptionEvidence.None;
-            var loader = p.Candidate.Kind == DiscoveryKind.ProxyLoader;
             // See DiscoveryReviewDialog: a downloaded archive that was never installed has
             // nothing for adoption to attach metadata to. Both review surfaces read the one Core
             // rule so they cannot drift (A14).
@@ -42,32 +50,15 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
             {
                 Adoption = p,
                 WillWrite = p.Reach is null or AdoptionReach.NamesAMod,
-                // A loader is described as what it is rather than as an unidentified mod. Saying
-                // "not identified" about a version.dll implies we failed to name something nameable;
-                // we didn't — the name genuinely doesn't determine which loader it is. Wording is
-                // kept identical to DiscoveryReviewDialog so the two surfaces can't drift.
-                Headline = (loader, inert, identified) switch
-                {
-                    (true, _, _) => $"{p.Candidate.FileName} — mod loader",
-                    (_, true, true) => $"{p.Candidate.FileName} — {p.Title} (downloaded, not installed)",
-                    (_, true, false) => $"{p.Candidate.FileName} — downloaded, not installed",
-                    (_, _, true) => $"{p.Candidate.FileName} — {p.Title}",
-                    _ => $"{p.Candidate.FileName} — not identified",
-                },
-                Detail = (loader, inert, named, p.Evidence) switch
-                {
-                    (true, _, _, _) => $"Found at {p.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
-                    (_, true, _, _) => $"Found at {p.Candidate.RelativePath}. This is the download, not an installed mod — nothing from it is in the game folder. Adopting names mods that are already installed, so it can't help here. Drop the file on the window to install it, and it'll be listed.",
-                    (_, _, true, _) => $"Found at {p.Candidate.RelativePath}. Already named — nothing to add.",
-                    (_, _, _, AdoptionEvidence.Md5) => $"Exact match by file hash. {p.Candidate.RelativePath}",
-                    (_, _, _, AdoptionEvidence.NameIndex) => $"Matched by name{(p.Author is null ? "" : $" · by {p.Author}")}. {p.Candidate.RelativePath}",
-                    _ => $"Found at {p.Candidate.RelativePath}. Adopt it to manage it anyway.",
-                },
+                // One spelling for both review surfaces (AdoptionReviewText), so they cannot drift.
+                Headline = AdoptionReviewText.Headline(p),
+                Detail = AdoptionReviewText.Detail(p)
+                         + (alsoNamed.TryGetValue(p, out var names) ? AdoptionReviewText.AlsoNamed(names) : ""),
                 Approve = identified && !inert && !named,
             });
         }
 
-        foreach (var p in nowIdentified)
+        foreach (var p in nowIdentified.Where(i => !covered.ContainsKey(i.ModKey)))
         {
             _identified.Add(p.Match is null
                 ? new IdentifyReviewRow { ModKey = p.ModKey, Headline = $"{p.CleanQuery} — no confident match" }
