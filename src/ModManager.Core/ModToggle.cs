@@ -24,6 +24,31 @@ namespace ModManager.Core;
 public static class ModToggle
 {
     public static async Task SetEnabledAsync(GameContext ctx, Mod mod, bool enabled)
+        => await DispatchAsync(ctx, mod, enabled);
+
+    /// <summary>
+    /// <see cref="SetEnabledAsync"/>, reporting whether the change took and, when it can say, why not. A
+    /// turn-on skipped without throwing (the target folder is now another tool's, the holding record is
+    /// unreadable) used to leave the row silent; this is what lets it say so.
+    ///
+    /// <para>Same dispatch, no second lane chooser: both methods run <see cref="DispatchAsync"/>. On the
+    /// scanner's lane a turn-on carries <see cref="Scanner.EnableOutcome"/>, so <c>Applied</c> and
+    /// <c>Reason</c> come from it, including the leftover warning on an applied turn-on. Every other lane and
+    /// every turn-off reports <c>Applied</c> from <see cref="IsApplied"/>, with no reason.</para>
+    ///
+    /// <para><see cref="SetEnabledAsync"/> shares the dispatch rather than calling this and discarding the
+    /// result: <see cref="IsApplied"/> is a full listing, and a profile load toggles every mod through
+    /// <see cref="SetEnabledAsync"/>, so paying it there would make a loadout one listing per mod.</para>
+    /// </summary>
+    public static async Task<ToggleOutcome> SetEnabledWithOutcomeAsync(GameContext ctx, Mod mod, bool enabled)
+    {
+        var outcome = await DispatchAsync(ctx, mod, enabled);
+        if (outcome is not null) return new ToggleOutcome(outcome.Enabled, outcome.Reason);
+        return new ToggleOutcome(IsApplied(ctx.Game, mod.Name, enabled), null);
+    }
+
+    // The one lane chooser. Returns the scanner's enable outcome when the change went through it, else null.
+    private static async Task<Scanner.EnableOutcome?> DispatchAsync(GameContext ctx, Mod mod, bool enabled)
     {
         var game = ctx.Game;
 
@@ -37,7 +62,7 @@ public static class ModToggle
         if (mod.Location == ProxyLoaderRows.LocationTag)
         {
             SetProxyLoaderEnabled(game, mod.Name, enabled);
-            return;
+            return null;
         }
 
         // Also appended by ModListing, so BuildModList cannot resolve it by name and an ordinary move
@@ -45,23 +70,22 @@ public static class ModToggle
         if (mod.Class == "library")
         {
             await Scanner.SetAppendedRowEnabledAsync(mod, enabled, ctx);
-            return;
+            return null;
         }
 
         switch (ModListing.MechanismFor(game, ctx))
         {
             case ListingMechanism.ModEngine2:
                 ModEngine2Writer.SetEnabled(game, mod.Name, enabled);
-                break;
+                return null;
             case ListingMechanism.DirectInject:
                 SetDirectInjectEnabled(game, mod.Name, enabled);
-                break;
+                return null;
             case ListingMechanism.LooseRoot:
                 SetLooseRootEnabled(game, mod.Name, enabled);
-                break;
+                return null;
             default:
-                await Scanner.SetLoaderModEnabledAsync(mod.Name, enabled, ctx);
-                break;
+                return await Scanner.SetLoaderModEnabledWithOutcomeAsync(mod.Name, enabled, ctx);
         }
     }
 
@@ -122,3 +146,9 @@ public static class ModToggle
         else DirectInject.DisableSingleFile(folder, holding, proxyDll);
     }
 }
+
+/// <summary>What <see cref="ModToggle.SetEnabledWithOutcomeAsync"/> reports. <c>Applied</c>: the mod is now in
+/// the requested state. <c>Reason</c>: why a skipped change was skipped, as a lowercase clause ("target folder
+/// now owned by another tool"); on an applied turn-on, a warning (files left in <c>disabled-trees</c>). Null
+/// when there is nothing to say or the lane can't say it.</summary>
+public sealed record ToggleOutcome(bool Applied, string? Reason);

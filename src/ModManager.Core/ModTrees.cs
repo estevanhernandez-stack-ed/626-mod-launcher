@@ -18,6 +18,12 @@ namespace ModManager.Core;
 public sealed class ModTrees
 {
     private readonly Dictionary<string, List<string>> _treesByName = new(StringComparer.OrdinalIgnoreCase);
+    // Stage two: every top-level entry, not only which trees have one, keyed by name key. Insertion
+    // order is the manifest's tree order, then name order within a tree.
+    private readonly Dictionary<string, List<ModTreeEntry>> _entriesByKey = new(StringComparer.OrdinalIgnoreCase);
+    // Every declared tree's absolute folder plus the game's own mod folders: the places an entry must
+    // not be, or hold, to be safe to move.
+    private readonly List<string> _protectedDirs = new();
 
     public static readonly ModTrees Empty = new();
 
@@ -41,6 +47,7 @@ public sealed class ModTrees
         var own = (ownLocations ?? Enumerable.Empty<string>())
             .Select(FullDir).Where(p => p.Length > 0).ToList();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        index._protectedDirs.AddRange(own);
 
         foreach (var raw in trees)
         {
@@ -52,13 +59,14 @@ public sealed class ModTrees
 
             var dir = FullDir(Path.Combine(gameRoot, tree));
             if (dir.Length == 0 || !IsBelow(dir, root)) continue;
+            index._protectedDirs.Add(dir);
             if (own.Any(o => SameDir(o, dir) || IsBelow(o, dir) || IsBelow(dir, o))) continue;
 
             IEnumerable<string> entries;
             try { entries = Directory.Exists(dir) ? Directory.EnumerateFileSystemEntries(dir).ToList() : Enumerable.Empty<string>(); }
             catch { continue; }   // unreadable: say nothing about it rather than guess
 
-            foreach (var entry in entries)
+            foreach (var entry in entries.OrderBy(e => Path.GetFileName(e), StringComparer.OrdinalIgnoreCase))
             {
                 // A folder is known by its whole name ("Foo.Bar" stays "Foo.Bar"); a file by its stem
                 // ("CoolMod.yaml" is CoolMod's).
@@ -68,6 +76,10 @@ public sealed class ModTrees
                 if (!index._treesByName.TryGetValue(key, out var list))
                     index._treesByName[key] = list = new List<string>();
                 if (!list.Contains(tree, StringComparer.OrdinalIgnoreCase)) list.Add(tree);
+
+                if (!index._entriesByKey.TryGetValue(key, out var moves))
+                    index._entriesByKey[key] = moves = new List<ModTreeEntry>();
+                moves.Add(new ModTreeEntry(tree, Path.GetFileName(entry), entry, dir));
             }
         }
         return index;
@@ -79,6 +91,58 @@ public sealed class ModTrees
     {
         var key = Key(modName);
         return key.Length > 0 && _treesByName.TryGetValue(key, out var trees) ? trees : Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// Stage two, "toggle": the entries in the extra trees that may move with this mod, and the trees
+    /// where an entry with its name exists but a safety rule kept it where it is. Decided here, in Core,
+    /// per entry; the manifest only says where to look.
+    ///
+    /// <para>An entry moves when its name key equals the mod's (stage one's comparison), no other row
+    /// shares that key, it is not and does not hold another declared tree or one of the game's own mod
+    /// folders, and its tree is not tool-owned. A framework's folder is named after the framework, so
+    /// it never matches a mod's key and moves only with the framework's own row.</para>
+    ///
+    /// <para>Two claimants (<c>Cool_Mod</c> and <c>CoolMod</c>) is the one case where neither may take
+    /// the entry: every matching tree is held back and nothing moves. A folder and a file with the same
+    /// key (<c>r6/scripts/CoolMod/</c>, <c>r6/tweaks/CoolMod.yaml</c>) are both the mod's. The row's own
+    /// read-only rule is not decided here.</para>
+    /// </summary>
+    /// <param name="modName">The mod's row name.</param>
+    /// <param name="otherRowNames">Every OTHER row's name in the game; the mod's own name is not one.</param>
+    /// <param name="isOwned">Whether a tree's absolute folder is owned by another tool.</param>
+    public ModTreeMoves MovableFor(string? modName, IEnumerable<string> otherRowNames, Func<string, bool> isOwned)
+    {
+        var key = Key(modName);
+        if (key.Length == 0 || !_entriesByKey.TryGetValue(key, out var entries)) return ModTreeMoves.None;
+
+        var contested = otherRowNames.Any(n => Key(n) == key);
+        var movable = new List<ModTreeEntry>();
+        var held = new List<HeldTree>();
+        foreach (var e in entries)
+        {
+            // The reason is the row's to say, so each cause is named: two claimants first (it holds every
+            // tree back), then a tree another tool owns (true of every entry in it), then the one entry
+            // that is or holds a protected folder.
+            HeldReason? reason = contested ? HeldReason.Contested
+                : isOwned(e.TreeDir) ? HeldReason.OwnedTree
+                : HoldsProtected(e.AbsPath) ? HeldReason.Protected
+                : null;
+            if (reason is { } r)
+            {
+                if (!held.Any(h => string.Equals(h.Tree, e.Tree, StringComparison.OrdinalIgnoreCase)))
+                    held.Add(new HeldTree(e.Tree, r));
+            }
+            else movable.Add(e);
+        }
+        return new ModTreeMoves(movable, held);
+    }
+
+    // Equal to, or an ancestor of, a declared tree or an own mod folder.
+    private bool HoldsProtected(string entryPath)
+    {
+        var full = FullDir(entryPath);
+        return _protectedDirs.Any(d => SameDir(d, full) || IsBelow(d, full));
     }
 
     // A name compared on its letters and digits only, case-insensitively: "CoolMod", "coolmod" and
@@ -104,4 +168,36 @@ public sealed class ModTrees
         try { return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
         catch { return ""; }
     }
+}
+
+/// <summary>One top-level entry in an extra tree: its tree (manifest spelling), its name on disk, its
+/// absolute path, and the tree's absolute folder (what ownership is asked about).</summary>
+public sealed record ModTreeEntry(string Tree, string EntryName, string AbsPath, string TreeDir);
+
+/// <summary>What <see cref="ModTrees.MovableFor"/> decided: <see cref="Movable"/> in manifest order, and
+/// <see cref="Held"/>, the trees (manifest order, once each) with an entry of the mod's name that a
+/// safety rule kept in place, each with the rule that kept it.</summary>
+public sealed record ModTreeMoves(IReadOnlyList<ModTreeEntry> Movable, IReadOnlyList<HeldTree> Held)
+{
+    public static readonly ModTreeMoves None = new(Array.Empty<ModTreeEntry>(), Array.Empty<HeldTree>());
+
+    /// <summary>The held trees' names alone, in order.</summary>
+    public IReadOnlyList<string> HeldBack => Held.Select(h => h.Tree).ToList();
+}
+
+/// <summary>A tree where an entry with the mod's name stays put, and why.</summary>
+public sealed record HeldTree(string Tree, HeldReason Reason);
+
+/// <summary>Why an extra-tree entry stays where it is when its mod is turned off.</summary>
+public enum HeldReason
+{
+    /// <summary>Another row's name reduces to the same key, so 626 can't tell whose it is.</summary>
+    Contested,
+    /// <summary>The entry is, or holds, a declared tree or one of the game's own mod folders.</summary>
+    Protected,
+    /// <summary>Another tool manages the tree.</summary>
+    OwnedTree,
+    /// <summary>The row itself moves no extra-tree files: read-only, loader-driven, or a game whose lane
+    /// is not the scanner's.</summary>
+    RowNotMoved,
 }

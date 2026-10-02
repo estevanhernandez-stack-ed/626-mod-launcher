@@ -2421,6 +2421,28 @@
    "action": "Add a game the feed learned about since the installed build shipped.",
    "expect": "The feed updates itself, the game quick-picks with the curated engine, and its mod folder resolves beside the game executable. A game whose engine markers are NOT at the top level falls to manual Set up instead - correct, but see the note.",
    "humanReason": "Needs the game actually installed from Steam, and a merged data PR whose CI regenerate has landed. An agent can drive every step, but it cannot make a machine own the game."
+  },
+  {
+   "id": "multi-tree-toggle-round-trip",
+   "title": "A Cyberpunk mod turns off and on across its trees",
+   "surface": "B4 stage two, feat/b4-multi-tree-toggle",
+   "coverage": "agentable",
+   "status": "verified",
+   "lastVerified": {
+    "release": "feat/b4-multi-tree-toggle",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "BlackChrome on Este's install: 31 files in three trees moved off; turning it on left 2,527 files across the six folders byte-identical. Row text checked by UIA in both states."
+   },
+   "steps": [
+    "Pick a Cyberpunk 2077 mod with folders named after it in r6/scripts and r6/tweaks. Note the row line.",
+    "Turn it off. The row reads 'Also turned off in ...'.",
+    "Check the folders are gone from the game and present under <dataDir>/disabled-trees/<Mod>.",
+    "Turn it on. Everything is back and both holding folders are gone."
+   ],
+   "source": "docs/smoke-tests/pending.md",
+   "action": "Toggle a multi-tree mod off and on through the app.",
+   "expect": "Every tree is byte-identical to before the round trip, and the row text names the held trees while the mod is off."
   }
  ]
 }

@@ -84,6 +84,10 @@ public sealed class GameContext
     public required string ScanSubfolders { get; init; }
     public bool HasGame { get; init; }
 
+    /// <summary>The game's extra mod trees (B4), relative to the game root, from the manifest. Where a
+    /// mod's other files live; null when the game declares none.</summary>
+    public IReadOnlyList<string>? ExtraModTrees { get; init; }
+
     /// <summary>Folders the user has taken over from another manager (loaded from taken-over.json).
     /// Posture reads this so a taken-over folder is managed despite a lingering marker. Case-insensitive.</summary>
     public IReadOnlySet<string> TakenOver { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
