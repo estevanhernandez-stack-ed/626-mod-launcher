@@ -291,6 +291,57 @@ public class DataDirMoveExecuteTests
         Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(to)!, "*.moving-*"));   // staging cleaned
     }
 
+    // M1 from the registration-repair smoke: a failed cross-drive move removed its staging folder and
+    // left the `_626mods` parent it had created on the far drive, empty. The rollback has to undo every
+    // folder the move made, and nothing it did not make.
+    [Fact]
+    public void A_failed_move_removes_the_empty_parent_folders_it_created()
+    {
+        var from = Src("a.txt", "locked.txt");
+        var drive = TestSupport.TempDir("ddm-drive-");                 // the far drive: already there
+        var to = Path.Combine(drive, "_626mods", "game");              // _626mods is not
+        var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+
+        DataDirMoveResult result;
+        using (File.Open(Path.Combine(from, "locked.txt"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = DataDirMove.Execute(forced);
+        }
+
+        Assert.False(result.Moved);
+        Assert.False(Directory.Exists(Path.Combine(drive, "_626mods")));   // the folder the move made is gone
+        Assert.True(Directory.Exists(drive));                               // the one it found stays
+        Assert.Equal(2, Directory.GetFiles(from).Length);
+    }
+
+    // The other half of "only those": a parent that existed before the move is never the move's to
+    // remove, even when it is empty, and one holding another game's data is never touched at all.
+    [Fact]
+    public void A_failed_move_leaves_a_parent_that_was_already_there()
+    {
+        var from = Src("a.txt", "locked.txt");
+        var drive = TestSupport.TempDir("ddm-drive-");
+        var shared = Path.Combine(drive, "_626mods");
+        TestSupport.Write(Path.Combine(shared, "other-game", "keep.txt"), "keep");
+        var emptyParent = Path.Combine(drive, "empty-before");
+        Directory.CreateDirectory(emptyParent);
+
+        foreach (var to in new[] { Path.Combine(shared, "game"), Path.Combine(emptyParent, "game") })
+        {
+            var forced = DataDirMove.Plan(from, to) with { Kind = DataDirMoveKind.CopyVerifyDelete };
+            DataDirMoveResult result;
+            using (File.Open(Path.Combine(from, "locked.txt"), FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                result = DataDirMove.Execute(forced);
+            }
+            Assert.False(result.Moved);
+            Assert.False(Directory.Exists(to));
+        }
+
+        Assert.True(File.Exists(Path.Combine(shared, "other-game", "keep.txt")));
+        Assert.True(Directory.Exists(emptyParent));
+    }
+
     // Moving a game's data dir is exactly when that game might be running, so a file in use is the
     // likeliest failure this path will ever see. The user needs "close the game", not the raw Win32
     // sentence with a full path in it — which tells them nothing they can act on.
