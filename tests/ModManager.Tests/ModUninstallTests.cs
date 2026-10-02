@@ -292,14 +292,14 @@ mods = [
 
     // ---- Safety rails on the held-folder delete ----
 
+    // A genuine escape: the name resolves outside the holding root. Refused, because the main uninstall would
+    // misbehave too: it deletes disabled/<name> recursively, which for ".." is the whole data folder.
     [Theory]
     [InlineData("..\\x")]
     [InlineData("..")]
     [InlineData(".")]
-    [InlineData("x\\..\\Bystander")]
-    [InlineData("Bystander.")]
-    [InlineData("Bystander ")]
-    public void A_mod_name_that_does_not_name_a_folder_directly_in_the_holding_root_throws_and_deletes_nothing(string name)
+    [InlineData("..\\..\\x")]
+    public void A_mod_name_that_escapes_the_holding_root_throws_and_deletes_nothing(string name)
     {
         var (g, ctx) = TreeGame();
         var outside = Path.Combine(ctx.DataDir, "x", "keep.txt");
@@ -316,6 +316,51 @@ mods = [
         Assert.Equal("KEEP", File.ReadAllText(outside));
         Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
         Assert.Equal("PLAIN", File.ReadAllText(pak));
+    }
+
+    // Round 2: a name that stays inside the root but can't own a folder there as written (Windows strips a
+    // trailing dot or space; ':' and separators aren't one folder name) holds nothing. It is not refused,
+    // since that made such Mod Engine 2 mods impossible to uninstall, and it never reaches the folder Windows
+    // would normalise it onto.
+    [Theory]
+    [InlineData("Bystander.")]
+    [InlineData("Bystander ")]
+    [InlineData("Bystander:alt")]
+    [InlineData("x\\..\\Bystander")]
+    public void A_name_that_cant_own_a_held_folder_holds_nothing_and_never_reaches_one(string name)
+    {
+        var (g, ctx) = TreeGame();
+        var bystander = HoldForSomeoneElse(ctx);
+        var row = new Mod { Name = name, Location = "mods", Enabled = true, Files = new List<string> { "Plain.archive" } };
+
+        Assert.Empty(ModUninstall.Preview(ctx, row).HeldFolders);
+        Assert.Null(ModUninstall.Preview(ctx, row).HeldSentence());
+        Assert.Empty(ModUninstall.Run(ctx, row));
+
+        Assert.Equal("BYSTANDER", File.ReadAllText(bystander));
+    }
+
+    // The same, for a mod the listing really shows: its main files go, and the held folder of the mod whose
+    // name it normalises onto survives.
+    [Theory]
+    [InlineData("Foo.")]
+    [InlineData("Foo ")]
+    public void A_listed_mod_whose_name_ends_in_a_dot_or_space_uninstalls_and_leaves_Foos_held_folder(string name)
+    {
+        var (g, ctx) = TreeGame();
+        var archive = Path.Combine(ctx.GameRoot, "archive", "pc", "mod", name + ".archive");
+        File.WriteAllText(archive, "FOO-ISH");
+        var foosHeld = Path.Combine(TreeHolding.ModDir(ctx, "Foo"), "r6", "scripts", "Foo", "f.reds");
+        Directory.CreateDirectory(Path.GetDirectoryName(foosHeld)!);
+        File.WriteAllText(foosHeld, "FOO");
+        var row = ModListing.Resolve(g).Single(m => m.Name == name);   // pre-condition: listed under that name
+
+        Assert.Empty(ModUninstall.Preview(ctx, row).HeldFolders);
+        ModUninstall.Run(ctx, row);
+
+        Assert.False(File.Exists(archive));
+        Assert.DoesNotContain(ModListing.Resolve(g), m => m.Name == name);
+        Assert.Equal("FOO", File.ReadAllText(foosHeld));
     }
 
     // An 8.3 short name resolves to the long-named folder it abbreviates. A mod literally named like the

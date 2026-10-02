@@ -276,12 +276,18 @@ about. The app's confirm dialog and the agent's `uninstall_mod` both read it.
 mod's own uninstall succeeds. A failure in the main uninstall leaves the held extras intact and the mod
 still listed; a later family member's failure leaves no orphan behind.
 
-- **Containment.** Checked for every mod before anything is deleted. The name must name one folder
-  directly inside `TreeHolding.Root(ctx)`, exactly as written: no separators or invalid characters, not
-  `.` or `..`, no trailing dot or space (Windows strips those, so `Bystander.` would land on `Bystander`).
-  The root must sit strictly under the data folder and must not be a link. Refused names throw and nothing
-  is deleted. The check is textual on purpose: `Path.GetFullPath` expands an existing folder's 8.3 alias,
-  so comparing the resolved name would mistake a mod named `OTHERL~1` for an escape.
+- **Containment.** Checked for every mod before anything is deleted, with three outcomes.
+  - **Refused (throws, nothing deleted).** A genuine escape, where the name resolves outside
+    `TreeHolding.Root(ctx)` (`..`, `.`, `..\x`). Refused rather than let through, because the main
+    uninstall would misbehave on the same name: it deletes `disabled/<name>` recursively, and for `..`
+    that is the whole data folder. Also refused: a root that isn't strictly under the data folder, or is a
+    link.
+  - **Nothing held.** A name that stays inside but can't name one folder there as written: a trailing dot
+    or space (Windows strips them, so `Foo.` would land on `Foo`), `:` or another invalid character, or a
+    separator (`x\..\Foo`). No preview line and no delete. The uninstall goes ahead exactly as it did before
+    held folders existed. Refusing these instead made such Mod Engine 2 mods impossible to uninstall.
+  - **The folder.** Any other name. The check is textual on purpose: `Path.GetFullPath` expands an existing
+    folder's 8.3 alias, so comparing the resolved name would misread a mod named `OTHERL~1`.
 - **Real names only.** The folder is touched only when the root lists an entry with the mod's real name
   (enumerated without a search pattern). A mod literally named `OTHERL~1` never reaches `Other Long Name
   Mod`, although opening that path would.

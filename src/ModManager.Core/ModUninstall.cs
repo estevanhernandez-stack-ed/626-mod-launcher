@@ -106,7 +106,7 @@ public static class ModUninstall
         foreach (var m in mods)
         {
             if (string.IsNullOrEmpty(m.Name)) continue;
-            var dir = HeldDir(ctx, m.Name);
+            if (HeldDir(ctx, m.Name) is not { } dir) continue;   // a name that can't own a held folder
             try
             {
                 TreeHolding.BeforeReadForTests?.Invoke(dir);
@@ -214,33 +214,43 @@ public static class ModUninstall
     }
 
     /// <summary>
-    /// The mod's holding folder, refused (throws) unless the name names a folder directly inside
-    /// <see cref="TreeHolding.Root"/>: the resolved path's parent is the root and its last segment is the name,
-    /// unchanged. That rejects separators, <c>..</c>, <c>.</c> and trailing dots or spaces, which path
-    /// resolution would otherwise quietly normalise onto another mod's folder. The root must sit strictly under
-    /// the data folder and must not be a link. The folder itself may be a link: the delete removes it as one.
+    /// The mod's holding folder, or null when the name can't own one. Three answers:
+    /// <list type="bullet">
+    /// <item><b>Throws</b> for a genuine escape: the name resolves outside <see cref="TreeHolding.Root"/>
+    /// (<c>..</c>, <c>.</c>, <c>..\x</c>, a drive-relative or rooted name). The main uninstall would misbehave
+    /// too: it deletes <c>disabled/&lt;name&gt;</c> recursively, and for <c>..</c> that is the whole data folder.
+    /// Also throws when the root isn't strictly under the data folder, or is a link.</item>
+    /// <item><b>Null</b> for a name that stays inside but can't name one folder there as written: a trailing
+    /// dot or space (Windows strips them, so <c>Foo.</c> would land on <c>Foo</c>), <c>:</c> or another
+    /// invalid character, or a separator (<c>x\..\Foo</c>). Such a mod holds nothing: no preview line, no
+    /// delete, and its uninstall goes ahead exactly as it did before held folders existed.</item>
+    /// <item><b>The path</b> otherwise, built by joining and never by resolving, because
+    /// <c>Path.GetFullPath</c> expands an existing folder's 8.3 alias. The folder itself may be a link: the
+    /// delete removes it as one.</item>
+    /// </list>
     /// </summary>
-    internal static string HeldDir(GameContext ctx, string modName)
+    internal static string? HeldDir(GameContext ctx, string modName)
     {
         var dataDir = Path.GetFullPath(ctx.DataDir);
         var root = Path.GetFullPath(TreeHolding.Root(ctx)).TrimEnd(Path.DirectorySeparatorChar);
-        // Built by joining, never by resolving: GetFullPath expands an existing folder's 8.3 alias, so a mod
-        // named OTHERL~1 would come back as another mod's long-named folder. The name is checked as text
-        // instead (the same rejections as comparing the resolved last segment, without the expansion), and
-        // the parent is checked on the resolved form.
-        var dir = Path.Combine(root, modName);
-        if (!StrictlyUnder(root, dataDir)
-            || !NamesOneFolder(modName)
-            || !string.Equals(Path.GetDirectoryName(Path.GetFullPath(dir)), root, StringComparison.OrdinalIgnoreCase))
+        if (!StrictlyUnder(root, dataDir))
             throw new InvalidOperationException(
-                $"626 won't delete \"{dir}\" for \"{modName}\": that name doesn't name a folder directly inside "
-                + $"626's holding folder {root}. Nothing was changed.");
+                $"626's holding folder {root} is not inside its data folder {dataDir}, so nothing in it was deleted.");
+
+        string resolved;
+        try { resolved = Path.GetFullPath(Path.Combine(root, modName)); }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { resolved = ""; }
+        if (!StrictlyUnder(resolved, root))
+            throw new InvalidOperationException(
+                $"626 won't uninstall \"{modName}\": that name leads outside 626's holding folder {root}. Nothing was changed.");
+
+        if (!NamesOneFolder(modName)) return null;
 
         if (Directory.Exists(root) && LinkSafeDelete.IsLink(new DirectoryInfo(root)))
             throw new InvalidOperationException(
-                $"626 won't delete \"{dir}\" for \"{modName}\": the holding folder {root} is a link, so it may lead "
+                $"626 won't delete what it holds for \"{modName}\": the holding folder {root} is a link, so it may lead "
                 + "somewhere else. Nothing was changed.");
-        return dir;
+        return Path.Combine(root, modName);
     }
 
     /// <summary>
