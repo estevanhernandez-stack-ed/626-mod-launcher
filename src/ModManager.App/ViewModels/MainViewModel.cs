@@ -644,10 +644,14 @@ public sealed partial class MainViewModel : ObservableObject
         ThemeOptions = _themes.Themes;
         RestoreThemeSelection(savedId);
         if (SelectedTheme is not { } showing) return;
-        StatusText = showing.Id == savedId
+        StatusText = _outsideThemeStatus = showing.Id == savedId
             ? $"Theme switched to {showing.Name}. It was changed outside this window."
             : $"The theme was changed outside this window to \"{savedId}\", which 626 can't open, so {showing.Name} is showing.";
     }
+
+    // The status line an outside theme change last set. A pick made here afterwards replaces it, or it
+    // would go on naming a theme that is no longer showing (PR375 live check).
+    private string? _outsideThemeStatus;
 
     // Segmented Loadout control: the selected segment tints with the theme accent; the others stay
     // transparent so the surrounding Border background shows through. Twin foregrounds keep contrast.
@@ -689,6 +693,8 @@ public sealed partial class MainViewModel : ObservableObject
         // Este's call), advisory-only, and skipped during the startup restore to keep launch quiet.
         if (value is not null && !_restoringTheme)
         {
+            if (_outsideThemeStatus is not null && StatusText == _outsideThemeStatus) StatusText = $"{value.Name} applied.";
+            _outsideThemeStatus = null;
             var contrast = ModManager.Core.Themes.ContrastReport(value);
             if (contrast.Count > 0)
                 StatusText = $"{value.Name} applied. Readability heads-up: {contrast[0]}"
