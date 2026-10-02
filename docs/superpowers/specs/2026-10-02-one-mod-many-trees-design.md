@@ -244,19 +244,49 @@ The App row text is checked with a Debug build and a UIA walk on Este's Cyberpun
 trees out of the game. Turning it back on left 2,527 files across the six folders byte-identical to
 before. The row text was verified by a UIA walk in both states.
 
+## Uninstall says what it will delete, held folders included
+
+The first cut refused to uninstall a mod with files in `disabled-trees/<Mod>`, because the delete knew only
+the main files and would have orphaned them. Este, 2026-10-02: *"let them know what it's going to do and
+let them choose to cancel or to proceed."* So the refusal (`UninstallBlock.HeldInOtherFolders`) is gone.
+A turned-off mod's held extras and a live mod's leftovers both go with the mod, after the user has been
+told.
+
+**The preview.** `ModUninstall.Preview(ctx, mods)` is read-only. It returns an `UninstallPreview`: each
+mod's name and files (`mod.Files`), and `HeldFolders`, one per mod whose `disabled-trees/<Mod>` holds
+files, with its absolute path and the declared trees it holds entries under (`TreeHolding.Held`). A folder
+whose files fit no declared tree is listed anyway, with no trees. A folder that can't be read is listed
+with `Unreadable = true` rather than guessed about. The app's confirm dialog and the agent's
+`uninstall_mod` both read it.
+
+- **App.** The dialog keeps its first sentence and its buttons (Uninstall, Cancel, default Cancel), and
+  adds one when something is held: `626 is also holding some of its files in r6/scripts, r6/tweaks, and
+  will delete those too.` (the folder's path in place of the trees when its files fit none), or for an
+  unreadable folder `626 couldn't read <path> to see what it's holding for it; anything there will be
+  deleted too.` A family's variants are merged into one sentence, each tree once.
+- **MCP.** Without `confirm: true` the message lists the main files as before, plus `and the files 626 is
+  holding for it in <path> (r6/scripts, r6/tweaks)` per held folder. With it, the tool checks the held
+  folder is gone as well as the listing, and returns the paths as `deletedHeld`.
+
+**The delete, and its rails.** `Run`/`RunAll` delete each mod's `disabled-trees/<Mod>` after the main
+uninstall has succeeded, so a failure there leaves the held extras intact and the mod still listed.
+
+- **Containment.** Checked for every mod before anything is deleted: the folder's full path must sit
+  strictly under `TreeHolding.Root(ctx)`, itself strictly under the data folder, with no link between the
+  root and the folder. A name such as `..\x`, `..` or `.` throws and nothing is deleted.
+- **No following links.** `LinkSafeDelete` walks the tree without descending into a reparse point. A
+  junction or symlink is removed as the link (`Directory.Delete(path)` non-recursively, or `File.Delete`),
+  and its target is never touched; that includes a held folder that is itself a link.
+- **Files, then folders.** Files are deleted one by one, then folders deepest first, each non-recursively.
+  No `Directory.Delete(recursive)`.
+- **Verified.** Afterwards, a folder that still holds a file or a link throws an `IOException` naming it.
+
 ## Follow-ups
 
 - **Safe Clear and extra trees.** Replaying a restore point used to copy the archived `disabled-trees`
   back after a mods-active end state, holding a second copy of entries that were live again (fixed: the
   replay skips it, as it skips `disabled`). What is still open: Safe Clear's vanilla move doesn't know
   extra trees, so a mod's entries there stay in the game.
-- **Uninstall with held extras is refused.** A mod with files in `disabled-trees/<Mod>` can't be
-  uninstalled, because the delete knows only the main files and would orphan them. The message depends on
-  whether the mod is on. Turned off: `Turn "<Mod>" on first: some of its files are held in other folders.`
-  Already on, so the files are leftovers (the manifest dropped a tree while it was off) and turning it on
-  would not clear them: `Move or remove the files held in <path> first: 626 can't tell where they belong.`,
-  with `<path>` the `disabled-trees/<Mod>` folder. Pending Este's call on whether uninstall should delete
-  them.
 - **The cross-volume fallback is untested on real hardware.** `SafeMove`'s copy-then-delete is covered by
   unit tests, not by a real two-drive install (smoke entry "B4 cross-volume").
 - **Bulk disable cost is O(n²) on tree games.** Each `DisableEntry` builds the mod list to find claimants.
