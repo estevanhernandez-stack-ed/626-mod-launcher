@@ -2,8 +2,10 @@
 
 **Date:** 2026-10-02
 **Backlog:** B4
-**Status:** Stage one ("see first") built in the same branch. Stage two ("toggle") waits on sign-off.
-**Decided by:** Este, 2026-10-02: "See first, toggle later."
+**Status:** Stage one ("see first") shipped in #370. Stage two ("toggle") designed below and signed off
+2026-10-02.
+**Decided by:** Este, 2026-10-02: "See first, toggle later." Stage two: safety is decided by Core rules,
+not a manifest field, and multi-tree toggling is on by default.
 
 ## The problem
 
@@ -80,7 +82,7 @@ The curated data lives in the `626-game-manifest` repo. Cyberpunk 2077 is the fi
 
 ## Out of scope
 
-- Toggling across trees (stage two).
+- Toggling across trees: stage two, below.
 - Intake placing an archive's files into several trees. Intake still extracts into the primary
   location, and a zip laid out from the game root is a separate problem.
 - Inferring trees for games the manifest doesn't describe.
@@ -100,3 +102,105 @@ The curated data lives in the `626-game-manifest` repo. Cyberpunk 2077 is the fi
 - a curated override carrying the field through the miner
 
 `ManifestMergeCompletenessTests` covers the merge.
+
+## Stage two: toggle
+
+Turning a mod off moves its entries in the extra trees along with its main files, as one reversible
+operation. Turning it on puts every one of them back.
+
+### What one real install says
+
+Este's Cyberpunk install, on 2026-10-02, against `archive/pc/mod`'s 206 distinct mod names:
+
+| Tree | Entries | Equal to a mod's name |
+|---|---|---|
+| `r6/scripts` | 124 | 45 |
+| `r6/tweaks` | 91 | 49 |
+| `r6/input` | 13 | 9 |
+| `red4ext/plugins` | 4 | 0 |
+| `bin/x64/plugins/cyber_engine_tweaks/mods` | 51 | 18 |
+
+That is 121 entries that stay live today when their mod is turned off. The four `red4ext/plugins` folders
+are ArchiveXL, TweakXL, Codeware and mod_settings: frameworks, none of which has a row of its own.
+
+### 1. Which trees are safe to move
+
+**Safety is per entry, decided in Core. It is not a manifest field.** The manifest is descriptive and never
+says how to turn a mod on or off (the README's operating laws); a `toggleSafe` flag would be exactly that.
+A tree is only a place to look. An entry in it moves with a mod when every one of these holds:
+
+- it sits at the top of a declared tree, and its name equals the mod's (stage one's comparison, unchanged)
+- no other row of the game has the same name key, so exactly one mod claims it
+- it is not, and does not hold, another declared tree or one of the game's own mod folders
+- the tree is not inside a folder another tool owns (`ToolOwnership`)
+- the row itself is not read-only
+
+An entry that fails any rule stays where it is, as every entry does today, and the row still lists it.
+
+### 2. A mod's files versus a framework's
+
+Name equality already separates them: a framework's folder is named after the framework, so it moves only
+when the framework's own row is turned off, and turning the framework off is what that row means. The
+single-claimant rule covers the remaining case, two rows whose names reduce to one key (`Cool_Mod` and
+`CoolMod`): neither gets the entry. On Este's install, no framework has a row, so no framework folder
+moves at all.
+
+### 3. How the holding area records it
+
+Extra entries are held at `<dataDir>/disabled-trees/<Mod>/<tree>/<entry>`. That folder sits beside the
+existing `disabled/<Mod>`, not inside it.
+
+- **The layout is the record.** The last segment is the entry; everything between `<Mod>` and it is the
+  tree. No JSON is added, so there is no new on-disk shape and no camelCase surface.
+- **Beside, not inside, on purpose.** An older 626 turning on a mod copies every entry of
+  `disabled/<Mod>` into the main folder. A held `r6/scripts/CoolMod` inside it would land in
+  `archive/pc/mod`. Beside it, an older build never sees the held entries, and they wait there until a
+  newer build restores them. That is no worse than today.
+- **Collision.** Turning off refuses, moving nothing, when `disabled-trees/<Mod>` already holds files,
+  the same rule `HoldingFolder.HoldsFiles` applies to the main holding folder.
+
+### The operation
+
+It all runs through the existing `Scanner.DisableEntry` and `Scanner.EnableMod`; there is no second path.
+Bulk toggles, loadouts, Safe Clear, profiles and the MCP's `set_mod_enabled` reach it unchanged.
+
+**Off:**
+1. Work out the movable entries (the rules above) and check every holding destination before anything moves.
+2. Move the main files (unchanged).
+3. Move each extra entry into `disabled-trees`, added to the same rollback list.
+4. If anything fails, move every moved item back, extras first. Nothing stays held, and no record is
+   written. If an item cannot go back, today's stranded handling applies, and the message names it.
+5. Write `meta.json` and clear mirrors (unchanged).
+
+**On:**
+1. Check every destination, main and extra, before anything is written. A collision refuses and changes
+   nothing.
+2. Restore the main files (unchanged).
+3. Move each held extra entry back to `<gameRoot>/<tree>/<entry>`.
+4. If anything fails, undo the extras already restored, then remove the main copies this run created
+   (unchanged). The holding folders keep everything.
+5. Tear down both holding folders.
+
+A mod whose `disabled-trees` folder is missing or empty restores exactly as before. Rows turned off before
+stage two shipped are unaffected.
+
+### The row
+
+- **Live:** `Also has files in r6/scripts, red4ext/plugins` stays. The tooltip now says: "626 turns these
+  on and off with the mod." When an entry stays put because a rule held it back, the row says that
+  instead, naming the tree.
+- **Turned off:** the line reads `Also turned off in r6/scripts, r6/tweaks`, from the held layout.
+
+### Testing
+
+New `ModTreesToggleTests` and the existing toggle suites cover:
+
+- off then on, round trip: every tree byte-identical to before, both holding folders gone
+- a failure midway through the extra moves (an entry locked open): every item back, no `meta.json`, no `disabled-trees` folder
+- a collision on enable in one extra tree: nothing written anywhere, everything still held
+- each safety rule holding its entry back: two claimants, an entry holding another tree, a tool-owned tree, a read-only row
+- a framework folder with no row of its own never moving
+- a mod turned off before stage two, with no `disabled-trees` folder, turning on unchanged
+- a held entry whose tree is gone on enable: the tree folder is recreated
+
+The App row text is checked with a Debug build and a UIA walk on Este's Cyberpunk install.
