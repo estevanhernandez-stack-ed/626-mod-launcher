@@ -23,7 +23,7 @@ namespace ModManager.Tests;
 /// </summary>
 public class SmokeCatalogueTests
 {
-    private static readonly string[] Coverages = { "harness", "agentable", "human", "untriaged" };
+    private static readonly string[] Coverages = { "harness", "agentable", "human", "untriaged", "retired" };
     private static readonly string[] Statuses = { "verified", "pending", "obsolete", "untriaged" };
 
     private static string RepoRoot()
@@ -129,6 +129,12 @@ public class SmokeCatalogueTests
 
         Assert.Contains("catalogue cases were executed", script);
         Assert.Contains("awaiting triage", script);
+
+        // The total is the cases that exist as work. Retired entries are history whose verdict another
+        // case carries; counting them would make every run look less covered than it is. And a case an
+        // agent COULD run but no harness does yet is named, never just folded into the total.
+        Assert.Contains("coverage -ne 'retired'", script);
+        Assert.Contains("have no harness case yet", script);
     }
 
     // ---------------------------------------------------------------- honesty
@@ -181,6 +187,33 @@ public class SmokeCatalogueTests
             var id = Str(c, "id");
             Assert.True(c.GetProperty("steps").GetArrayLength() > 0, $"{id} carries no steps");
             Assert.Contains("pending.md", Str(c, "source"));
+        }
+    }
+
+    [Fact]
+    public void A_retired_entry_is_obsolete_and_points_at_whatever_carries_its_verdict()
+    {
+        // Retired is the end of triage for a prose SECTION, not a way to make an awkward case vanish.
+        // It stays out of every count only because something else answers for it: a canonical case
+        // that exists in this file, or a stated reason none is needed. Pointing at an id that is not
+        // here would be the quiet deletion this file exists to prevent.
+        var ids = Cases().Select(c => Str(c, "id")).ToHashSet(StringComparer.Ordinal);
+        foreach (var c in Cases().Where(c => Str(c, "coverage") == "retired"))
+        {
+            var id = Str(c, "id");
+            Assert.Equal("obsolete", Str(c, "status"));
+            var note = Str(c, "note");
+            Assert.False(string.IsNullOrWhiteSpace(note), $"{id} is retired with no note saying why");
+            Assert.Contains("pending.md", Str(c, "source"));
+
+            var canonical = Regex.Match(note, @"; ([a-z0-9-]+(?: / [a-z0-9-]+)*) is canonical");
+            // A duplicate's whole claim is "that other case carries the verdict", so it must name the
+            // case in the one form this test can check. Reworded, the existence check would skip it.
+            if (note.StartsWith("Duplicate.", StringComparison.Ordinal))
+                Assert.True(canonical.Success, $"{id} is retired as a duplicate but its note names no canonical case as '; <id> is canonical'");
+            if (!canonical.Success) continue;
+            foreach (var target in canonical.Groups[1].Value.Split(" / "))
+                Assert.True(ids.Contains(target), $"{id} names {target} as canonical, and no such case exists");
         }
     }
 

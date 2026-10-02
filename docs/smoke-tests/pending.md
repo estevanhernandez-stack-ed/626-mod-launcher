@@ -7,8 +7,10 @@ Running log of post-merge smoke needs the orchestrator can't verify automaticall
 > executes and what a run reports against. `scripts/smoke-run.ps1` reads it, and `SmokeCatalogueTests`
 > fails the build if the two disagree about which cases exist.
 >
-> **73 of the 105 catalogue entries are `untriaged`** — inherited from the sections below and not yet
-> walked with Este. Untriaged means nobody has said whether it was exercised, which is not the same as
+> **Triage is complete (2026-10-02): nothing in the catalogue is `untriaged`.** It holds 102 live cases
+> (31 harness, 71 human) plus 18 `retired` entries. Those are sections below that were triaged as
+> duplicates of a catalogue case, or superseded, and are kept as history. A NEW section added here
+> starts untriaged until it is walked with Este. Untriaged means nobody has said whether it was exercised, which is not the same as
 > untested and not the same as pending. That distinction is the whole reason the catalogue exists:
 > read this file as a to-do list and you re-test things that were fine in May; read it as history and
 > you ship believing something was covered when it never was.

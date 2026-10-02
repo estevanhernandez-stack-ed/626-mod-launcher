@@ -506,8 +506,10 @@ Case 'settings-nothing-under-reset-but-reset' 'Wave 9 / D1' {
 
 # 'settings-plugin-button-never-hides' was retired 2026-09-14. 05002a3 compiled Nexus into every
 # build and removed the plugin feed, so RefreshPluginButton was deleted on purpose and the case failed
-# on every run afterwards. Its catalogue entry went with it: no coverage value describes a harness
-# case that no longer exists, and the plugin-delivery surface it pinned is gone from the app.
+# on every run afterwards. Its catalogue entry went with it: the plugin-delivery surface it pinned is
+# gone from the app. ('retired' does not fit it: that value keeps a triaged PROSE section as history,
+# requires a pending.md source, and points at the case that carries its verdict. A deleted harness
+# case has no prose to keep and nothing to point at.)
 
 Case 'settings-inventories-moved-not-deleted' 'Wave 9 / D1' {
     # The inventories leave Settings, but two of their actions lived ONLY there: framework Uninstall
@@ -765,8 +767,12 @@ $human = @($script:Results | Where-Object Status -eq 'NEEDS-HUMAN').Count
 # Every number below is against the CATALOGUE total, not against what this script happened to
 # run. A percentage of the cases a harness chose for itself is not coverage, and reporting one
 # is how a green run comes to mean less than it looks like it means.
-$total     = @($catalog.cases).Count
-$untriaged = @($catalog.cases | Where-Object { $_.coverage -eq 'untriaged' }).Count
+# Retired entries are prose sections kept as history after triage; another case carries each one's
+# verdict, so counting them would inflate the total with work that does not exist.
+$live      = @($catalog.cases | Where-Object { $_.coverage -ne 'retired' })
+$total     = $live.Count
+$untriaged = @($live | Where-Object { $_.coverage -eq 'untriaged' }).Count
+$agentable = @($live | Where-Object { $_.coverage -eq 'agentable' })
 
 Write-Host ''
 Write-Host '  ============================================' -ForegroundColor Cyan
@@ -774,6 +780,9 @@ Write-Host ("   {0} verified, {1} failed, {2} require a human" -f $pass, $fail, 
 Write-Host ("   {0} of {1} catalogue cases were executed" -f ($pass + $fail), $total) -ForegroundColor Cyan
 if ($untriaged -gt 0) {
     Write-Host ("   {0} still awaiting triage - neither run nor claimed" -f $untriaged) -ForegroundColor DarkYellow
+}
+if ($agentable.Count -gt 0) {
+    Write-Host ("   {0} could run here but have no harness case yet - neither run nor claimed" -f $agentable.Count) -ForegroundColor DarkYellow
 }
 Write-Host '  ============================================' -ForegroundColor Cyan
 if ($fail -gt 0) {
@@ -784,6 +793,11 @@ if ($fail -gt 0) {
 Write-Host ''
 Write-Host '  REQUIRE A HUMAN (not covered by any green above):' -ForegroundColor DarkYellow
 $script:Results | Where-Object Status -eq 'NEEDS-HUMAN' | ForEach-Object { Write-Host "   $($_.Case) - $($_.Detail)" -ForegroundColor DarkYellow }
+if ($agentable.Count -gt 0) {
+    Write-Host ''
+    Write-Host '  AGENTABLE, NOT YET IN THE HARNESS (not covered by any green above):' -ForegroundColor DarkYellow
+    $agentable | ForEach-Object { Write-Host "   $($_.id) - $($_.title)" -ForegroundColor DarkYellow }
+}
 
 $json = Join-Path $OutDir 'results.json'
 $script:Results | ConvertTo-Json -Depth 4 | Set-Content $json -Encoding UTF8
