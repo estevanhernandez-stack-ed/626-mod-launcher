@@ -64,6 +64,11 @@ public sealed record AdoptionProposal(
     /// thirteen archives that would have written nothing (A14).</summary>
     public AdoptionReach? Reach { get; init; }
 
+    /// <summary>The mod keys adoption will write to, resolved with <see cref="Reach"/> (an archive's
+    /// from its CONTENTS). Null until resolved. The review dialog reads it to show one row for a mod
+    /// that a name match also found (<see cref="IdentifyReviewOverlap"/>).</summary>
+    public IReadOnlyList<string>? WriteKeys { get; init; }
+
     public SourceSearchHit? Hit { get; init; }
 
     /// <summary>

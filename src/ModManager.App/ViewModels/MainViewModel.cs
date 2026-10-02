@@ -1105,9 +1105,9 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(LaunchButtonLabel));
             OnPropertyChanged(nameof(CurrentLaunchMode));
             OnPropertyChanged(nameof(HasNoModLane));
-            // The catalog surfaces gate on the Nexus connection plus the active game's domain, and a
-            // game switch changes both; recompute them on every row rebuild too, or the buttons never
-            // appear on switch.
+            // Search and browse gate on the Nexus connection plus the active game's domain; detail and
+            // actions gate on the connection plus the plugin's capability. A game switch can change the
+            // domain, so recompute them on every row rebuild too, or the buttons never appear on switch.
             OnPropertyChanged(nameof(CatalogAvailable));
             OnPropertyChanged(nameof(CatalogVisibility));
         NotifyBrowse();
@@ -3387,7 +3387,9 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var p in approved)
         {
             var meta = p.ToMeta();
-            var keys = await DiscoveryWriteKeysAsync(p, ctx);
+            // The keys the review showed (resolved with its reach), so the dialog and the write agree
+            // and the archive is not read twice. Unresolved there: resolve here, as before.
+            var keys = p.WriteKeys ?? await DiscoveryWriteKeysAsync(p, ctx);
             if (keys.Count == 0) { anyZeroKeyProposal = true; continue; }
             foreach (var key in keys)
             {
@@ -3482,7 +3484,7 @@ public sealed partial class MainViewModel : ObservableObject
             // says nothing about reach, which is the honest fallback.
             try { keys = await DiscoveryWriteKeysAsync(p, ctx); }
             catch { resolved.Add(p); continue; }
-            resolved.Add(p with { Reach = AdoptionReachRules.For(keys, existing) });
+            resolved.Add(p with { Reach = AdoptionReachRules.For(keys, existing), WriteKeys = keys });
         }
         return resolved;
     }

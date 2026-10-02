@@ -41,48 +41,27 @@ public sealed partial class DiscoveryReviewDialog : ContentDialog
 
         foreach (var proposal in proposals)
         {
-            var identified = proposal.Evidence != AdoptionEvidence.None;
-            var loader = proposal.Candidate.Kind == DiscoveryKind.ProxyLoader;
             // Adoption attaches metadata to mods that ARE installed. A downloaded archive that has
             // never been deployed has nothing to attach to, and saying otherwise is how thirteen
             // Fluffy downloads on a game with no natives/ folder came to sit under a heading
             // reading "Mods already installed" (A14).
             var inert = proposal.Reach == AdoptionReach.NothingToNameYet;
-            var named = proposal.Reach == AdoptionReach.AlreadyNamed;
             _rows.Add(new DiscoveryReviewRow
             {
                 Proposal = proposal,
                 // Only a row adoption can actually write for counts toward "Adopt N mods". An
                 // unresolved reach (null) keeps the old optimistic assumption rather than hiding
                 // a row we simply failed to check.
-                WillWrite = proposal.Reach is null or AdoptionReach.NamesAMod,
+                WillWrite = AdoptionReviewText.WillWrite(proposal),
                 // Only a real archive can be handed back to intake. An inert row of any other kind
                 // is not a file we could drop on ourselves, so it gets the honest copy and no offer.
                 CanInstall = inert && proposal.Candidate.Kind == DiscoveryKind.Archive,
-                // A loader is described as what it is rather than as an unidentified mod. Saying
-                // "not identified" about a version.dll implies we failed to name something nameable;
-                // we didn't — the name genuinely doesn't determine which loader it is.
-                Headline = (loader, inert, identified) switch
-                {
-                    (true, _, _) => $"{proposal.Candidate.FileName} — mod loader",
-                    (_, true, true) => $"{proposal.Candidate.FileName} — {proposal.Title} (downloaded, not installed)",
-                    (_, true, false) => $"{proposal.Candidate.FileName} — downloaded, not installed",
-                    (_, _, true) => $"{proposal.Candidate.FileName} — {proposal.Title}",
-                    _ => $"{proposal.Candidate.FileName} — not identified",
-                },
-                Detail = (loader, inert, named, proposal.Evidence) switch
-                {
-                    (true, _, _, _) => $"Found at {proposal.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
-                    // The honest version of what used to read "Adopt it to manage it anyway."
-                    (_, true, _, _) => $"Found at {proposal.Candidate.RelativePath}. This is the download, not an installed mod — nothing from it is in the game folder. Adopting names mods that are already installed, so it can't help here. Drop the file on the window to install it, and it'll be listed.",
-                    (_, _, true, _) => $"Found at {proposal.Candidate.RelativePath}. Already named — nothing to add.",
-                    (_, _, _, AdoptionEvidence.Md5) => $"Matched exactly by file hash. {proposal.Candidate.RelativePath}",
-                    (_, _, _, AdoptionEvidence.NameIndex) => $"Matched by name{(proposal.Author is null ? "" : $" · by {proposal.Author}")}. {proposal.Candidate.RelativePath}",
-                    _ => $"Found at {proposal.Candidate.RelativePath}. Adopt it to manage it anyway.",
-                },
+                // One spelling for both review surfaces (AdoptionReviewText), so they cannot drift.
+                Headline = AdoptionReviewText.Headline(proposal),
+                Detail = AdoptionReviewText.Detail(proposal),
                 // Never pre-check a row the apply cannot write for. Checked-by-default is a
                 // recommendation, and recommending a no-op is how the count got to thirteen.
-                Approve = identified && !inert && !named,
+                Approve = AdoptionReviewText.PreChecked(proposal),
             });
         }
 

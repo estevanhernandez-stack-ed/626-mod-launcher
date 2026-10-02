@@ -29,56 +29,43 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
         InitializeComponent();
         ModManager.App.Services.DialogTheming.Apply(this);
 
+        // One mod found twice (C5): a name match for a mod an approved-by-default adoption already
+        // names is linked to it, starts unticked, and counts only if that adoption is unticked
+        // (IdentifyReviewOverlap). Both choices stay on screen.
+        // A list, not a dictionary: two identical proposals are possible and must not throw.
+        var matches = nowIdentified.Select(i => (Proposal: i, By: IdentifyReviewOverlap.Coverer(newToList, i.ModKey))).ToList();
+
         foreach (var p in newToList)
         {
-            var identified = p.Evidence != AdoptionEvidence.None;
-            var loader = p.Candidate.Kind == DiscoveryKind.ProxyLoader;
-            // See DiscoveryReviewDialog: a downloaded archive that was never installed has
-            // nothing for adoption to attach metadata to. Both review surfaces read the one Core
-            // rule so they cannot drift (A14).
-            var inert = p.Reach == AdoptionReach.NothingToNameYet;
-            var named = p.Reach == AdoptionReach.AlreadyNamed;
+            // Pre-check, will-write and wording are all AdoptionReviewText's: one rule for both
+            // review surfaces, so they cannot drift (A14, C4).
             _new.Add(new IdentifyReviewRow
             {
                 Adoption = p,
-                WillWrite = p.Reach is null or AdoptionReach.NamesAMod,
-                // A loader is described as what it is rather than as an unidentified mod. Saying
-                // "not identified" about a version.dll implies we failed to name something nameable;
-                // we didn't — the name genuinely doesn't determine which loader it is. Wording is
-                // kept identical to DiscoveryReviewDialog so the two surfaces can't drift.
-                Headline = (loader, inert, identified) switch
-                {
-                    (true, _, _) => $"{p.Candidate.FileName} — mod loader",
-                    (_, true, true) => $"{p.Candidate.FileName} — {p.Title} (downloaded, not installed)",
-                    (_, true, false) => $"{p.Candidate.FileName} — downloaded, not installed",
-                    (_, _, true) => $"{p.Candidate.FileName} — {p.Title}",
-                    _ => $"{p.Candidate.FileName} — not identified",
-                },
-                Detail = (loader, inert, named, p.Evidence) switch
-                {
-                    (true, _, _, _) => $"Found at {p.Candidate.RelativePath}. This is the loader other mods ride on, not a mod itself. Several different loaders ship under this filename, so it can't be named from the file alone.",
-                    (_, true, _, _) => $"Found at {p.Candidate.RelativePath}. This is the download, not an installed mod — nothing from it is in the game folder. Adopting names mods that are already installed, so it can't help here. Drop the file on the window to install it, and it'll be listed.",
-                    (_, _, true, _) => $"Found at {p.Candidate.RelativePath}. Already named — nothing to add.",
-                    (_, _, _, AdoptionEvidence.Md5) => $"Exact match by file hash. {p.Candidate.RelativePath}",
-                    (_, _, _, AdoptionEvidence.NameIndex) => $"Matched by name{(p.Author is null ? "" : $" · by {p.Author}")}. {p.Candidate.RelativePath}",
-                    _ => $"Found at {p.Candidate.RelativePath}. Adopt it to manage it anyway.",
-                },
-                Approve = identified && !inert && !named,
+                WillWrite = AdoptionReviewText.WillWrite(p),
+                // One spelling for both review surfaces (AdoptionReviewText), so they cannot drift.
+                Headline = AdoptionReviewText.Headline(p),
+                Detail = AdoptionReviewText.Detail(p)
+                         + AdoptionReviewText.NameSearchAlso(p, matches
+                             .Where(m => m.Proposal.Match is not null && ReferenceEquals(m.By, p)).Select(m => m.Proposal.Match!.Name)),
+                Approve = AdoptionReviewText.PreChecked(p),
             });
         }
 
-        foreach (var p in nowIdentified)
+        foreach (var (p, by) in matches)
         {
+            // "No confident match" for a mod an adoption already names is not news; leave it out.
+            if (p.Match is null && by is not null) continue;
             _identified.Add(p.Match is null
                 ? new IdentifyReviewRow { ModKey = p.ModKey, Headline = $"{p.CleanQuery} — no confident match" }
                 : new IdentifyReviewRow
                 {
                     ModKey = p.ModKey,
                     Hit = p.Match,
-                    Approve = true,
+                    Approve = by is null,
                     Headline = $"{p.CleanQuery} → {p.Match.Name}"
                                + (string.IsNullOrWhiteSpace(p.Match.Author) ? "" : $" · by {p.Match.Author}"),
-                    Detail = TrimSummary(p.Match.Summary),
+                    Detail = by is null ? TrimSummary(p.Match.Summary) : AdoptionReviewText.CoveredNameMatch(by),
                 });
         }
 
@@ -100,8 +87,12 @@ public sealed partial class IdentifyReviewDialog : ContentDialog
     public IReadOnlyList<AdoptionProposal> ApprovedAdoptions()
         => _new.Where(r => r.Approve && r.WillWrite && r.Adoption is not null).Select(r => r.Adoption!).ToList();
 
+    // Only the name matches that will land: one whose mod an approved adoption names is dropped here,
+    // as the apply would drop it (LooseIdentify.ExcludeKeys), so the button counts what is written.
     public IReadOnlyList<(string ModKey, SourceSearchHit Hit)> ApprovedIdentifications()
-        => _identified.Where(r => r.Approve && r.Hit is not null).Select(r => (r.ModKey, r.Hit!)).ToList();
+        => IdentifyReviewOverlap.Effective(
+            _identified.Where(r => r.Approve && r.Hit is not null).Select(r => (r.ModKey, r.Hit!)).ToList(),
+            ApprovedAdoptions());
 
     // No PrimaryButtonClick handler on purpose. DiscoveryReviewDialog needs one because it exposes
     // its result as a PROPERTY that has to be snapshotted before the dialog closes; this dialog
