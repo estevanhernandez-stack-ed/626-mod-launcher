@@ -1932,8 +1932,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (ConfigBacked) _me2.Reorder(_ctx.Game, order);
             else
             {
-                var applied = await Scanner.ApplyLoadOrderAsync(_ctx, order);
-                if (!applied.Supported) status = applied.Reason ?? LoadOrderSupport.IndependentReason;
+                // Says "applied" only when something was; otherwise what 626 left and why.
+                status = (await Scanner.ApplyLoadOrderAsync(_ctx, order)).Describe();
             }
             IsLoadOrderMode = false;
             await ReloadModsAsync();

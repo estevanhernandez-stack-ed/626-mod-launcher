@@ -388,4 +388,114 @@ public class LoadOrderNoRenameTests : IDisposable
         Assert.True(File.Exists(Path.Combine(mods, "B.pak")));
         Assert.True(File.Exists(c.LoadOrderPath), "a rename that failed means the order isn't undone");
     }
+
+    // ---------- review round: groups, transactions, one mirror rule ----------
+
+    private (string mods, GameContext c) Cyberpunk()
+    {
+        var root = Path.Combine(_root, "Cp2");
+        var mods = Path.Combine(root, "archive", "pc", "mod");
+        Directory.CreateDirectory(mods);
+        var c = Scanner.GameContext(new GameEntry
+        {
+            Id = "cp2", GameName = "Cp2", Engine = "custom", GameRoot = root, DataDir = Path.Combine(_root, "data-cp2"),
+            FileExtensions = new[] { "archive" }, ModLocations = new[] { new ModLocation("mods", "mods", "archive/pc/mod") },
+        });
+        return (mods, c);
+    }
+
+    [Fact]
+    public async Task Undo_never_splits_a_sidecar_from_its_archive_when_the_archive_name_is_taken()
+    {
+        var (mods, c) = Cyberpunk();
+        File.WriteAllText(Path.Combine(mods, "0010__Foo.archive"), "OLD");
+        File.WriteAllText(Path.Combine(mods, "0010__Foo.archive.xl"), "OLDXL");
+        File.WriteAllText(Path.Combine(mods, "Foo.archive"), "REINSTALLED");
+        var before = Snapshot(mods);
+
+        Assert.All(Scanner.PlanUndoLoadOrder(c).Items, i => Assert.True(i.Blocked));
+        var result = await Scanner.ResetLoadOrderAsync(c);
+
+        Assert.Equal(before, Snapshot(mods));
+        Assert.Equal("626 left these as they are: 0010__Foo.archive (Foo.archive already exists), "
+            + "0010__Foo.archive.xl (Foo.archive already exists).", result.Describe());
+    }
+
+    private (string mods, string mirror, GameContext c) PlainMirror()
+    {
+        var root = Path.Combine(_root, "plainmirror");
+        var mods = Path.Combine(root, "mods");
+        var mirror = Path.Combine(root, "server");
+        Directory.CreateDirectory(mods);
+        Directory.CreateDirectory(mirror);
+        var c = PakGame("plainmirror", new ModLocation("mods", "mods", "mods") { Mirrors = new[] { "server" } });
+        return (mods, mirror, c);
+    }
+
+    [WindowsFact]
+    public async Task Undo_rolls_the_primary_back_when_the_mirror_cannot_be_renamed()
+    {
+        var (mods, mirror, c) = PlainMirror();
+        File.WriteAllText(Path.Combine(mods, "0010__A.pak"), "A");
+        File.WriteAllText(Path.Combine(mirror, "0010__A.pak"), "A");
+        Directory.CreateDirectory(c.DataDir);
+        File.WriteAllText(c.LoadOrderPath, "[\"A\"]");
+
+        LoadOrderUndoResult result;
+        using (new FileStream(Path.Combine(mirror, "0010__A.pak"), FileMode.Open, FileAccess.Read, FileShare.None))
+            result = await Scanner.ResetLoadOrderAsync(c);
+
+        Assert.Equal(0, result.Renamed);
+        Assert.StartsWith("626 left this as it is: 0010__A.pak (couldn't rename 0010__A.pak: ", result.Describe());
+
+        Assert.True(File.Exists(Path.Combine(mods, "0010__A.pak")), "the primary must not be left renamed while its mirror is not");
+        Assert.False(File.Exists(Path.Combine(mods, "A.pak")));
+        Assert.True(File.Exists(Path.Combine(mirror, "0010__A.pak")));
+        Assert.True(File.Exists(c.LoadOrderPath));
+    }
+
+    [WindowsFact]
+    public async Task Apply_rolls_the_primary_back_when_the_mirror_cannot_be_renamed()
+    {
+        var (mods, mirror, c) = PlainMirror();
+        File.WriteAllText(Path.Combine(mods, "A.pak"), "A");
+        File.WriteAllText(Path.Combine(mirror, "A.pak"), "A");
+
+        LoadOrderApplyResult result;
+        using (new FileStream(Path.Combine(mirror, "A.pak"), FileMode.Open, FileAccess.Read, FileShare.None))
+            result = await Scanner.ApplyLoadOrderAsync(c, new[] { "A" });
+
+        Assert.False(result.Saved);
+        Assert.StartsWith("626 didn't apply the load order: A (couldn't rename A.pak: ", result.Describe());
+
+        Assert.True(File.Exists(Path.Combine(mods, "A.pak")), "the primary must not be left prefixed while its mirror is not");
+        Assert.True(File.Exists(Path.Combine(mirror, "A.pak")));
+        Assert.False(File.Exists(c.LoadOrderPath), "nothing was applied, so no order is recorded");
+    }
+
+    [Fact]
+    public async Task Apply_renames_a_mod_an_owned_mirror_does_not_hold()
+    {
+        var (mods, mirror, c) = OwnedMirror();
+        File.WriteAllText(Path.Combine(mods, "A.pak"), "A");
+
+        var result = await Scanner.ApplyLoadOrderAsync(c, new[] { "A" });
+
+        Assert.Equal("Load order applied.", result.Describe());
+        Assert.True(File.Exists(Path.Combine(mods, "0010__A.pak")), "the owned mirror has no copy of A, so there is nothing to desync");
+        Assert.True(File.Exists(c.LoadOrderPath));
+    }
+
+    [Fact]
+    public async Task Apply_that_renames_nothing_records_no_order()
+    {
+        var (mods, mirror, c) = OwnedMirror();
+        File.WriteAllText(Path.Combine(mods, "A.pak"), "A");
+        File.WriteAllText(Path.Combine(mirror, "A.pak"), "A");
+
+        var result = await Scanner.ApplyLoadOrderAsync(c, new[] { "A" });
+
+        Assert.False(File.Exists(c.LoadOrderPath));
+        Assert.Equal("626 didn't apply the load order: A (a mirror folder is managed by Vortex).", result.Describe());
+    }
 }

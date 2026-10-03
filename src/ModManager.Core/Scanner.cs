@@ -1480,7 +1480,7 @@ public static class Scanner
     /// <summary>Apply an order. Returns what <see cref="LoadOrderSupport.For"/> said: when that is
     /// <see cref="LoadOrderMechanism.NotSupported"/> nothing was renamed and nothing was saved, and its
     /// <see cref="LoadOrderSupport.Reason"/> is the sentence to show.</summary>
-    public static Task<LoadOrderSupport> ApplyLoadOrderAsync(GameContext c, IReadOnlyList<string> orderedKeys) => Task.FromResult(ApplyLoadOrder(c, orderedKeys));
+    public static Task<LoadOrderApplyResult> ApplyLoadOrderAsync(GameContext c, IReadOnlyList<string> orderedKeys) => Task.FromResult(ApplyLoadOrder(c, orderedKeys));
 
     /// <summary>Undo 626's load-order renames on this game. See <see cref="PlanUndoLoadOrder"/>.</summary>
     public static Task<LoadOrderUndoResult> ResetLoadOrderAsync(GameContext c) => Task.FromResult(ResetLoadOrder(c));
@@ -1511,12 +1511,14 @@ public static class Scanner
     /// zero-padded index. Purely additive (reversible via <see cref="ResetLoadOrder"/>); modKey
     /// ignores the prefix so identity/disable are unaffected. Persists the order.
     /// </summary>
-    private static LoadOrderSupport ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
+    private static LoadOrderApplyResult ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
     {
         // Defence in depth: the App asks the same rule before load-order mode opens. A Bethesda plugin
         // renamed is a plugin the game can no longer find, so refusal here renames nothing and saves nothing.
         var support = LoadOrderSupport.For(c);
-        if (!support.Supported) return support;
+        if (!support.Supported) return new LoadOrderApplyResult(support, 0, Array.Empty<(string, string)>(), Saved: false);
+        var leftAlone = new List<(string Mod, string Why)>();
+        var placed = 0;
 
         // The game's own files are never renamed: a prefixed Skyrim.esm is a missing Skyrim.esm to the game.
         var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly && m.Loader is null && !m.IsBase).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
@@ -1526,17 +1528,24 @@ public static class Scanner
             if (!byKey.TryGetValue(key, out var m)) continue;
             var loc = LocByName(m.Location, c);
             // A mirror another tool owns is never renamed in, and renaming the primary without it would
-            // leave the two under different names (the Windrose desync). So the mod keeps its names.
-            if (loc.Mirrors.Any(mp => PostureOf(loc, mp, c).HandsOff)) { index++; continue; }
-            foreach (var f in m.Files)
+            // leave the two under different names (the Windrose desync). So a mod an owned mirror HOLDS
+            // keeps its names; one the owned mirror has no copy of has nothing to desync. Same rule undo uses.
+            if (OwnedMirrorHolding(loc, m.Files, c) is { } tool)
             {
-                var dest = LoadOrderApply.WithOrder(f, index);
-                if (dest == f) continue;
-                // Rename the primary and every server-build mirror identically so SP and MP keep
-                // the same filename — desync here strands mirror copies (the Windrose bug).
-                MoveIfFree(loc.Abs, f, dest);
-                foreach (var mp in loc.Mirrors) MoveIfFree(mp, f, dest);
+                leftAlone.Add((key, $"a mirror folder is managed by {tool}"));
+                index++;
+                continue;
             }
+            // Rename the primary and every server-build mirror identically, all or nothing, so SP and MP
+            // keep the same filename even when one copy can't be renamed (a server holding it open).
+            var dirs = new[] { loc.Abs }.Concat(loc.Mirrors).ToList();
+            var moves = m.Files
+                .Select(f => (From: f, To: LoadOrderApply.WithOrder(f, index)))
+                .Where(x => x.To != x.From)
+                .SelectMany(x => dirs.Where(d => File.Exists(Path.Combine(d, x.From))).Select(d => (Dir: d, x.From, x.To)))
+                .ToList();
+            if (MoveAllOrNone(moves) is { } why) leftAlone.Add((key, why));
+            else placed++;
             index++;
         }
         // UE4SS folder locations don't use pak prefixes — persist their relative order into the
@@ -1549,11 +1558,64 @@ public static class Scanner
             if (PostureOf(loc, loc.Abs, c).HandsOff) continue;
             var locNames = new HashSet<string>(ListSubfolders(loc.Abs), StringComparer.OrdinalIgnoreCase);
             var orderedForLoc = orderedKeys.Where(locNames.Contains).ToList();
-            if (orderedForLoc.Count > 0) Ue4ssManifest.SetOrder(loc.Abs, orderedForLoc);
+            if (orderedForLoc.Count == 0) continue;
+            Ue4ssManifest.SetOrder(loc.Abs, orderedForLoc);
+            placed += orderedForLoc.Count;
         }
 
+        // Nothing placed and something refused: no order exists on disk, so none is recorded, and the
+        // status says why instead of "Load order applied".
+        if (placed == 0 && leftAlone.Count > 0) return new LoadOrderApplyResult(support, 0, leftAlone, Saved: false);
         SaveLoadOrder(c, orderedKeys);
-        return support;
+        return new LoadOrderApplyResult(support, placed, leftAlone, Saved: true);
+    }
+
+    /// <summary>The tool owning a mirror of <paramref name="loc"/> that holds any of <paramref name="files"/>,
+    /// or null. The one rule apply and undo share for "this mod's copies can't move in step".</summary>
+    private static string? OwnedMirrorHolding(ModLocationCtx loc, IEnumerable<string> files, GameContext c)
+    {
+        var names = files.ToList();
+        foreach (var mp in loc.Mirrors)
+        {
+            if (!names.Any(f => File.Exists(Path.Combine(mp, f)))) continue;
+            var folder = PostureOf(loc, mp, c);
+            if (folder.HandsOff) return ToolName(folder.Owner, loc.Managed);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Rename every (dir, from, to) or none of them. Refuses up front when any destination exists (never
+    /// clobbers). If a move fails partway — a server holding its copy open — the moves already made are
+    /// moved back, so a mod's primary, mirrors and sidecars never end up under different names. Returns
+    /// null on success, else why nothing changed.
+    /// </summary>
+    private static string? MoveAllOrNone(IReadOnlyList<(string Dir, string From, string To)> moves)
+    {
+        foreach (var m in moves)
+            if (File.Exists(Path.Combine(m.Dir, m.To))) return $"{m.To} already exists";
+        var done = new List<(string Dir, string From, string To)>();
+        foreach (var m in moves)
+        {
+            try
+            {
+                File.Move(Path.Combine(m.Dir, m.From), Path.Combine(m.Dir, m.To), overwrite: false);
+                done.Add(m);
+            }
+            catch (Exception e)
+            {
+                var stranded = new List<string>();
+                for (var i = done.Count - 1; i >= 0; i--)
+                {
+                    var d = done[i];
+                    try { File.Move(Path.Combine(d.Dir, d.To), Path.Combine(d.Dir, d.From), overwrite: false); }
+                    catch { stranded.Add(Path.Combine(d.Dir, d.To)); }
+                }
+                var why = $"couldn't rename {m.From}: {e.Message.TrimEnd('.')}";
+                return stranded.Count == 0 ? why : why + "; and couldn't put back " + string.Join(", ", stranded);
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -1576,67 +1638,77 @@ public static class Scanner
             // externally), renaming it would corrupt the tool's manifest. Same rule apply used (PostureOf),
             // so a declared-managed folder is skipped and a taken-over one is undone.
             if (PostureOf(loc, loc.Abs, c).HandsOff) continue;
-            var heldMirrors = loc.Mirrors
-                .Select(m => (Dir: m, Folder: PostureOf(loc, m, c)))
-                .Where(x => x.Folder.HandsOff)
-                .Select(x => (x.Dir, Tool: ToolName(x.Folder.Owner, loc.Managed)))
-                .ToList();
             var dirs = new[] { loc.Abs }.Concat(loc.Mirrors).ToList();
-            var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+            // Files by name -> the folders holding them, and by name -> the mod group they belong to. A group
+            // is one mod: its files (ModKey, so Cool_P.pak/.ucas/.utoc together) plus their sidecars.
+            var holdersOf = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            var groupOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var order = new List<string>();
             foreach (var dir in dirs)
             {
-                foreach (var f in PrefixedFilesIn(dir, c))
+                foreach (var (f, group) in PrefixedFilesIn(dir, c))
                 {
-                    if (!byName.TryGetValue(f, out var holders)) { byName[f] = holders = new List<string>(); order.Add(f); }
+                    if (!holdersOf.TryGetValue(f, out var holders))
+                    {
+                        holdersOf[f] = holders = new List<string>();
+                        groupOf[f] = group;
+                        order.Add(f);
+                    }
                     holders.Add(dir);
                 }
             }
-            foreach (var f in order)
+
+            foreach (var group in order.GroupBy(f => groupOf[f], StringComparer.OrdinalIgnoreCase))
             {
-                var to = LoadOrderApply.StripOwnPrefix(f);
-                var holders = byName[f];
-                // A collision in ANY copy blocks every copy, so a mirror never ends up under a different
-                // name from its primary (the Windrose desync, in reverse).
-                var collision = holders.Any(d => File.Exists(Path.Combine(d, to)));
-                // An owned mirror holding the same file blocks every copy, for the same lockstep reason.
-                string? heldBy = heldMirrors.Where(h => holders.Contains(h.Dir)).Select(h => h.Tool).FirstOrDefault();
-                items.Add(new LoadOrderUndoItem(loc.Name, f, to, holders, collision, collision ? null : heldBy));
+                var files = group.ToList();
+                // ANY taken original name blocks the whole group, in every copy: renaming a sidecar back while
+                // its archive stays prefixed re-pairs it with whatever now holds the archive's name.
+                var taken = files
+                    .Select(f => LoadOrderApply.StripOwnPrefix(f))
+                    .FirstOrDefault(to => files.Any(f => holdersOf[f].Any(d => File.Exists(Path.Combine(d, to)))));
+                var heldBy = taken is null ? OwnedMirrorHolding(loc, files, c) : null;
+                foreach (var f in files)
+                    items.Add(new LoadOrderUndoItem(loc.Name, f, LoadOrderApply.StripOwnPrefix(f), holdersOf[f],
+                        Collision: taken is not null, MirrorHeldBy: heldBy, Group: group.Key, Taken: taken));
             }
         }
         return new LoadOrderUndoPlan(items);
     }
 
-    // Mod files carrying 626's prefix, plus the sidecars of those files.
-    private static IEnumerable<string> PrefixedFilesIn(string dir, GameContext c)
+    // Mod files carrying 626's prefix, each with its mod group, plus the sidecars of those files in their
+    // file's group.
+    private static IEnumerable<(string File, string Group)> PrefixedFilesIn(string dir, GameContext c)
     {
         var prefixed = SafeReadFiles(dir).Where(LoadOrderApply.HasOwnPrefix).ToList();
-        var mods = prefixed.Where(n => c.FileRe.IsMatch(n)).ToList();
-        var sidecars = mods.SelectMany(m => SidecarsFor(m, prefixed));
-        return mods.Concat(sidecars).Distinct(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in prefixed.Where(n => c.FileRe.IsMatch(n)))
+        {
+            var group = ModKey(mod, c);
+            if (seen.Add(mod)) yield return (mod, group);
+            foreach (var side in SidecarsFor(mod, prefixed))
+                if (seen.Add(side)) yield return (side, group);
+        }
     }
 
-    /// <summary>Undo 626's load-order renames (<see cref="PlanUndoLoadOrder"/>), then forget the saved
-    /// order — but only when every planned rename happened. A file left alone or a failure leaves
-    /// <c>loadorder.json</c> in place, because the order is not fully undone. Prefixes only: the UE4SS
-    /// <c>mods.txt</c> order apply wrote stays as the user last chose it, which is valid and loads.</summary>
+    /// <summary>Undo 626's load-order renames (<see cref="PlanUndoLoadOrder"/>) one mod group at a time,
+    /// all or nothing per group (<see cref="MoveAllOrNone"/>), then forget the saved order — but only when
+    /// every planned rename happened. A group left alone or a failure leaves <c>loadorder.json</c> in place,
+    /// because the order is not fully undone. Prefixes only: the UE4SS <c>mods.txt</c> order apply wrote
+    /// stays as the user last chose it, which is valid and loads.</summary>
     private static LoadOrderUndoResult ResetLoadOrder(GameContext c)
     {
         var plan = PlanUndoLoadOrder(c);
         var renamed = 0;
         var leftAlone = new List<LoadOrderUndoItem>();
         var failures = new List<(string File, string Error)>();
-        foreach (var item in plan.Items)
+        foreach (var group in plan.Items.GroupBy(i => (i.Location, i.Group)))
         {
-            if (item.Blocked) { leftAlone.Add(item); continue; }
-            string? error = null;
-            foreach (var dir in item.Dirs)
-            {
-                try { if (!MoveIfFree(dir, item.From, item.To)) error ??= "its original name was taken while undoing"; }
-                catch (Exception e) { error ??= e.Message; }
-            }
-            if (error is null) renamed++;
-            else failures.Add((item.From, error));
+            var items = group.ToList();
+            if (items.Any(i => i.Blocked)) { leftAlone.AddRange(items); continue; }
+            var moves = items.SelectMany(i => i.Dirs.Select(d => (Dir: d, i.From, i.To))).ToList();
+            if (MoveAllOrNone(moves) is { } why) failures.AddRange(items.Select(i => (i.From, why)));
+            else renamed += items.Count;
         }
         var cleared = false;
         if (leftAlone.Count == 0 && failures.Count == 0)

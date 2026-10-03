@@ -68,13 +68,16 @@ public sealed record LoadOrderSupport(LoadOrderMechanism Mechanism, string? Reas
 /// <param name="MirrorHeldBy">The tool that owns a mirror holding <paramref name="From"/>, when one does. 626 never
 /// renames inside another tool's folder, and renaming the primary alone would leave the two under different names,
 /// so every copy is left as it is.</param>
-public sealed record LoadOrderUndoItem(string Location, string From, string To, IReadOnlyList<string> Dirs, bool Collision, string? MirrorHeldBy = null)
+/// <param name="Group">The mod this file belongs to (its mod key). Undo moves a group all or nothing.</param>
+/// <param name="Taken">The original name, of any file in the group, that already exists — what blocks the group.</param>
+public sealed record LoadOrderUndoItem(string Location, string From, string To, IReadOnlyList<string> Dirs, bool Collision,
+    string? MirrorHeldBy = null, string? Group = null, string? Taken = null)
 {
     /// <summary>True when undo will leave this file as it is.</summary>
     public bool Blocked => Collision || MirrorHeldBy is not null;
 
     /// <summary>Why it is left, in the words the status line uses.</summary>
-    public string WhyLeft => Collision ? $"{To} already exists" : $"a mirror folder is managed by {MirrorHeldBy}";
+    public string WhyLeft => Collision ? $"{Taken ?? To} already exists" : $"a mirror folder is managed by {MirrorHeldBy}";
 }
 
 /// <summary>What undoing 626's load order would do, before anything moves.</summary>
@@ -119,18 +122,47 @@ public sealed record LoadOrderUndoResult(
     IReadOnlyList<(string File, string Error)> Failures,
     bool LoadOrderCleared)
 {
-    /// <summary>The status line: what was renamed, then every file left alone and why.</summary>
+    /// <summary>The status line: what was renamed, then every file left as it is and why — blocked up
+    /// front, or rolled back because a rename failed partway.</summary>
     public string Describe()
     {
         var parts = new List<string>();
         if (Renamed > 0) parts.Add($"Removed 626's prefix from {Renamed} file{(Renamed == 1 ? "" : "s")}.");
-        if (LeftAlone.Count > 0)
+        var left = LeftAlone.Select(i => $"{i.From} ({i.WhyLeft})")
+            .Concat(Failures.Select(f => $"{f.File} ({f.Error.TrimEnd('.')})"))
+            .ToList();
+        if (left.Count > 0)
         {
-            var lead = LeftAlone.Count == 1 ? "626 left this as it is: " : "626 left these as they are: ";
-            parts.Add(lead + string.Join(", ", LeftAlone.Select(i => $"{i.From} ({i.WhyLeft})")) + ".");
+            var lead = left.Count == 1 ? "626 left this as it is: " : "626 left these as they are: ";
+            parts.Add(lead + string.Join(", ", left) + ".");
         }
-        foreach (var (file, error) in Failures) parts.Add($"{file} couldn't be renamed: {error.TrimEnd('.')}.");
         if (parts.Count == 0) parts.Add("No files carry 626's load-order prefix.");
         return string.Join(" ", parts);
+    }
+}
+
+/// <summary>What applying an order did.</summary>
+/// <param name="Support">The rule's answer; when it refused, nothing was touched.</param>
+/// <param name="Placed">Mods now in the requested order (renamed, already named for it, or reordered in a UE4SS manifest).</param>
+/// <param name="LeftAlone">Mods 626 kept their names for, and why.</param>
+/// <param name="Saved">Whether the order was recorded. Never when nothing was placed.</param>
+public sealed record LoadOrderApplyResult(
+    LoadOrderSupport Support,
+    int Placed,
+    IReadOnlyList<(string Mod, string Why)> LeftAlone,
+    bool Saved)
+{
+    public LoadOrderMechanism Mechanism => Support.Mechanism;
+    public string? Reason => Support.Reason;
+    public bool Supported => Support.Supported;
+
+    /// <summary>The status line. Says "applied" only when something was.</summary>
+    public string Describe()
+    {
+        if (!Supported) return Reason ?? LoadOrderSupport.IndependentReason;
+        var list = string.Join(", ", LeftAlone.Select(x => $"{x.Mod} ({x.Why.TrimEnd('.')})"));
+        if (!Saved) return $"626 didn't apply the load order: {list}.";
+        if (LeftAlone.Count == 0) return "Load order applied.";
+        return $"Load order applied. 626 left {(LeftAlone.Count == 1 ? "this mod as it is" : "these mods as they are")}: {list}.";
     }
 }
