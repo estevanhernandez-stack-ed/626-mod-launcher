@@ -109,7 +109,7 @@ public static class OffBoardingSheet
                         => $"    {m.Name} — likely source: {m.SourceUrl}{date}",
                     _ => $"    {m.Name} — source: {m.SourceUrl}{date}",
                 };
-                sb.AppendLine(line);
+                sb.AppendLine(m.StateNote is null ? line : $"{line} — {m.StateNote}");
             }
         }
         if (split)

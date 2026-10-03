@@ -325,7 +325,7 @@ public class SafeClearRound6Tests : IDisposable
 
         var line = OffBoardingHydrator.WhatHappened(ga);
 
-        Assert.StartsWith("626 turned off the 1 mod it could tell were mods", line);   // never "all" beside items
+        Assert.StartsWith("626 turned off the 1 mod it could tell was a mod", line);   // never "all" beside items
         Assert.Contains("1 item 626 can't tell from the game's own files is still in place", line);
     }
 

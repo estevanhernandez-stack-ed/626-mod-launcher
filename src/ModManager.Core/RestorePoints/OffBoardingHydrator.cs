@@ -12,7 +12,7 @@ public static class OffBoardingHydrator
             LaunchLines: LaunchLinesFrom(ga),
             Frameworks: ga.Frameworks.Select(f => $"{f.DisplayName} (by {f.Author})").ToList(),
             Mods: ga.Mods.Select(m => new OffBoardingModLine(
-                m.Name, m.SourceUrl, m.SourceConfidence, FormatDate(m.InstalledUtc), StateOf(ga, m))).ToList(),
+                m.Name, m.SourceUrl, m.SourceConfidence, FormatDate(m.InstalledUtc), StateOf(ga, m), HowTurnedOff(ga, m))).ToList(),
             OwnedMods: ga.OwnedMods.Select(o => new OffBoardingOwnedMod(o.Name, o.ManagedBy)).ToList(),
             SaveLocation: ga.SaveLocation,
             SaveBackupCount: ga.SaveBackupCount,
@@ -30,12 +30,32 @@ public static class OffBoardingHydrator
 
     // Where a mod stands after a vanilla reset (round 8): turned off by 626, left active, or already off before.
     // Null outside a vanilla sheet with a turn-off record, which keeps one plain list.
+    //
+    // "Still active" is decided by EVIDENCE only (review r8, I-1): a refused turn-off, or a row the clear named
+    // as left in place. Every other mod that was on went off with the clear, by whatever route: the toggle,
+    // its loader's manifest (BepInEx / UE4SS mods are flipped off, never toggled), the vanilla moves or a
+    // framework uninstall. Restore brings each of those back by its own record, so "turned off" is true.
     private static string? StateOf(GameArchive ga, ArchivedMod m)
     {
         if (!IsVanilla(ga) || ga.TurnedOffByClear is null) return null;
-        if (TurnedOff(ga).Any(c => string.Equals(c.Name, m.Name, StringComparison.OrdinalIgnoreCase)))
-            return OffBoardingModState.TurnedOff;
-        return m.Enabled ? OffBoardingModState.StillActive : OffBoardingModState.AlreadyOff;
+        if (!m.Enabled) return OffBoardingModState.AlreadyOff;
+        return LeftOn(ga, m.Name) ? OffBoardingModState.StillActive : OffBoardingModState.TurnedOff;
+    }
+
+    private static bool LeftOn(GameArchive ga, string name)
+        => (ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
+           || (ga.LeftInPlace ?? Array.Empty<InPlaceNote>()).Any(n => string.Equals(n.Path, name, StringComparison.OrdinalIgnoreCase)
+               && (n.Reason == RestorePointEngine.ReplacedGameFileNote || n.Reason == RestorePointEngine.BasePakRowNote
+                   || n.Reason.StartsWith(RestorePointEngine.CantTellRowPrefix, StringComparison.Ordinal)));
+
+    // Why a turned-off mod went off, when it wasn't the toggle: said on its line, so the list explains itself.
+    private static string? HowTurnedOff(GameArchive ga, ArchivedMod m)
+    {
+        if (StateOf(ga, m) != OffBoardingModState.TurnedOff) return null;
+        if (TurnedOff(ga).Any(c => string.Equals(c.Name, m.Name, StringComparison.OrdinalIgnoreCase))) return null;
+        if (ga.LoaderMods.Any(l => string.Equals(l.Name, m.Name, StringComparison.OrdinalIgnoreCase)))
+            return "its loader was turned off";
+        return "taken out with the game's mod files (in your restore point)";
     }
 
     private static bool IsVanilla(GameArchive ga) => string.Equals(ga.EndState, "vanilla", StringComparison.OrdinalIgnoreCase);
@@ -124,7 +144,7 @@ public static class OffBoardingHydrator
             : activeMods == 0
                 // "All" only when nothing else was left in place. Beside items 626 couldn't tell apart, it would
                 // read as "every mod there was" (replica r6: "all 3 mods" next to 191 items).
-                ? (items == 0 ? $"626 turned off all {Mods(off)} it found" : $"626 turned off the {Mods(off)} it could tell were mods")
+                ? (items == 0 ? $"626 turned off all {Mods(off)} it found" : (off == 1 ? "626 turned off the 1 mod it could tell was a mod" : $"626 turned off the {off} mods it could tell were mods"))
                 : $"626 turned off {off} of {off + activeMods} mods; {activeMods} {IsAre(activeMods)} still active";
         var sweep = moved > 0 ? $", and moved {moved} other file{(moved == 1 ? "" : "s")} from the mod folders into your restore point" : "";
         var unknown = items > 0

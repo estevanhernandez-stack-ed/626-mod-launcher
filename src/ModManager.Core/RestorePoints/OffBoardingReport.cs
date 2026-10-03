@@ -46,7 +46,9 @@ public sealed record OffBoardingModLine(
     string? InstalledDate,      // pre-formatted yyyy-MM-dd or null
     // Vanilla with a turn-off record: where the mod stands after the reset. TurnedOff | StillActive |
     // AlreadyOff. Null on any other sheet (one list, as before).
-    string? State = null);
+    string? State = null,
+    // Why a turned-off mod went off when it wasn't the toggle ("its loader was turned off"). Null otherwise.
+    string? StateNote = null);
 
 /// <summary>The states a mod line can carry on a vanilla sheet.</summary>
 public static class OffBoardingModState
