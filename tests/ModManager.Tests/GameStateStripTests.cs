@@ -370,6 +370,23 @@ public class GameStateStripTests
         Assert.Equal("Undo", chip.ActionLabel);
     }
 
+    [Fact]
+    public void Load_order_prefixes_undo_cannot_clear_can_be_put_away()
+    {
+        // Every remaining prefix is blocked (its original name is taken), so Undo can never clear the
+        // chip. A chip that cannot be acted away and cannot be dismissed nags forever; this one says what
+        // is wrong and can be dismissed for the session like the other informational chips.
+        var chip = Assert.Single(GameStateStrip.For(new GameStateConditions
+        {
+            LoadOrderPrefixed = "1 file carries 626's load-order prefix, but its original name is taken; see the status for which.",
+            LoadOrderPrefixBreaks = true,
+            LoadOrderPrefixStuck = true,
+        }));
+        Assert.True(chip.Dismissible);
+        Assert.Equal(GameStateSeverity.Warning, chip.Severity);
+        Assert.Equal("Undo", chip.ActionLabel);
+    }
+
     private const string StaleSentence =
         "REFramework (dinput8.dll, 2025-03-10) is older than the game's executable (MonsterHunterWilds.exe, 2026-08-17).";
 

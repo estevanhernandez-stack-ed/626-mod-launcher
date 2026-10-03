@@ -80,6 +80,9 @@ public sealed record GameStateConditions
     /// <summary>True when those prefixes break the game rather than order it: on a plugin game a prefixed
     /// plugin is a missing plugin (<see cref="LoadOrderSupport.IsPluginGame"/>).</summary>
     public bool LoadOrderPrefixBreaks { get; init; }
+    /// <summary>True when Undo can take none of those prefixes off (<see cref="LoadOrderUndoPlan.Stuck"/>).
+    /// The chip can then never be acted away, so it becomes dismissible instead of nagging forever.</summary>
+    public bool LoadOrderPrefixStuck { get; init; }
     /// <summary>Non-empty when enabled mods may desync co-op.</summary>
     public string? MpWarning { get; init; }
     public bool VortexReDeployed { get; init; }
@@ -162,9 +165,10 @@ public static class GameStateStrip
 
         // 5c. 626's own load-order renames, on a game where a renamed file is a missing one (a Bethesda
         // plugin). Mods that will not load, so it sits with the other "may not work" warnings, and it is
-        // not dismissible: putting the chip away would not put the plugins back.
+        // not dismissible while Undo can fix it: putting the chip away would not put the plugins back.
+        // Once only blocked files remain, Undo cannot clear it either, so then it may be put away.
         if (!string.IsNullOrWhiteSpace(c.LoadOrderPrefixed) && c.LoadOrderPrefixBreaks)
-            chips.Add(LoadOrderPrefixChip(c.LoadOrderPrefixed!, GameStateSeverity.Warning, dismissible: false));
+            chips.Add(LoadOrderPrefixChip(c.LoadOrderPrefixed!, GameStateSeverity.Warning, dismissible: c.LoadOrderPrefixStuck));
 
         // 6. Co-op specifically is broken.
         if (c.CoopLauncherMissing)

@@ -1704,7 +1704,7 @@ Case 'load-order-ue-round-trip' 'fix/bethesda-load-order-no-renames - Apply pref
         $detail = Open-StateChip 'load-order-prefix'
         Assert-True ($null -ne $detail) "no LOAD ORDER chip after Apply"
         $sentence = Get-Text $detail
-        Assert-True ($sentence -eq '3 mod files carry a load-order prefix from 626.') "the chip reads '$sentence'"
+        Assert-True ($sentence -eq 'Load order applied by renaming 3 files. Undo puts the original names back.') "the chip reads '$sentence'"
 
         Invoke-Node (Find-ById (Get-Tree $root) 'StateChipAction'); Wait-Idle 3500
         $undone = Get-StatusLine

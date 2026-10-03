@@ -401,6 +401,9 @@ public sealed partial class MainViewModel : ObservableObject
     // True when those prefixes break the game (a plugin game) rather than order it.
     private bool _loadOrderPrefixBreaks;
 
+    // True when Undo can take none of them off (every one collides or sits in an owned mirror).
+    private bool _loadOrderPrefixStuck;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CoopHintVisibility))]
     public partial bool CoopLauncherMissing { get; set; }
@@ -513,6 +516,7 @@ public sealed partial class MainViewModel : ObservableObject
         StaleLoader = StaleLoaderMessage,
         LoadOrderPrefixed = LoadOrderPrefixMessage,
         LoadOrderPrefixBreaks = _loadOrderPrefixBreaks,
+        LoadOrderPrefixStuck = _loadOrderPrefixStuck,
         CoopLauncherMissing = CoopLauncherMissing,
         MpWarning = MpRiskyEnabledCount > 0 ? MpWarningText + "." : null,
         VortexReDeployed = HasReDeployedLocations,
@@ -1093,6 +1097,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Off the UI thread for the same reason — it lists every mod folder and runs on every toggle.
             var undoPlan = await Task.Run(() => Scanner.PlanUndoLoadOrder(loaderCtx));
             _loadOrderPrefixBreaks = LoadOrderSupport.IsPluginGame(loaderCtx.Game.Engine, loaderCtx.DeclaredExts);
+            _loadOrderPrefixStuck = undoPlan.Stuck;
             LoadOrderPrefixMessage = undoPlan.IsEmpty ? null : undoPlan.Describe(_loadOrderPrefixBreaks);
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
@@ -1780,6 +1785,9 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task UndoLoadOrderPrefixesAsync()
     {
         if (_ctx is null) return;
+        // The strip stays up in load-order mode. Undoing under an open arrangement would leave the bar
+        // over a rebuilt full list, and Apply would then re-prefix everything, so close the mode first.
+        IsLoadOrderMode = false;
         IsBusy = true;
         try
         {
