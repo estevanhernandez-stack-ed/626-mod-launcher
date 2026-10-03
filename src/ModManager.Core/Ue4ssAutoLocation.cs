@@ -11,7 +11,7 @@ namespace ModManager.Core;
 /// </summary>
 public static class Ue4ssAutoLocation
 {
-    private const string LocationName = "ue4ss-mods";
+    internal const string LocationName = "ue4ss-mods";
     private const string LocationLabel = "UE4SS Mods";
 
     /// <summary>The <c>ue4ss\Mods</c> location implied by an installed UE4SS manifest, or null if UE4SS

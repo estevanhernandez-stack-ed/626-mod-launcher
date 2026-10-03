@@ -200,7 +200,7 @@ public class SafeMoveFallbackTests
             $"Could not create a junction for this test (mklink exit {p.ExitCode}): {err}");
     }
 
-    [Fact]
+    [WindowsFact]
     public void Folder_containing_a_junction_is_refused_and_nothing_is_changed()
     {
         var root = TestSupport.TempDir("safemove-fb-");

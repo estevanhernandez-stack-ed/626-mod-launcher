@@ -4,8 +4,11 @@ namespace ModManager.Core.RestorePoints;
 public static class RestorePoint
 {
     /// <summary>Bump when the manifest shape changes. Restore refuses any manifest whose
-    /// schemaVersion exceeds the running build's supported value.</summary>
-    public const int SchemaVersion = 1;
+    /// schemaVersion exceeds the running build's supported value.
+    /// <para>2 (2026-10-02): vanilla records <c>turnedOffByClear</c>. A build that predates it would ignore
+    /// the field and restore with every one of those mods left off while reporting success, so it refuses a
+    /// v2 manifest instead ("update the launcher"). A v1 manifest still restores, as it always did.</para></summary>
+    public const int SchemaVersion = 2;
 }
 
 /// <summary>The sealed on-disk record of a Safe Clear. camelCase JSON. <c>Complete</c> is the seal,
@@ -38,7 +41,37 @@ public sealed record GameArchive(
     // captured into this restore point. Surfaced on the off-boarding sheet so a reset never leaves the
     // user wondering about their saves. Defaulted/nullable — additive, no SchemaVersion bump.
     string? SaveLocation = null,
-    int SaveBackupCount = 0);
+    int SaveBackupCount = 0,
+    // Vanilla only (2026-10-02 safe-clear-holds-mods): the enabled rows this clear turns off through
+    // ModToggle, sealed in CAPTURE before anything moves (Law A). Restore turns exactly this set back on.
+    // Null = a manifest from before the record existed, or a modsActive game: Restore turns nothing on.
+    IReadOnlyList<ClearedMod>? TurnedOffByClear = null,
+    // The turn-offs that refused (a held earlier copy, a locked file). Written after MUTATE by an atomic
+    // rewrite of the sealed manifest: a note for the sheet and for Restore, never part of the seal.
+    IReadOnlyList<ClearSkip>? TurnOffSkipped = null,
+    // The game's data dir at clear time: where the turned-off mods are held. Named on the sheet.
+    string? DataDir = null,
+    // Vanilla only: a copy, inside this restore point (games/<id>/held/<rel>), of every data-dir holding
+    // folder the turn-offs filled, each file with its size + SHA-256. Rel is relative to the data dir. Written
+    // after MUTATE by an atomic rewrite, and only once every copy for the game has finished and verified, so
+    // a non-null list always describes a complete copy. Null = not copied (an older manifest, a clear that
+    // died before the copy was recorded, or a copy that failed): Restore turns mods on from the data folder.
+    IReadOnlyList<HeldCopy>? HeldCopies = null,
+    // Vanilla only: every file still left in the game's MOD-ONLY folders after the turn-offs (files no mod
+    // row claims: loose scripts, framework plugins, sidecars), moved into the restore point under
+    // games/<id>/vanilla-remainder/<rel>. Rel is relative to the game root. Recorded (atomic manifest
+    // rewrite) BEFORE any of them moves, so after a crash each is live or archived, never neither.
+    // Null = an older manifest, or no sweep: Restore puts nothing back from here.
+    IReadOnlyList<MovedFile>? VanillaRemainder = null,
+    // What vanilla knowingly left in place, and why (another tool's folder, the base game's own content, a
+    // file that could not be moved). Empty with a non-null VanillaRemainder means the mod folders are clean.
+    IReadOnlyList<InPlaceNote>? LeftInPlace = null);
+
+/// <summary>Something vanilla left in place: a folder or file (relative to the game root) and why.</summary>
+public sealed record InPlaceNote(string Path, string Reason);
+
+/// <summary>The archived copy of one turned-off mod's data-dir holding folders.</summary>
+public sealed record HeldCopy(string Name, IReadOnlyList<MovedFile> Files);
 
 /// <summary>A framework whose install state was captured before any uninstall. CapturedStateRel is
 /// the archive-relative folder holding the captured installed files (with live config edits).</summary>
@@ -67,3 +100,10 @@ public sealed record ArchivedMod(
     string? SourceUrl,
     string? SourceConfidence,
     string? InstalledUtc);
+
+/// <summary>One row the vanilla end-state turns off: its listing name and location tag, enough for
+/// Restore to find the row again and turn it on through <see cref="ModToggle"/>.</summary>
+public sealed record ClearedMod(string Name, string Location);
+
+/// <summary>A turn-off that did not take, and why (the toggle's own words). The mod is still active.</summary>
+public sealed record ClearSkip(string Name, string Reason);

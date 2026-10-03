@@ -243,6 +243,7 @@
       },
       "nexusDomain": "cyberpunk2077",
       "modPath": "archive/pc/mod",
+      "modPathModOnly": true,
       "fileExtensions": [
         "archive"
       ],

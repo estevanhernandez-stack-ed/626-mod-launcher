@@ -24,7 +24,9 @@ public sealed record RestorePointInfo(string Timestamp, IReadOnlyList<string> Ga
 
 public sealed record RestoreResult(bool Ok, string? RefusedReason, IReadOnlyList<RestoreConflict> Conflicts, IReadOnlyList<string> Warnings);
 
-public sealed record InterruptedClear(string Timestamp, bool Sealed);
+/// <summary>A Safe Clear that didn't finish. <c>NewerSchema</c>: the point IS sealed, by a newer 626 than
+/// this one; it can't be restored here and must never be offered for discard (it is not partial).</summary>
+public sealed record InterruptedClear(string Timestamp, bool Sealed, bool NewerSchema = false);
 
 /// <summary>App-side seam: the nexus.json keep/skip decision (DPAPI lives in the App impl).</summary>
 public interface INexusGate { bool IsConnected { get; } void DeleteStoredKey(); }

@@ -1974,7 +1974,8 @@ public static class Scanner
                 SourceArchive: Path.GetFileName(archive),
                 Location: primary.Name,
                 Files: files,
-                InstalledUtc: DateTime.UtcNow));
+                InstalledUtc: DateTime.UtcNow,
+                LocationPath: ModInstallRegistry.LocationPathFor(c.GameRoot, primary.Abs)));
         }
         return result;
     }
@@ -2005,7 +2006,9 @@ public static class Scanner
                 SourceArchive: Path.GetFileName(archive),
                 Location: locationName,
                 Files: files,
-                InstalledUtc: DateTime.UtcNow));
+                InstalledUtc: DateTime.UtcNow,
+                LocationPath: c.Locations.FirstOrDefault(l => l.Name == locationName) is { } recLoc
+                    ? ModInstallRegistry.LocationPathFor(c.GameRoot, recLoc.Abs) : null));
         }
     }
 

@@ -475,7 +475,7 @@ mods = [
         return null;
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_link_at_the_holding_root_is_refused_and_nothing_is_deleted()
     {
         var (g, ctx) = TreeGame();
@@ -495,7 +495,7 @@ mods = [
         Assert.Equal("PLAIN", File.ReadAllText(pak));
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_junction_inside_the_held_folder_is_removed_as_a_link_and_its_target_survives()
     {
         var (g, ctx) = TreeGame();
@@ -515,7 +515,7 @@ mods = [
         Assert.Equal("NOT 626'S EITHER", File.ReadAllText(Path.Combine(target, "deep", "d.txt")));
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_read_only_junction_is_removed_and_its_targets_attributes_are_untouched()
     {
         var (g, ctx) = TreeGame();
@@ -538,7 +538,7 @@ mods = [
         Assert.Equal(targetAttrs, File.GetAttributes(target));
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_held_folder_that_is_itself_a_junction_is_removed_as_a_link()
     {
         var (g, ctx) = TreeGame();
@@ -558,7 +558,7 @@ mods = [
 
     // Preview must not read through a link either: a held folder whose only content is a junction is listed
     // by path, with no trees, rather than with trees found in the link's target.
-    [Fact]
+    [WindowsFact]
     public void Preview_does_not_read_through_a_junction_in_the_held_folder()
     {
         var (g, ctx) = TreeGame();

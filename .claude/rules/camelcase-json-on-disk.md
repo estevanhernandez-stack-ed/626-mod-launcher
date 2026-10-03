@@ -61,7 +61,15 @@ The string-contains assertion is what protects you — without it, the round-tri
 - Registry / settings (`src/ModManager.Core/Registry.cs`; `GameEntry.manifestId`, the entry a game was added as, covered by `ManifestIdentityTests.ManifestId_round_trips_as_camelCase_and_is_omitted_when_null`; `GameEntry.loaderCheckedExeUtc`, the executable date the stale-loader chip was marked checked against, covered by `StaleLoadersTests.LoaderCheckedExeUtc_round_trips_as_camelCase`)
 - Tool registry (`src/ModManager.Core/Tools/ToolRegistry.cs`)
 - `ModMeta` `installedUtc` + `sourceConfidence` (`src/ModManager.Core/Mod.cs`)
-- Restore-point manifest (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs`)
+- Restore-point manifest (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs`), including the
+  vanilla turn-off record on each game (`turnedOffByClear` / `turnOffSkipped` / `dataDir`, schema 2;
+  round-trip in `RestorePointManifestTests.Turn_off_record_round_trips_as_camelCase`) and the held-copy
+  record (`heldCopies: [{ name, files: [{ rel, bytes, sha256 }] }]`;
+  `RestorePointManifestTests.Held_copy_record_round_trips_as_camelCase`), and the vanilla-remainder
+  record (`vanillaRemainder: [{ rel, bytes, sha256 }]`, `leftInPlace: [{ path, reason }]`;
+  `SafeClearRemainderTests.Remainder_record_round_trips_as_camelCase`)
+- Game-definition manifest `modPathModOnly` (`src/ModManager.Core/Manifest/GameManifest.cs`, cached on disk by
+  `RemoteManifestCache`; `ModPathModOnlyTests.Round_trips_as_camelCase`)
 - `TakenOverState` taken-over.json (`src/ModManager.Core/VortexTakeover.cs`)
 - `VanillaStash` vanilla-stash.json (`src/ModManager.Core/VanillaLaunch.cs`)
 - `NexusOAuthConfig` nexus-oauth-cache.json (`src/ModManager.Core/Nexus/NexusOAuthConfig.cs` — `JsonOpts`; written/read via `src/ModManager.App/Services/NexusOAuthConfigSource.cs`)
@@ -70,7 +78,8 @@ The string-contains assertion is what protects you — without it, the round-tri
 
 - `ModInstallManifest` per-install records (`src/ModManager.Core/ModInstallRegistry.cs` — written to
   `<dataDir>/installs/<installId>.json` via `AtomicJson`; what an intake actually placed, so a row can
-  say which files are its own)
+  say which files are its own; optional `locationPath`, where the location was when 626 installed, covered by
+  `SafeClearRound8Tests.The_location_path_round_trips_as_camelCase_and_an_old_record_loads_without_it`)
 
 - `DataDirMoveJournal` pending-moves/<id>.json (`src/ModManager.Core/DataDirMoveJournal.cs` — the A6
   breadcrumb for a data-folder move, written via `AtomicJson`; covered by

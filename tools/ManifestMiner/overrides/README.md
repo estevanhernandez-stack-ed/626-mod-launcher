@@ -36,6 +36,13 @@ and keeps the rest of the entry, but this build REFUSES a curated file that has 
 it broke, so a typo can't vanish from the signed feed unnoticed. A tree that is, holds or sits inside
 the game's own mod folder is skipped at runtime, where the real folders are known.
 
+`modPathModOnly` (optional, `true`) says `modPath` holds nothing but mods: no file in it is the game's
+own (Cyberpunk 2077's `archive/pc/mod` yes; a Bethesda `Data` or a Total War `data` never). Descriptive
+only. Safe Clear's "Return to vanilla" reads it to know it may move everything left in that folder into
+the restore point; without it the folder is never swept. Set it only when you are sure. A wrong `true`
+moves base-game files out of the game (they come back on Restore, but the game won't launch in between).
+It needs a `modPath` beside it; this build refuses one without.
+
 To add a game: drop a `<game>.json` here, run `dotnet run --project tools/ManifestMiner -- --with-mo2
 --with-overrides`, and check the coverage summary + the diff. Verify the Steam id (a wrong id just
 won't match — it's reported as not-applied, never corrupts).

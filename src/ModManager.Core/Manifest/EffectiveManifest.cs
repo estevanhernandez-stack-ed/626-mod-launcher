@@ -113,6 +113,13 @@ public static class EffectiveManifest
         return merged;
     }
 
+    // Two spellings of one relative mod path: separators, surrounding slashes and case don't matter.
+    private static bool SameModPath(string? a, string? b)
+    {
+        static string N(string? p) => (p ?? "").Replace('\\', '/').Trim('/');
+        return a is not null && b is not null && string.Equals(N(a), N(b), StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Field-merge a remote entry onto the embedded one they share an id with. The feed UPDATES but
     /// never DOWNGRADES: a remote non-null value wins (so the feed can correct a built-in), but a
@@ -142,6 +149,13 @@ public static class EffectiveManifest
             CurseforgeGameId = remote.CurseforgeGameId ?? embedded.CurseforgeGameId,
             ModPath = remote.ModPath ?? embedded.ModPath,
             ExtraModTrees = remote.ExtraModTrees ?? embedded.ExtraModTrees,
+            // Bound to the path it describes (review r4, I-1; r5, I-A). A flag-only remote can't attach to the
+            // snapshot's path. A remote that names a path brings its own flag when it states one (false
+            // overrides); when it states none, the snapshot's flag survives only if the remote RESTATES the
+            // same path (the live feed restates Cyberpunk's archive/pc/mod without the flag). A corrected
+            // path drops an inherited true.
+            ModPathModOnly = remote.ModPath is null ? embedded.ModPathModOnly
+                : remote.ModPathModOnly ?? (SameModPath(remote.ModPath, embedded.ModPath) ? embedded.ModPathModOnly : null),
             SaveDirHint = remote.SaveDirHint ?? embedded.SaveDirHint,
             FileExtensions = remote.FileExtensions ?? embedded.FileExtensions,
             GroupingRule = remote.GroupingRule ?? embedded.GroupingRule,

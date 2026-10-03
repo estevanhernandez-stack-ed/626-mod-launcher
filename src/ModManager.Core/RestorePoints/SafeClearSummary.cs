@@ -22,6 +22,17 @@ public static class SafeClearSummary
         return string.Join(" ", parts.Where(p => !string.IsNullOrEmpty(p)));
     }
 
+    /// <summary>What to tell the user after a restore that went through but left something to look at
+    /// (a mod the clear turned off that is not back on, a game missing from the restored registry). Null
+    /// when there is nothing to say, or when the restore was refused (that has its own message).</summary>
+    public static string? RestoreNotes(RestoreResult result)
+    {
+        if (!result.Ok) return null;
+        var real = (result.Warnings ?? Array.Empty<string>()).Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
+        if (real.Count == 0) return null;
+        return "Your setup is restored. A few things need a look:\n\n" + string.Join("\n", real.Select(w => "- " + w));
+    }
+
     private static string RestoreLine(string? timestamp)
     {
         if (string.IsNullOrWhiteSpace(timestamp))

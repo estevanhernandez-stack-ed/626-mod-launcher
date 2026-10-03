@@ -46,6 +46,15 @@ public sealed record GameManifestEntry
     /// path is gated like <see cref="ModPath"/>: relative, no drive, no "..".
     /// </summary>
     public IReadOnlyList<string>? ExtraModTrees { get; init; }
+
+    /// <summary>
+    /// True when <see cref="ModPath"/> is a folder that holds nothing but mods: no file in it belongs to
+    /// the game itself (Cyberpunk 2077's <c>archive/pc/mod</c>, unlike a Bethesda <c>Data</c> or a Total
+    /// War <c>data</c>). DESCRIPTIVE ONLY: it says what the folder IS, never how to toggle anything. Safe
+    /// Clear's "Return to vanilla" reads it to know it may move everything left in that folder into the
+    /// restore point. Null or false means nobody has said so, and the folder is never swept.
+    /// </summary>
+    public bool? ModPathModOnly { get; init; }
     public string? SaveDirHint { get; init; }          // descriptive save-location hint (e.g. mined from Ludusavi save paths)
     public IReadOnlyList<string>? FileExtensions { get; init; }
     public string? GroupingRule { get; init; }

@@ -11,6 +11,10 @@ public sealed record ManifestValidationResult(
 
     /// <summary>Loader ids rejected as unsafe or incomplete (see <see cref="ManifestValidator.LoaderProblem"/>).</summary>
     public IReadOnlyList<string> RejectedLoaders { get; init; } = Array.Empty<string>();
+
+    /// <summary>Game ids whose <c>modPathModOnly</c> was dropped (no modPath, the game root, or a known
+    /// base-content folder); the rest of each entry was kept.</summary>
+    public IReadOnlyList<string> DroppedModOnlyFlags { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -31,8 +35,19 @@ public static class ManifestValidator
         var skipped = new List<string>();
         var rejected = new List<string>();
 
-        foreach (var g in manifest.Games)
+        var droppedFlags = new List<string>();
+        foreach (var entry in manifest.Games)
         {
+            var g = entry;
+            // modPathModOnly is the second trust-sensitive field: it lets "Return to vanilla" move every
+            // file in modPath. Kept only beside a modPath that could plausibly hold nothing but mods; on a
+            // missing path, the game root or a known base-content folder (Skyrim's Data, a files-form
+            // Content/Paks) the FLAG is dropped and reported, and the rest of the entry still applies.
+            if (g.ModPathModOnly == true && ModOnlyFolders.ModOnlyFlagProblem(g.ModPath) is not null)
+            {
+                droppedFlags.Add(g.Id);
+                g = g with { ModPathModOnly = null };
+            }
             if (g.Engine is { } engine && !knownEngines.Contains(engine))
             {
                 skipped.Add(g.Id);
@@ -89,6 +104,7 @@ public static class ManifestValidator
         {
             SkippedLoaders = skippedLoaders,
             RejectedLoaders = rejectedLoaders,
+            DroppedModOnlyFlags = droppedFlags,
         };
     }
 

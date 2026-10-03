@@ -36,6 +36,15 @@ public static class ModToggle
         => await DispatchAsync(ctx, mod, enabled, scope);
 
     /// <summary>
+    /// The bulk overload, handing back the scanner's <see cref="Scanner.EnableOutcome"/> when the change went
+    /// through the scanner's lane (null on every other lane and for a turn-off). For a bulk caller that
+    /// reconciles once at the end (<see cref="NotApplied"/>) and only wants the lane's reason for a skip:
+    /// unlike <see cref="SetEnabledWithOutcomeAsync"/> it pays no listing per change. Same dispatch.
+    /// </summary>
+    internal static Task<Scanner.EnableOutcome?> SetEnabledInScopeAsync(GameContext ctx, Mod mod, bool enabled, Scanner.BulkScope scope)
+        => DispatchAsync(ctx, mod, enabled, scope);
+
+    /// <summary>
     /// <see cref="SetEnabledAsync"/>, reporting whether the change took and, when it can say, why not. A
     /// turn-on skipped without throwing (the target folder is now another tool's, the holding record is
     /// unreadable) used to leave the row silent; this is what lets it say so.

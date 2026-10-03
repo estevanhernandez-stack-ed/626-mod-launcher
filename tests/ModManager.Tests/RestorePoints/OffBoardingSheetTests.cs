@@ -89,4 +89,50 @@ public class OffBoardingSheetTests
         Assert.Contains("YOUR SAVES", s);
         Assert.Contains("not touched", s);   // still reassures even when the launcher tracked no save folder
     }
+
+    [Fact]
+    public void Render_says_how_many_mods_were_turned_off_where_they_are_held_and_that_restore_returns_them()
+    {
+        var r = Report() with
+        {
+            TurnedOffCount = 12, InDataFolder = 12,
+            HeldInDataDir = @"D:\SteamLibrary\_626mods\elden-ring",
+            TurnOffSkips = new[] { new ClearSkip("StubbornMod", "an earlier turned-off copy of it is already held") },
+        };
+        var s = OffBoardingSheet.Render(r);
+
+        Assert.Contains("MODS TURNED OFF", s);
+        Assert.Contains("turned off 12 mods", s);
+        Assert.Contains(@"D:\SteamLibrary\_626mods\elden-ring", s);
+        Assert.Contains("turns exactly those 12 back on", s);
+        // Without a copy in the restore point the data folder is the only copy, and the sheet says to keep it.
+        Assert.Contains("keep that folder", s, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("StubbornMod", s);
+        Assert.Contains("still active", s);
+        Assert.Contains("an earlier turned-off copy of it is already held", s);
+    }
+
+    [Fact]
+    public void Render_says_the_restore_point_holds_copies_when_it_does_and_never_says_dont_delete()
+    {
+        var r = Report() with
+        {
+            TurnedOffCount = 3, InDataFolder = 3,
+            HeldInDataDir = @"D:\SteamLibrary\_626mods\elden-ring",
+            CopiedToRestorePoint = 3,
+        };
+        var s = OffBoardingSheet.Render(r);
+
+        Assert.Contains("a copy of each of them is saved in your restore point", s, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("turns exactly those 3 back on", s);
+        Assert.DoesNotContain("don't delete", s, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("keep that folder", s, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Render_has_no_turned_off_section_without_the_record()
+    {
+        var s = OffBoardingSheet.Render(Report());
+        Assert.DoesNotContain("MODS TURNED OFF", s);
+    }
 }

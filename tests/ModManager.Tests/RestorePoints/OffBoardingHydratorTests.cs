@@ -41,9 +41,18 @@ public class OffBoardingHydratorTests
         Assert.Equal("T", report.GameName);
         Assert.Equal(@"C:\rp\20260528-141233", report.RestorePointPath);
 
-        // Derived launch line — vanilla branch
+        // Derived launch line — vanilla branch. An archive with no remainder sweep (and a Vortex mod left)
+        // never claims a clean vanilla game: its mod folders were not cleared.
         Assert.Single(report.LaunchLines);
-        Assert.Contains("returned to vanilla", report.LaunchLines[0]);
+        Assert.DoesNotContain("returned to vanilla", report.LaunchLines[0]);
+        Assert.Contains("may not be fully vanilla", report.LaunchLines[0]);
+        var clean = OffBoardingHydrator.Hydrate(VanillaArchive() with
+        {
+            OwnedMods = Array.Empty<OwnedModNote>(),
+            VanillaRemainder = Array.Empty<MovedFile>(),
+            LeftInPlace = Array.Empty<InPlaceNote>(),
+        }, "rp");
+        Assert.Contains("returned to vanilla", Assert.Single(clean.LaunchLines));
 
         // Frameworks / mods / owned mods pass through unchanged
         Assert.Contains("Elden Mod Loader (by TechieW)", report.Frameworks);
@@ -84,5 +93,34 @@ public class OffBoardingHydratorTests
         var line = Assert.Single(report.Mods);
         Assert.Null(line.InstalledDate);
         Assert.Null(line.SourceUrl);
+    }
+
+    [Fact]
+    public void Hydrate_counts_the_turned_off_set_minus_skips_and_carries_the_data_dir()
+    {
+        var ga = VanillaArchive() with
+        {
+            TurnedOffByClear = new[] { new ClearedMod("A", "mods"), new ClearedMod("B", "mods"), new ClearedMod("C", "mods") },
+            TurnOffSkipped = new[] { new ClearSkip("B", "locked") },
+            DataDir = @"D:\_626mods\t",
+        };
+        var report = OffBoardingHydrator.Hydrate(ga, @"C:\rp\x");
+
+        Assert.Equal(2, report.TurnedOffCount);
+        Assert.Equal(@"D:\_626mods\t", report.HeldInDataDir);
+        Assert.Equal("B", Assert.Single(report.TurnOffSkips!).Name);
+        Assert.Equal(0, report.CopiedToRestorePoint);   // no heldCopies record
+
+        var copied = OffBoardingHydrator.Hydrate(ga with { HeldCopies = Array.Empty<HeldCopy>() }, "rp");
+        Assert.Equal(0, copied.CopiedToRestorePoint);   // an empty record copies nothing
+        Assert.Equal(2, copied.InDataFolder);
+    }
+
+    [Fact]
+    public void Hydrate_leaves_the_turn_off_fields_empty_for_an_old_archive()
+    {
+        var report = OffBoardingHydrator.Hydrate(VanillaArchive(), @"C:\rp\x");
+        Assert.Equal(0, report.TurnedOffCount);
+        Assert.Null(report.TurnOffSkips);
     }
 }

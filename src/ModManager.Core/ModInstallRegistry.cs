@@ -16,7 +16,11 @@ public sealed record ModInstallManifest(
     string SourceArchive,
     string Location,
     IReadOnlyList<string> Files,
-    DateTime InstalledUtc)
+    DateTime InstalledUtc,
+    // Where the location was when 626 installed here (r7, m-2): its path relative to the game root when
+    // inside it (forward slashes), else its real absolute path. Lets a record prove ownership of THIS folder,
+    // not of whatever folder carries the same location name later. Null on records written before the field.
+    string? LocationPath = null)
 {
     /// <summary>Display label for the install — the archive's name without its extension.</summary>
     public string DisplayName => Path.GetFileNameWithoutExtension(SourceArchive);
@@ -97,6 +101,20 @@ public static class ModInstallRegistry
     /// precisely the case a disable must not resolve by deleting.</summary>
     public static IReadOnlyList<ModInstallManifest> ClaimsOn(string gameDataDir, string relPath)
         => List(gameDataDir).Where(m => m.Files.Any(f => SamePath(f, relPath))).ToList();
+
+    /// <summary>The <see cref="ModInstallManifest.LocationPath"/> for a location: relative to the game root
+    /// when inside it (survives a library move), else the location's real absolute path. Null when neither
+    /// can be resolved.</summary>
+    public static string? LocationPathFor(string gameRoot, string locationAbs)
+        => ModOnlyFolders.RelativeToRoot(gameRoot, locationAbs) is { } rel ? rel : RealPath.Final(locationAbs);
+
+    /// <summary>Two <see cref="ModInstallManifest.LocationPath"/> values name the same place: separators,
+    /// surrounding slashes and case don't matter.</summary>
+    public static bool SameLocationPath(string a, string b)
+    {
+        static string N(string p) => p.Replace(Path.DirectorySeparatorChar, '/').Replace('\\', '/').Trim('/');
+        return string.Equals(N(a), N(b), StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>A stable, filesystem-safe id for an archive. Same archive installed twice overwrites
     /// its own record rather than accumulating one per attempt.</summary>
