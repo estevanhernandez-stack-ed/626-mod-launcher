@@ -13,12 +13,13 @@ public static partial class LoadOrderApply
     [GeneratedRegex(@"^\d{2,}__")]
     private static partial Regex PrefixRe();
 
-    // Exactly what Prefix writes: a multiple of ten, zero-padded to at least four digits. The undo plan
+    // Exactly what Prefix writes: a multiple of ten, zero-padded to four digits (never 0000), or five or
+    // more digits with no padding once past the 999th mod. The undo plan
     // keys on THIS, not PrefixRe, so a mod an author named "10__thing.pak" is never renamed by an undo.
     // PrefixRe stays loose because it feeds mod identity (Scanner.ModKey): tightening it would re-key
     // every existing file whose name starts with 2-3 digits and "__", and with it their metadata and
     // disabled-holding folders.
-    [GeneratedRegex(@"^\d{3,}0__")]
+    [GeneratedRegex(@"^(?:(?!0000)\d{3}0|[1-9]\d{3,}0)__")]
     private static partial Regex OwnPrefixRe();
 
     /// <summary>Remove a leading launcher load-order prefix (NNNN__), if present.</summary>

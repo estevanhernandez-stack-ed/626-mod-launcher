@@ -342,6 +342,38 @@ public static class Scanner
 
     public static Task<IReadOnlyList<Mod>> BuildModListAsync(GameContext c) => Task.FromResult(BuildModList(c));
 
+    /// <summary>How 626 relates to one folder of a location, and why.</summary>
+    private readonly record struct FolderPosture(OwnershipResolution Ownership, OwnerTool? Owner, bool IsUe4ss, Posture Posture)
+    {
+        /// <summary>Another tool's folder: read it, never rename, move or reorder in it.</summary>
+        public bool HandsOff => Posture == Posture.Coexist;
+    }
+
+    /// <summary>
+    /// The ONE ownership rule for a folder: runtime ownership against the taken-over set, then
+    /// <see cref="Coordination.PostureFor"/> with the location's declared <c>Managed</c> as the fallback.
+    /// The scan, load-order apply and the load-order undo plan all ask this, so undo can never touch a
+    /// folder apply treated as another tool's, and never refuse one apply renamed in.
+    /// </summary>
+    private static FolderPosture PostureOf(ModLocationCtx loc, string dir, GameContext c)
+    {
+        // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
+        // A UE4SS folder with a manifest is a loader-driven location: it can Conduct when unowned.
+        var ownership = ToolOwnership.Resolve(Path.GetFullPath(dir), c.TakenOver);
+        var owner = ownership.State == OwnershipState.Owned ? ownership.Owner : null;
+        var isUe4ss = loc.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(dir);
+        var isBepInEx = loc.Form != "folders" && string.Equals(c.Game.Engine, "bepinex", StringComparison.OrdinalIgnoreCase);
+        var posture = Coordination.PostureFor(
+            owner, loc.Managed,
+            loaderCanConduct: isUe4ss || isBepInEx,
+            reDeployed: ownership.State == OwnershipState.ReDeployed);
+        return new FolderPosture(ownership, owner, isUe4ss, posture);
+    }
+
+    // The name a status line gives the tool holding a folder.
+    private static string ToolName(OwnerTool? owner, string? declared)
+        => owner switch { OwnerTool.Vortex => "Vortex", OwnerTool.Mo2 => "MO2", _ => string.IsNullOrEmpty(declared) ? "another tool" : declared };
+
     private static IReadOnlyList<Mod> BuildModList(GameContext c)
     {
         ScanCostProbe.CountModList();
@@ -350,17 +382,11 @@ public static class Scanner
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
         {
-            // Runtime ownership decides the posture; the profile's Managed value is only a fallback.
-            // A UE4SS folder with a manifest is a loader-driven location: it can Conduct when unowned.
-            var ownership = ToolOwnership.Resolve(Path.GetFullPath(loc.Abs), c.TakenOver);
-            var owner = ownership.State == OwnershipState.Owned ? ownership.Owner : null;
-            var isUe4ss = loc.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(loc.Abs);
+            var folder = PostureOf(loc, loc.Abs, c);
+            var owner = folder.Owner;
+            var isUe4ss = folder.IsUe4ss;
             var isBepInEx = loc.Form != "folders" && string.Equals(c.Game.Engine, "bepinex", StringComparison.OrdinalIgnoreCase);
-            var posture = Coordination.PostureFor(
-                owner, loc.Managed,
-                loaderCanConduct: isUe4ss || isBepInEx,
-                reDeployed: ownership.State == OwnershipState.ReDeployed);
-            var readOnly = posture == Posture.Coexist;
+            var readOnly = folder.HandsOff;
             var managedLabel = owner?.ToString().ToLowerInvariant()
                 ?? (readOnly ? loc.Managed : null);
 
@@ -1499,6 +1525,9 @@ public static class Scanner
         {
             if (!byKey.TryGetValue(key, out var m)) continue;
             var loc = LocByName(m.Location, c);
+            // A mirror another tool owns is never renamed in, and renaming the primary without it would
+            // leave the two under different names (the Windrose desync). So the mod keeps its names.
+            if (loc.Mirrors.Any(mp => PostureOf(loc, mp, c).HandsOff)) { index++; continue; }
             foreach (var f in m.Files)
             {
                 var dest = LoadOrderApply.WithOrder(f, index);
@@ -1517,7 +1546,7 @@ public static class Scanner
         // warned path, so owned folder manifests stay untouched.
         foreach (var loc in c.Locations.Where(l => l.Form == "folders" && Ue4ssManifest.IsUe4ssFolder(l.Abs)))
         {
-            if (ToolOwnership.Detect(loc.Abs) is not null) continue;
+            if (PostureOf(loc, loc.Abs, c).HandsOff) continue;
             var locNames = new HashSet<string>(ListSubfolders(loc.Abs), StringComparer.OrdinalIgnoreCase);
             var orderedForLoc = orderedKeys.Where(locNames.Contains).ToList();
             if (orderedForLoc.Count > 0) Ue4ssManifest.SetOrder(loc.Abs, orderedForLoc);
@@ -1543,10 +1572,16 @@ public static class Scanner
         var items = new List<LoadOrderUndoItem>();
         foreach (var loc in c.Locations)
         {
-            // Never rename files inside a folder owned by another tool — even if a prefix
-            // exists there (written externally), renaming it would corrupt the tool's manifest.
-            if (ToolOwnership.Detect(loc.Abs) is not null) continue;
-            var dirs = new[] { loc.Abs }.Concat(loc.Mirrors.Where(m => ToolOwnership.Detect(m) is null)).ToList();
+            // Never rename files inside a folder another tool owns — even if a prefix exists there (written
+            // externally), renaming it would corrupt the tool's manifest. Same rule apply used (PostureOf),
+            // so a declared-managed folder is skipped and a taken-over one is undone.
+            if (PostureOf(loc, loc.Abs, c).HandsOff) continue;
+            var heldMirrors = loc.Mirrors
+                .Select(m => (Dir: m, Folder: PostureOf(loc, m, c)))
+                .Where(x => x.Folder.HandsOff)
+                .Select(x => (x.Dir, Tool: ToolName(x.Folder.Owner, loc.Managed)))
+                .ToList();
+            var dirs = new[] { loc.Abs }.Concat(loc.Mirrors).ToList();
             var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             var order = new List<string>();
             foreach (var dir in dirs)
@@ -1564,7 +1599,9 @@ public static class Scanner
                 // A collision in ANY copy blocks every copy, so a mirror never ends up under a different
                 // name from its primary (the Windrose desync, in reverse).
                 var collision = holders.Any(d => File.Exists(Path.Combine(d, to)));
-                items.Add(new LoadOrderUndoItem(loc.Name, f, to, holders, collision));
+                // An owned mirror holding the same file blocks every copy, for the same lockstep reason.
+                string? heldBy = heldMirrors.Where(h => holders.Contains(h.Dir)).Select(h => h.Tool).FirstOrDefault();
+                items.Add(new LoadOrderUndoItem(loc.Name, f, to, holders, collision, collision ? null : heldBy));
             }
         }
         return new LoadOrderUndoPlan(items);
@@ -1580,17 +1617,18 @@ public static class Scanner
     }
 
     /// <summary>Undo 626's load-order renames (<see cref="PlanUndoLoadOrder"/>), then forget the saved
-    /// order — but only when every planned rename happened. A collision or a failure leaves
-    /// <c>loadorder.json</c> in place, because the order is not fully undone.</summary>
+    /// order — but only when every planned rename happened. A file left alone or a failure leaves
+    /// <c>loadorder.json</c> in place, because the order is not fully undone. Prefixes only: the UE4SS
+    /// <c>mods.txt</c> order apply wrote stays as the user last chose it, which is valid and loads.</summary>
     private static LoadOrderUndoResult ResetLoadOrder(GameContext c)
     {
         var plan = PlanUndoLoadOrder(c);
         var renamed = 0;
-        var collisions = new List<LoadOrderUndoItem>();
+        var leftAlone = new List<LoadOrderUndoItem>();
         var failures = new List<(string File, string Error)>();
         foreach (var item in plan.Items)
         {
-            if (item.Collision) { collisions.Add(item); continue; }
+            if (item.Blocked) { leftAlone.Add(item); continue; }
             string? error = null;
             foreach (var dir in item.Dirs)
             {
@@ -1601,12 +1639,12 @@ public static class Scanner
             else failures.Add((item.From, error));
         }
         var cleared = false;
-        if (collisions.Count == 0 && failures.Count == 0)
+        if (leftAlone.Count == 0 && failures.Count == 0)
         {
             // 626's own record of the order, not a mod file: the order it describes no longer exists.
             try { if (File.Exists(c.LoadOrderPath)) File.Delete(c.LoadOrderPath); cleared = true; } catch { /* kept; harmless */ }
         }
-        return new LoadOrderUndoResult(renamed, collisions, failures, cleared);
+        return new LoadOrderUndoResult(renamed, leftAlone, failures, cleared);
     }
 
     /// <summary>Rename <paramref name="from"/> to <paramref name="to"/> within <paramref name="dir"/>,

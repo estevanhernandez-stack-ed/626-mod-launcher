@@ -31,14 +31,21 @@ public sealed record LoadOrderSupport(LoadOrderMechanism Mechanism, string? Reas
 
     public const string IndependentReason = "Load order doesn't apply to these mods — they load independently.";
 
+    // Plugins, plus the archives that load only because their name matches a plugin's (bsa/ba2) and
+    // OpenMW's content files. No other engine uses any of these extensions.
+    private static readonly HashSet<string> PluginGameExts = new(StringComparer.OrdinalIgnoreCase) { "esp", "esm", "esl", "bsa", "ba2", "omwaddon" };
+
     private static readonly HashSet<string> PluginExts = new(StringComparer.OrdinalIgnoreCase) { "esp", "esm", "esl" };
+
+    /// <summary>True when <paramref name="fileName"/> is a Creation Engine plugin (esp/esm/esl).</summary>
+    public static bool IsPluginFile(string fileName) => PluginExts.Contains(Path.GetExtension(fileName).TrimStart('.'));
 
     public bool Supported => Mechanism != LoadOrderMechanism.NotSupported;
 
     /// <summary>True when the game's mods are Creation Engine plugins, whose names other files refer to.</summary>
     public static bool IsPluginGame(string? engine, IEnumerable<string>? declaredExts)
         => string.Equals(engine, "bethesda", StringComparison.OrdinalIgnoreCase)
-           || (declaredExts ?? Array.Empty<string>()).Any(PluginExts.Contains);
+           || (declaredExts ?? Array.Empty<string>()).Any(PluginGameExts.Contains);
 
     /// <param name="c">The resolved game.</param>
     /// <param name="configBacked">The App's Mod Engine 2 config owns this game's order.</param>
@@ -58,35 +65,72 @@ public sealed record LoadOrderSupport(LoadOrderMechanism Mechanism, string? Reas
 /// <param name="To">The original name the prefix is stripped back to.</param>
 /// <param name="Dirs">Every folder (primary first, then mirrors) holding <paramref name="From"/>; renamed in lockstep.</param>
 /// <param name="Collision">True when <paramref name="To"/> already exists in one of those folders: neither file is touched.</param>
-public sealed record LoadOrderUndoItem(string Location, string From, string To, IReadOnlyList<string> Dirs, bool Collision);
+/// <param name="MirrorHeldBy">The tool that owns a mirror holding <paramref name="From"/>, when one does. 626 never
+/// renames inside another tool's folder, and renaming the primary alone would leave the two under different names,
+/// so every copy is left as it is.</param>
+public sealed record LoadOrderUndoItem(string Location, string From, string To, IReadOnlyList<string> Dirs, bool Collision, string? MirrorHeldBy = null)
+{
+    /// <summary>True when undo will leave this file as it is.</summary>
+    public bool Blocked => Collision || MirrorHeldBy is not null;
+
+    /// <summary>Why it is left, in the words the status line uses.</summary>
+    public string WhyLeft => Collision ? $"{To} already exists" : $"a mirror folder is managed by {MirrorHeldBy}";
+}
 
 /// <summary>What undoing 626's load order would do, before anything moves.</summary>
 public sealed record LoadOrderUndoPlan(IReadOnlyList<LoadOrderUndoItem> Items)
 {
     public bool IsEmpty => Items.Count == 0;
 
-    /// <summary>The line the game-state strip shows. "plugins" on a plugin game, "mod files" elsewhere.</summary>
+    /// <summary>True when there are prefixes and Undo can take none of them off. Undo cannot clear the
+    /// chip then, so the chip has to say so and be dismissible rather than nag on every reload.</summary>
+    public bool Stuck => Items.Count > 0 && Items.All(i => i.Blocked);
+
+    /// <summary>The line the game-state strip shows.</summary>
     public string Describe(bool pluginGame)
     {
         var n = Items.Count;
-        var noun = pluginGame ? (n == 1 ? "plugin" : "plugins") : (n == 1 ? "mod file" : "mod files");
-        return $"{n} {noun} {(n == 1 ? "carries" : "carry")} a load-order prefix from 626.";
+        var one = n == 1;
+        if (Stuck)
+        {
+            var why = Items.All(i => i.Collision)
+                ? (one ? "its original name is taken" : "their original names are taken")
+                : (one ? "626 can't safely put its original name back" : "626 can't safely put their original names back");
+            return $"{n} {(one ? "file carries" : "files carry")} 626's load-order prefix, but {why}; see the status for which.";
+        }
+        if (pluginGame)
+        {
+            // "plugins" only when every one is a plugin: an archive or a sidecar is a file, not a plugin.
+            var noun = Items.All(i => LoadOrderSupport.IsPluginFile(i.From)) ? (one ? "plugin" : "plugins") : (one ? "file" : "files");
+            return $"{n} {noun} {(one ? "carries" : "carry")} a load-order prefix from 626.";
+        }
+        // Where the prefix IS the order working as asked, the chip says that, not something that reads like damage.
+        return one
+            ? "Load order applied by renaming 1 file. Undo puts the original name back."
+            : $"Load order applied by renaming {n} files. Undo puts the original names back.";
     }
 }
 
 /// <summary>What an undo did.</summary>
+/// <param name="LeftAlone">Planned files undo would not touch: a taken original name, or an owned mirror.</param>
 public sealed record LoadOrderUndoResult(
     int Renamed,
-    IReadOnlyList<LoadOrderUndoItem> Collisions,
+    IReadOnlyList<LoadOrderUndoItem> LeftAlone,
     IReadOnlyList<(string File, string Error)> Failures,
     bool LoadOrderCleared)
 {
-    /// <summary>The status line: the count, then every file left alone and why.</summary>
+    /// <summary>The status line: what was renamed, then every file left alone and why.</summary>
     public string Describe()
     {
-        var parts = new List<string> { $"Removed 626's prefix from {Renamed} file{(Renamed == 1 ? "" : "s")}." };
-        foreach (var c in Collisions) parts.Add($"{c.From} was left as is: {c.To} already exists.");
+        var parts = new List<string>();
+        if (Renamed > 0) parts.Add($"Removed 626's prefix from {Renamed} file{(Renamed == 1 ? "" : "s")}.");
+        if (LeftAlone.Count > 0)
+        {
+            var lead = LeftAlone.Count == 1 ? "626 left this as it is: " : "626 left these as they are: ";
+            parts.Add(lead + string.Join(", ", LeftAlone.Select(i => $"{i.From} ({i.WhyLeft})")) + ".");
+        }
         foreach (var (file, error) in Failures) parts.Add($"{file} couldn't be renamed: {error.TrimEnd('.')}.");
+        if (parts.Count == 0) parts.Add("No files carry 626's load-order prefix.");
         return string.Join(" ", parts);
     }
 }
