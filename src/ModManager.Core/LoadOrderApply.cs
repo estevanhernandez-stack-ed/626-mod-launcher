@@ -13,8 +13,22 @@ public static partial class LoadOrderApply
     [GeneratedRegex(@"^\d{2,}__")]
     private static partial Regex PrefixRe();
 
+    // Exactly what Prefix writes: a multiple of ten, zero-padded to at least four digits. The undo plan
+    // keys on THIS, not PrefixRe, so a mod an author named "10__thing.pak" is never renamed by an undo.
+    // PrefixRe stays loose because it feeds mod identity (Scanner.ModKey): tightening it would re-key
+    // every existing file whose name starts with 2-3 digits and "__", and with it their metadata and
+    // disabled-holding folders.
+    [GeneratedRegex(@"^\d{3,}0__")]
+    private static partial Regex OwnPrefixRe();
+
     /// <summary>Remove a leading launcher load-order prefix (NNNN__), if present.</summary>
     public static string StripPrefix(string name) => PrefixRe().Replace(name, "");
+
+    /// <summary>True when <paramref name="name"/> starts with a prefix <see cref="Prefix"/> could have written.</summary>
+    public static bool HasOwnPrefix(string name) => OwnPrefixRe().IsMatch(name);
+
+    /// <summary>Remove a prefix <see cref="Prefix"/> could have written, and nothing else.</summary>
+    public static string StripOwnPrefix(string name) => OwnPrefixRe().Replace(name, "");
 
     /// <summary>The prefix for a given position (step of 10 leaves room to insert).</summary>
     public static string Prefix(int index) => ((index + 1) * 10).ToString("D4") + "__";

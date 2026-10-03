@@ -1451,8 +1451,13 @@ public static class Scanner
     // ---------- load order ----------
 
     public static Task<IReadOnlyList<string>> GetLoadOrderAsync(GameContext c) => Task.FromResult(GetLoadOrder(c));
-    public static Task ApplyLoadOrderAsync(GameContext c, IReadOnlyList<string> orderedKeys) { ApplyLoadOrder(c, orderedKeys); return Task.CompletedTask; }
-    public static Task ResetLoadOrderAsync(GameContext c) { ResetLoadOrder(c); return Task.CompletedTask; }
+    /// <summary>Apply an order. Returns what <see cref="LoadOrderSupport.For"/> said: when that is
+    /// <see cref="LoadOrderMechanism.NotSupported"/> nothing was renamed and nothing was saved, and its
+    /// <see cref="LoadOrderSupport.Reason"/> is the sentence to show.</summary>
+    public static Task<LoadOrderSupport> ApplyLoadOrderAsync(GameContext c, IReadOnlyList<string> orderedKeys) => Task.FromResult(ApplyLoadOrder(c, orderedKeys));
+
+    /// <summary>Undo 626's load-order renames on this game. See <see cref="PlanUndoLoadOrder"/>.</summary>
+    public static Task<LoadOrderUndoResult> ResetLoadOrderAsync(GameContext c) => Task.FromResult(ResetLoadOrder(c));
 
     private static IReadOnlyList<string> LoadSavedOrder(GameContext c)
     {
@@ -1480,8 +1485,13 @@ public static class Scanner
     /// zero-padded index. Purely additive (reversible via <see cref="ResetLoadOrder"/>); modKey
     /// ignores the prefix so identity/disable are unaffected. Persists the order.
     /// </summary>
-    private static void ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
+    private static LoadOrderSupport ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
     {
+        // Defence in depth: the App asks the same rule before load-order mode opens. A Bethesda plugin
+        // renamed is a plugin the game can no longer find, so refusal here renames nothing and saves nothing.
+        var support = LoadOrderSupport.For(c);
+        if (!support.Supported) return support;
+
         // The game's own files are never renamed: a prefixed Skyrim.esm is a missing Skyrim.esm to the game.
         var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly && m.Loader is null && !m.IsBase).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
         var index = 0;
@@ -1514,38 +1524,100 @@ public static class Scanner
         }
 
         SaveLoadOrder(c, orderedKeys);
+        return support;
     }
 
-    /// <summary>Strip launcher load-order prefixes from every location (primary + mirrors), restoring original names.</summary>
-    private static void ResetLoadOrder(GameContext c)
+    /// <summary>
+    /// What undoing 626's load order would do, before anything moves: every file in the game's locations
+    /// (primary + mirrors) that carries a prefix <see cref="LoadOrderApply.Prefix"/> could have written,
+    /// with the name it goes back to. Folders another tool owns are skipped — renaming inside them would
+    /// corrupt that tool's own records. A name whose original already exists is a collision: both files
+    /// are left exactly as they are, never overwritten.
+    ///
+    /// <para>Only 626's own pattern (<see cref="LoadOrderApply.HasOwnPrefix"/>), so an author's
+    /// <c>10__thing.pak</c> is not touched. Sidecars ride with their file (<c>0010__Foo.archive.xl</c>),
+    /// because apply renamed them with it.</para>
+    /// </summary>
+    public static LoadOrderUndoPlan PlanUndoLoadOrder(GameContext c)
     {
+        var items = new List<LoadOrderUndoItem>();
         foreach (var loc in c.Locations)
         {
             // Never rename files inside a folder owned by another tool — even if a prefix
             // exists there (written externally), renaming it would corrupt the tool's manifest.
             if (ToolOwnership.Detect(loc.Abs) is not null) continue;
-            StripPrefixesIn(loc.Abs, c);
-            foreach (var mp in loc.Mirrors) StripPrefixesIn(mp, c);
+            var dirs = new[] { loc.Abs }.Concat(loc.Mirrors.Where(m => ToolOwnership.Detect(m) is null)).ToList();
+            var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            var order = new List<string>();
+            foreach (var dir in dirs)
+            {
+                foreach (var f in PrefixedFilesIn(dir, c))
+                {
+                    if (!byName.TryGetValue(f, out var holders)) { byName[f] = holders = new List<string>(); order.Add(f); }
+                    holders.Add(dir);
+                }
+            }
+            foreach (var f in order)
+            {
+                var to = LoadOrderApply.StripOwnPrefix(f);
+                var holders = byName[f];
+                // A collision in ANY copy blocks every copy, so a mirror never ends up under a different
+                // name from its primary (the Windrose desync, in reverse).
+                var collision = holders.Any(d => File.Exists(Path.Combine(d, to)));
+                items.Add(new LoadOrderUndoItem(loc.Name, f, to, holders, collision));
+            }
         }
-        try { File.Delete(c.LoadOrderPath); } catch { /* nothing to clear */ }
+        return new LoadOrderUndoPlan(items);
     }
 
-    private static void StripPrefixesIn(string dir, GameContext c)
+    // Mod files carrying 626's prefix, plus the sidecars of those files.
+    private static IEnumerable<string> PrefixedFilesIn(string dir, GameContext c)
     {
-        foreach (var f in ListPakFiles(dir, c))
+        var prefixed = SafeReadFiles(dir).Where(LoadOrderApply.HasOwnPrefix).ToList();
+        var mods = prefixed.Where(n => c.FileRe.IsMatch(n)).ToList();
+        var sidecars = mods.SelectMany(m => SidecarsFor(m, prefixed));
+        return mods.Concat(sidecars).Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Undo 626's load-order renames (<see cref="PlanUndoLoadOrder"/>), then forget the saved
+    /// order — but only when every planned rename happened. A collision or a failure leaves
+    /// <c>loadorder.json</c> in place, because the order is not fully undone.</summary>
+    private static LoadOrderUndoResult ResetLoadOrder(GameContext c)
+    {
+        var plan = PlanUndoLoadOrder(c);
+        var renamed = 0;
+        var collisions = new List<LoadOrderUndoItem>();
+        var failures = new List<(string File, string Error)>();
+        foreach (var item in plan.Items)
         {
-            var stripped = LoadOrderApply.StripPrefix(f);
-            if (stripped != f) MoveIfFree(dir, f, stripped);
+            if (item.Collision) { collisions.Add(item); continue; }
+            string? error = null;
+            foreach (var dir in item.Dirs)
+            {
+                try { if (!MoveIfFree(dir, item.From, item.To)) error ??= "its original name was taken while undoing"; }
+                catch (Exception e) { error ??= e.Message; }
+            }
+            if (error is null) renamed++;
+            else failures.Add((item.From, error));
         }
+        var cleared = false;
+        if (collisions.Count == 0 && failures.Count == 0)
+        {
+            // 626's own record of the order, not a mod file: the order it describes no longer exists.
+            try { if (File.Exists(c.LoadOrderPath)) File.Delete(c.LoadOrderPath); cleared = true; } catch { /* kept; harmless */ }
+        }
+        return new LoadOrderUndoResult(renamed, collisions, failures, cleared);
     }
 
     /// <summary>Rename <paramref name="from"/> to <paramref name="to"/> within <paramref name="dir"/>,
     /// only when the source exists and the destination is free — idempotent, never clobbers.</summary>
-    private static void MoveIfFree(string dir, string from, string to)
+    private static bool MoveIfFree(string dir, string from, string to)
     {
         var src = Path.Combine(dir, from);
         var dst = Path.Combine(dir, to);
-        if (File.Exists(src) && !File.Exists(dst)) File.Move(src, dst);
+        if (!File.Exists(src) || File.Exists(dst)) return false;
+        File.Move(src, dst, overwrite: false);
+        return true;
     }
 
     // ---------- profiles ----------
