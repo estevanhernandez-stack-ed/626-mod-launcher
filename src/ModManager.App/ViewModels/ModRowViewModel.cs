@@ -21,11 +21,15 @@ public sealed partial class ModRowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleIsOn))]
     [NotifyPropertyChangedFor(nameof(ToggleAutomationName))]
+    [NotifyPropertyChangedFor(nameof(CanInteract))]
+    [NotifyPropertyChangedFor(nameof(GameFileTooltip))]
     public partial bool Enabled { get; set; }
 
     // Screen-reader names carry the mod's identity — 27 rows must never announce as 27
     // identical "toggle switch" / "uninstall" controls (vibe-glow F-034).
-    public string ToggleAutomationName => (ToggleIsOn ? "Disable " : "Enable ") + DisplayName;
+    public string ToggleAutomationName => BaseLocked
+        ? $"{DisplayName} is part of the game, so 626 won't turn it off"
+        : (ToggleIsOn ? "Disable " : "Enable ") + DisplayName;
     public string EndorseAutomationName => "Endorse " + DisplayName;
     public string ReadmeAutomationName => "Readme for " + DisplayName;
     public string ConfigAutomationName => "Configure " + DisplayName;
@@ -49,7 +53,19 @@ public sealed partial class ModRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanInteract))]
     public partial bool IsBusy { get; set; }
 
-    public bool CanInteract => CanToggle && !IsBusy;
+    public bool CanInteract => CanToggle && !IsBusy && !BaseLocked;
+
+    // The game's own files (Core marks the row, BaseGameFiles decides): an ON game file can't be switched off,
+    // so its switch is disabled. A HELD game file (moved aside by an older build) stays switchable, because
+    // turning it back on is always allowed and is how the game gets its file back.
+    public bool IsBase => Mod.IsBase;
+    private bool BaseLocked => Mod.IsBase && Enabled;
+    public Visibility GameFileChipVisibility => Mod.IsBase ? Visibility.Visible : Visibility.Collapsed;
+    public string GameFileChipAutomationId => $"GameFileChip.{Mod.Name}";
+    public string GameFileChipAutomationName => $"Game file: {DisplayName}";
+    public string GameFileTooltip => Enabled
+        ? "Part of the game, so 626 won't turn it off."
+        : "Part of the game. An earlier version of 626 moved it aside: turn it back on so the game can start.";
 
     // Load-order mode: show the position number (editable), hide the normal row controls/art.
     [ObservableProperty]

@@ -2025,7 +2025,7 @@ public sealed partial class MainViewModel : ObservableObject
             ActiveModRows = () => _allRows.SelectMany(m => m.HasVariantOptions
                     ? m.VariantOptions.Where(v => v.Enabled && v.CanToggle)
                         .Select(v => new StashedModRow { Name = v.ModName, Location = m.Mod.Location })
-                    : (m.Enabled && !m.Mod.ReadOnly)
+                    : (m.Enabled && !m.Mod.ReadOnly && !m.Mod.IsBase)   // the game's own files stay where they are
                         ? new[] { new StashedModRow { Name = m.Mod.Name, Location = m.Mod.Location } }
                         : Enumerable.Empty<StashedModRow>())
                 .ToList(),
