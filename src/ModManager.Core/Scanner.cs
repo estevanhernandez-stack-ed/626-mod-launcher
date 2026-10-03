@@ -485,7 +485,7 @@ public static class Scanner
             var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
             if (loc is null || !judge.Applies(loc)) continue;
             var dir = heldDirs.TryGetValue(m.Name, out var held) ? held : loc.Abs;
-            m.IsBase = m.Files.Any(f => judge.IsBase(loc, f, BaseGameFiles.Judge.NeedsSize(loc) ? SizeOf(dir, f) : 0));
+            m.IsBase = judge.BaseFileOfRow(loc, m.Files, f => SizeOf(dir, f)) is not null;
         }
     }
 
@@ -504,15 +504,8 @@ public static class Scanner
         if (m.IsFolder) return null;
         var judge = c is null ? new BaseGameFiles.Judge(null, null) : new BaseGameFiles.Judge(c);
         if (!judge.Applies(loc)) return null;
-        foreach (var f in m.Files)
-        {
-            long size = 0;
-            if (BaseGameFiles.Judge.NeedsSize(loc))
-                foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
-                    size = Math.Max(size, SizeOf(root, f));
-            if (judge.IsBase(loc, f, size)) return Path.GetFileName(f);
-        }
-        return null;
+        return judge.BaseFileOfRow(loc, m.Files,
+            f => new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()).Max(root => SizeOf(root, f)));
     }
 
     private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files, bool IsFolder, string Dir);
@@ -1476,7 +1469,9 @@ public static class Scanner
     /// <summary>The saved order reconciled with the currently-enabled mods (new append, missing drop).</summary>
     private static IReadOnlyList<string> GetLoadOrder(GameContext c)
     {
-        var enabled = BuildModList(c).Where(m => m.Enabled).Select(m => m.Name);
+        // The game's own files have no place in it: ApplyLoadOrder never renames them, so offering them as
+        // movable would be a promise it can't keep.
+        var enabled = BuildModList(c).Where(m => m.Enabled && !m.IsBase).Select(m => m.Name);
         return LoadOrder.Reconcile(LoadSavedOrder(c), enabled);
     }
 

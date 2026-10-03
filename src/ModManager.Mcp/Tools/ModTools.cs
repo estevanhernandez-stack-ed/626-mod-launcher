@@ -103,7 +103,8 @@ public static class ModTools
     }
 
     [McpServerTool(Name = "list_mods")]
-    [Description("Lists every detected mod for a game with its enabled state, class/chip, location, loader, and metadata (display title / author / source URL).")]
+    [Description("Lists every detected mod for a game with its enabled state, class/chip, location, loader, and metadata (display title / author / source URL). "
+                 + "isBase marks the game's own files (a Bethesda master, a base pak): set_mod_enabled and uninstall_mod refuse to turn those off or remove them.")]
     public static Task<object> ListMods([Description("The game id, from list_games.")] string gameId)
     {
         var game = Find(gameId);

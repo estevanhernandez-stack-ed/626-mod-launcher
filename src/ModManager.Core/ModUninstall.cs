@@ -97,13 +97,20 @@ public static class ModUninstall
         return null;
     }
 
-    // The row's game file for the refusal sentence, without touching disk: the first file a name-only rule
-    // calls the game's (Bethesda masters, archives, Unreal base paks), else the first file.
+    // The row's game file for the refusal sentence, without touching disk. A row that holds a plugin is the
+    // game's by a plugin (BaseGameFiles.Judge.BaseFileOfRow), so a plugin is named: a base master by name, else
+    // the first plugin (Creation Club content, which only the game's list names). A row of archives names the
+    // first archive a name-only rule calls the game's, else its first file.
     private static string BaseFileName(Mod mod)
-        => mod.Files.Select(Path.GetFileName).OfType<string>()
-               .FirstOrDefault(f => BaseGameFiles.IsBethesdaBaseMaster(f) || BaseGameFiles.IsBethesdaBaseFile(f, EmptySet)
-                                    || BaseGameFiles.IsBaseGameArchive(f, 0))
-           ?? (mod.Files.Count > 0 ? Path.GetFileName(mod.Files[0]) : mod.Name);
+    {
+        var names = mod.Files.Select(Path.GetFileName).OfType<string>().ToList();
+        var plugins = names.Where(BaseGameFiles.IsPlugin).ToList();
+        return plugins.FirstOrDefault(BaseGameFiles.IsBethesdaBaseMaster)
+               ?? plugins.FirstOrDefault()
+               ?? names.FirstOrDefault(f => BaseGameFiles.IsBethesdaBaseFile(f, EmptySet, falloutArchives: true)
+                                            || BaseGameFiles.IsBaseGameArchive(f, 0))
+               ?? (names.Count > 0 ? names[0] : mod.Name);
+    }
 
     private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
 

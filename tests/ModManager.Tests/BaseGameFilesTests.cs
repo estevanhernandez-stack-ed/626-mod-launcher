@@ -39,6 +39,10 @@ public class BaseGameFilesTests : IDisposable
     [InlineData("GunRunnersArsenal.esm")]
     [InlineData("BrokenSteel.esm")]
     [InlineData("Oblivion.esm")]
+    [InlineData("SkyrimVR.esm")]
+    [InlineData("Fallout4_VR.esm")]
+    [InlineData("_ResourcePack.esl")]
+    [InlineData("_ResourcePack.bsa")]
     public void Base_masters_are_the_games(string name)
         => Assert.True(BaseGameFiles.IsBethesdaBaseFile(name, NoCc));
 
@@ -59,7 +63,7 @@ public class BaseGameFilesTests : IDisposable
     [InlineData("Fallout4 - Meshes.ba2", true)]
     [InlineData("DLCRobot - Main.ba2", true)]
     [InlineData("SFBGS003 - Main.ba2", true)]
-    [InlineData("Fallout - Meshes.bsa", true)]  // Fallout 3 / New Vegas base archives
+    [InlineData("Fallout - Meshes.bsa", false)] // only with a Fallout 3 / New Vegas master in the folder
     [InlineData("ccBGSSSE001-Fish.bsa", true)]
     [InlineData("MyMod.bsa", false)]
     [InlineData("SkyrimTextures.bsa", false)]  // no " - ": not Skyrim's
@@ -216,5 +220,42 @@ public class BaseGameFilesTests : IDisposable
         Assert.Equal("game_file", json.GetProperty("refusal").GetString());
         var log = ModManager.Core.Agent.AgentAudit.Read(Scanner.DataDirForGame(game));
         Assert.Contains(log, e => e.Result == "game_file");
+    }
+
+    [Fact]
+    public void Fallout_base_archives_count_only_beside_a_fallout_3_or_new_vegas_master()
+    {
+        Assert.True(BaseGameFiles.IsBethesdaBaseFile("Fallout - Meshes.bsa", NoCc, falloutArchives: true));
+        Assert.False(BaseGameFiles.IsBethesdaBaseFile("Fallout - Meshes.bsa", NoCc, falloutArchives: false));
+    }
+
+    [Fact]
+    public void Mcp_uninstall_refusal_is_coded_game_file()
+    {
+        McpConfig.DataRoot = Path.Combine(_root, "appdata");
+        var game = Skyrim();
+        RegistryStore.Save(McpConfig.DataRoot, Registry.UpsertGame(Registry.EmptyRegistry(), game));
+        var json = JsonSerializer.SerializeToElement(GameWriteTools.UninstallMod(game.Id!, "Skyrim", confirm: true));
+        Assert.Equal("game_file", json.GetProperty("refusal").GetString());
+        Assert.Equal("Skyrim.esm is part of the game, so 626 won't remove it.", json.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public void List_mods_description_mentions_the_flag()
+    {
+        var attr = typeof(ModTools).GetMethod(nameof(ModTools.ListMods))!
+            .GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false)
+            .Cast<System.ComponentModel.DescriptionAttribute>().Single();
+        Assert.Contains("isBase", attr.Description);
+    }
+
+    [Fact]
+    public async Task Load_order_leaves_the_games_own_files_out()
+    {
+        var c = Scanner.GameContext(Skyrim());
+        var order = await Scanner.GetLoadOrderAsync(c);
+        Assert.Contains("MyMod", order);
+        Assert.DoesNotContain("Skyrim", order);
+        Assert.DoesNotContain("ccBGSSSE001-Fish", order);
     }
 }

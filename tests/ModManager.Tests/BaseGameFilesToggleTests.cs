@@ -333,4 +333,87 @@ public class BaseGameFilesToggleTests : IDisposable
         Assert.Equal("Skyrim.esm is part of the game, so 626 won't turn it off.", result.GetProperty("detail").GetString());
         AssertSkyrimBaseInPlace();
     }
+
+    // ---------- fix round: real mods whose names start with a game file's stem ----------
+
+    private static async Task AssertRoundTrips(GameContext c, string row, string dir, params string[] files)
+    {
+        var m = ModListing.Resolve(c.Game).Single(x => x.Name == row);
+        Assert.False(m.IsBase, $"{row} was marked as the game's");
+        Assert.True((await ModToggle.SetEnabledWithOutcomeAsync(c, m, false)).Applied);
+        foreach (var f in files) Assert.False(File.Exists(Path.Combine(dir, f)), $"{f} stayed");
+        Assert.True((await ModToggle.SetEnabledWithOutcomeAsync(c, ModListing.Resolve(c.Game).Single(x => x.Name == row), true)).Applied);
+        foreach (var f in files) Assert.Equal(Bytes(f), File.ReadAllText(Path.Combine(dir, f)));
+    }
+
+    [Fact]
+    public async Task Mods_named_after_a_game_stem_still_toggle_and_archive_only_game_rows_stay_base()
+    {
+        var game = SkyrimGame();
+        string[] extra = { "Dawnguard - Fixes.esp", "Dawnguard - Fixes.bsa", "Update - Patch.esp", "Update - Patch.bsa",
+                           "Fallout - Armor.esp", "Fallout - Armor.bsa" };
+        foreach (var f in extra) File.WriteAllText(Path.Combine(SkyrimData, f), Bytes(f));
+        var c = Scanner.GameContext(game);
+
+        await AssertRoundTrips(c, "Dawnguard - Fixes", SkyrimData, "Dawnguard - Fixes.esp", "Dawnguard - Fixes.bsa");
+        await AssertRoundTrips(c, "Update - Patch", SkyrimData, "Update - Patch.esp", "Update - Patch.bsa");
+        await AssertRoundTrips(c, "Fallout - Armor", SkyrimData, "Fallout - Armor.esp", "Fallout - Armor.bsa");
+        Assert.True(Row(c, "Skyrim - Textures0").IsBase);
+        AssertSkyrimBaseInPlace();
+    }
+
+    [Fact]
+    public async Task A_bare_stem_archive_beside_a_mod_plugin_toggles_with_it()
+    {
+        var root = Path.Combine(_root, "NoMaster");
+        var data = Path.Combine(root, "Data");
+        Directory.CreateDirectory(data);
+        foreach (var f in new[] { "Skyrim.esp", "Skyrim.bsa", "Skyrim - Textures0.bsa" }) File.WriteAllText(Path.Combine(data, f), Bytes(f));
+        var game = new GameEntry
+        {
+            Id = "nomaster", GameName = "No Master", Engine = "bethesda", GameRoot = root,
+            FileExtensions = new[] { "esp", "esl", "esm", "bsa" }, GroupingRule = "filename_no_ext",
+            DataDir = Path.Combine(_root, "data-nomaster"),
+            ModLocations = new[] { new ModLocation("mods", "Data", "Data") },
+        };
+        var c = Scanner.GameContext(game);
+        await AssertRoundTrips(c, "Skyrim", data, "Skyrim.esp", "Skyrim.bsa");
+        Assert.True(Row(c, "Skyrim - Textures0").IsBase);
+    }
+
+    [Fact]
+    public async Task New_vegas_base_archives_stay_and_a_fallout_named_mod_toggles()
+    {
+        var root = Path.Combine(_root, "FalloutNV");
+        var data = Path.Combine(root, "Data");
+        Directory.CreateDirectory(data);
+        foreach (var f in new[] { "FalloutNV.esm", "Fallout - Meshes.bsa", "Fallout - Armor.esp", "Fallout - Armor.bsa" })
+            File.WriteAllText(Path.Combine(data, f), Bytes(f));
+        var game = new GameEntry
+        {
+            Id = "fnv", GameName = "FNV", Engine = "bethesda", GameRoot = root,
+            FileExtensions = new[] { "esp", "esl", "esm", "bsa" }, GroupingRule = "filename_no_ext",
+            DataDir = Path.Combine(_root, "data-fnv"),
+            ModLocations = new[] { new ModLocation("mods", "Data", "Data") },
+        };
+        var c = Scanner.GameContext(game);
+        Assert.True(Row(c, "Fallout - Meshes").IsBase);
+        await AssertRoundTrips(c, "Fallout - Armor", data, "Fallout - Armor.esp", "Fallout - Armor.bsa");
+        await Scanner.SetAllModsAsync(false, c);
+        Assert.Equal(Bytes("Fallout - Meshes.bsa"), File.ReadAllText(Path.Combine(data, "Fallout - Meshes.bsa")));
+        Assert.Equal(Bytes("FalloutNV.esm"), File.ReadAllText(Path.Combine(data, "FalloutNV.esm")));
+    }
+
+    [Fact]
+    public async Task The_refusal_names_the_rows_game_plugin_not_its_archive()
+    {
+        var c = Scanner.GameContext(SkyrimGame());
+        var ex = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => ModToggle.SetEnabledWithOutcomeAsync(c, Row(c, "ccBGSSSE001-Fish"), false));
+        Assert.Equal("ccBGSSSE001-Fish.esm is part of the game, so 626 won't turn it off.", ex.Message);
+        var why = ModUninstall.Refusal(c, Row(c, "ccBGSSSE001-Fish"));
+        Assert.Equal("ccBGSSSE001-Fish.esm is part of the game, so 626 won't remove it.", why!.Message);
+        var ex2 = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => Scanner.UninstallModAsync("ccBGSSSE001-Fish", c));
+        Assert.Equal("ccBGSSSE001-Fish.esm is part of the game, so 626 won't remove it.", ex2.Message);
+    }
 }

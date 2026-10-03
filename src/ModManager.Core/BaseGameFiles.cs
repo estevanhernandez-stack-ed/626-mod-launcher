@@ -25,10 +25,11 @@ public static class BaseGameFiles
     // Base masters across every Creation Engine game. Case-insensitive.
     private static readonly HashSet<string> BethesdaMasters = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Skyrim (LE / SE / AE)
-        "Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm",
-        // Fallout 4
-        "Fallout4.esm", "DLCRobot.esm", "DLCworkshop01.esm", "DLCCoast.esm", "DLCworkshop02.esm",
+        // Skyrim (LE / SE / AE / VR). _ResourcePack.esl (and its .bsa, by the archive rule) ships with AE 1.6.1130+.
+        "Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm", "SkyrimVR.esm",
+        "_ResourcePack.esl",
+        // Fallout 4 (and VR)
+        "Fallout4.esm", "Fallout4_VR.esm", "DLCRobot.esm", "DLCworkshop01.esm", "DLCCoast.esm", "DLCworkshop02.esm",
         "DLCworkshop03.esm", "DLCNukaWorld.esm", "DLCUltraHighResolution.esm",
         // Starfield (SFBGS*.esm is matched by pattern below)
         "Starfield.esm", "Constellation.esm", "OldMars.esm", "BlueprintShips-Starfield.esm", "ShatteredSpace.esm",
@@ -44,8 +45,23 @@ public static class BaseGameFiles
     // Starfield's own update masters (SFBGS003.esm, SFBGS004.esm, ...).
     private static readonly Regex StarfieldUpdateMaster = new(@"^SFBGS[^.\\/]*\.esm$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    // Fallout 3 and New Vegas name their base archives "Fallout - Meshes.bsa", after no master at all.
+    // Fallout 3 and New Vegas name their base archives "Fallout - Meshes.bsa", after no master at all. Only
+    // honoured in a folder that holds one of those games' masters (FalloutArchivesApply).
     private static readonly string[] ArchiveOnlyStems = { "Fallout" };
+    private static readonly string[] FalloutArchiveMasters = { "Fallout3.esm", "FalloutNV.esm" };
+
+    /// <summary>True when <paramref name="dataDir"/> holds Fallout 3's or New Vegas's master, which is when
+    /// "Fallout - *.bsa" archives are that game's own.</summary>
+    public static bool FalloutArchivesApply(string? dataDir)
+    {
+        if (string.IsNullOrEmpty(dataDir)) return false;
+        try { return FalloutArchiveMasters.Any(m => File.Exists(Path.Combine(dataDir, m))); }
+        catch { return false; }
+    }
+
+    /// <summary>True for a Creation Engine plugin extension (.esm, .esp, .esl).</summary>
+    public static bool IsPlugin(string? fileName)
+        => PluginExts.Contains(Path.GetExtension(fileName ?? ""), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The Creation Club lists a Bethesda game keeps in its root: one filename per line.</summary>
     public static readonly IReadOnlyList<string> CreationClubLists = new[] { "Skyrim.ccc", "Fallout4.ccc", "Starfield.ccc" };
@@ -89,9 +105,12 @@ public static class BaseGameFiles
     /// <summary>
     /// True when a file in a Bethesda <c>Data</c> folder is the game's own: a base master, a file the
     /// Creation Club list names, or a <c>.bsa</c>/<c>.ba2</c> whose stem is a base plugin's stem or starts
-    /// with <c>"&lt;base stem&gt; - "</c>.
+    /// with <c>"&lt;base stem&gt; - "</c> (<c>"Fallout - "</c> too when <paramref name="falloutArchives"/>).
+    /// <para>This is the FILE rule. A ROW is judged by <see cref="Judge.BaseFileOfRow"/>: a row that holds a
+    /// plugin is the game's only when one of its plugins is, so <c>Dawnguard - Fixes.bsa</c> stays a mod's
+    /// archive beside <c>Dawnguard - Fixes.esp</c>.</para>
     /// </summary>
-    public static bool IsBethesdaBaseFile(string? fileName, IReadOnlySet<string> creationClub)
+    public static bool IsBethesdaBaseFile(string? fileName, IReadOnlySet<string> creationClub, bool falloutArchives = false)
     {
         if (string.IsNullOrEmpty(fileName)) return false;
         var name = Path.GetFileName(fileName);
@@ -104,7 +123,7 @@ public static class BaseGameFiles
         var stem = Path.GetFileNameWithoutExtension(name);
         var dash = stem.IndexOf(" - ", StringComparison.Ordinal);
         var owner = dash > 0 ? stem[..dash] : stem;
-        if (dash > 0 && ArchiveOnlyStems.Contains(owner, StringComparer.OrdinalIgnoreCase)) return true;
+        if (dash > 0 && falloutArchives && ArchiveOnlyStems.Contains(owner, StringComparer.OrdinalIgnoreCase)) return true;
         foreach (var pe in PluginExts)
             if (IsBethesdaBaseMaster(owner + pe) || creationClub.Contains(owner + pe)) return true;
         return false;
@@ -173,6 +192,30 @@ public static class BaseGameFiles
         }
 
         private IReadOnlySet<string> CreationClub => _creationClub ??= ReadCreationClub(_gameRoot);
+        private readonly Dictionary<string, bool> _falloutArchives = new(StringComparer.OrdinalIgnoreCase);
+
+        private bool FalloutArchives(ModLocationCtx loc)
+        {
+            if (!_falloutArchives.TryGetValue(loc.Abs, out var on))
+                _falloutArchives[loc.Abs] = on = FalloutArchivesApply(loc.Abs);
+            return on;
+        }
+
+        /// <summary>
+        /// The file a ROW is the game's by, or null when the row is a mod. On a Bethesda game a row that holds
+        /// a plugin is judged by its plugins alone (the engine loads an archive for the plugin of the same
+        /// stem, so beside a mod plugin the archive is the mod's), and the base plugin is what is named. A row
+        /// of archives only is judged file by file (<c>Skyrim - Textures0.bsa</c>). <paramref name="size"/> is
+        /// only asked for in an Unreal paks folder.
+        /// </summary>
+        public string? BaseFileOfRow(ModLocationCtx loc, IEnumerable<string> files, Func<string, long> size)
+        {
+            var list = files.ToList();
+            var needsSize = NeedsSize(loc);
+            if (_bethesda && list.Any(IsPlugin))
+                return list.Where(IsPlugin).FirstOrDefault(f => IsBase(loc, f, 0)) is { } plugin ? Path.GetFileName(plugin) : null;
+            return list.FirstOrDefault(f => IsBase(loc, f, needsSize ? size(f) : 0)) is { } file ? Path.GetFileName(file) : null;
+        }
 
         /// <summary>True when this location can hold the game's own files beside mods at all. A false
         /// answer means no file there is ever base, so a caller can skip sizing.</summary>
@@ -186,7 +229,7 @@ public static class BaseGameFiles
         public bool IsBase(ModLocationCtx loc, string file, long size)
         {
             var name = Path.GetFileName(file);
-            if (_bethesda && IsBethesdaBaseFile(name, CreationClub)) return true;
+            if (_bethesda && IsBethesdaBaseFile(name, CreationClub, FalloutArchives(loc))) return true;
             if (IsSharedPaksFolder(loc))
             {
                 if (IsBaseGameArchive(name, size)) return true;
