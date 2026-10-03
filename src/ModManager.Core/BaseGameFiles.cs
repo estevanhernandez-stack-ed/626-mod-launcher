@@ -50,6 +50,27 @@ public static class BaseGameFiles
     private static readonly string[] ArchiveOnlyStems = { "Fallout" };
     private static readonly string[] FalloutArchiveMasters = { "Fallout3.esm", "FalloutNV.esm" };
 
+    // Archive owners that are not a plugin's stem: Skyrim VR's master is SkyrimVR.esm, its archives are
+    // "Skyrim_VR - Main.bsa". Read by the archive rule exactly as a base plugin's stem is.
+    private static readonly HashSet<string> ArchiveOwnerAliases = new(StringComparer.OrdinalIgnoreCase) { "Skyrim_VR" };
+
+    // Oblivion's official DLC ships as .esp and Oblivion keeps no .ccc. Only the game's own beside Oblivion.esm
+    // (OblivionDlcApplies), so a Skyrim mod that happens to be called Knights.esp stays a mod.
+    private static readonly HashSet<string> OblivionDlcPlugins = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "DLCShiveringIsles.esp", "Knights.esp", "DLCBattlehornCastle.esp", "DLCFrostcrag.esp", "DLCHorseArmor.esp",
+        "DLCMehrunesRazor.esp", "DLCOrrery.esp", "DLCSpellTomes.esp", "DLCThievesDen.esp", "DLCVileLair.esp",
+    };
+
+    /// <summary>True when <paramref name="dataDir"/> holds Oblivion.esm, which is when Oblivion's DLC
+    /// plugins (and their archives) are that game's own.</summary>
+    public static bool OblivionDlcApplies(string? dataDir)
+    {
+        if (string.IsNullOrEmpty(dataDir)) return false;
+        try { return File.Exists(Path.Combine(dataDir, "Oblivion.esm")); }
+        catch { return false; }
+    }
+
     /// <summary>True when <paramref name="dataDir"/> holds Fallout 3's or New Vegas's master, which is when
     /// "Fallout - *.bsa" archives are that game's own.</summary>
     public static bool FalloutArchivesApply(string? dataDir)
@@ -110,13 +131,16 @@ public static class BaseGameFiles
     /// plugin is the game's only when one of its plugins is, so <c>Dawnguard - Fixes.bsa</c> stays a mod's
     /// archive beside <c>Dawnguard - Fixes.esp</c>.</para>
     /// </summary>
-    public static bool IsBethesdaBaseFile(string? fileName, IReadOnlySet<string> creationClub, bool falloutArchives = false)
+    /// <param name="oblivionDlc">Count Oblivion's DLC plugins (true only beside Oblivion.esm).</param>
+    public static bool IsBethesdaBaseFile(string? fileName, IReadOnlySet<string> creationClub, bool falloutArchives = false,
+        bool oblivionDlc = false)
     {
         if (string.IsNullOrEmpty(fileName)) return false;
         var name = Path.GetFileName(fileName);
         var ext = Path.GetExtension(name);
+        bool BasePlugin(string n) => IsBethesdaBaseMaster(n) || creationClub.Contains(n) || (oblivionDlc && OblivionDlcPlugins.Contains(n));
         if (PluginExts.Contains(ext, StringComparer.OrdinalIgnoreCase))
-            return IsBethesdaBaseMaster(name) || creationClub.Contains(name);
+            return BasePlugin(name);
         if (!ArchiveExts.Contains(ext, StringComparer.OrdinalIgnoreCase)) return false;
         if (creationClub.Contains(name)) return true;
 
@@ -124,8 +148,9 @@ public static class BaseGameFiles
         var dash = stem.IndexOf(" - ", StringComparison.Ordinal);
         var owner = dash > 0 ? stem[..dash] : stem;
         if (dash > 0 && falloutArchives && ArchiveOnlyStems.Contains(owner, StringComparer.OrdinalIgnoreCase)) return true;
+        if (ArchiveOwnerAliases.Contains(owner)) return true;
         foreach (var pe in PluginExts)
-            if (IsBethesdaBaseMaster(owner + pe) || creationClub.Contains(owner + pe)) return true;
+            if (BasePlugin(owner + pe)) return true;
         return false;
     }
 
@@ -192,13 +217,14 @@ public static class BaseGameFiles
         }
 
         private IReadOnlySet<string> CreationClub => _creationClub ??= ReadCreationClub(_gameRoot);
-        private readonly Dictionary<string, bool> _falloutArchives = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (bool Fallout, bool OblivionDlc)> _folderFacts = new(StringComparer.OrdinalIgnoreCase);
 
-        private bool FalloutArchives(ModLocationCtx loc)
+        // Which game's folder-scoped names apply here, read once per location.
+        private (bool Fallout, bool OblivionDlc) FolderFacts(ModLocationCtx loc)
         {
-            if (!_falloutArchives.TryGetValue(loc.Abs, out var on))
-                _falloutArchives[loc.Abs] = on = FalloutArchivesApply(loc.Abs);
-            return on;
+            if (!_folderFacts.TryGetValue(loc.Abs, out var facts))
+                _folderFacts[loc.Abs] = facts = (FalloutArchivesApply(loc.Abs), OblivionDlcApplies(loc.Abs));
+            return facts;
         }
 
         /// <summary>
@@ -229,7 +255,11 @@ public static class BaseGameFiles
         public bool IsBase(ModLocationCtx loc, string file, long size)
         {
             var name = Path.GetFileName(file);
-            if (_bethesda && IsBethesdaBaseFile(name, CreationClub, FalloutArchives(loc))) return true;
+            if (_bethesda)
+            {
+                var facts = FolderFacts(loc);
+                if (IsBethesdaBaseFile(name, CreationClub, facts.Fallout, facts.OblivionDlc)) return true;
+            }
             if (IsSharedPaksFolder(loc))
             {
                 if (IsBaseGameArchive(name, size)) return true;

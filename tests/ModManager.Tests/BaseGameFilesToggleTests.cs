@@ -416,4 +416,54 @@ public class BaseGameFilesToggleTests : IDisposable
         var ex2 = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => Scanner.UninstallModAsync("ccBGSSSE001-Fish", c));
         Assert.Equal("ccBGSSSE001-Fish.esm is part of the game, so 626 won't remove it.", ex2.Message);
     }
+
+    // ---------- review round: Skyrim VR's archive, Oblivion's DLC plugins ----------
+
+    private (GameContext C, string Data) Bethesda(string id, params string[] files)
+    {
+        var root = Path.Combine(_root, id);
+        var data = Path.Combine(root, "Data");
+        Directory.CreateDirectory(data);
+        foreach (var f in files) File.WriteAllText(Path.Combine(data, f), Bytes(f));
+        var game = new GameEntry
+        {
+            Id = id, GameName = id, Engine = "bethesda", GameRoot = root,
+            FileExtensions = new[] { "esp", "esl", "esm", "bsa" }, GroupingRule = "filename_no_ext",
+            DataDir = Path.Combine(_root, "data-" + id),
+            ModLocations = new[] { new ModLocation("mods", "Data", "Data") },
+        };
+        return (Scanner.GameContext(game), data);
+    }
+
+    [Fact]
+    public void Skyrim_vr_main_archive_alone_is_the_games()
+    {
+        var (c, _) = Bethesda("skyrimvr", "SkyrimVR.esm", "Skyrim_VR - Main.bsa", "MyMod.esp");
+        Assert.True(Row(c, "Skyrim_VR - Main").IsBase);
+        Assert.True(Row(c, "SkyrimVR").IsBase);
+        Assert.False(Row(c, "MyMod").IsBase);
+    }
+
+    [Fact]
+    public async Task Oblivion_dlc_plugins_and_their_archives_are_the_games_beside_oblivion_esm()
+    {
+        var (c, data) = Bethesda("oblivion", "Oblivion.esm", "Knights.esp", "Knights.bsa", "DLCShiveringIsles.esp",
+            "DLCShiveringIsles - Meshes.bsa", "DLCHorseArmor.esp", "DLCHorseArmor.bsa", "MyMod.esp");
+        foreach (var r in new[] { "Knights", "DLCShiveringIsles", "DLCShiveringIsles - Meshes", "DLCHorseArmor" })
+            Assert.True(Row(c, r).IsBase, r);
+        Assert.False(Row(c, "MyMod").IsBase);
+
+        await Scanner.SetAllModsAsync(false, c);
+        foreach (var f in new[] { "Knights.esp", "Knights.bsa", "DLCShiveringIsles.esp", "DLCShiveringIsles - Meshes.bsa" })
+            Assert.Equal(Bytes(f), File.ReadAllText(Path.Combine(data, f)));
+        Assert.False(File.Exists(Path.Combine(data, "MyMod.esp")));
+    }
+
+    [Fact]
+    public async Task A_skyrim_mod_named_like_an_oblivion_dlc_is_a_normal_row()
+    {
+        var (c, data) = Bethesda("skyrim-knights", "Skyrim.esm", "Knights.esp", "Knights.bsa", "DLCShiveringIsles - Meshes.bsa");
+        Assert.False(Row(c, "DLCShiveringIsles - Meshes").IsBase);
+        await AssertRoundTrips(c, "Knights", data, "Knights.esp", "Knights.bsa");
+    }
 }
