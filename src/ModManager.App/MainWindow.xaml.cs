@@ -342,16 +342,20 @@ public sealed partial class MainWindow : Window
     {
         if (ic.NewerSchema)
         {
-            // Sealed by a newer 626: complete, just unreadable here. Never offered for discard or restore.
+            // Sealed by a newer 626: complete, just unreadable here. Never offered for discard or restore. Got it
+            // removes only the lock (Core: SafeClearLock.Acknowledge), so the reminder stops and the point stays.
             var n = new ContentDialog
             {
                 Title = "A reset didn't finish",
-                Content = ModManager.Core.RestorePoints.RestorePointOrchestrator.InterruptedNewerMessage,
-                CloseButtonText = "OK",
+                Content = ModManager.Core.RestorePoints.RestorePointOrchestrator.InterruptedNewerMessage + "\n\n"
+                    + ModManager.Core.RestorePoints.RestorePointOrchestrator.InterruptedNewerAcknowledge,
+                PrimaryButtonText = "Got it",
+                CloseButtonText = "Remind me next time",
+                DefaultButton = ContentDialogButton.Close,
                 XamlRoot = Content.XamlRoot,
             };
             ModManager.App.Services.DialogTheming.Apply(n); // vibe-glow wave 1: popup-scope theme brushes
-            await n.ShowAsync();
+            if (await n.ShowAsync() == ContentDialogResult.Primary) rp.AcknowledgeInterruptedClear(ic.Timestamp);
             return;
         }
         if (ic.Sealed)

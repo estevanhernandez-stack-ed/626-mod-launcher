@@ -64,7 +64,22 @@ public static class RealPath
         var d = Final(dir);
         if (p is null || d is null) return false;
         return string.Equals(p, d, StringComparison.OrdinalIgnoreCase)
-               || p.StartsWith(d.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+               || IsStrictlyUnder(p, d);
+    }
+
+    /// <summary><paramref name="dir"/> ending in exactly one separator. A filesystem root (<c>G:\</c>,
+    /// <c>/</c>) already ends in one; appending another made every "is this inside the game" check fail for a
+    /// game at a drive root (code review on #385).</summary>
+    public static string WithTrailingSeparator(string dir)
+        => dir.Length > 0 && (dir[^1] == Path.DirectorySeparatorChar || dir[^1] == Path.AltDirectorySeparatorChar)
+            ? dir : dir + Path.DirectorySeparatorChar;
+
+    /// <summary>True when <paramref name="path"/> is strictly inside <paramref name="dir"/> (not equal to it),
+    /// on the strings as given (no resolution). The ONE containment test the Safe Clear code uses.</summary>
+    public static bool IsStrictlyUnder(string path, string dir)
+    {
+        var prefix = WithTrailingSeparator(dir);
+        return path.Length > prefix.Length && path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Trim(string p) => p.Length > 3 ? Path.TrimEndingDirectorySeparator(p) : p;

@@ -22,7 +22,7 @@ public sealed class RestorePointOrchestrator
     // archived (Law D) — it's handled only by the keep/skip branch via the nexus gate.
     private static readonly string[] TopLevelDirs = { "themes", "profile" };
     private static readonly string[] TopLevelFiles = { "games.json", "app-settings.json" };
-    private const string LockName = "safe-clear.lock";
+    private const string LockName = SafeClearLock.FileName;
     private const string SheetFileName = "626-launcher-how-to-launch.txt";
 
     /// <summary>Tests only: runs just before the manifest rewrite that records a game's held copies.</summary>
@@ -450,7 +450,16 @@ public sealed class RestorePointOrchestrator
     /// <summary>What to tell the user about an interrupted clear sealed by a newer 626.</summary>
     public const string InterruptedNewerMessage =
         "A reset made by a newer version of 626 didn't finish. Its restore point is complete, but this version "
-        + "can't read it. Update 626 to restore it; nothing has been discarded.";
+        + "can't read it. Update 626 to restore it. Nothing has been discarded.";
+
+    /// <summary>The second paragraph of that dialog: what acknowledging does, and what it doesn't.</summary>
+    public const string InterruptedNewerAcknowledge =
+        "Choose Got it to stop this reminder. Only the reminder goes: the restore point stays where it is, "
+        + "and the newer version of 626 can still restore it.";
+
+    /// <summary>Acknowledge an interrupted reset this build can't act on: removes only the lock, never the
+    /// restore point (see <see cref="SafeClearLock.Acknowledge"/>).</summary>
+    public void AcknowledgeInterruptedClear(string timestamp) => SafeClearLock.Acknowledge(_dataRoot, timestamp);
 
     public void DiscardPartial(string timestamp)
     {

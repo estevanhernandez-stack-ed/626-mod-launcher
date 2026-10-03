@@ -470,6 +470,5 @@ public static partial class RestorePointEngine
 
     private static string Rel(string gameRoot, string full) => Path.GetRelativePath(gameRoot, full);
 
-    private static bool IsUnder(string path, string dir)
-        => path.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    private static bool IsUnder(string path, string dir) => RealPath.IsStrictlyUnder(path, dir);
 }

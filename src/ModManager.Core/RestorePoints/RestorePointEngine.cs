@@ -225,7 +225,9 @@ public static partial class RestorePointEngine
         var full = RealPath.Final(folder);
         var root = RealPath.Final(c.GameRoot);
         if (full is null) return null;
-        if (root is not null && RealPath.IsAtOrUnder(root, full) && !string.Equals(root, full, StringComparison.OrdinalIgnoreCase))
+        // The game folder itself is never a "system folder", even when it is a drive root (G:\): it is the game.
+        if (root is not null && string.Equals(root, full, StringComparison.OrdinalIgnoreCase)) return null;
+        if (root is not null && RealPath.IsAtOrUnder(root, full))
             return "it contains the game folder itself";
         try { if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? ""), Path.TrimEndingDirectorySeparator(full), StringComparison.OrdinalIgnoreCase)) return "it is a whole drive"; }
         catch { }
@@ -427,7 +429,7 @@ public static partial class RestorePointEngine
             var abs = FullNorm(Path.Combine(baseDir, f));
             if (abs is null) continue;
             if (moved.Any(mp => string.Equals(abs, mp, StringComparison.OrdinalIgnoreCase)
-                    || abs.StartsWith(mp + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+                    || RealPath.IsStrictlyUnder(abs, mp)))
                 return true;
         }
         return false;

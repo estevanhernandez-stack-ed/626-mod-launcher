@@ -131,10 +131,9 @@ public static class ModOnlyFolders
         try
         {
             if (RealPath.Final(gameRoot) is not { } root || RealPath.Final(abs) is not { } full) return null;
-            root = Path.TrimEndingDirectorySeparator(root);
             full = Path.TrimEndingDirectorySeparator(full);
-            if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return null;
-            return Normalise(full[(root.Length + 1)..]);
+            if (!RealPath.IsStrictlyUnder(full, root)) return null;
+            return Normalise(full[RealPath.WithTrailingSeparator(root).Length..]);
         }
         catch { return null; }
     }
