@@ -39,7 +39,21 @@ public static class OffBoardingHydrator
     {
         if (!IsVanilla(ga) || ga.TurnedOffByClear is null) return null;
         if (!m.Enabled) return OffBoardingModState.AlreadyOff;
+        if (LeftAloneWhy(ga, m.Name) is not null) return OffBoardingModState.LeftAlone;
         return LeftOn(ga, m.Name) ? OffBoardingModState.StillActive : OffBoardingModState.TurnedOff;
+    }
+
+    // Why vanilla never touched this row because of WHERE it is: another tool's folder (the capture's owned
+    // list, so archives from before the per-row notes are honest too), a system folder, a location with no
+    // folder. Null when that isn't the case.
+    private static string? LeftAloneWhy(GameArchive ga, string name)
+    {
+        if (ga.OwnedMods.FirstOrDefault(o => string.Equals(o.Name, name, StringComparison.OrdinalIgnoreCase)) is { } owned)
+            return $"managed by {owned.ManagedBy} — 626 didn't touch it";
+        return (ga.LeftInPlace ?? Array.Empty<InPlaceNote>())
+            .FirstOrDefault(n => string.Equals(n.Path, name, StringComparison.OrdinalIgnoreCase)
+                                 && n.Reason.StartsWith(RestorePointEngine.LeftAlonePrefix, StringComparison.Ordinal))
+            ?.Reason[RestorePointEngine.LeftAlonePrefix.Length..];
     }
 
     private static bool LeftOn(GameArchive ga, string name)
@@ -51,6 +65,7 @@ public static class OffBoardingHydrator
     // Why a turned-off mod went off, when it wasn't the toggle: said on its line, so the list explains itself.
     private static string? HowTurnedOff(GameArchive ga, ArchivedMod m)
     {
+        if (StateOf(ga, m) == OffBoardingModState.LeftAlone) return LeftAloneWhy(ga, m.Name);
         if (StateOf(ga, m) != OffBoardingModState.TurnedOff) return null;
         if (TurnedOff(ga).Any(c => string.Equals(c.Name, m.Name, StringComparison.OrdinalIgnoreCase))) return null;
         if (ga.LoaderMods.Any(l => string.Equals(l.Name, m.Name, StringComparison.OrdinalIgnoreCase)))

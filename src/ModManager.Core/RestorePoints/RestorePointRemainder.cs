@@ -21,6 +21,10 @@ public static partial class RestorePointEngine
     /// <summary>The words for a folder the launcher can't sweep. {0} is the folder, {1} the file count.</summary>
     public const string CantTellNote = "626 can't tell the game's own files from mods in {0}; {1} files no mod claims are still in place";
 
+    /// <summary>How a row starts when vanilla never touched it because of WHERE it is (another tool's folder, a
+    /// system folder, a drive-relative location). Read by the sheet as "left alone".</summary>
+    public const string LeftAlonePrefix = "left alone: ";
+
     /// <summary>How a row left on in a folder 626 can't read starts: an item, not necessarily a mod.</summary>
     public const string CantTellRowPrefix = "still active: it sits in ";
 
@@ -159,6 +163,7 @@ public static partial class RestorePointEngine
             {
                 left?.Add(new InPlaceNote(loc.DeclaredPath ?? loc.StoredPath ?? loc.Name,
                     "this location names a drive but no folder (it would mean whatever folder is current), so 626 ignored it"));
+                LeftAloneRows(left, rows, loc, "its location names a drive but no folder, so 626 didn't touch it");
                 continue;
             }
             var full = FullNorm(loc.Abs);
@@ -180,11 +185,13 @@ public static partial class RestorePointEngine
             if (!string.IsNullOrEmpty(loc.Managed))
             {
                 left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {loc.Managed} — clean it up there"));
+                LeftAloneRows(left, rows, loc, $"managed by {loc.Managed} — 626 didn't touch it");
                 continue;
             }
-            if (inside && ToolOwnership.Resolve(full, c.TakenOver) is { State: not OwnershipState.NotOwned } owned)
+            if (ToolOwnership.Resolve(full, c.TakenOver) is { State: not OwnershipState.NotOwned } owned)
             {
-                left.Add(new InPlaceNote(Rel(gameRoot, full), $"managed by {owned.Owner} — clean it up there"));
+                left.Add(new InPlaceNote(inside ? Rel(gameRoot, full) : full, $"managed by {owned.Owner} — clean it up there"));
+                LeftAloneRows(left, rows, loc, $"managed by {owned.Owner} — 626 didn't touch it");
                 continue;
             }
             // A system folder (an ancestor of the game, a drive, the profile, Windows, Program Files): named
@@ -192,6 +199,7 @@ public static partial class RestorePointEngine
             if (SystemFolderReason(c, full) is { } sysWhy)
             {
                 left.Add(new InPlaceNote(full, $"{SystemFolderPrefix}{sysWhy}, so 626 left it alone"));
+                LeftAloneRows(left, rows, loc, $"it sits in {full}, which is not a mod folder ({sysWhy}), so 626 didn't touch it");
                 continue;
             }
             // Not a folder the launcher knows holds only mods: the game root, a base-content folder (Data,
@@ -226,6 +234,15 @@ public static partial class RestorePointEngine
                 left.Add(new InPlaceNote(where, "626 moved the mods it recognises there; it can't tell any other file there from the game's own, so it left them"));
         }
         return roots;
+    }
+
+    // One note per enabled row of a location vanilla never touched because of where it is, so the sheet can
+    // say "left alone" for that row instead of guessing "turned off" (code review on #385).
+    private static void LeftAloneRows(List<InPlaceNote>? left, IReadOnlyList<Mod>? rows, ModLocationCtx loc, string why)
+    {
+        if (left is null) return;
+        foreach (var m in (rows ?? Array.Empty<Mod>()).Where(r => r.Enabled && string.Equals(r.Location, loc.Name, StringComparison.Ordinal)))
+            left.Add(new InPlaceNote(m.Name, LeftAlonePrefix + why));
     }
 
     // How many files under a not-swept folder no listed row owns. Counted (never hashed), links not followed.

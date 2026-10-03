@@ -118,6 +118,7 @@ public static class OffBoardingSheet
             {
                 (OffBoardingModState.TurnedOff, "Turned off by 626 (restoring turns these back on)"),
                 (OffBoardingModState.StillActive, "Still active (626 left these on)"),
+                (OffBoardingModState.LeftAlone, "Left alone (626 didn't touch these)"),
                 (OffBoardingModState.AlreadyOff, "Already off before the reset"),
             };
             foreach (var (state, label) in groups)

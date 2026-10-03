@@ -800,22 +800,30 @@ public static partial class RestorePointEngine
             }
         }
 
+        // The context the caller built BEFORE replay is stale from here on: steps 1 and 3 just put back the
+        // framework registry, the frameworks' files and taken-over.json. A UE4SS the clear uninstalled is
+        // registered again, and with it the launcher's ue4ss\Mods location, which holds the Lua mods the
+        // remainder must go back into and the manifest the loader states apply to. Every later step reads the
+        // game as it is NOW (code review on #385). M4 still holds: RestoreRemainder vouches for a folder only
+        // through this fresh context, i.e. as the game stands after replay.
+        var ctx = Scanner.GameContext(liveCtx.Game, liveCtx.SaveDir, liveCtx.ExtraModTrees);
+
         // 3b. The vanilla remainder back into the game's mod folders, verified, BEFORE the loader manifests
         //     (a UE4SS mods.txt can be part of it) and before the turn-ons (sidecars beside held mods).
         //     On a ban-risk game with no acknowledgment, the remainder stays in the restore point (I3): it is
         //     mod files, and putting them live would enable mods without the say-so step 5 also waits for.
-        var banGated = BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(liveCtx.Game),
-            BanRiskAckStore.IsAcked(liveCtx.DataDir, liveCtx.Game.Id ?? ""));
+        var banGated = BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(ctx.Game),
+            BanRiskAckStore.IsAcked(ctx.DataDir, ctx.Game.Id ?? ""));
         IReadOnlyList<ClearSkip> remainderIssues = banGated
             ? (ga.VanillaRemainder is { Count: > 0 } rem
                 ? new[] { new ClearSkip($"{rem.Count} file(s) no mod claims", RemainderKeptForBanRisk) }
                 : Array.Empty<ClearSkip>())
-            : RestoreRemainder(ga, gameArchiveDir, liveCtx);
+            : RestoreRemainder(ga, gameArchiveDir, ctx);
 
         // 4. Re-apply loader enable state (best effort — loader manifest may be absent).
         foreach (var lm in ga.LoaderMods)
         {
-            var abs = liveCtx.Locations.FirstOrDefault(l => l.Name == lm.Location)?.Abs;
+            var abs = ctx.Locations.FirstOrDefault(l => l.Name == lm.Location)?.Abs;
             if (abs is null) continue;
             try
             {
@@ -827,12 +835,12 @@ public static partial class RestorePointEngine
 
         // 5. Turn back on exactly what the vanilla clear turned off (null = an archive from before the
         //    record: nothing to do, as before). Last, so the files and loaders those mods need are back.
-        var (notBackOn, recovered) = TurnBackOn(ga, gameArchiveDir, liveCtx, banGated ? Array.Empty<ClearSkip>() : remainderIssues);
+        var (notBackOn, recovered) = TurnBackOn(ga, gameArchiveDir, ctx, banGated ? Array.Empty<ClearSkip>() : remainderIssues);
 
         // 6. Remove the launcher-authored off-boarding sheet if present.
         // Law B: gate the manifest-supplied path against the game root before deleting.
         if (ga.OffboardingSheetGameFolderPath is not null
-            && PathGate.IsContainedAbsolute(ga.OffboardingSheetGameFolderPath, liveCtx.GameRoot)
+            && PathGate.IsContainedAbsolute(ga.OffboardingSheetGameFolderPath, ctx.GameRoot)
             && File.Exists(ga.OffboardingSheetGameFolderPath))
             try { File.Delete(ga.OffboardingSheetGameFolderPath); } catch { /* best effort */ }
 

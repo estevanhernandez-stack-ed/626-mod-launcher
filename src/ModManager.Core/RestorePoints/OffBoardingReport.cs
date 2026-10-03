@@ -56,4 +56,7 @@ public static class OffBoardingModState
     public const string TurnedOff = "turned-off";
     public const string StillActive = "still-active";
     public const string AlreadyOff = "already-off";
+    /// <summary>Never touched because of where it is: another tool's folder, a system folder, a location
+    /// with no folder. Not "still active" by 626's choice, and never "turned off".</summary>
+    public const string LeftAlone = "left-alone";
 }
