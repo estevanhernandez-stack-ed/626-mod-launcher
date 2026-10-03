@@ -382,7 +382,8 @@ public class SafeClearReviewRegressionTests : IDisposable
 
     // ---- M7: a refused turn-off whose entries were stranded in holding is retried on restore ----
 
-    [Fact]
+    // Needs a share-mode lock to make the move fail; Linux doesn't enforce FileShare.None.
+    [WindowsFact]
     public void M7_a_refused_turn_off_stranded_in_holding_is_turned_back_on_and_reported()
     {
         var g = TreeGame();

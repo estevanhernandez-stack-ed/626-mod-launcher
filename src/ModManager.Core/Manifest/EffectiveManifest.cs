@@ -113,6 +113,13 @@ public static class EffectiveManifest
         return merged;
     }
 
+    // Two spellings of one relative mod path: separators, surrounding slashes and case don't matter.
+    private static bool SameModPath(string? a, string? b)
+    {
+        static string N(string? p) => (p ?? "").Replace('\\', '/').Trim('/');
+        return a is not null && b is not null && string.Equals(N(a), N(b), StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Field-merge a remote entry onto the embedded one they share an id with. The feed UPDATES but
     /// never DOWNGRADES: a remote non-null value wins (so the feed can correct a built-in), but a
@@ -121,13 +128,6 @@ public static class EffectiveManifest
     /// and a curated status is never downgraded to auto. Prevents an auto-mined feed entry from
     /// silently wiping a curated built-in out of a facade (the Stardew quick-pick regression).
     /// </summary>
-    // Two spellings of one relative mod path: separators, surrounding slashes and case don't matter.
-    private static bool SameModPath(string? a, string? b)
-    {
-        static string N(string? p) => (p ?? "").Replace('\\', '/').Trim('/');
-        return a is not null && b is not null && string.Equals(N(a), N(b), StringComparison.OrdinalIgnoreCase);
-    }
-
     private static GameManifestEntry MergeEntry(GameManifestEntry embedded, GameManifestEntry remote)
     {
         // Union provenance sources, embedded order first, then any new from remote.
