@@ -2357,6 +2357,42 @@
    "note": "Never touches a real game. Row names in the UIA tree are display names ('My Mod', 'Skyrim Textures 0'); the chip ids use Mod.Name."
   },
   {
+   "id": "load-order-bethesda-refuses-and-undoes",
+   "title": "Reorder refuses on a Bethesda game, and 626's own load-order prefixes can be undone",
+   "surface": "fix/bethesda-load-order-no-renames - Reorder refusal + LOAD ORDER chip",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of f1ff2db",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "Fixtures only. Reorder on a Bethesda fixture (Skyrim.esm, MyMod.esp, Other.esp, SkyrimSE.exe) read the Plugins.txt sentence, opened no load-order mode, left the tree hash-identical and wrote no loadorder.json. A fixture holding 0010__MyMod.esp and 0020__Other.esp showed StateChip.load-order-prefix reading '2 plugins carry a load-order prefix from 626.' with action Undo; Undo left MyMod.esp, Other.esp and Skyrim.esm with the original SHA-256s, the status read 'Removed 626's prefix from 2 files.' and the chip left. With 0010__MyMod.esp beside MyMod.esp, Undo touched neither and the status read '0010__MyMod.esp was left as is: MyMod.esp already exists.'"
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Register three throwaway Bethesda fixtures (clean, prefixed by an older build, and a prefix colliding with a real name), open each, press ReorderButton on the first and the chip's Undo on the other two. The finally removes every registration and fixture.",
+   "expect": "Reorder shows the refusal and renames nothing. The prefixed fixture gets a LOAD ORDER chip and Undo restores the plain names byte-identical. A collision is left alone and named in the status.",
+   "note": "Never touches a real game. The prefixed files exist before the fixture is registered, but the app itself is already running when the harness registers it."
+  },
+  {
+   "id": "load-order-ue-round-trip",
+   "title": "A pak game's load order prefixes its files on Apply, and Undo puts every name back",
+   "surface": "fix/bethesda-load-order-no-renames - Apply prefixes, Undo restores",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of f1ff2db",
+    "date": "2026-10-02",
+    "by": "agent on Nebuchadnezzar",
+    "note": "Fixture only: a ue-pak game with three paks in Content/Paks/~mods. Reorder then Apply order (no reorder, the drag is not scriptable) renamed them 0010__LoFixture1_P.pak, 0020__LoFixture2_P.pak, 0030__LoFixture3_P.pak and wrote loadorder.json. The chip read '3 mod files carry a load-order prefix from 626.'; Undo said 'Removed 626's prefix from 3 files.', left the tree hash-identical (files and folders) and deleted loadorder.json."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Register a throwaway ue-pak fixture with three paks, press ReorderButton then ApplyOrderButton, read the chip, press its Undo. The finally removes the registration and the fixture.",
+   "expect": "Apply prefixes all three files and writes loadorder.json; the LOAD ORDER chip counts them; Undo restores every name and byte and removes loadorder.json.",
+   "note": "Never touches a real game. Apply without reordering; no row is dragged."
+  },
+  {
    "id": "multi-tree-toggle-cross-volume",
    "title": "A multi-tree mod round-trips when 626's data folder is on another drive",
    "surface": "B4 cross-volume",

@@ -395,6 +395,15 @@ public sealed partial class MainViewModel : ObservableObject
     // The executable write time "Mark as checked" records.
     private DateTime? _staleLoaderExeUtc;
 
+    // 626's own load-order prefixes on disk (Scanner.PlanUndoLoadOrder), as the LOAD ORDER chip's sentence.
+    [ObservableProperty] public partial string? LoadOrderPrefixMessage { get; set; }
+
+    // True when those prefixes break the game (a plugin game) rather than order it.
+    private bool _loadOrderPrefixBreaks;
+
+    // True when Undo can take none of them off (every one collides or sits in an owned mirror).
+    private bool _loadOrderPrefixStuck;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CoopHintVisibility))]
     public partial bool CoopLauncherMissing { get; set; }
@@ -505,6 +514,9 @@ public sealed partial class MainViewModel : ObservableObject
         SteamUpdated = SteamBuildChanged,
         SteamMessage = SteamBuildMessage,
         StaleLoader = StaleLoaderMessage,
+        LoadOrderPrefixed = LoadOrderPrefixMessage,
+        LoadOrderPrefixBreaks = _loadOrderPrefixBreaks,
+        LoadOrderPrefixStuck = _loadOrderPrefixStuck,
         CoopLauncherMissing = CoopLauncherMissing,
         MpWarning = MpRiskyEnabledCount > 0 ? MpWarningText + "." : null,
         VortexReDeployed = HasReDeployedLocations,
@@ -569,6 +581,7 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnLaunchNeedsAttentionChanged(bool value) => RebuildStateChips();
     partial void OnCoopLauncherMissingChanged(bool value) => RebuildStateChips();
     partial void OnStaleLoaderMessageChanged(string? value) => RebuildStateChips();
+    partial void OnLoadOrderPrefixMessageChanged(string? value) => RebuildStateChips();
 
     /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
     public void SetMpOverride(ModRowViewModel row, MpRisk? value)
@@ -832,6 +845,7 @@ public sealed partial class MainViewModel : ObservableObject
             SetupNeedsAttention = false; // collapse the setup banner when no game is active
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
             StaleLoaderMessage = null;
+            LoadOrderPrefixMessage = null;
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
             OnPropertyChanged(nameof(HasLoaders));
@@ -1078,6 +1092,13 @@ public sealed partial class MainViewModel : ObservableObject
             var stale = await Task.Run(() => StaleLoaders.Find(loaderCtx));
             _staleLoaderExeUtc = stale.Loaders.Count > 0 ? stale.GameExeUtc : null;
             StaleLoaderMessage = stale.Summary(loaderCtx.Game.LoaderCheckedExeUtc);
+
+            // 626's own load-order prefixes, on any game: the only way to see them, and to take them off.
+            // Off the UI thread for the same reason — it lists every mod folder and runs on every toggle.
+            var undoPlan = await Task.Run(() => Scanner.PlanUndoLoadOrder(loaderCtx));
+            _loadOrderPrefixBreaks = LoadOrderSupport.IsPluginGame(loaderCtx.Game.Engine, loaderCtx.DeclaredExts);
+            _loadOrderPrefixStuck = undoPlan.Stuck;
+            LoadOrderPrefixMessage = undoPlan.IsEmpty ? null : undoPlan.Describe(_loadOrderPrefixBreaks);
             if (directInject)
                 // Direct-inject IS a complete setup, not a missing-feature state. The earlier copy
                 // read as "you don't have Mod Engine 2 (you should)" — which is wrong; for a
@@ -1758,6 +1779,26 @@ public sealed partial class MainViewModel : ObservableObject
         SteamBuildChanged = false;
     }
 
+    /// <summary>The LOAD ORDER chip's Undo: strip 626's own prefixes back off this game's files. Reversible
+    /// and never overwrites — a file whose original name is taken is left as is and named in the status.</summary>
+    [RelayCommand]
+    private async Task UndoLoadOrderPrefixesAsync()
+    {
+        if (_ctx is null) return;
+        // The strip stays up in load-order mode. Undoing under an open arrangement would leave the bar
+        // over a rebuilt full list, and Apply would then re-prefix everything, so close the mode first.
+        IsLoadOrderMode = false;
+        IsBusy = true;
+        try
+        {
+            var result = await Scanner.ResetLoadOrderAsync(_ctx);
+            await ReloadModsAsync();
+            StatusText = result.Describe();
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsBusy = false; }
+    }
+
     [RelayCommand]
     private void MarkLoadersChecked()
     {
@@ -1847,14 +1888,17 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task EnterLoadOrderAsync()
     {
         if (_ctx is null || IsLoadOrderMode) return;
-        if (DirectInjectBacked || LooseRootBacked)
+        // One rule for "can 626 arrange this game's order", in Core under test. Direct-inject and
+        // loose-root mods load independently; a Bethesda game's order lives in Plugins.txt, and renaming
+        // a plugin there makes it a missing plugin. Scanner.ApplyLoadOrder asks the same rule again.
+        var support = LoadOrderSupport.For(_ctx, ConfigBacked, DirectInjectBacked || LooseRootBacked);
+        if (!support.Supported)
         {
-            // Direct-inject and loose-root mods load independently — no priority order to arrange.
-            StatusText = "Load order doesn't apply to these mods — they load independently.";
+            StatusText = support.Reason ?? LoadOrderSupport.IndependentReason;
             return;
         }
         List<ModRowViewModel> ordered;
-        if (ConfigBacked)
+        if (support.Mechanism == LoadOrderMechanism.Config)
         {
             // The config's array order IS the load order — keep enabled mods in their current order.
             ordered = _allRows.Where(m => m.Enabled).ToList();
@@ -1884,11 +1928,16 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var order = Mods.Select(m => m.Mod.Name).ToList();
+            string status = "Load order applied.";
             if (ConfigBacked) _me2.Reorder(_ctx.Game, order);
-            else await Scanner.ApplyLoadOrderAsync(_ctx, order);
+            else
+            {
+                // Says "applied" only when something was; otherwise what 626 left and why.
+                status = (await Scanner.ApplyLoadOrderAsync(_ctx, order)).Describe();
+            }
             IsLoadOrderMode = false;
             await ReloadModsAsync();
-            StatusText = "Load order applied.";
+            StatusText = status;
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }

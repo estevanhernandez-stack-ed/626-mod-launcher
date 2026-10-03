@@ -106,7 +106,7 @@ Start-Sleep -Seconds 2
 # is selected, the whole file is snapshotted here, with the app closed, and written back byte for byte
 # in the finally at the end of the run - activeGameId included, as the user had it before the run.
 $gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
-$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy', 'save-mod-reset-and-remove-from-saves-dialog', 'game-files-stay-on-through-disable-all')
+$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy', 'save-mod-reset-and-remove-from-saves-dialog', 'game-files-stay-on-through-disable-all', 'load-order-bethesda-refuses-and-undoes', 'load-order-ue-round-trip')
 $script:GamesSnapshot = $null
 $script:GamesHashAfterHarness = $null
 $gamesSnapshotPath = Join-Path $OutDir 'games.json.run-start'
@@ -1586,6 +1586,132 @@ Case 'game-files-stay-on-through-disable-all' 'fix/bethesda-base-files-never-off
         $diff = @(Compare-Object $pre $post)
         Assert-True ($diff.Count -eq 0) "the fixture differs after Disable all and Enable all: $(($diff | Select-Object -First 3 | ForEach-Object { $_.InputObject }) -join ' / ')"
         "5 game-file chips (Skyrim, Update, Dawnguard, Skyrim - Textures0, ccBGSSSE001-Fish) with locked switches, MyMod and OtherMod ordinary; Disable all moved only the 3 mod files to holding, Enable all left the fixture hash-identical"
+    }
+    finally {
+        try { $c = Find-ById (Get-Tree $root) 'CloseButton'; if ($c) { Invoke-Node $c; Wait-Idle 1500 } } catch {}
+        if ($id) { Remove-LoaderFixture $id }
+        if (Test-Path -LiteralPath $fx) { Remove-Item -LiteralPath $fx -Recurse -Force -EA SilentlyContinue }
+    }
+}
+
+# ---------------------------------------------------------------- load order (fix/bethesda-load-order-no-renames)
+# Throwaway games only, under $OutDir. A Bethesda game's order lives in Plugins.txt and renaming a plugin
+# makes it a missing plugin, so Reorder must refuse and rename nothing; 626's own 0010__ prefixes, where
+# an older build left them, get a LOAD ORDER chip whose Undo strips them without overwriting anything.
+function New-LoadOrderBethesdaGame([string]$GameRoot, [string[]]$DataFiles) {
+    $data = Join-Path $GameRoot 'Data'
+    New-Item -ItemType Directory -Force -Path $data | Out-Null
+    Set-Content -LiteralPath (Join-Path $GameRoot 'SkyrimSE.exe') -Value 'SMOKE626 dummy exe' -Encoding ascii
+    foreach ($f in $DataFiles) { Set-Content -LiteralPath (Join-Path $data $f) -Value "SMOKE626 inert $f" -Encoding ascii }
+}
+
+function Get-FileHashMap([string]$Dir) {
+    $m = @{}
+    foreach ($f in Get-ChildItem -LiteralPath $Dir -Force -File) { $m[$f.Name] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash }
+    return $m
+}
+
+function Get-StatusLine { Get-Text (Find-ById (Get-Tree $root) 'AppStatusText') }
+
+Case 'load-order-bethesda-refuses-and-undoes' 'fix/bethesda-load-order-no-renames - Reorder refusal + LOAD ORDER chip' {
+    $fx = Join-Path $OutDir 'load-order-fixture'
+    $ids = @()
+    $refusal = "On Bethesda games the load order lives in Plugins.txt. 626 doesn't edit it yet, so it won't rename your plugins."
+    try {
+        if (Test-Path -LiteralPath $fx) { Remove-Item -LiteralPath $fx -Recurse -Force }
+
+        # (1) the refusal: Reorder says why, renames nothing, writes no loadorder.json, and no chip appears.
+        $g1 = Join-Path $fx 'SkyrimRefuse'
+        New-LoadOrderBethesdaGame $g1 @('Skyrim.esm','MyMod.esp','Other.esp')
+        $pre1 = Get-TreeManifest $g1
+        $id1 = Register-LoaderFixture 'Load Order Refuse Fixture' $g1 'bethesda'; $ids += $id1
+        Open-GameById $id1
+        $btn = Find-ById (Get-Tree $root) 'ReorderButton'
+        Assert-True ($null -ne $btn) "no ReorderButton on a Bethesda game (the button should stay visible)"
+        Invoke-Node $btn; Wait-Idle 2000
+        $said = Get-StatusLine
+        Assert-True ($said -eq $refusal) "Reorder status reads '$said'"
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'ApplyOrderButton')) "load-order mode opened on a Bethesda game"
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.load-order-prefix')) "a LOAD ORDER chip shows on a game with no prefixes"
+        Assert-True (@(Compare-Object $pre1 (Get-TreeManifest $g1)).Count -eq 0) "the Bethesda fixture changed after Reorder"
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path (Get-FixtureDataDir $g1 $id1) 'loadorder.json'))) "a loadorder.json was written"
+
+        # (2) old damage: files that already carry 626's prefix get the chip, and Undo restores the names byte for byte.
+        $g2 = Join-Path $fx 'SkyrimDamaged'
+        New-LoadOrderBethesdaGame $g2 @('Skyrim.esm','0010__MyMod.esp','0020__Other.esp')
+        $data2 = Join-Path $g2 'Data'
+        $h2 = Get-FileHashMap $data2
+        $id2 = Register-LoaderFixture 'Load Order Damaged Fixture' $g2 'bethesda'; $ids += $id2
+        Open-GameById $id2
+        $detail = Open-StateChip 'load-order-prefix'
+        Assert-True ($null -ne $detail) "no StateChip.load-order-prefix with 0010__MyMod.esp and 0020__Other.esp on disk"
+        $sentence = Get-Text $detail
+        Assert-True ($sentence -eq '2 plugins carry a load-order prefix from 626.') "the chip reads '$sentence'"
+        $action = Find-ById (Get-Tree $root) 'StateChipAction'
+        Assert-True ((Get-Text $action) -eq 'Undo') "StateChipAction reads '$(Get-Text $action)'"
+        Invoke-Node $action; Wait-Idle 3500
+        $undone = Get-StatusLine
+        $h2b = Get-FileHashMap $data2
+        Assert-True ((($h2b.Keys | Sort-Object) -join '|') -eq 'MyMod.esp|Other.esp|Skyrim.esm') "Data holds [$(($h2b.Keys | Sort-Object) -join ', ')] after Undo"
+        Assert-True ($h2b['MyMod.esp'] -eq $h2['0010__MyMod.esp'] -and $h2b['Other.esp'] -eq $h2['0020__Other.esp'] -and $h2b['Skyrim.esm'] -eq $h2['Skyrim.esm']) "a file's bytes changed through Undo"
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.load-order-prefix')) "the chip survived Undo"
+
+        # (4) collision: Undo never overwrites, touches neither file, and the status names it.
+        $g3 = Join-Path $fx 'SkyrimCollide'
+        New-LoadOrderBethesdaGame $g3 @('Skyrim.esm','0010__MyMod.esp','MyMod.esp')
+        $data3 = Join-Path $g3 'Data'
+        $h3 = Get-FileHashMap $data3
+        $id3 = Register-LoaderFixture 'Load Order Collide Fixture' $g3 'bethesda'; $ids += $id3
+        Open-GameById $id3
+        $d3 = Open-StateChip 'load-order-prefix'
+        Assert-True ($null -ne $d3) "no LOAD ORDER chip on the collision fixture"
+        Invoke-Node (Find-ById (Get-Tree $root) 'StateChipAction'); Wait-Idle 3500
+        $s3 = Get-StatusLine
+        $h3b = Get-FileHashMap $data3
+        Assert-True (@(Compare-Object @($h3.GetEnumerator() | ForEach-Object { "$($_.Key)|$($_.Value)" }) @($h3b.GetEnumerator() | ForEach-Object { "$($_.Key)|$($_.Value)" })).Count -eq 0) "Undo touched a file in a collision: [$(($h3b.Keys | Sort-Object) -join ', ')]"
+        Assert-True ($s3 -like '*0010__MyMod.esp*MyMod.esp already exists*') "the status does not name the collision: '$s3'"
+        "refusal text shown and the 3-file fixture hash-identical with no loadorder.json; 2 prefixed plugins -> chip '$sentence', Undo gave MyMod.esp/Other.esp byte-identical and the chip left ('$undone'); collision left both files alone ('$s3')"
+    }
+    finally {
+        try { $c = Find-ById (Get-Tree $root) 'CloseButton'; if ($c) { Invoke-Node $c; Wait-Idle 1500 } } catch {}
+        foreach ($i in $ids) { Remove-LoaderFixture $i }
+        if (Test-Path -LiteralPath $fx) { Remove-Item -LiteralPath $fx -Recurse -Force -EA SilentlyContinue }
+    }
+}
+
+Case 'load-order-ue-round-trip' 'fix/bethesda-load-order-no-renames - Apply prefixes, Undo restores' {
+    $fx = Join-Path $OutDir 'load-order-ue-fixture'
+    $game = Join-Path $fx 'LoUeGame'
+    $mods = Join-Path $game 'LoUeGame\Content\Paks\~mods'
+    $id = $null
+    try {
+        if (Test-Path -LiteralPath $fx) { Remove-Item -LiteralPath $fx -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $mods | Out-Null
+        1..3 | ForEach-Object { Set-Content -LiteralPath (Join-Path $mods "LoFixture$($_)_P.pak") -Value "SMOKE626 inert $_" -Encoding ascii }
+        $pre = Get-TreeManifest $game
+        $id = Register-LoaderFixture 'Load Order UE Fixture' $game 'ue-pak'
+        $loJson = Join-Path (Get-FixtureDataDir $game $id) 'loadorder.json'
+        Open-GameById $id
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.load-order-prefix')) "the chip shows before any apply"
+
+        Invoke-Node (Find-ById (Get-Tree $root) 'ReorderButton'); Wait-Idle 2000
+        $apply = Find-ById (Get-Tree $root) 'ApplyOrderButton'
+        Assert-True ($null -ne $apply) "Reorder did not open load-order mode on a pak game: '$(Get-StatusLine)'"
+        Invoke-Node $apply; Wait-Idle 4000
+        $names = @(Get-ChildItem -LiteralPath $mods -Force -File | ForEach-Object Name | Sort-Object)
+        Assert-True (@($names | Where-Object { $_ -match '^\d{4}__LoFixture\d_P\.pak$' }).Count -eq 3) "paks after Apply are [$($names -join ', ')], expected three 0010__-style names"
+        Assert-True (Test-Path -LiteralPath $loJson) "Apply wrote no loadorder.json at $loJson"
+        $detail = Open-StateChip 'load-order-prefix'
+        Assert-True ($null -ne $detail) "no LOAD ORDER chip after Apply"
+        $sentence = Get-Text $detail
+        Assert-True ($sentence -eq 'Load order applied by renaming 3 files. Undo puts the original names back.') "the chip reads '$sentence'"
+
+        Invoke-Node (Find-ById (Get-Tree $root) 'StateChipAction'); Wait-Idle 3500
+        $undone = Get-StatusLine
+        Assert-True (@(Compare-Object $pre (Get-TreeManifest $game)).Count -eq 0) "the fixture differs from the start after Undo"
+        Assert-True (-not (Test-Path -LiteralPath $loJson)) "loadorder.json survived a clean Undo"
+        Assert-True ($null -eq (Find-ById (Get-Tree $root) 'StateChip.load-order-prefix')) "the chip survived Undo"
+        "Apply prefixed 3 paks ($($names -join ', ')) and wrote loadorder.json; chip '$sentence'; Undo ('$undone') left the tree hash-identical and loadorder.json gone"
     }
     finally {
         try { $c = Find-ById (Get-Tree $root) 'CloseButton'; if ($c) { Invoke-Node $c; Wait-Idle 1500 } } catch {}

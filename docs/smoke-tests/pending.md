@@ -2679,3 +2679,16 @@ Held case: `list_mods` reported Skyrim `enabled=False isBase=True`; the app list
 the switch then read locked (IsEnabled false); MCP off refused again. `games.json` restored byte-identical
 (SHA-256 `FEDEBF9D...523C5E`), fixtures deleted. Not driven: the Profiles dialog and the loadout segments in the UI.
 Harness note: the tree names rows by display name (`My Mod`, `Skyrim Textures 0`), not `Mod.Name`.
+
+
+## fix/bethesda-load-order-no-renames: Reorder refuses on Bethesda, 626's prefixes undo
+
+Reorder on a Bethesda game renamed plugins to `0010__X.esp`, which makes them missing plugins in `Plugins.txt`. Reorder now refuses there, and a LOAD ORDER chip offers Undo wherever 626's own `0010__`-style prefix is on disk.
+
+1. Back up and hash `games.json`. Fixtures only: a Bethesda game (`SkyrimSE.exe`, `Data` with `Skyrim.esm`, `MyMod.esp`, `Other.esp`).
+2. Press Reorder. Expected: the Plugins.txt sentence in the status line, no load-order mode, nothing renamed, no `loadorder.json`.
+3. A Bethesda fixture whose `Data` already holds `0010__MyMod.esp` and `0020__Other.esp`. Expected: a LOAD ORDER chip; its Undo gives `MyMod.esp` and `Other.esp`, byte-identical, and the chip leaves.
+4. A UE-pak fixture with three paks in `~mods`: Reorder, Apply order. Expected: prefixed names, `loadorder.json`, the chip. Undo: names and bytes as at the start, `loadorder.json` gone.
+5. `0010__MyMod.esp` beside `MyMod.esp`. Expected: Undo touches neither and the status names the collision.
+
+**Run 2026-10-02 by the agent (v0.23.0 build of f1ff2db): PASS on all five.** Cases 2 to 5 are the harness cases `load-order-bethesda-refuses-and-undoes` and `load-order-ue-round-trip`, run with `-OutDir` pointed at the session scratchpad. Reorder on the clean Bethesda fixture read `On Bethesda games the load order lives in Plugins.txt. 626 doesn't edit it yet, so it won't rename your plugins.`, `ApplyOrderButton` never appeared, the fixture tree was hash-identical and no `loadorder.json` existed. The prefixed fixture showed `StateChip.load-order-prefix` reading `2 plugins carry a load-order prefix from 626.` with `StateChipAction` = `Undo`; after Undo the status read `Removed 626's prefix from 2 files.`, Data held `MyMod.esp`, `Other.esp` and `Skyrim.esm` with the SHA-256s they had under the prefixed names, and the chip was gone. UE: Apply gave `0010__LoFixture1_P.pak`, `0020__LoFixture2_P.pak`, `0030__LoFixture3_P.pak` and `loadorder.json`; chip `3 mod files carry a load-order prefix from 626.`; Undo left the tree hash-identical (files and folders) and removed `loadorder.json`. Collision: both files untouched, status `Removed 626's prefix from 0 files. 0010__MyMod.esp was left as is: MyMod.esp already exists.` `games.json` restored byte-identical (SHA-256 `FEDEBF9D...523C5E`), fixtures deleted. Not driven: dragging a row or typing a position in load-order mode (Apply ran with the order unchanged); the prefixed files were written before the fixture was registered, not while the app was closed (the harness has the app open throughout).
