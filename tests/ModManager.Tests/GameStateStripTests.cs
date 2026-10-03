@@ -41,6 +41,7 @@ public class GameStateStripTests
     [InlineData("vortex-redeployed")]
     [InlineData("vortex-managed")]
     [InlineData("backup-waiting")]
+    [InlineData("load-order-prefix")]
     public void Every_condition_alone_produces_exactly_its_own_chip(string id)
         => Assert.Equal(new[] { id }, Ids(Only(id)));
 
@@ -61,6 +62,7 @@ public class GameStateStripTests
             "setup-drift",
             "steam-updated",
             "stale-loader",
+            "load-order-prefix",
             "coop-launcher",
             "mp-desync",
             "backup-waiting",
@@ -339,6 +341,35 @@ public class GameStateStripTests
         Assert.Null(GameStateStrip.ExpandedFor(null, "steam-updated"));
     }
 
+    private const string PrefixSentence = "3 plugins carry a load-order prefix from 626.";
+
+    [Fact]
+    public void Load_order_prefixes_that_break_plugins_warn_and_stay()
+    {
+        var chip = Assert.Single(GameStateStrip.For(new GameStateConditions { LoadOrderPrefixed = PrefixSentence, LoadOrderPrefixBreaks = true }));
+        Assert.Equal(GameStateSeverity.Warning, chip.Severity);
+        Assert.Equal(PrefixSentence, chip.Detail);
+        Assert.Equal("Undo", chip.ActionLabel);
+        Assert.False(chip.Dismissible);
+        Assert.NotEqual(GameStateTone.Danger, chip.Tone);
+    }
+
+    [Fact]
+    public void Load_order_prefixes_that_order_paks_are_info_below_the_warnings()
+    {
+        var chips = GameStateStrip.For(new GameStateConditions
+        {
+            LoadOrderPrefixed = "4 mod files carry a load-order prefix from 626.",
+            MpWarning = "2 enabled mods may desync co-op.",
+            HeldBackup = "12 mods and 79 save files",
+        });
+        Assert.Equal(new[] { "mp-desync", "load-order-prefix", "backup-waiting" }, chips.Select(c => c.Id).ToArray());
+        var chip = chips[1];
+        Assert.Equal(GameStateSeverity.Info, chip.Severity);
+        Assert.True(chip.Dismissible);
+        Assert.Equal("Undo", chip.ActionLabel);
+    }
+
     private const string StaleSentence =
         "REFramework (dinput8.dll, 2025-03-10) is older than the game's executable (MonsterHunterWilds.exe, 2026-08-17).";
 
@@ -350,6 +381,8 @@ public class GameStateStripTests
         SetupDrift = true,
         SteamUpdated = true,
         StaleLoader = StaleSentence,
+        LoadOrderPrefixed = PrefixSentence,
+        LoadOrderPrefixBreaks = true,
         CoopLauncherMissing = true,
         MpWarning = "2 enabled mods may desync co-op.",
         VortexReDeployed = true,
@@ -370,6 +403,7 @@ public class GameStateStripTests
         "vortex-redeployed" => new GameStateConditions { VortexReDeployed = true },
         "vortex-managed" => new GameStateConditions { VortexManaged = true },
         "backup-waiting" => new GameStateConditions { HeldBackup = "12 mods and 79 save files" },
+        "load-order-prefix" => new GameStateConditions { LoadOrderPrefixed = PrefixSentence, LoadOrderPrefixBreaks = true },
         _ => throw new ArgumentOutOfRangeException(nameof(id), id, "unknown condition"),
     };
 

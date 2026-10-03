@@ -74,6 +74,12 @@ public sealed record GameStateConditions
     /// has not marked it checked against this build (<see cref="StaleLoaders.Summary"/>).</summary>
     public string? StaleLoader { get; init; }
     public bool CoopLauncherMissing { get; init; }
+    /// <summary>Non-empty when files in this game's mod folders carry a load-order prefix 626 wrote
+    /// (<see cref="LoadOrderUndoPlan.Describe"/>), e.g. "3 plugins carry a load-order prefix from 626.".</summary>
+    public string? LoadOrderPrefixed { get; init; }
+    /// <summary>True when those prefixes break the game rather than order it: on a plugin game a prefixed
+    /// plugin is a missing plugin (<see cref="LoadOrderSupport.IsPluginGame"/>).</summary>
+    public bool LoadOrderPrefixBreaks { get; init; }
     /// <summary>Non-empty when enabled mods may desync co-op.</summary>
     public string? MpWarning { get; init; }
     public bool VortexReDeployed { get; init; }
@@ -154,6 +160,12 @@ public static class GameStateStrip
                 // patch brings it back. A session dismissal would bring it back every launch instead.
                 "Mark as checked", Dismissible: false));
 
+        // 5c. 626's own load-order renames, on a game where a renamed file is a missing one (a Bethesda
+        // plugin). Mods that will not load, so it sits with the other "may not work" warnings, and it is
+        // not dismissible: putting the chip away would not put the plugins back.
+        if (!string.IsNullOrWhiteSpace(c.LoadOrderPrefixed) && c.LoadOrderPrefixBreaks)
+            chips.Add(LoadOrderPrefixChip(c.LoadOrderPrefixed!, GameStateSeverity.Warning, dismissible: false));
+
         // 6. Co-op specifically is broken.
         if (c.CoopLauncherMissing)
             chips.Add(new GameStateChip("coop-launcher", GameStateSeverity.Warning, "CO-OP",
@@ -164,6 +176,11 @@ public static class GameStateStrip
         if (!string.IsNullOrWhiteSpace(c.MpWarning))
             chips.Add(new GameStateChip("mp-desync", GameStateSeverity.Warning, "MP RISK",
                 c.MpWarning!.Trim(), null, Dismissible: false));
+
+        // 7b. The same renames where they are the load order working as asked (Unreal paks). True and
+        // worth knowing, because it is the only way to see how to take them off again; costs nothing.
+        if (!string.IsNullOrWhiteSpace(c.LoadOrderPrefixed) && !c.LoadOrderPrefixBreaks)
+            chips.Add(LoadOrderPrefixChip(c.LoadOrderPrefixed!, GameStateSeverity.Info, dismissible: true));
 
         // 8. The good news case, and the only chip here that is not about something being wrong:
         // somebody rebuilt a machine, reinstalled a game, and their mods are already on the disk
@@ -189,6 +206,11 @@ public static class GameStateStrip
 
         return chips;
     }
+
+    // One id in both places: a harness keys on the fact (626 renamed files here), not on how bad it is.
+    // Undo is reversible and restores the original names, so it is an ordinary action, never a danger one.
+    private static GameStateChip LoadOrderPrefixChip(string sentence, GameStateSeverity severity, bool dismissible)
+        => new("load-order-prefix", severity, "LOAD ORDER", sentence.Trim(), "Undo", dismissible);
 
     /// <summary>The chip that reads as a full sentence without anyone tapping anything: the first
     /// one, which by the ordering above is the most consequential thing true about this game.
