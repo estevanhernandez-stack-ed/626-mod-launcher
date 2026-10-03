@@ -76,6 +76,17 @@ public static class ModToggle
         if (ModListing.HasNoModLane(ctx))
             throw new InvalidOperationException(ModListEmptyState.NoModLane);
 
+        // The game's own files are never turned off, whatever lane would carry the row. One explicit toggle
+        // (no scope) is refused in words; one change of a bulk operation (a profile load, Safe Clear) is skipped
+        // silently, like a row another tool owns. Turning one back ON is always allowed. The scanner's lane
+        // checks again on the row it lists fresh, so a stale row without the flag is caught there too.
+        if (!enabled && mod.IsBase)
+        {
+            if (scope is null)
+                throw new BaseGameFileException(Scanner.BaseFileNameFor(mod, ctx), remove: false);
+            return null;
+        }
+
         // Appended by ModListing on any lane, so it must be claimed before the lane dispatch below
         // routes a DLL step-aside through a mod mover that knows nothing about it.
         if (mod.Location == ProxyLoaderRows.LocationTag)

@@ -77,6 +77,12 @@ public static class WriteTools
             // nothing and still reported success.
             await ModToggle.SetEnabledAsync(ctx, mod, enabled);
         }
+        catch (BaseGameFileException e)
+        {
+            // The game's own file: the app refuses the same switch. A refusal, not an error, with the
+            // sentence the app shows, so the agent can tell its human why nothing moved.
+            return Refuse("set_mod_enabled", ctx.DataDir, gameId, args, "game_file", e.Message);
+        }
         catch (Exception e)
         {
             AgentAudit.Append(ctx.DataDir, new AgentAuditEntry(

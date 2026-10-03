@@ -2650,3 +2650,32 @@ C:\Users\estev\AppData\Local\R5\Saved\SaveProfiles\76561197969211145\RocksDB\0.1
 That left one snapshot there, the Saves list unchanged at 2 rows, and the top-level zips unchanged.
 `Remove SmokeCoffeeWorld` deleted the world and `save-mods\<guid>`. SaveProfiles afterwards: 779 files and
 the directory tree identical.
+
+## Game files stay on: GAME FILE chip, Disable all, held game files (fix/bethesda-base-files-never-off)
+
+1. Back up and hash `games.json`. Fixture only, never a real Skyrim or Fallout: a Bethesda game with `SkyrimSE.exe`,
+   `Skyrim.ccc` naming `ccBGSSSE001-Fish.esm`, and `Data` holding `Skyrim.esm`, `Update.esm`, `Dawnguard.esm`,
+   `Skyrim - Textures0.bsa`, `ccBGSSSE001-Fish.esm`/`.bsa`, `MyMod.esp`/`.bsa`, `OtherMod.esp`.
+2. Open it. Expected: a GAME FILE chip on each game file, switches locked while on; My Mod and Other Mod ordinary.
+3. Disable all, then Enable all. Expected: game files never leave `Data`; the three mod files go to holding and back;
+   the fixture is hash-identical afterwards.
+4. MCP `set_mod_enabled` off on a game file: refusal, nothing moves. `apply_loadout` with an all-off loadout touches
+   only the ordinary mods.
+5. With the app closed, move `Skyrim.esm` into `<dataDir>\disabled\Skyrim\` with a `meta.json`. Launch: the row lists
+   with the chip and a working switch; switching on restores it byte-identical; it then refuses off.
+
+**Run 2026-10-02 by the agent sweep (v0.23.0 build of eb3d791): PASS on all five.** Cases 1 and 2 are now the harness
+case `game-files-stay-on-through-disable-all`. Rows: five `GameFileChip.<Mod.Name>` ids (`Skyrim`, `Update`,
+`Dawnguard`, `Skyrim - Textures0`, `ccBGSSSE001-Fish`) surfaced in a UIA walk; each switch was named `<name> is part
+of the game, so 626 won't turn it off` with IsEnabled false; `My Mod` and `Other Mod` read `Disable ...`. The `.ccc`
+plugin and its `.bsa` were protected, `MyMod.bsa` was not. Disable all: the six game files stayed in `Data`, the three
+mod files went to `disabled\MyMod` and `disabled\OtherMod`, no modal; Enable all: fixture tree hash-identical (files
+and folders). MCP: `list_mods` carries `isBase`; `set_mod_enabled` off on Skyrim, Update, Skyrim - Textures0 and
+ccBGSSSE001-Fish returned `{"ok":false,"refusal":"game_file","detail":"Skyrim.esm is part of the game, so 626 won't
+turn it off."}` with a tree diff of 0; a control toggle of MyMod round-tripped. Loadout (via MCP, not the Profiles
+dialog): an `AllOff` profile naming every row planned and applied only MyMod and OtherMod, game files untouched.
+Held case: `list_mods` reported Skyrim `enabled=False isBase=True`; the app listed it with the chip and an enabled
+`Enable Skyrim` switch; switching on put `Skyrim.esm` back with an identical SHA-256, emptied the holding folder, and
+the switch then read locked (IsEnabled false); MCP off refused again. `games.json` restored byte-identical
+(SHA-256 `FEDEBF9D...523C5E`), fixtures deleted. Not driven: the Profiles dialog and the loadout segments in the UI.
+Harness note: the tree names rows by display name (`My Mod`, `Skyrim Textures 0`), not `Mod.Name`.

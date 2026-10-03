@@ -620,6 +620,17 @@
                                     Visibility="{x:Bind BuiltinVisibility, Mode=OneWay}">
                                 <TextBlock AutomationProperties.HelpText="Ships with UE4SS — framework mod, not a downloaded mod" Text="UE4SS BUILT-IN" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
                             </Border>
+                            <!-- The game's own file (Mod.IsBase): a Bethesda master, a base pak. Its switch is
+                                 disabled while it is on; a held one can still be turned back on. -->
+                            <Border CornerRadius="0" Padding="6,2" Background="{StaticResource ThemePanel}"
+                                    BorderThickness="1" BorderBrush="{StaticResource ThemeInkSoft}"
+                                    ToolTipService.ToolTip="{x:Bind GameFileTooltip, Mode=OneWay}"
+                                    Visibility="{x:Bind GameFileChipVisibility}">
+                                <TextBlock AutomationProperties.AutomationId="{x:Bind GameFileChipAutomationId}"
+                                           AutomationProperties.Name="{x:Bind GameFileChipAutomationName}"
+                                           AutomationProperties.HelpText="{x:Bind GameFileTooltip, Mode=OneWay}"
+                                           Text="GAME FILE" FontFamily="{StaticResource MonoFontFamily}" FontSize="{StaticResource MetaFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
+                            </Border>
                             <Border CornerRadius="0" Padding="6,2" Background="Transparent" BorderBrush="{StaticResource ThemeAccent}" BorderThickness="1"
                                     ToolTipService.ToolTip="The mod loader (dinput8.dll) — toggling it turns the whole modded setup off or on"
                                     Visibility="{x:Bind LoaderChipVisibility, Mode=OneWay}">

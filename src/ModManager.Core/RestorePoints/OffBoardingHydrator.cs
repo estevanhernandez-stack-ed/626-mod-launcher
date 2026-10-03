@@ -60,6 +60,7 @@ public static class OffBoardingHydrator
         => (ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
            || (ga.LeftInPlace ?? Array.Empty<InPlaceNote>()).Any(n => string.Equals(n.Path, name, StringComparison.OrdinalIgnoreCase)
                && (n.Reason == RestorePointEngine.ReplacedGameFileNote || n.Reason == RestorePointEngine.BasePakRowNote
+                   || n.Reason == RestorePointEngine.BaseFileRowNote
                    || n.Reason.StartsWith(RestorePointEngine.CantTellRowPrefix, StringComparison.Ordinal)));
 
     // Why a turned-off mod went off, when it wasn't the toggle: said on its line, so the list explains itself.
@@ -148,7 +149,8 @@ public static class OffBoardingHydrator
             .Concat((ga.TurnOffSkipped ?? Array.Empty<ClearSkip>()).Select(s => s.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase).Count();
         var items = notes.Where(n => n.Reason.StartsWith(RestorePointEngine.CantTellRowPrefix, StringComparison.Ordinal)
-                                     || n.Reason == RestorePointEngine.BasePakRowNote)
+                                     || n.Reason == RestorePointEngine.BasePakRowNote
+                                     || n.Reason == RestorePointEngine.BaseFileRowNote)
             .Select(n => n.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count();
         var moved = ga.VanillaRemainder?.Count ?? 0;
         static string Mods(int n) => n == 1 ? "1 mod" : $"{n} mods";

@@ -162,8 +162,8 @@ public static partial class RestorePointEngine
     //    step-aside);
     //  - a location the launcher KNOWS holds only mods (ModOnlyFolders: an engine shape, the UE4SS folder, a
     //    definition-flagged modPath), compared on REAL paths;
-    //  - a paks-root location inside the game (GuardNoBasePakMove refuses a base pak there, and base-pak
-    //    rows are skipped up front by HasBaseGamePak anyway);
+    //  - a paks-root location inside the game (GuardNoBaseFileMove refuses a base pak there, and the game's
+    //    own rows are skipped up front by HasBaseGamePak anyway);
     //  - anywhere else, INCLUDING every location outside the game folder, only a row whose every file an
     //    install record says 626 placed (ModInstallRegistry). A mis-set location (an ancestor of the game, the
     //    profile, SysWOW64, through any alias) turns off nothing 626 didn't install.
@@ -387,9 +387,12 @@ public static partial class RestorePointEngine
         return m.Files.All(Placed);
     }
 
-    // A row with a file that looks like the base game's own pak is never turned off by vanilla, in any form
-    // (GuardNoBasePakMove only guards paks-root). Named on the sheet as still active (review r4, m2).
-    private static bool HasBaseGamePak(GameContext c, Mod m)
+    // A row that is the game's own is never turned off by vanilla: the scan's mark (Mod.IsBase, BaseGameFiles:
+    // Bethesda masters, Creation Club content, base paks in the game's Content/Paks), or, in any other form, a
+    // file that looks like the base game's own pak. Named on the sheet as still active (review r4, m2).
+    private static bool HasBaseGamePak(GameContext c, Mod m) => m.IsBase || HasBasePakFile(c, m);
+
+    private static bool HasBasePakFile(GameContext c, Mod m)
     {
         if (BaseDirFor(c, m) is not { } baseDir) return false;
         foreach (var f in m.Files)
@@ -397,22 +400,13 @@ public static partial class RestorePointEngine
             var name = Path.GetFileName(f);
             long size = 0;
             try { var fi = new FileInfo(Path.Combine(baseDir, f)); if (fi.Exists) size = fi.Length; } catch { }
-            if (IsBaseGameArchiveName(name, size)) return true;
+            if (BaseGameFiles.IsBaseGameArchive(name, size)) return true;
         }
         return false;
     }
 
-    /// <summary>A pak/ucas/utoc file that is the base game's own: <see cref="PakClassifier.IsBaseGamePak"/>, or
-    /// a UE5 <c>global.ucas</c> / <c>global.utoc</c> (which its regex never matched).</summary>
-    internal static bool IsBaseGameArchiveName(string fileName, long size)
-    {
-        var ext = Path.GetExtension(fileName);
-        if (!(ext.Equals(".pak", StringComparison.OrdinalIgnoreCase) || ext.Equals(".ucas", StringComparison.OrdinalIgnoreCase)
-              || ext.Equals(".utoc", StringComparison.OrdinalIgnoreCase)))
-            return false;
-        if (Path.GetFileNameWithoutExtension(fileName).Equals("global", StringComparison.OrdinalIgnoreCase)) return true;
-        return PakClassifier.IsBaseGamePak(Path.ChangeExtension(fileName, ".pak"), size);
-    }
+    // The sheet's words for a row left on because it is the game's: the pak wording for a pak, else the file one.
+    private static string BaseRowNote(GameContext c, Mod m) => HasBasePakFile(c, m) ? BasePakRowNote : BaseFileRowNote;
 
     // A loader row: what other mods load through. Turned off last, turned back on first.
     private static bool IsLoaderRow(Mod m) => m.IsLoader || m.Location == ProxyLoaderRows.LocationTag;

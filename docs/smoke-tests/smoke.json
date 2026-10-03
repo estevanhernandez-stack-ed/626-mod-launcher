@@ -2339,6 +2339,24 @@
    "note": "Writes Windrose's real save tree, wrapped: Windrose must be closed, the only world touched is a throwaway id, and the case refuses to start if that id is already listed."
   },
   {
+   "id": "game-files-stay-on-through-disable-all",
+   "title": "A game's own files stay on through Disable all, and a held one can be switched back on",
+   "surface": "fix/bethesda-base-files-never-off - GAME FILE chip",
+   "coverage": "harness",
+   "status": "verified",
+   "lastVerified": {
+    "release": "v0.23.0 build of eb3d791",
+    "date": "2026-10-02",
+    "by": "agent sweep on Nebuchadnezzar",
+    "note": "Fixture only: a Bethesda game with SkyrimSE.exe, Skyrim.ccc naming ccBGSSSE001-Fish.esm, and Data holding Skyrim.esm, Update.esm, Dawnguard.esm, Skyrim - Textures0.bsa, ccBGSSSE001-Fish.esm/.bsa, MyMod.esp/.bsa and OtherMod.esp. Five GameFileChip.<name> ids surfaced and their switches read '<name> is part of the game, so 626 won't turn it off' with IsEnabled false; My Mod and Other Mod were ordinary. Disable all left all six game files in Data byte-identical and moved the three mod files to holding; Enable all left the fixture hash-identical. Also by hand over MCP: set_mod_enabled off returns refusal game_file and moves nothing, apply_loadout of an all-off loadout changes only the two mods, and a Skyrim.esm placed in holding (the old bug) lists with the chip, switches on, comes back byte-identical, then refuses off."
+   },
+   "steps": [],
+   "source": "scripts/smoke-run.ps1",
+   "action": "Register a throwaway Bethesda fixture (Skyrim.esm, Update.esm, Dawnguard.esm, a base .bsa, a Skyrim.ccc-listed plugin and its .bsa, plus two ordinary mods), open it, read the rows, press Disable all, then Enable all. The finally removes the registration and the fixture.",
+   "expect": "Each game file shows a GameFileChip.<name> id and a locked switch; the ordinary mods are normal rows. Disable all moves only the ordinary mods' files to holding. Enable all leaves the fixture hash-identical to before.",
+   "note": "Never touches a real game. Row names in the UIA tree are display names ('My Mod', 'Skyrim Textures 0'); the chip ids use Mod.Name."
+  },
+  {
    "id": "multi-tree-toggle-cross-volume",
    "title": "A multi-tree mod round-trips when 626's data folder is on another drive",
    "surface": "B4 cross-volume",

@@ -106,7 +106,7 @@ Start-Sleep -Seconds 2
 # is selected, the whole file is snapshotted here, with the app closed, and written back byte for byte
 # in the finally at the end of the run - activeGameId included, as the user had it before the run.
 $gamesJson = Join-Path $env:APPDATA 'ModManagerBuilder\games.json'
-$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy', 'save-mod-reset-and-remove-from-saves-dialog')
+$fixtureCases = @('repair-cancel-is-inert', 'repair-save-gating', 'old-loader-chip-round-trip', 'old-loader-ue4ss-needs-its-proxy', 'save-mod-reset-and-remove-from-saves-dialog', 'game-files-stay-on-through-disable-all')
 $script:GamesSnapshot = $null
 $script:GamesHashAfterHarness = $null
 $gamesSnapshotPath = Join-Path $OutDir 'games.json.run-start'
@@ -1515,6 +1515,82 @@ Case 'save-mod-reset-and-remove-from-saves-dialog' '#380 - Windrose save mods' {
             $diff | Select-Object -First 10 | ForEach-Object { Write-Host "     $($_.SideIndicator) $($_.InputObject)" -ForegroundColor Red }
             throw "SaveProfiles is not hash-identical after the case - backup kept at $backup"
         }
+    }
+}
+
+# ---------------------------------------------------------------- the game's own files (fix/bethesda-base-files-never-off)
+# A throwaway Bethesda game: dummy exe, Skyrim.ccc naming one Creation Club plugin, and a Data folder of
+# the game's own files beside two ordinary mods. Registered through the MCP's register_game, removed in a
+# finally. The case never touches a real game.
+function Get-FixtureDataDir([string]$GameRoot, [string]$Id) {
+    # Same rule as Scanner.DataDirForGame for a non-Steam game: <parent of the root>\_626mods\<id>.
+    Join-Path (Split-Path $GameRoot -Parent) "_626mods\$Id"
+}
+
+function New-BaseFilesFixture([string]$GameRoot) {
+    $data = Join-Path $GameRoot 'Data'
+    New-Item -ItemType Directory -Force -Path $data | Out-Null
+    Set-Content -LiteralPath (Join-Path $GameRoot 'SkyrimSE.exe') -Value 'SMOKE626 dummy exe' -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $GameRoot 'Skyrim.ccc') -Value 'ccBGSSSE001-Fish.esm' -Encoding ascii
+    foreach ($f in 'Skyrim.esm','Update.esm','Dawnguard.esm','Skyrim - Textures0.bsa','ccBGSSSE001-Fish.esm','ccBGSSSE001-Fish.bsa','MyMod.esp','MyMod.bsa','OtherMod.esp') {
+        Set-Content -LiteralPath (Join-Path $data $f) -Value "SMOKE626 inert $f" -Encoding ascii
+    }
+}
+
+Case 'game-files-stay-on-through-disable-all' 'fix/bethesda-base-files-never-off - GAME FILE chip' {
+    $fx = Join-Path $OutDir 'game-files-fixture'
+    $game = Join-Path $fx 'SkyrimFixture'
+    $data = Join-Path $game 'Data'
+    $id = $null
+    try {
+        if (Test-Path -LiteralPath $fx) { Remove-Item -LiteralPath $fx -Recurse -Force }
+        New-BaseFilesFixture $game
+        $baseFiles = 'Skyrim.esm','Update.esm','Dawnguard.esm','Skyrim - Textures0.bsa','ccBGSSSE001-Fish.esm','ccBGSSSE001-Fish.bsa'
+        $modFiles = 'MyMod.esp','MyMod.bsa','OtherMod.esp'
+        $pre = Get-TreeManifest $game
+        $id = Register-LoaderFixture 'Base Files Smoke Fixture' $game 'bethesda'
+        Open-GameById $id
+
+        # (1) the rows: each game file carries the chip, the others do not, and a game file's switch is locked while on.
+        $t = Get-Tree $root
+        $chips = @(Find-AllByIdPrefix $t 'GameFileChip.' | ForEach-Object { $_.Current.AutomationId -replace '^GameFileChip\.', '' } | Sort-Object)
+        $wantChips = @('Skyrim','Update','Dawnguard','Skyrim - Textures0','ccBGSSSE001-Fish' | Sort-Object)
+        Assert-True (($chips -join '|') -eq ($wantChips -join '|')) "GameFileChip ids are [$($chips -join ', ')], expected [$($wantChips -join ', ')]"
+        foreach ($n in 'My Mod','Other Mod') {
+            Assert-True ($null -ne (Find-ModToggle $root $n)) "no 'Disable $n' switch: $n should be an ordinary row. Switches seen: $(@(Get-Tree $root | Where-Object { try { $null -ne (Get-ToggleState $_) } catch { $false } } | ForEach-Object { $_.Current.Name }) -join ' | ')"
+        }
+        $display = @{ 'Skyrim' = 'Skyrim'; 'Update' = 'Update'; 'Dawnguard' = 'Dawnguard'; 'Skyrim - Textures0' = 'Skyrim Textures 0'; 'ccBGSSSE001-Fish' = 'Cc BGSSSE 001 Fish' }
+        foreach ($key in $wantChips) {
+            $n = $display[$key]
+            Assert-True ($null -eq (Find-ModToggle $root $n)) "'$n' still offers a Disable/Enable switch"
+            $locked = Find-ByName $t "$n is part of the game, so 626 won't turn it off"
+            Assert-True ($null -ne $locked) "no locked switch named for '$n'"
+            Assert-True (-not $locked.Current.IsEnabled) "'$n' switch is enabled while on"
+        }
+
+        # (2) Disable all: the game's files stay, the two mods go to holding.
+        Invoke-Node (Find-ById (Get-Tree $root) 'DisableAllButton'); Wait-Idle 4500
+        $modal = Test-ModalOpen $root
+        Assert-True (-not $modal) "Disable all opened a modal: $modal"
+        foreach ($f in $baseFiles) { Assert-True (Test-Path -LiteralPath (Join-Path $data $f)) "$f left Data after Disable all" }
+        foreach ($f in $modFiles) { Assert-True (-not (Test-Path -LiteralPath (Join-Path $data $f))) "$f is still in Data after Disable all" }
+        $held = Join-Path (Get-FixtureDataDir $game $id) 'disabled'
+        Assert-True ((Test-Path -LiteralPath (Join-Path $held 'MyMod\MyMod.esp')) -and (Test-Path -LiteralPath (Join-Path $held 'OtherMod\OtherMod.esp'))) "the mods are not in $held"
+        $my = Find-ModToggle $root 'My Mod'
+        Assert-True ($null -ne $my -and (Get-ToggleState $my) -eq 'Off') "MyMod's switch is not Off"
+        Assert-True (@(Find-AllByIdPrefix (Get-Tree $root) 'GameFileChip.').Count -eq 5) "the chips went missing after Disable all"
+
+        # Enable all: everything back, byte for byte.
+        Invoke-Node (Find-ById (Get-Tree $root) 'EnableAllButton'); Wait-Idle 4500
+        $post = Get-TreeManifest $game
+        $diff = @(Compare-Object $pre $post)
+        Assert-True ($diff.Count -eq 0) "the fixture differs after Disable all and Enable all: $(($diff | Select-Object -First 3 | ForEach-Object { $_.InputObject }) -join ' / ')"
+        "5 game-file chips (Skyrim, Update, Dawnguard, Skyrim - Textures0, ccBGSSSE001-Fish) with locked switches, MyMod and OtherMod ordinary; Disable all moved only the 3 mod files to holding, Enable all left the fixture hash-identical"
+    }
+    finally {
+        try { $c = Find-ById (Get-Tree $root) 'CloseButton'; if ($c) { Invoke-Node $c; Wait-Idle 1500 } } catch {}
+        if ($id) { Remove-LoaderFixture $id }
+        if (Test-Path -LiteralPath $fx) { Remove-Item -LiteralPath $fx -Recurse -Force -EA SilentlyContinue }
     }
 }
 

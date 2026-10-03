@@ -154,8 +154,13 @@ public static class GameWriteTools
                 $"'{modName}' is not a mod in {gameId}. Call list_mods for the names.");
 
         if (ModUninstall.Refusal(ctx, mod) is { } why)
-            return WriteTools.Refuse(tool, ctx.DataDir, gameId, args,
-                why.Kind == UninstallBlock.ManagedByAnotherTool ? AgentRefusal.ManagedByAnotherTool : AgentRefusal.None, why.Message);
+            return why.Kind switch
+            {
+                // The game's own file: the same code set_mod_enabled answers with.
+                UninstallBlock.GameFile => WriteTools.Refuse(tool, ctx.DataDir, gameId, args, "game_file", why.Message),
+                UninstallBlock.ManagedByAnotherTool => WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.ManagedByAnotherTool, why.Message),
+                _ => WriteTools.Refuse(tool, ctx.DataDir, gameId, args, AgentRefusal.None, why.Message),
+            };
 
         // What it will delete, from the same preview the app's confirm dialog reads. A name that would resolve
         // outside the holding folder is refused here, before anything is deleted.
