@@ -454,6 +454,7 @@ public static class Scanner
                 }
             }
         }
+        var heldDirs = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var d in ListDisabled(c))
         {
             if (outMap.ContainsKey(d.Name)) continue;
@@ -462,11 +463,59 @@ public static class Scanner
                 Name = d.Name, Location = d.Location, Enabled = false, Files = d.Files.ToList(),
                 IsFolder = d.IsFolder, Managed = c.Locations.FirstOrDefault(l => l.Name == d.Location)?.Managed,
             };
+            heldDirs[d.Name] = d.Dir;
         }
+        MarkBaseRows(c, outMap.Values, heldDirs);
         return outMap.Values.OrderBy(m => m.Name, StringComparer.Ordinal).ToList();
     }
 
-    private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files, bool IsFolder);
+    /// <summary>
+    /// Set <see cref="Mod.IsBase"/> on every row with a file that is the game's own, live rows and held rows
+    /// alike: a base file an older build moved to holding still lists as the game's, so it can come back on
+    /// and can never be turned off again. One <see cref="BaseGameFiles.Judge"/> per listing, so the game's
+    /// Creation Club lists are read at most once per scan. Sizes are read only in an Unreal paks folder.
+    /// </summary>
+    private static void MarkBaseRows(GameContext c, IEnumerable<Mod> rows, IReadOnlyDictionary<string, string> heldDirs)
+    {
+        if (c.Locations.Count == 0) return;
+        var judge = new BaseGameFiles.Judge(c);
+        foreach (var m in rows)
+        {
+            if (m.IsFolder || m.Loader is not null) continue;
+            var loc = c.Locations.FirstOrDefault(l => l.Name == m.Location);
+            if (loc is null || !judge.Applies(loc)) continue;
+            var dir = heldDirs.TryGetValue(m.Name, out var held) ? held : loc.Abs;
+            m.IsBase = m.Files.Any(f => judge.IsBase(loc, f, BaseGameFiles.Judge.NeedsSize(loc) ? SizeOf(dir, f) : 0));
+        }
+    }
+
+    // A file's size by its real name, or 0 when it can't be read (judged by name alone then).
+    private static long SizeOf(string dir, string file)
+    {
+        try { var fi = new FileInfo(FolderNames.ExactPath(dir, file)); return fi.Exists ? fi.Length : 0; }
+        catch { return 0; }
+    }
+
+    /// <summary>The first of the row's files that is the game's own, for the refusal sentence; null when none
+    /// is (a stale or hand-built row). Sizes are read from the location and every mirror, the largest winning,
+    /// because an uninstall reaches all of them.</summary>
+    private static string? BaseFileOf(Mod m, GameContext? c, ModLocationCtx loc)
+    {
+        if (m.IsFolder) return null;
+        var judge = c is null ? new BaseGameFiles.Judge(null, null) : new BaseGameFiles.Judge(c);
+        if (!judge.Applies(loc)) return null;
+        foreach (var f in m.Files)
+        {
+            long size = 0;
+            if (BaseGameFiles.Judge.NeedsSize(loc))
+                foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
+                    size = Math.Max(size, SizeOf(root, f));
+            if (judge.IsBase(loc, f, size)) return Path.GetFileName(f);
+        }
+        return null;
+    }
+
+    private sealed record DisabledEntry(string Name, string Location, Dictionary<string, bool> HadOnServer, List<string> Files, bool IsFolder, string Dir);
 
     private sealed class DisabledMeta
     {
@@ -497,7 +546,7 @@ public static class Scanner
             }
             catch { /* keep defaults */ }
             var files = SafeReadFiles(dir).Where(n => n != "meta.json").ToList();
-            result.Add(new DisabledEntry(name, location, hadOnServer, files, isFolder));
+            result.Add(new DisabledEntry(name, location, hadOnServer, files, isFolder, dir));
         }
         return result;
     }
@@ -541,7 +590,7 @@ public static class Scanner
     internal static Task SetAppendedRowEnabledAsync(Mod row, bool enabled, GameContext c, BulkScope? scope)
     {
         if (enabled) EnableMod(row.Name, c, scope);
-        else DisableEntry(row, c, scope);
+        else DisableEntry(row, c, scope, refuseBase: scope is null);
         return Task.CompletedTask;
     }
 
@@ -590,7 +639,9 @@ public static class Scanner
         // Non-loader mod: fall back to the normal gated path (ReadOnly guard applies).
         if (enabled) return Task.FromResult<EnableOutcome?>(EnableMod(name, c, scope));
         var m2 = scope is null ? BuildModList(c).FirstOrDefault(x => x.Name == name) : scope.Find(name);
-        if (m2 is not null) DisableEntry(m2, c, scope);
+        // Single-row toggles never carry a scope (BulkScope), so no scope is the explicit turn-off that refuses
+        // a game file in words; inside a bulk operation it is skipped silently.
+        if (m2 is not null) DisableEntry(m2, c, scope, refuseBase: scope is null);
         return Task.FromResult<EnableOutcome?>(null);
     }
 
@@ -634,10 +685,12 @@ public static class Scanner
                 throw new InvalidOperationException($"\"{name}\" is managed by another tool — uninstall it there.");
 
             var loc = LocByName(m.Location, c);
-            // Same reversibility backstop as the disable move path: never delete a base-game pak in a
-            // paks-root location, even if classification was wrong or a stale Mod reaches here. No-op for
-            // every other form (the scan also filters base paks out, so this can't be hit by name).
-            GuardNoBasePakMove(m, loc);
+            // The game's own files are never deleted, live or held. Refused in words: uninstall is a single,
+            // explicit act, never a bulk one.
+            if (m.IsBase) throw new BaseGameFileException(BaseFileNameFor(m, c), remove: true);
+            // Same reversibility backstop as the disable move path, for a row the scan did not mark (a stale
+            // Mod, a classification that changed under it).
+            GuardNoBaseFileMove(m, loc, c, remove: true);
             // The scan's own entries, by their real names: an odd name (trailing dot or space) is deleted
             // exactly, never the lookalike entry Windows would normalise its path onto.
             foreach (var f in m.Files)
@@ -687,38 +740,36 @@ public static class Scanner
         else if (File.Exists(p)) File.Delete(p);
     }
 
-    // Reversibility backstop: refuse to MOVE a pak that classifies as base game — even a wrong
-    // classification or a stale/hostile Mod can never strand the game's own files. Only enforced for
-    // paks-root locations (where base + mods share a folder); other forms never mix the two, so the
-    // guard is a no-op there. internal for direct testing (the public disable paths can't reach a base
-    // pak by name — the scan filters it out — so this is defense-in-depth, verified at the unit level).
-    internal static void GuardNoBasePakMove(Mod m, ModLocationCtx loc)
+    // Reversibility backstop: refuse to MOVE or delete a file that is the game's own (BaseGameFiles), even
+    // when the row was not marked IsBase (a stale or hand-built Mod). Applies where the game's files and mods
+    // share a folder: a Bethesda Data folder, and an Unreal Content/Paks (paks-root, or files-form pointed at
+    // it). A dedicated mod folder (~mods) never mixes the two, so the guard is a no-op there. internal for
+    // direct testing.
+    internal static void GuardNoBasePakMove(Mod m, ModLocationCtx loc) => GuardNoBaseFileMove(m, loc, null, remove: false);
+
+    /// <summary>Throws <see cref="BaseGameFileException"/> naming the first of the row's files that is the
+    /// game's own. <paramref name="c"/> null judges Unreal paks folders alone.</summary>
+    internal static void GuardNoBaseFileMove(Mod m, ModLocationCtx loc, GameContext? c, bool remove)
     {
-        if (loc.Form != "paks-root") return;
-        foreach (var f in m.Files)
-        {
-            // Size from loc.Abs OR any mirror (max) — UninstallMod deletes from all of them, so a base
-            // pak resident only in a mirror must still be sized (and refused). The name check below
-            // independently catches conventionally-named base paks regardless of where they live.
-            long size = 0;
-            foreach (var root in new[] { loc.Abs }.Concat(loc.Mirrors ?? Array.Empty<string>()))
-            {
-                // By its real name: a \\?\-made sidecar such as "Foo_P.sig." is sized as itself, not as the
-                // lookalike its plain join would open.
-                try { var len = new FileInfo(FolderNames.ExactPath(root, f)).Length; if (len > size) size = len; }
-                catch { /* missing in this root — try the next */ }
-            }
-            if (PakClassifier.IsBaseGamePak(Path.GetFileName(f), size))
-                throw new InvalidOperationException(
-                    $"\"{f}\" is a base-game file, not a mod — refusing to touch it. Nothing was changed.");
-        }
+        if (BaseFileOf(m, c, loc) is { } file) throw new BaseGameFileException(file, remove);
     }
 
-    private static void DisableEntry(Mod m, GameContext c, BulkScope? scope = null)
+    // The single explicit turn-off of an IsBase row refuses in words; a bulk caller skips it silently.
+    internal static string BaseFileNameFor(Mod m, GameContext c)
+        => BaseFileOf(m, c, LocByName(m.Location, c)) ?? (m.Files.Count > 0 ? Path.GetFileName(m.Files[0]) : m.Name);
+
+    private static void DisableEntry(Mod m, GameContext c, BulkScope? scope = null, bool refuseBase = false)
     {
         // Owned mods are read-only — another tool manages their files. Skip, not error: this
         // is called from bulk loops (SetAllMods, ApplyMode, LoadProfile) where owned = expected.
         if (m.ReadOnly) return;
+        // The game's own files are never moved. A bulk caller skips the row silently, like a ReadOnly one;
+        // a single explicit turn-off (refuseBase) says why in words.
+        if (m.IsBase)
+        {
+            if (refuseBase) throw new BaseGameFileException(BaseFileNameFor(m, c), remove: false);
+            return;
+        }
         // Loader-driven mods (e.g. UE4SS Conductor): flip the manifest, no file moves.
         if (m.Loader == "ue4ss")
         {
@@ -733,7 +784,7 @@ public static class Scanner
             return;
         }
         var loc = LocByName(m.Location, c);
-        GuardNoBasePakMove(m, loc);
+        GuardNoBaseFileMove(m, loc, c, remove: false);
         // HoldingName: "Foo." and "Foo " get folders of their own instead of the "Foo" Windows would normalise
         // them onto, and CON its own instead of the console device.
         // A risky name too long to encode has no holding folder: refused here, before anything moves.
@@ -1314,6 +1365,7 @@ public static class Scanner
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns
             if (m.Enabled == enabled) continue;
+            if (!enabled && m.IsBase) continue; // the game's own files are never turned off
             if (enabled) EnableMod(m.Name, c, scope); else DisableEntry(m, c, scope);
         }
     }
@@ -1330,6 +1382,7 @@ public static class Scanner
         {
             if (m.ReadOnly) continue; // never mutate a folder another tool owns
             var want = Classification.ModeFilter(mode, m.Class ?? "both");
+            if (m.Enabled && !want && m.IsBase) continue; // the game's own files are never turned off
             if (m.Enabled && !want) DisableEntry(m, c, scope);
             else if (!m.Enabled && want) EnableMod(m.Name, c, scope);
         }
@@ -1434,7 +1487,8 @@ public static class Scanner
     /// </summary>
     private static void ApplyLoadOrder(GameContext c, IReadOnlyList<string> orderedKeys)
     {
-        var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly && m.Loader is null).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
+        // The game's own files are never renamed: a prefixed Skyrim.esm is a missing Skyrim.esm to the game.
+        var byKey = BuildModList(c).Where(m => m.Enabled && !m.ReadOnly && m.Loader is null && !m.IsBase).GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.First());
         var index = 0;
         foreach (var key in orderedKeys)
         {
@@ -1588,6 +1642,7 @@ public static class Scanner
             if (m.ReadOnly) continue; // never mutate a folder another tool owns (matches SetAllMods/ApplyMode)
             if (m.IsLoader || m.Location == ProxyLoaderRows.LocationTag) continue; // loaders keep their warning
             if (!desired.TryGetValue(m.Name, out var want) || m.Enabled == want) continue;
+            if (m.IsBase && !want) continue; // the game's own files are never turned off; turning one ON is fine
             changes.Add((m, want));
         }
         return changes.OrderBy(x => x.Enable).ToList();   // false (disable) sorts first

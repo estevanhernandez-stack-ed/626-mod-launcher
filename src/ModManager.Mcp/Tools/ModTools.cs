@@ -126,6 +126,8 @@ public static class ModTools
                 files = m.Files,
                 isFolder = m.IsFolder,
                 isLoader = m.IsLoader,
+                // The game's own files (a Bethesda master, a base pak): set_mod_enabled refuses to turn one off.
+                isBase = m.IsBase,
                 loader = m.Loader,
                 author = m.Author,
                 sourceUrl = m.ModUrl,

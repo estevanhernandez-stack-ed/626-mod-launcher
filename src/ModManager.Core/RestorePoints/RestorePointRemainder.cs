@@ -31,6 +31,11 @@ public static partial class RestorePointEngine
     /// <summary>How a row left on because it holds a base-game pak reads.</summary>
     public const string BasePakRowNote = "still active: it looks like the base game's own pak, so 626 left it on";
 
+    /// <summary>How a row left on because it is the game's own file (a Bethesda master, Creation Club content,
+    /// one of their archives) reads. The pak rows keep <see cref="BasePakRowNote"/>, which restore points
+    /// already on disk carry.</summary>
+    public const string BaseFileRowNote = "still active: it is the game's own file, so 626 left it on";
+
     /// <summary>How a system folder location starts on the sheet.</summary>
     public const string SystemFolderPrefix = "not a mod folder: ";
 
@@ -74,11 +79,14 @@ public static partial class RestorePointEngine
                 ? frameworks.SelectMany(fw => fw.InstalledFiles.Select(f => Path.Combine(fw.InstallPath, f)))
                 : FrameworkRegistry.List(c.DataDir).SelectMany(fw => fw.InstalledFiles.Select(f => Path.Combine(fw.InstallPath, f))))
             .Select(FullNorm).Where(p => p is not null).Select(p => p!).ToList();
-        // A row vanilla left ON because it holds a base-game pak (any form): its files, sidecars included,
+        // A row vanilla left ON because it is the game's own (any form): its files, sidecars included,
         // stay with it, and it is named as still active.
         var basePakRows = rows.Where(m => m.Enabled && HasBaseGamePak(c, m)).ToList();
+        // A game file 626 replaced at intake (a cleaned Update.esm) keeps the replaced-file note: it is a mod
+        // that is still active, which says more than "the game's own file".
+        var replacedAtIntake = basePakRows.Count == 0 ? ReplacedFiles.None : ReplacedGameFiles(c);
         foreach (var m in basePakRows)
-            left.Add(new InPlaceNote(m.Name, BasePakRowNote));
+            left.Add(new InPlaceNote(m.Name, ReplacedAGameFile(c, m, replacedAtIntake) ? ReplacedGameFileNote : BaseRowNote(c, m)));
         var basePakPaths = basePakRows.SelectMany(m => BaseDirFor(c, m) is { } bd
                 ? m.Files.Select(f => FullNorm(Path.Combine(bd, f))) : Enumerable.Empty<string?>())
             .Where(p => p is not null).Select(p => p!).ToList();
@@ -115,7 +123,7 @@ public static partial class RestorePointEngine
                 long size;
                 try { size = new FileInfo(full).Length; }
                 catch (Exception e) { left.Add(new InPlaceNote(rel, $"couldn't be read ({e.Message})")); continue; }
-                if (IsBaseGameArchiveName(Path.GetFileName(full), size))
+                if (BaseGameFiles.IsBaseGameArchive(Path.GetFileName(full), size))
                 {
                     left.Add(new InPlaceNote(rel, "looks like the base game's own pak — 626 doesn't move it"));
                     continue;

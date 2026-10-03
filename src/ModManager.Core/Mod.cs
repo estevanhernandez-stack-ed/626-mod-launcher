@@ -34,6 +34,12 @@ public sealed class Mod
     // and routes its toggle through the reversible cascade. Transient: Mod is never serialized
     // (only ModMeta + the DisabledMeta sidecar reach disk); add [JsonIgnore] if a write path is ever added.
     public bool IsLoader { get; set; }
+    /// <summary>True when any of this row's files is the game's own (<see cref="BaseGameFiles"/>): a Bethesda
+    /// master or Creation Club file, an archive of one, a base pak in the game's Content/Paks. Set once by the
+    /// scan, live rows and held rows alike, and read by every consumer: nothing turns such a row off (bulk
+    /// operations skip it, an explicit toggle or uninstall refuses), and turning it back on is always allowed.
+    /// Transient, like <see cref="IsLoader"/>.</summary>
+    public bool IsBase { get; set; }
 
     // enrichment (from Metadata.MergeMetadata)
     public string DisplayName { get; set; } = "";

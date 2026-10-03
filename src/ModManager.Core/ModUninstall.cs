@@ -10,6 +10,8 @@ public enum UninstallBlock
     /// <summary>A row the listing appends that is not an installed mod (a proxy loader DLL, a shared
     /// library): there is nothing of its own to delete by name. Turn it off instead.</summary>
     NotAnInstalledMod,
+    /// <summary>The row is the game's own files (<see cref="Mod.IsBase"/>): 626 never removes them.</summary>
+    GameFile,
 }
 
 public sealed record UninstallRefusal(UninstallBlock Kind, string Message);
@@ -80,6 +82,10 @@ public static class ModUninstall
             return new(UninstallBlock.LooseFiles,
                 $"\"{mod.Name}\" is loose files in the game folder, which 626 never deletes. Turn it off instead "
                 + "(its files move aside and can come back), or remove them by hand.");
+        // The game's own files, live or held. Named by the file, the same sentence the scanner's uninstall
+        // throws, so the app, the agent and the scanner refuse alike.
+        if (mod.IsBase)
+            return new(UninstallBlock.GameFile, BaseGameFiles.RemoveRefusal(BaseFileName(mod)));
         if (mod.ReadOnly)
             return new(UninstallBlock.ManagedByAnotherTool, $"\"{mod.Name}\" is managed by another tool. Uninstall it there.");
         // Appended by the listing on any lane, so the scanner's uninstall cannot find them by name and
@@ -90,6 +96,16 @@ public static class ModUninstall
                 + "Turn it off instead.");
         return null;
     }
+
+    // The row's game file for the refusal sentence, without touching disk: the first file a name-only rule
+    // calls the game's (Bethesda masters, archives, Unreal base paks), else the first file.
+    private static string BaseFileName(Mod mod)
+        => mod.Files.Select(Path.GetFileName).OfType<string>()
+               .FirstOrDefault(f => BaseGameFiles.IsBethesdaBaseMaster(f) || BaseGameFiles.IsBethesdaBaseFile(f, EmptySet)
+                                    || BaseGameFiles.IsBaseGameArchive(f, 0))
+           ?? (mod.Files.Count > 0 ? Path.GetFileName(mod.Files[0]) : mod.Name);
+
+    private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
 
     /// <summary>What uninstalling this mod will delete. See <see cref="Preview(GameContext, IReadOnlyList{Mod})"/>.</summary>
     public static UninstallPreview Preview(GameContext ctx, Mod mod) => Preview(ctx, new[] { mod });
@@ -176,7 +192,10 @@ public static class ModUninstall
         if (mods.Any(m => string.IsNullOrWhiteSpace(m.Name))) throw new InvalidOperationException(NoNameMessage);
         var lane = ModListing.MechanismFor(ctx.Game, ctx);
         foreach (var m in mods)
-            if (Refusal(lane, m) is { } why) throw new InvalidOperationException(why.Message);
+            if (Refusal(lane, m) is { } why)
+                throw why.Kind == UninstallBlock.GameFile
+                    ? new BaseGameFileException(Scanner.BaseFileNameFor(m, ctx), remove: true)
+                    : new InvalidOperationException(why.Message);
         // Containment before anything is deleted: a name that escapes stops the whole run here.
         var heldDirs = mods.Select(m => HeldDir(ctx, m.Name)).ToList();
 

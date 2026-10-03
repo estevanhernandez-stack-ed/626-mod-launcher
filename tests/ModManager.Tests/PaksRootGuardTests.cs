@@ -37,8 +37,8 @@ public class PaksRootGuardTests : IDisposable
             Name = "pakchunk0-WindowsNoEditor", Location = "mods", Enabled = true, IsFolder = false,
             Files = new List<string> { "pakchunk0-WindowsNoEditor.pak" },
         };
-        var ex = Assert.Throws<InvalidOperationException>(() => Scanner.GuardNoBasePakMove(hostile, loc));
-        Assert.Contains("base", ex.Message, StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<BaseGameFileException>(() => Scanner.GuardNoBasePakMove(hostile, loc));
+        Assert.Equal("pakchunk0-WindowsNoEditor.pak is part of the game, so 626 won't turn it off.", ex.Message);
     }
 
     [Fact]
@@ -56,18 +56,33 @@ public class PaksRootGuardTests : IDisposable
     }
 
     [Fact]
-    public void Guard_is_a_noop_for_non_paks_root_locations()
+    public void Guard_is_a_noop_for_a_dedicated_mod_folder()
+    {
+        var (ctx, paks) = Setup();
+        // A files-form location that is a dedicated mod folder (~mods): even a base-named file is not guarded
+        // there, because base and mods never share it. A files-form location pointed at Content/Paks itself
+        // IS guarded now (BaseGameFiles.IsSharedPaksFolder), which the Content/Paks case below pins.
+        var filesLoc = ctx.Locations.First(l => l.Name == "mods") with { Form = "files", Abs = Path.Combine(paks, "~mods") };
+        var m = new Mod
+        {
+            Name = "pakchunk0-WindowsNoEditor", Location = "mods", Enabled = true, IsFolder = false,
+            Files = new List<string> { "pakchunk0-WindowsNoEditor.pak" },
+        };
+        Scanner.GuardNoBasePakMove(m, filesLoc); // must not throw — a dedicated mod folder holds no base paks
+    }
+
+    [Fact]
+    public void Guard_refuses_a_base_pak_in_a_files_form_content_paks_location()
     {
         var (ctx, _) = Setup();
-        // A 'files'-form location: even a base-named file is not guarded here (base+mods never share a
-        // dedicated mod folder in the files form). Construct a files-form ModLocationCtx.
+        // The registration points a plain files-form location at Content/Paks: base and mods share it.
         var filesLoc = ctx.Locations.First(l => l.Name == "mods") with { Form = "files" };
         var m = new Mod
         {
             Name = "pakchunk0-WindowsNoEditor", Location = "mods", Enabled = true, IsFolder = false,
             Files = new List<string> { "pakchunk0-WindowsNoEditor.pak" },
         };
-        Scanner.GuardNoBasePakMove(m, filesLoc); // must not throw — guard only applies to paks-root
+        Assert.Throws<BaseGameFileException>(() => Scanner.GuardNoBasePakMove(m, filesLoc));
     }
 
     [Fact]
@@ -97,7 +112,7 @@ public class PaksRootGuardTests : IDisposable
             Name = "pakchunk0-WindowsNoEditor", Location = "mods", Enabled = true, IsFolder = false,
             Files = new List<string> { "pakchunk0-WindowsNoEditor.pak" },
         };
-        var ex = Assert.Throws<InvalidOperationException>(() => Scanner.GuardNoBasePakMove(hostile, loc));
-        Assert.Contains("base", ex.Message, StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<BaseGameFileException>(() => Scanner.GuardNoBasePakMove(hostile, loc));
+        Assert.Equal("pakchunk0-WindowsNoEditor.pak is part of the game, so 626 won't turn it off.", ex.Message);
     }
 }
