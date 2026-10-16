@@ -2,7 +2,7 @@
 
 > **Status: COMPLETE (2026-05-23).** All cores ported test-first; `dotnet test` = **157 green, 0 fail**. Secrets scan clean, no vulnerable packages. Ready for Phase 2 (WinUI shell).
 
-**Blueprint:** [`docs/spec.md`](spec.md) (.NET 10 / WinUI 3 rewrite scope)
+**Blueprint:** [`2026-05-23-phase1-spec.md`](2026-05-23-phase1-spec.md) (.NET 10 / WinUI 3 rewrite scope; was `docs/spec.md`)
 **Phase:** 1 of 3 — port the pure cores to C#, test-first. No WinUI shell (Phase 2), no packaging (Phase 3).
 **Source of truth:** the Electron app at `C:\Users\estev\Projects\mod-manager-builder` (`shell\*.js` cores + `tests\*.test.js`).
 
