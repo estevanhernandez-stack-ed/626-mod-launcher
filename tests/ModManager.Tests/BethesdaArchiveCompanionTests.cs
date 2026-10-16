@@ -189,6 +189,22 @@ public class BethesdaArchiveCompanionTests : IDisposable
     }
 
     [Fact]
+    public async Task An_archive_with_extra_segments_owned_by_a_held_plugin_hides_behind_the_held_row()
+    {
+        var (data, c) = Game("Fallout 4", Fo4Exts, "MyMod.esp", "MyMod - Plus - Extra - Main.ba2");
+        var held = Path.Combine(c.DisabledRoot, "MyMod - Plus");
+        Directory.CreateDirectory(held);
+        File.WriteAllText(Path.Combine(held, "MyMod - Plus.esp"), "x");
+        File.WriteAllText(Path.Combine(held, "meta.json"), "{\"location\":\"mods\",\"hadOnServer\":{},\"isFolder\":false}");
+
+        var mods = await Scanner.BuildModListAsync(c);
+
+        Assert.Equal(new[] { "MyMod", "MyMod - Plus" }, Sorted(mods.Select(m => m.Name)));
+        Assert.DoesNotContain(mods, m => m.Files.Contains("MyMod - Plus - Extra - Main.ba2"));
+        Assert.True(File.Exists(Path.Combine(data, "MyMod - Plus - Extra - Main.ba2")));
+    }
+
+    [Fact]
     public async Task Plugins_whose_stems_differ_only_in_case_do_not_both_claim_one_archive()
     {
         var (data, c) = Game("Fallout 4", Fo4Exts, "Foo.esp", "FOO.esm", "Foo - Main.ba2");

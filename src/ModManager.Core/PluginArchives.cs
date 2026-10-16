@@ -24,6 +24,11 @@ namespace ModManager.Core;
 /// archives live. A shorter live plugin must not capture such an archive just because the longer plugin is no
 /// longer in the folder, so the plugins in holding take part in the contest. The archive then has no live owner
 /// and stays out of the shorter plugin's row.</para>
+///
+/// <para><b>Built once per folder.</b> <see cref="Ownership.Build"/> settles every archive's owner in one pass
+/// (each archive probes only the prefixes that end at a <c>" - "</c>), and every question after that is a lookup.
+/// A real Fallout 4 load order is hundreds of plugins and a thousand archives, and the list is rebuilt on every
+/// toggle, so asking each plugin to re-contest every archive was quadratic and measurably slow.</para>
 /// </summary>
 internal static class PluginArchives
 {
@@ -32,54 +37,6 @@ internal static class PluginArchives
     /// <summary>True for a Fallout 4 / Starfield archive.</summary>
     internal static bool IsArchive(string? fileName)
         => Path.GetExtension(fileName ?? "").Equals(Ext, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// The archives in <paramref name="allFiles"/> that <paramref name="pluginFile"/> owns; empty when it is
-    /// not a plugin. <paramref name="allFiles"/> is the whole folder, so a longer-named plugin beside it is seen;
-    /// <paramref name="heldPlugins"/> are the plugin filenames currently in holding.
-    /// </summary>
-    internal static IEnumerable<string> OwnedBy(
-        string pluginFile, IReadOnlyList<string> allFiles, IReadOnlyCollection<string>? heldPlugins = null)
-    {
-        if (!BaseGameFiles.IsPlugin(pluginFile)) return Array.Empty<string>();
-        var archives = allFiles.Where(IsArchive).ToList();
-        if (archives.Count == 0) return Array.Empty<string>();
-        var stem = Path.GetFileNameWithoutExtension(pluginFile);
-        var stems = PluginStems(allFiles, heldPlugins);
-        return archives.Where(a => Winner(stems, Path.GetFileNameWithoutExtension(a)) is { } w && w == stem);
-    }
-
-    /// <summary>True when a LIVE plugin owns <paramref name="archive"/>. False when none names it, or when the
-    /// winning plugin is one in holding (the archive is then that held row's, left live by an older build).</summary>
-    internal static bool IsClaimed(
-        string archive, IReadOnlyList<string> allFiles, IReadOnlyCollection<string>? heldPlugins = null)
-    {
-        var stems = PluginStems(allFiles, heldPlugins);
-        return Winner(stems, Path.GetFileNameWithoutExtension(archive)) is { } w
-               && allFiles.Any(f => BaseGameFiles.IsPlugin(f) && Path.GetFileNameWithoutExtension(f) == w);
-    }
-
-    private static List<string> PluginStems(IReadOnlyList<string> live, IReadOnlyCollection<string>? held)
-        => live.Concat(held ?? Array.Empty<string>()).Where(BaseGameFiles.IsPlugin)
-               .Select(p => Path.GetFileNameWithoutExtension(p)).Distinct(StringComparer.Ordinal).ToList();
-
-    // The single owning stem: longest that names the archive, then ordinal-smallest.
-    private static string? Winner(List<string> stems, string archiveStem)
-    {
-        string? best = null;
-        foreach (var s in stems)
-        {
-            if (!Names(s, archiveStem)) continue;
-            if (best is null || s.Length > best.Length
-                || (s.Length == best.Length && string.CompareOrdinal(s, best) < 0)) best = s;
-        }
-        return best;
-    }
-
-    /// <summary>True when an archive stem names a plugin stem: equal, or the stem then <c>" - "</c> and more.</summary>
-    private static bool Names(string pluginStem, string archiveStem)
-        => archiveStem.Equals(pluginStem, StringComparison.OrdinalIgnoreCase)
-           || archiveStem.StartsWith(pluginStem + " - ", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The mod an archive no plugin claims is named for: the stem before the LAST <c>" - "</c>, so
@@ -93,5 +50,77 @@ internal static class PluginArchives
         var stem = Path.GetFileNameWithoutExtension(archiveFile);
         var dash = stem.LastIndexOf(" - ", StringComparison.Ordinal);
         return dash > 0 ? stem[..dash] : stem;
+    }
+
+    /// <summary>Who owns each archive in one folder: built once, then answered by lookup.</summary>
+    internal sealed class Ownership
+    {
+        /// <summary>No archives in the folder, so nothing is owned.</summary>
+        internal static readonly Ownership None = new(new(), new(), new());
+
+        private readonly Dictionary<string, string> _owner;                 // archive file -> winning plugin stem
+        private readonly Dictionary<string, List<string>> _byOwner;         // plugin stem -> its archives
+        private readonly HashSet<string> _live;                             // stems of plugins in the folder
+
+        private Ownership(Dictionary<string, string> owner, Dictionary<string, List<string>> byOwner, HashSet<string> live)
+        { _owner = owner; _byOwner = byOwner; _live = live; }
+
+        /// <summary>
+        /// Settle every archive in <paramref name="allFiles"/>: the longest plugin stem that names it, among the
+        /// live plugins and <paramref name="heldPlugins"/> (plugin filenames in holding), ties by case to the
+        /// ordinal-smallest.
+        /// </summary>
+        internal static Ownership Build(IReadOnlyList<string> allFiles, IReadOnlyCollection<string>? heldPlugins = null)
+        {
+            if (!allFiles.Any(IsArchive)) return None;
+            // Case-insensitive stem -> the ordinal-smallest spelling. Equal-length candidates can only differ in case.
+            var stems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var live = new HashSet<string>(StringComparer.Ordinal);
+            void Add(string file, bool isLive)
+            {
+                if (!BaseGameFiles.IsPlugin(file)) return;
+                var s = Path.GetFileNameWithoutExtension(file);
+                if (isLive) live.Add(s);
+                if (!stems.TryGetValue(s, out var have) || string.CompareOrdinal(s, have) < 0) stems[s] = s;
+            }
+            foreach (var f in allFiles) Add(f, true);
+            if (heldPlugins is not null) foreach (var f in heldPlugins) Add(f, false);
+
+            var owner = new Dictionary<string, string>(StringComparer.Ordinal);
+            var byOwner = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var a in allFiles)
+            {
+                if (!IsArchive(a)) continue;
+                var w = Winner(stems, Path.GetFileNameWithoutExtension(a));
+                if (w is null) continue;
+                owner[a] = w;
+                if (!byOwner.TryGetValue(w, out var list)) byOwner[w] = list = new List<string>();
+                list.Add(a);
+            }
+            return new Ownership(owner, byOwner, live);
+        }
+
+        // The longest plugin stem naming the archive: the whole stem, then each prefix that ends before a " - ".
+        private static string? Winner(Dictionary<string, string> stems, string archiveStem)
+        {
+            for (var end = archiveStem.Length; end > 0;)
+            {
+                if (stems.TryGetValue(archiveStem.Substring(0, end), out var s)) return s;
+                end = archiveStem.LastIndexOf(" - ", end - 1, StringComparison.Ordinal);
+            }
+            return null;
+        }
+
+        /// <summary>The archives <paramref name="pluginFile"/> owns; empty when it is not a plugin.</summary>
+        internal IEnumerable<string> OwnedBy(string pluginFile)
+            => BaseGameFiles.IsPlugin(pluginFile) && _byOwner.TryGetValue(Path.GetFileNameWithoutExtension(pluginFile), out var l)
+                ? l : Array.Empty<string>();
+
+        /// <summary>The plugin stem that owns <paramref name="archive"/> (live or in holding), or null.</summary>
+        internal string? OwnerOf(string archive) => _owner.TryGetValue(archive, out var w) ? w : null;
+
+        /// <summary>True when a LIVE plugin owns <paramref name="archive"/>. False when none names it, or when the
+        /// winning plugin is one in holding (the archive is then that held row's, left live by an older build).</summary>
+        internal bool IsClaimed(string archive) => _owner.TryGetValue(archive, out var w) && _live.Contains(w);
     }
 }
