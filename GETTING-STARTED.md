@@ -32,7 +32,8 @@ That's it. No .NET, no runtime, no Visual C++ — everything it needs ships in t
 ## Where your stuff lives
 
 - Registered games + paths: `%APPDATA%\ModManagerBuilder\`
-- Per-game mod state (disabled mods, profiles, snapshots): in the game's library folder.
+- Per-game mod state (disabled mods, profiles, snapshots): a `_626mods` folder beside the game's library,
+  for example `C:\Program Files (x86)\Steam\_626mods\<game>`, unless you picked a data folder for that game.
 - Disabling never touches the internet and never deletes — it moves files you can always get back.
 
 ## If something looks off
