@@ -326,7 +326,10 @@ Case 'ban-risk-chip-addressable' 'Wave 7 game-state strip' {
         # ban-risk and Steam-updated, and arriving from Windrose - where the Steam chip was expanded -
         # kept the Steam sentence showing while BAN RISK sat first in the row, unread.
         $said = Get-Text (Find-ById $t2 'StateChipDetail')
-        Assert-True ($said -match 'anti-cheat') "the leading sentence does not mention anti-cheat: '$said'"
+        # The ban-risk sentence states the consequence and never a mechanism (#393: Palworld bans modded
+        # official play with no anti-cheat at all). Match the consequence, which is what it must always say.
+        Assert-True ($said -match 'can get your account banned') "the leading sentence is not the ban-risk sentence: '$said'"
+        Assert-True ($said -notmatch 'anti-cheat') "the ban-risk sentence names a mechanism again: '$said'"
         "'$id': ban risk leads the strip, reading '$said'"
     }
     finally {

@@ -2703,6 +2703,24 @@
    "source": "docs/smoke-tests/pending.md",
    "action": "Read the real Cyberpunk list, then toggle a custom-engine fixture's .xl rows.",
    "expect": "Standalone .xl files are toggleable rows, paired ones ride with their archive, and a live .xl never hides a held copy."
+  },
+  {
+   "id": "bethesda-ba2-companions-move-with-plugin",
+   "title": "Fallout 4 / Starfield .ba2 archives move with their plugin, and base archives never move",
+   "surface": "#398 fix/bethesda-ba2-companions",
+   "coverage": "agentable",
+   "status": "pending",
+   "steps": [
+    "Fixture only: Fallout4.esm + Fallout4 - Textures1.ba2, MyMod.esp + two archives, MyMod - Plus.esp + its archive.",
+    "Rows: Fallout4 (GAME FILE), MyMod (3 files), MyMod - Plus (2).",
+    "Turn MyMod off and on: its archives move with it, Plus's never does; byte-identical.",
+    "Disable all, Enable all: base master and archive stay in Data.",
+    "Hold only MyMod - Plus.esp with its archive live: MyMod does not claim it; enabling Plus reunites the pair.",
+    "600 plugins / 1,200 archives: opens and toggles without a stall."
+   ],
+   "source": "docs/smoke-tests/pending.md",
+   "action": "Drive a Fallout 4 fixture through single toggles, Disable all / Enable all, an upgrade-shaped hold, and a large load.",
+   "expect": "Archives move with their owning plugin only, base archives never move, held plugins keep their archives, and a large load stays fast."
   }
  ]
 }

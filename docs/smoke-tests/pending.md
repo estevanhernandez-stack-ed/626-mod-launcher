@@ -2740,3 +2740,22 @@ A plain `Foo.xl` beside `Foo.archive` rides with the `Foo` row. Paired `.archive
 3. **Turn `B` and `C` off, then on.** Each moves to holding and back byte-identical; `A` is untouched.
 4. **Held copy:** turn `A` off, then copy `A.archive.xl` back into the folder by hand. The list shows one
    row `A`, off. Turning it on brings `A.archive` back beside the `.xl`; nothing collides.
+
+## Fallout 4 / Starfield .ba2 archives move with their plugin (#398)
+
+Shipped: `<stem> - Main.ba2` / `<stem> - Textures.ba2` ride on the `<stem>.esp/.esm/.esl` row and move with
+it. The longest plugin stem wins, plugins in holding count, and each archive has exactly one owner. A
+`.ba2` no plugin claims lists as one row named for its owner. Base archives (`Fallout4 - *.ba2`, DLC,
+Creation Club, `SFBGS*`) are game files. Skyrim's `.bsa` rows are unchanged.
+
+1. **Fixture only** (no Bethesda game on Neb). A Fallout 4 fixture: `Fallout4.exe`, `Data` with
+   `Fallout4.esm`, `Fallout4 - Textures1.ba2`, `MyMod.esp`, `MyMod - Main.ba2`, `MyMod - Textures.ba2`,
+   `MyMod - Plus.esp`, `MyMod - Plus - Main.ba2`.
+2. **Open it.** Rows: Fallout4 (GAME FILE, with its archive), MyMod (three files), MyMod - Plus (two).
+3. **Turn MyMod off, then on.** Its two archives go with it; `MyMod - Plus - Main.ba2` never moves.
+   Byte-identical after.
+4. **Disable all, then Enable all.** The base master and its archive never leave `Data`.
+5. **Upgrade shape:** with the app closed, put only `MyMod - Plus.esp` in holding (with its meta) and leave
+   its archive live. Open: MyMod does not claim the archive; turning MyMod - Plus on reunites the pair.
+6. **Large load:** a fixture with 600 plugins and 1,200 archives opens and toggles without a visible stall
+   (the scan measured about 15 ms).
