@@ -2670,6 +2670,39 @@
    "source": "docs/smoke-tests/pending.md",
    "action": "Toggle a multi-tree mod off and on through the app.",
    "expect": "Every tree is byte-identical to before the round trip, and the row text names the held trees while the mod is off."
+  },
+  {
+   "id": "regulation-bin-is-a-game-file-without-provenance",
+   "title": "Elden Ring's own regulation.bin stays on unless 626 put a mod there",
+   "surface": "#397 fix/regulation-bin-provenance",
+   "coverage": "agentable",
+   "status": "pending",
+   "steps": [
+    "Fixture only: fromsoft with eldenring.exe, Game/regulation.bin (no install record) and erss-fg.dll.",
+    "Open it: regulation.bin shows the GAME FILE chip and a locked switch.",
+    "Disable all, then Enable all: regulation.bin never moves; the mod round-trips byte-identical.",
+    "Return to vanilla: regulation.bin stays and is listed under STILL IN PLACE with the verify-in-Steam warning; Restore is byte-identical.",
+    "Drop a zip holding regulation.bin: the row becomes an ordinary mod that toggles."
+   ],
+   "source": "docs/smoke-tests/pending.md",
+   "action": "Drive a fromsoft fixture through Disable all, Enable all, Return to vanilla and a regulation.bin install.",
+   "expect": "The game's regulation.bin never leaves Game/ without provenance, vanilla says it was left in place, and a 626-installed one toggles."
+  },
+  {
+   "id": "cyberpunk-standalone-xl-rows",
+   "title": "Standalone ArchiveXL .xl mods list as their own rows and round-trip",
+   "surface": "#396 fix/cyberpunk-standalone-xl-rows",
+   "coverage": "agentable",
+   "status": "pending",
+   "steps": [
+    "Read only on the real install: standalone .xl mods have rows; no paired .archive.xl is its own row.",
+    "Fixture: A.archive + A.archive.xl, B.archive.xl alone, C.xl alone gives rows A, B, C.",
+    "Turn B and C off and on: byte-identical; A untouched.",
+    "Turn A off, copy A.archive.xl back by hand: one row A, off; turning it on reunites the pair."
+   ],
+   "source": "docs/smoke-tests/pending.md",
+   "action": "Read the real Cyberpunk list, then toggle a custom-engine fixture's .xl rows.",
+   "expect": "Standalone .xl files are toggleable rows, paired ones ride with their archive, and a live .xl never hides a held copy."
   }
  ]
 }

@@ -2707,3 +2707,36 @@ Core suite first: 3797 passed, 0 failed, 2 skipped (the 7z and rar extract tests
   On -> Off -> On (restored). The holding folders on C: and G: were listed by path and size before and after: no mod
   file moved. `games.json` was byte-identical. Changes were only the feed refresh (`game-manifest.json`), the Windrose
   agent log (the save-mod case appends), and Windrose `metadata.json` from the Nexus stats refresh; no fixture key in it.
+
+## Elden Ring's own regulation.bin is a game file unless 626 put a mod there (#397)
+
+Shipped: a `regulation.bin` counts as a mod only with provenance, an install record naming it or a
+replaced-store entry for it. Without that it is the game's file: GAME FILE chip, locked on, skipped by
+Disable all, profiles, Return to vanilla and the agent tool. Return to vanilla says so in STILL IN PLACE.
+
+1. **Fixture only.** A fromsoft fixture with `eldenring.exe`, `Game/regulation.bin` (no install record),
+   and one ordinary direct-inject mod (`erss-fg.dll` with its folder). Never the real Elden Ring.
+2. **Open it.** The regulation.bin row shows the GAME FILE chip and a locked switch; the mod is ordinary.
+3. **Disable all, then Enable all.** regulation.bin never moves; the mod goes to holding and back,
+   byte-identical. The status line names nothing as refused.
+4. **Safe Clear, Return to vanilla.** The mod is held; regulation.bin stays byte-identical, and the sheet
+   lists it under STILL IN PLACE with "Verify the game's files in Steam before playing online."
+   Restore puts the tree back byte-identical.
+5. **Install a regulation mod through 626** (drop a zip holding `regulation.bin`). The row is now an
+   ordinary mod: it turns off and on, and the displaced original sits in the replaced store.
+
+**For Este, on the real install:** his hand-installed "Modded regulation.bin" now reads as a game file.
+Drop that mod's archive onto 626 once to give it provenance; the switch comes back.
+
+## Cyberpunk standalone ArchiveXL .xl mods list as their own rows (#396)
+
+Shipped: a plain `.xl`, or an `<X>.archive.xl` with no `<X>.archive`, is its own row in `archive\pc\mod`.
+A plain `Foo.xl` beside `Foo.archive` rides with the `Foo` row. Paired `.archive.xl` files are unchanged.
+
+1. **Read only, on the real install:** the list shows rows for the standalone `.xl` mods (25 on Este's
+   install on 2026-10-16) and no paired `.archive.xl` as its own row.
+2. **Fixture:** a custom-engine fixture with `archive\pc\mod` holding `A.archive` + `A.archive.xl`,
+   `B.archive.xl` alone, and `C.xl` alone. Rows: `A` (two files), `B`, `C`.
+3. **Turn `B` and `C` off, then on.** Each moves to holding and back byte-identical; `A` is untouched.
+4. **Held copy:** turn `A` off, then copy `A.archive.xl` back into the folder by hand. The list shows one
+   row `A`, off. Turning it on brings `A.archive` back beside the `.xl`; nothing collides.
