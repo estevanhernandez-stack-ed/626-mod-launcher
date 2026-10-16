@@ -315,10 +315,17 @@ public static class Scanner
     /// <c>Cool.archive</c> would adopt <c>CoolExtra.archive</c>, quietly swallowing a different mod
     /// into this one's toggle.</para>
     /// </summary>
-    internal static IEnumerable<string> SidecarsFor(string modFile, IReadOnlyList<string> allFiles)
+    internal static IEnumerable<string> SidecarsFor(
+        string modFile, IReadOnlyList<string> allFiles, PluginArchives.Ownership? ownership = null)
         => allFiles.Where(n => n.Length > modFile.Length
                                && n[modFile.Length] == '.'
-                               && n.StartsWith(modFile, StringComparison.OrdinalIgnoreCase));
+                               && n.StartsWith(modFile, StringComparison.OrdinalIgnoreCase))
+                   // A Fallout 4 / Starfield plugin also owns the .ba2 archives named for it (PluginArchives).
+                   // The scan passes the folder's ownership, built once and counting plugins in holding; a caller
+                   // without one gets it built here, and only for a plugin, so a pak game pays nothing.
+                   .Concat(BaseGameFiles.IsPlugin(modFile)
+                       ? (ownership ?? PluginArchives.Ownership.Build(allFiles)).OwnedBy(modFile)
+                       : Array.Empty<string>());
 
     // Pak files in a dir as (name, sizeBytes) — used by the paks-root branch to classify base vs mod.
     // Separate from ListPakFiles (name-only, relied on by other callers) so neither changes the other.
@@ -389,6 +396,8 @@ public static class Scanner
         // unreachable (can't turn off, and an uninstall of the visible row would delete the hidden folder).
         var heldNames = new HashSet<string>(
             HoldingName.Listed(SafeReadDirs(c.DisabledRoot)).Select(h => h.Name), StringComparer.OrdinalIgnoreCase);
+        // The holding folders' contents, read at most once per scan and only when something asks.
+        var disabled = new Lazy<IReadOnlyList<DisabledEntry>>(() => ListDisabled(c));
         // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
@@ -445,6 +454,14 @@ public static class Scanner
                 // Read the directory ONCE for sidecar matching — a sidecar wears an extension the
                 // game's config never lists, so it can't come from ListPakFiles.
                 var allInDir = SafeReadFiles(loc.Abs);
+                // Plugins in holding contest archive ownership (PluginArchives): an older build held a plugin
+                // alone and left its archive live, and a shorter live plugin must not take that archive.
+                // Read only when a .ba2 is in the folder, so every other game pays nothing.
+                // Settled once for the folder: every question after is a lookup.
+                var ownership = allInDir.Any(PluginArchives.IsArchive)
+                    ? PluginArchives.Ownership.Build(allInDir,
+                        disabled.Value.Where(d => d.Location == loc.Name).SelectMany(d => d.Files).Where(BaseGameFiles.IsPlugin).ToList())
+                    : PluginArchives.Ownership.None;
                 foreach (var f in pakFiles)
                 {
                     var k = ModKey(f, c);
@@ -458,13 +475,14 @@ public static class Scanner
                         outMap[k] = mod;
                     }
                     mod.Files.Add(f);
-                    foreach (var sidecar in SidecarsFor(f, allInDir)) mod.Files.Add(sidecar);
+                    // Distinct: two plugins of one stem (Foo.esp + Foo.esm) both own Foo - Main.ba2.
+                    foreach (var sidecar in SidecarsFor(f, allInDir, ownership)) if (!mod.Files.Contains(sidecar)) mod.Files.Add(sidecar);
                 }
                 // A sidecar-type file no mod file claims (a plain .xl, an .archive.xl with no .archive) is
                 // a mod in its own right: unclaimed, it would never be listed and so never toggled.
-                foreach (var f in StandaloneSidecars.Find(allInDir, allInDir.Where(n => c.FileRe.IsMatch(n)).ToList(), c))
+                foreach (var f in StandaloneSidecars.Find(allInDir, allInDir.Where(n => c.FileRe.IsMatch(n)).ToList(), c, ownership))
                 {
-                    var k = StandaloneSidecars.KeyFor(f, c);
+                    var k = StandaloneSidecars.KeyFor(f, c, ownership);
                     if (heldNames.Contains(k) && !outMap.ContainsKey(k)) continue;
                     if (!outMap.TryGetValue(k, out var mod))
                     {
@@ -509,7 +527,7 @@ public static class Scanner
             }
         }
         var heldDirs = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var d in ListDisabled(c))
+        foreach (var d in disabled.Value)
         {
             if (outMap.ContainsKey(d.Name)) continue;
             outMap[d.Name] = new Mod
