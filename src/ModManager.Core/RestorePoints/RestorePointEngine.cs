@@ -274,26 +274,12 @@ public static partial class RestorePointEngine
     {
         var full = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rel = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var root = Path.Combine(c.DataDir, "replaced");
-        if (!Directory.Exists(root)) return ReplacedFiles.None;
-        IEnumerable<string> manifests;
-        try { manifests = Directory.EnumerateFiles(root, "__626replaced.json", SearchOption.AllDirectories).ToList(); }
-        catch { return ReplacedFiles.None; }
-        foreach (var mf in manifests)
+        foreach (var e in ReplacedStore.ReadAll(Path.Combine(c.DataDir, "replaced")))
         {
-            try
-            {
-                var entries = System.Text.Json.JsonSerializer.Deserialize<List<ReplacedStore.ReplacedEntry>>(File.ReadAllText(mf),
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                foreach (var e in entries ?? new List<ReplacedStore.ReplacedEntry>())
-                {
-                    if (!string.IsNullOrEmpty(e.OriginalPath) && FullNorm(e.OriginalPath) is { } p) full.Add(p);
-                    if (!string.IsNullOrEmpty(e.RelPath) && !IsRooted(e.RelPath)) rel.Add(NormRel(e.RelPath));
-                }
-            }
-            catch { /* a torn record: nothing known from it */ }
+            if (!string.IsNullOrEmpty(e.OriginalPath) && FullNorm(e.OriginalPath) is { } p) full.Add(p);
+            if (!string.IsNullOrEmpty(e.RelPath) && !IsRooted(e.RelPath)) rel.Add(NormRel(e.RelPath));
         }
-        return new ReplacedFiles(full, rel);
+        return full.Count == 0 && rel.Count == 0 ? ReplacedFiles.None : new ReplacedFiles(full, rel);
     }
 
     private static string NormRel(string f) => f.Replace(Path.DirectorySeparatorChar, '/').Replace('\\', '/').Trim('/');
@@ -658,9 +644,13 @@ public static partial class RestorePointEngine
         var fileNames = Directory.GetFiles(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList();
         var dirNames = Directory.GetDirectories(playFolder).Select(Path.GetFileName).Where(n => n is not null).Select(n => n!).ToList();
         var planned = new List<MovedFile>();
+        // A file the game ships and 626 did not place (Elden Ring's regulation.bin) is the game's, not a mod: it
+        // is never planned, so vanilla neither moves it nor seals it as a moved file.
+        var placed = new BaseGameFiles.Placed(c.GameRoot, c.DataDir, playFolder);
         foreach (var di in DirectInject.Detect(fileNames, dirNames))
             foreach (var rel in di.Entries)
             {
+                if (BaseGameFiles.IsDirectInjectGameFile(rel, placed)) continue;
                 var srcAbs = Path.Combine(playFolder, rel);
                 if (File.Exists(srcAbs)) planned.Add(new MovedFile(rel, new FileInfo(srcAbs).Length, FileTally.Sha256(srcAbs)));
                 else if (Directory.Exists(srcAbs)) planned.Add(new MovedFile(rel, FileTally.ByteSize(srcAbs), null));

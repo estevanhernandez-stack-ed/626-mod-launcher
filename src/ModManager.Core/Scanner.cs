@@ -774,8 +774,11 @@ public static class Scanner
     }
 
     // The single explicit turn-off of an IsBase row refuses in words; a bulk caller skips it silently.
+    // A direct-inject or loose-root game may declare no mod location at all (its rows live in the play folder), so
+    // there is no location to judge by and the row's first file is the name (regulation.bin).
     internal static string BaseFileNameFor(Mod m, GameContext c)
-        => BaseFileOf(m, c, LocByName(m.Location, c)) ?? (m.Files.Count > 0 ? Path.GetFileName(m.Files[0]) : m.Name);
+        => (c.Locations.Count == 0 ? null : BaseFileOf(m, c, LocByName(m.Location, c)))
+           ?? (m.Files.Count > 0 ? Path.GetFileName(m.Files[0]) : m.Name);
 
     private static void DisableEntry(Mod m, GameContext c, BulkScope? scope = null, bool refuseBase = false)
     {

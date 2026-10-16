@@ -42,7 +42,7 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
         public void Reload() { }
     }
 
-    // dataRoot = <_root>\appdata ; a game registered with a real DirectInject signature (regulation.bin).
+    // dataRoot = <_root>\appdata ; a game registered with a real DirectInject signature (erss-fg.dll, ERSS2 Frame Gen).
     // DataDir is created eagerly so SafeClear's WriteRestoreAvailable can write its temp file without
     // a DirectoryNotFoundException — AtomicJson expects the parent directory to already exist.
     private (GameEntry game, GameContext c, string dataRoot, string modsDir) Setup()
@@ -71,7 +71,7 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
     public async Task SafeClear_vanilla_then_Restore_brings_back_the_moved_game_file()
     {
         var (game, c, dataRoot, _) = Setup();
-        var reg = Path.Combine(c.GameRoot, "regulation.bin");    // real DirectInject signature
+        var reg = Path.Combine(c.GameRoot, "erss-fg.dll");    // real DirectInject signature
         File.WriteAllBytes(reg, new byte[] { 9, 9, 9 });
         var prov = new FakeProvider(new[] { game });
         var orch = Make(dataRoot, prov, new FakeNexus(), new FakeProbe());
@@ -86,7 +86,7 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
         // before any move). Restore reads them from the seal — they aren't a post-mutate patch.
         var sealedM = RestorePointManifestStore.Read(Path.Combine(dataRoot, "restore-points", "20260528-141233"))!;
         Assert.True(RestorePointManifestStore.Validate(sealedM, RestorePoint.SchemaVersion).Ok);
-        Assert.Contains(sealedM.Games.SelectMany(g => g.MovedFiles), mf => mf.Rel.Contains("regulation.bin"));
+        Assert.Contains(sealedM.Games.SelectMany(g => g.MovedFiles), mf => mf.Rel.Contains("erss-fg.dll"));
 
         var restore = await orch.RestoreAsync("20260528-141233", default);
         Assert.True(restore.Ok);
@@ -100,7 +100,7 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
     public async Task Restore_waits_for_an_app_settings_save_in_progress_and_lands_after_it()
     {
         var (game, c, dataRoot, _) = Setup();
-        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1 });
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "erss-fg.dll"), new byte[] { 1 });
         var settings = AppSettingsFile.PathIn(dataRoot);
         AppSettingsFile.WriteKey(settings, "themeId", "ember");
         var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
@@ -141,7 +141,7 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
     public async Task ListRestorePoints_returns_sealed_skips_unsealed_and_Delete_removes()
     {
         var (game, c, dataRoot, _) = Setup();
-        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1 });
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "erss-fg.dll"), new byte[] { 1 });
         var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
 
         await orch.SafeClearAsync(new SafeClearOptions(), "20260528-141233", default);
@@ -161,7 +161,7 @@ public class RestorePointOrchestratorRestoreTests : IDisposable
     public async Task DetectInterruptedClear_reads_lock_and_seal_state_and_DiscardPartial_clears()
     {
         var (game, c, dataRoot, _) = Setup();
-        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1 });
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "erss-fg.dll"), new byte[] { 1 });
         var orch = Make(dataRoot, new FakeProvider(new[] { game }), new FakeNexus(), new FakeProbe());
 
         Assert.Null(orch.DetectInterruptedClear());              // no lock → nothing interrupted

@@ -149,7 +149,12 @@ public static class ModToggle
         if (enabled) { DirectInject.Enable(folder, holding, modName); return; }
 
         var mod = DirectInjectListing.Enabled(folder).FirstOrDefault(m => m.Name == modName);
-        if (mod is not null) DirectInject.Disable(folder, holding, mod);
+        if (mod is null) return;
+        // Backstop for a caller that did not go through the row's IsBase mark (the app's Disable all walks names):
+        // a file the game ships and 626 did not place is never moved. Skipped silently, like any bulk skip; the
+        // single explicit toggle was already refused in words by DispatchAsync.
+        if (BaseGameFiles.IsDirectInjectGameRow(mod.Entries, DirectInjectListing.PlacedBy626(game, folder))) return;
+        DirectInject.Disable(folder, holding, mod);
     }
 
     /// <summary>Loose-root (decima): the same reversible move, in the game root, with

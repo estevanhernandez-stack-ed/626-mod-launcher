@@ -1674,7 +1674,10 @@ public sealed partial class MainViewModel : ObservableObject
             if (ConfigBacked) { _me2.SetAll(_ctx!.Game, on); return Task.CompletedTask; }
             if (DirectInjectBacked)
             {
-                foreach (var m in _allRows.Where(m => m.Enabled != on)) _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
+                // The game's own files (Mod.IsBase, e.g. Elden Ring's regulation.bin) stay where they are: a bulk
+                // turn-off skips them, like the scanner's bulk loops. Turning one ON is always fine.
+                foreach (var m in _allRows.Where(m => m.Enabled != on && !(m.Mod.IsBase && !on)))
+                    _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
                 return Task.CompletedTask;
             }
             if (LooseRootBacked)

@@ -17,10 +17,16 @@ public static class DirectInjectListing
     public static IReadOnlyList<Mod> List(GameEntry game)
     {
         var folder = PlayFolder(game.GameRoot);
-        return Enabled(folder).Select(d => Row(d, enabled: true))
-            .Concat(DirectInject.ListDisabled(Holding(game)).Select(d => Row(d, enabled: false)))
+        var placed = PlacedBy626(game, folder);
+        return Enabled(folder).Select(d => Row(d, enabled: true, placed))
+            .Concat(DirectInject.ListDisabled(Holding(game)).Select(d => Row(d, enabled: false, placed)))
             .ToList();
     }
+
+    /// <summary>What 626 can prove it put in this game's play folder. Reads nothing until a row asks, so a
+    /// listing with no file the game also ships costs no disk.</summary>
+    public static BaseGameFiles.Placed PlacedBy626(GameEntry game, string? folder)
+        => new(game.GameRoot, Scanner.DataDirForGame(game), folder);
 
     // All currently-enabled direct-inject mods: top-level signatures PLUS the individual mods a DLL
     // loader runs from its mods\ folder. The bare "DLL mod loader" row is KEPT (tagged IsLoader in
@@ -49,8 +55,12 @@ public static class DirectInjectListing
 
     public static string Holding(GameEntry game) => Path.Combine(Scanner.DataDirForGame(game), "direct-disabled");
 
-    private static Mod Row(DirectInjectMod d, bool enabled) => new()
+    private static Mod Row(DirectInjectMod d, bool enabled, BaseGameFiles.Placed placed) => new()
     {
+        // A catalog row that owns a file the game ships (Elden Ring's regulation.bin) is the game's unless 626
+        // placed it: the one game-file mark, so every guard that reads Mod.IsBase applies. Held rows too, so a
+        // game file an older build moved aside can come back and can never be turned off again.
+        IsBase = BaseGameFiles.IsDirectInjectGameRow(d.Entries, placed),
         Name = d.Name,
         Base = d.Name,
         Class = d.Kind,                 // chip: GRAPHICS / CO-OP / UPSCALER / DISPLAY / GAMEPLAY / DLL
