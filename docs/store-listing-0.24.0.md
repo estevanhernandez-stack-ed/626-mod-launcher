@@ -89,7 +89,8 @@ Unchanged. Nothing in this release displays user-generated content.
 
 ## Screenshots
 
-**All ten carried forward from `docs/store-assets/screenshots-0.22/`.** Nothing a shopper sees in the set
+**The seven published screenshots carry forward** (`01-library-home` to `07-saves-snapshots`; 08-10 from
+`screenshots-0.22/` were never uploaded). Nothing a shopper sees in the set
 changed in a way that misleads. Known gap, stated: no shot of a GAME FILE chip, the OLD LOADER chip or
 close to tray. A recapture belongs to the next listing refresh.
 
@@ -106,7 +107,8 @@ Follows `store-listing-console/docs/release-loop.md` — **one owner per section
 4. `verify` again (the package line still shows the old package until the commit — expected), then
    `commit` from the console on the owner's word, then `verify` once more to see 0.24.0.0.
 
-Then, once the public catalog serves 0.24.0.0, publish the GitHub draft `v0.24.0` retitled
+Submission `1152921505702151373`: apply, captions and verify green on 2026-10-16, before Partner
+Center was opened. Then, once the public catalog serves 0.24.0.0, publish the GitHub draft `v0.24.0` retitled
 `v0.24.0 — Live on the Microsoft Store`.
 
 ## Build procedure
