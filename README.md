@@ -17,7 +17,7 @@ Two ways to get it:
 
 **[Setup.exe on GitHub Releases](https://github.com/estevanhernandez-stack-ed/626-mod-launcher/releases/latest)** — the full build, everything including the Nexus integration. Windows will warn you the first time (SmartScreen — no code-signing cert on this channel); click **More info → Run anyway**. Installs to your user profile, lands in the Start Menu, and auto-updates from GitHub. Uninstall via the normal Add/Remove Programs.
 
-Either way, the launcher writes nothing outside `%LOCALAPPDATA%\626ModLauncher\` and `%APPDATA%\ModManagerBuilder\`. No registry surgery, no `Program Files` install.
+Either way, the launcher keeps its own state in `%APPDATA%\ModManagerBuilder\` and `%LOCALAPPDATA%\ModManagerBuilder\`, and each game's mod state (turned-off mods, profiles, save snapshots) in a `_626mods` folder beside that game's library. Besides that it touches only the game folders you point it at. No registry surgery, no `Program Files` install.
 
 ## What's new
 
