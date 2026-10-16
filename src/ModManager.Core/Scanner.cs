@@ -318,7 +318,9 @@ public static class Scanner
     internal static IEnumerable<string> SidecarsFor(string modFile, IReadOnlyList<string> allFiles)
         => allFiles.Where(n => n.Length > modFile.Length
                                && n[modFile.Length] == '.'
-                               && n.StartsWith(modFile, StringComparison.OrdinalIgnoreCase));
+                               && n.StartsWith(modFile, StringComparison.OrdinalIgnoreCase))
+                   // A Fallout 4 / Starfield plugin also owns the .ba2 archives named for it (PluginArchives).
+                   .Concat(PluginArchives.OwnedBy(modFile, allFiles));
 
     // Pak files in a dir as (name, sizeBytes) — used by the paks-root branch to classify base vs mod.
     // Separate from ListPakFiles (name-only, relied on by other callers) so neither changes the other.
@@ -458,7 +460,8 @@ public static class Scanner
                         outMap[k] = mod;
                     }
                     mod.Files.Add(f);
-                    foreach (var sidecar in SidecarsFor(f, allInDir)) mod.Files.Add(sidecar);
+                    // Distinct: two plugins of one stem (Foo.esp + Foo.esm) both own Foo - Main.ba2.
+                    foreach (var sidecar in SidecarsFor(f, allInDir)) if (!mod.Files.Contains(sidecar)) mod.Files.Add(sidecar);
                 }
                 // A sidecar-type file no mod file claims (a plain .xl, an .archive.xl with no .archive) is
                 // a mod in its own right: unclaimed, it would never be listed and so never toggled.
