@@ -15,9 +15,15 @@ namespace ModManager.Core;
 /// own. Folding the latter into the plugin would change what a Skyrim user sees.</para>
 ///
 /// <para>Matching is case-insensitive and by stem followed by <c>" - "</c> or the extension, never a bare
-/// prefix, so <c>Cool.esp</c> does not adopt <c>CoolExtra - Main.ba2</c>. When two plugins both match
-/// (<c>MyMod.esp</c> and <c>MyMod - Plus.esp</c> against <c>MyMod - Plus - Main.ba2</c>) the longer stem owns
-/// it.</para>
+/// prefix, so <c>Cool.esp</c> does not adopt <c>CoolExtra - Main.ba2</c>. Each archive has exactly ONE owning
+/// stem: the longest plugin stem that names it (<c>MyMod - Plus.esp</c> beats <c>MyMod.esp</c> for
+/// <c>MyMod - Plus - Main.ba2</c>), and between stems of one length that differ only in case, the
+/// ordinal-smallest. So two rows can never both claim an archive.</para>
+///
+/// <para><b>Held plugins count.</b> An older build turned a plugin off by moving the plugin alone, leaving its
+/// archives live. A shorter live plugin must not capture such an archive just because the longer plugin is no
+/// longer in the folder, so the plugins in holding take part in the contest. The archive then has no live owner
+/// and stays out of the shorter plugin's row.</para>
 /// </summary>
 internal static class PluginArchives
 {
@@ -29,22 +35,45 @@ internal static class PluginArchives
 
     /// <summary>
     /// The archives in <paramref name="allFiles"/> that <paramref name="pluginFile"/> owns; empty when it is
-    /// not a plugin. <paramref name="allFiles"/> is the whole folder, so a longer-named plugin beside it is seen.
+    /// not a plugin. <paramref name="allFiles"/> is the whole folder, so a longer-named plugin beside it is seen;
+    /// <paramref name="heldPlugins"/> are the plugin filenames currently in holding.
     /// </summary>
-    internal static IEnumerable<string> OwnedBy(string pluginFile, IReadOnlyList<string> allFiles)
+    internal static IEnumerable<string> OwnedBy(
+        string pluginFile, IReadOnlyList<string> allFiles, IReadOnlyCollection<string>? heldPlugins = null)
     {
         if (!BaseGameFiles.IsPlugin(pluginFile)) return Array.Empty<string>();
+        var archives = allFiles.Where(IsArchive).ToList();
+        if (archives.Count == 0) return Array.Empty<string>();
         var stem = Path.GetFileNameWithoutExtension(pluginFile);
-        List<string>? longer = null;
-        return allFiles.Where(n =>
+        var stems = PluginStems(allFiles, heldPlugins);
+        return archives.Where(a => Winner(stems, Path.GetFileNameWithoutExtension(a)) is { } w && w == stem);
+    }
+
+    /// <summary>True when a LIVE plugin owns <paramref name="archive"/>. False when none names it, or when the
+    /// winning plugin is one in holding (the archive is then that held row's, left live by an older build).</summary>
+    internal static bool IsClaimed(
+        string archive, IReadOnlyList<string> allFiles, IReadOnlyCollection<string>? heldPlugins = null)
+    {
+        var stems = PluginStems(allFiles, heldPlugins);
+        return Winner(stems, Path.GetFileNameWithoutExtension(archive)) is { } w
+               && allFiles.Any(f => BaseGameFiles.IsPlugin(f) && Path.GetFileNameWithoutExtension(f) == w);
+    }
+
+    private static List<string> PluginStems(IReadOnlyList<string> live, IReadOnlyCollection<string>? held)
+        => live.Concat(held ?? Array.Empty<string>()).Where(BaseGameFiles.IsPlugin)
+               .Select(p => Path.GetFileNameWithoutExtension(p)).Distinct(StringComparer.Ordinal).ToList();
+
+    // The single owning stem: longest that names the archive, then ordinal-smallest.
+    private static string? Winner(List<string> stems, string archiveStem)
+    {
+        string? best = null;
+        foreach (var s in stems)
         {
-            if (!IsArchive(n)) return false;
-            var archive = Path.GetFileNameWithoutExtension(n);
-            if (!Names(stem, archive)) return false;
-            longer ??= allFiles.Where(BaseGameFiles.IsPlugin).Select(p => Path.GetFileNameWithoutExtension(p))
-                               .Where(s => s.Length > stem.Length).ToList();
-            return !longer.Any(s => Names(s, archive));
-        });
+            if (!Names(s, archiveStem)) continue;
+            if (best is null || s.Length > best.Length
+                || (s.Length == best.Length && string.CompareOrdinal(s, best) < 0)) best = s;
+        }
+        return best;
     }
 
     /// <summary>True when an archive stem names a plugin stem: equal, or the stem then <c>" - "</c> and more.</summary>
@@ -53,8 +82,11 @@ internal static class PluginArchives
            || archiveStem.StartsWith(pluginStem + " - ", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The mod an archive no plugin claims is named for: the stem before the last <c>" - "</c>, so
-    /// <c>Retex - Main.ba2</c> and <c>Retex - Textures.ba2</c> are one row, <c>Retex</c>.
+    /// The mod an archive no plugin claims is named for: the stem before the LAST <c>" - "</c>, so
+    /// <c>Retex - Main.ba2</c> and <c>Retex - Textures.ba2</c> are one row. Deliberately the opposite split to
+    /// <see cref="BaseGameFiles.IsBethesdaBaseFile"/>, which cuts at the FIRST <c>" - "</c> to find the owner:
+    /// for <c>DLCCoast - Fixes - Main.ba2</c> the row is <c>DLCCoast - Fixes</c> yet the file is judged the game's
+    /// by <c>DLCCoast</c>, so it locks, the safe direction. The base check must stay on the first split.
     /// </summary>
     internal static string OwnerStem(string archiveFile)
     {

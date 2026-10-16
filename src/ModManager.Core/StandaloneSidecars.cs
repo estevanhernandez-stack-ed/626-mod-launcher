@@ -46,7 +46,8 @@ internal static class StandaloneSidecars
     /// (base-game files included), so a file stays claimed even when its owner is filtered out of the listing.
     /// </summary>
     internal static IEnumerable<string> Find(
-        IReadOnlyList<string> allFiles, IReadOnlyList<string> modFiles, GameContext c)
+        IReadOnlyList<string> allFiles, IReadOnlyList<string> modFiles, GameContext c,
+        IReadOnlyCollection<string>? heldPlugins = null)
     {
         var exts = ExtsFor(c.Exts);
         if (exts.Count == 0) yield break;
@@ -55,6 +56,9 @@ internal static class StandaloneSidecars
             var ext = Path.GetExtension(n).TrimStart('.');
             if (!exts.Contains(ext, StringComparer.OrdinalIgnoreCase)) continue;
             if (c.FileRe.IsMatch(n)) continue;
+            // An archive's owner is decided over the whole folder and the held plugins (PluginArchives), the same
+            // contest the plugin's row ran, so the two can never disagree about who has it.
+            if (PluginArchives.IsArchive(n)) { if (PluginArchives.IsClaimed(n, allFiles, heldPlugins)) continue; yield return n; continue; }
             var one = new[] { n };
             if (modFiles.Any(m => Scanner.SidecarsFor(m, one).Any())) continue;
             yield return n;

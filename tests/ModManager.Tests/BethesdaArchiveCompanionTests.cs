@@ -156,6 +156,56 @@ public class BethesdaArchiveCompanionTests : IDisposable
     }
 
     [Fact]
+    public async Task A_shorter_live_plugin_does_not_capture_the_archive_of_a_longer_plugin_in_holding()
+    {
+        // Upgrade path: an older build held "MyMod - Plus.esp" alone and left its archive live. With the
+        // longer plugin out of the folder, live MyMod.esp matches "MyMod - Plus - Main.ba2" by prefix.
+        var (data, c) = Game("Fallout 4", Fo4Exts, "MyMod.esp", "MyMod - Plus - Main.ba2");
+        var held = Path.Combine(c.DisabledRoot, "MyMod - Plus");
+        Directory.CreateDirectory(held);
+        File.WriteAllText(Path.Combine(held, "MyMod - Plus.esp"), Bytes("MyMod - Plus.esp"));
+        File.WriteAllText(Path.Combine(held, "meta.json"), "{\"location\":\"mods\",\"hadOnServer\":{},\"isFolder\":false}");
+
+        var mods = await Scanner.BuildModListAsync(c);
+
+        // The archive is nobody's live file: not in MyMod's row, not a row of its own (hidden behind the held row).
+        Assert.Equal(new[] { "MyMod.esp" }, mods.Single(m => m.Name == "MyMod").Files);
+        Assert.DoesNotContain(mods, m => m.Files.Contains("MyMod - Plus - Main.ba2"));
+        var plus = mods.Single(m => m.Name == "MyMod - Plus");
+        Assert.False(plus.Enabled);
+
+        await Scanner.DisableModAsync("MyMod", c);
+        Assert.True(File.Exists(Path.Combine(data, "MyMod - Plus - Main.ba2")));
+        await Scanner.EnableModAsync("MyMod", c);
+
+        await Scanner.UninstallModAsync("MyMod", c);
+        Assert.True(File.Exists(Path.Combine(data, "MyMod - Plus - Main.ba2")));
+        Assert.True(File.Exists(Path.Combine(held, "MyMod - Plus.esp")));
+
+        await Scanner.EnableModAsync("MyMod - Plus", c);
+        Assert.Equal(Bytes("MyMod - Plus.esp"), File.ReadAllText(Path.Combine(data, "MyMod - Plus.esp")));
+        var back = Assert.Single(await Scanner.BuildModListAsync(c));
+        Assert.Equal(new[] { "MyMod - Plus - Main.ba2", "MyMod - Plus.esp" }, Sorted(back.Files));
+    }
+
+    [Fact]
+    public async Task Plugins_whose_stems_differ_only_in_case_do_not_both_claim_one_archive()
+    {
+        var (data, c) = Game("Fallout 4", Fo4Exts, "Foo.esp", "FOO.esm", "Foo - Main.ba2");
+
+        var mods = await Scanner.BuildModListAsync(c);
+
+        Assert.Single(mods, m => m.Files.Contains("Foo - Main.ba2"));
+        Assert.Equal(1, mods.Sum(m => m.Files.Count(f => f.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase))));
+
+        // The ordinal-smallest stem owns it; uninstalling the other row must not take it.
+        Assert.Equal("FOO", mods.Single(m => m.Files.Contains("Foo - Main.ba2")).Name);
+        await Scanner.UninstallModAsync("Foo", c);
+        AssertLive(data, new[] { "Foo - Main.ba2", "FOO.esm" }, live: true);
+        Assert.False(File.Exists(Path.Combine(data, "Foo.esp")));
+    }
+
+    [Fact]
     public async Task Two_plugins_of_one_stem_list_the_archive_once()
     {
         var (_, c) = Game("Fallout 4", Fo4Exts, "Thing.esp", "Thing.esm", "Thing - Main.ba2");

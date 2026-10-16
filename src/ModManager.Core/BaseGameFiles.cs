@@ -145,6 +145,8 @@ public static class BaseGameFiles
         if (creationClub.Contains(name)) return true;
 
         var stem = Path.GetFileNameWithoutExtension(name);
+        // FIRST " - " on purpose: PluginArchives.OwnerStem names an orphan archive's row by the LAST one, and the
+        // base check must stay on this split so a base-prefixed archive always locks.
         var dash = stem.IndexOf(" - ", StringComparison.Ordinal);
         var owner = dash > 0 ? stem[..dash] : stem;
         if (dash > 0 && falloutArchives && ArchiveOnlyStems.Contains(owner, StringComparer.OrdinalIgnoreCase)) return true;
