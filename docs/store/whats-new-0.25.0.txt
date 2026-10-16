@@ -1,0 +1,11 @@
+Version 0.25.0
+
+• Elden Ring's own regulation.bin stays put. Turning off every mod or returning to vanilla no longer moves the game's own file, which left the game unable to start. A regulation.bin you installed through the launcher still turns on and off. One you installed by hand now counts as the game's file: drop its mod onto the launcher once and the switch comes back. Until then, return to vanilla tells you it left that file in place, so you can verify the game's files before playing online.
+
+• Cyberpunk 2077 ArchiveXL mods that are just a .xl file now show up in your list and turn on and off like any other mod.
+
+• Fallout 4 and Starfield mods take their .ba2 archives with them when you turn them off, so a mod you turned off no longer keeps loading. The game's own archives never move.
+
+• The ban-risk warning says what's at stake, an account, without claiming every flagged game uses anti-cheat. Some publishers ban modded online play by policy alone.
+
+• Enable all keeps going when one mod refuses, and names the one it couldn't turn on.
