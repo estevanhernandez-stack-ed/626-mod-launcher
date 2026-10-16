@@ -2707,3 +2707,55 @@ Core suite first: 3797 passed, 0 failed, 2 skipped (the 7z and rar extract tests
   On -> Off -> On (restored). The holding folders on C: and G: were listed by path and size before and after: no mod
   file moved. `games.json` was byte-identical. Changes were only the feed refresh (`game-manifest.json`), the Windrose
   agent log (the save-mod case appends), and Windrose `metadata.json` from the Nexus stats refresh; no fixture key in it.
+
+## Elden Ring's own regulation.bin is a game file unless 626 put a mod there (#397)
+
+Shipped: a `regulation.bin` counts as a mod only with provenance, an install record naming it or a
+replaced-store entry for it. Without that it is the game's file: GAME FILE chip, locked on, skipped by
+Disable all, profiles, Return to vanilla and the agent tool. Return to vanilla says so in STILL IN PLACE.
+
+1. **Fixture only.** A fromsoft fixture with `eldenring.exe`, `Game/regulation.bin` (no install record),
+   and one ordinary direct-inject mod (`erss-fg.dll` with its folder). Never the real Elden Ring.
+2. **Open it.** The regulation.bin row shows the GAME FILE chip and a locked switch; the mod is ordinary.
+3. **Disable all, then Enable all.** regulation.bin never moves; the mod goes to holding and back,
+   byte-identical. The status line names nothing as refused.
+4. **Safe Clear, Return to vanilla.** The mod is held; regulation.bin stays byte-identical, and the sheet
+   lists it under STILL IN PLACE with "Verify the game's files in Steam before playing online."
+   Restore puts the tree back byte-identical.
+5. **Install a regulation mod through 626** (drop a zip holding `regulation.bin`). The row is now an
+   ordinary mod: it turns off and on, and the displaced original sits in the replaced store.
+
+**For Este, on the real install:** his hand-installed "Modded regulation.bin" now reads as a game file.
+Drop that mod's archive onto 626 once to give it provenance; the switch comes back.
+
+## Cyberpunk standalone ArchiveXL .xl mods list as their own rows (#396)
+
+Shipped: a plain `.xl`, or an `<X>.archive.xl` with no `<X>.archive`, is its own row in `archive\pc\mod`.
+A plain `Foo.xl` beside `Foo.archive` rides with the `Foo` row. Paired `.archive.xl` files are unchanged.
+
+1. **Read only, on the real install:** the list shows rows for the standalone `.xl` mods (25 on Este's
+   install on 2026-10-16) and no paired `.archive.xl` as its own row.
+2. **Fixture:** a custom-engine fixture with `archive\pc\mod` holding `A.archive` + `A.archive.xl`,
+   `B.archive.xl` alone, and `C.xl` alone. Rows: `A` (two files), `B`, `C`.
+3. **Turn `B` and `C` off, then on.** Each moves to holding and back byte-identical; `A` is untouched.
+4. **Held copy:** turn `A` off, then copy `A.archive.xl` back into the folder by hand. The list shows one
+   row `A`, off. Turning it on brings `A.archive` back beside the `.xl`; nothing collides.
+
+## Fallout 4 / Starfield .ba2 archives move with their plugin (#398)
+
+Shipped: `<stem> - Main.ba2` / `<stem> - Textures.ba2` ride on the `<stem>.esp/.esm/.esl` row and move with
+it. The longest plugin stem wins, plugins in holding count, and each archive has exactly one owner. A
+`.ba2` no plugin claims lists as one row named for its owner. Base archives (`Fallout4 - *.ba2`, DLC,
+Creation Club, `SFBGS*`) are game files. Skyrim's `.bsa` rows are unchanged.
+
+1. **Fixture only** (no Bethesda game on Neb). A Fallout 4 fixture: `Fallout4.exe`, `Data` with
+   `Fallout4.esm`, `Fallout4 - Textures1.ba2`, `MyMod.esp`, `MyMod - Main.ba2`, `MyMod - Textures.ba2`,
+   `MyMod - Plus.esp`, `MyMod - Plus - Main.ba2`.
+2. **Open it.** Rows: Fallout4 (GAME FILE, with its archive), MyMod (three files), MyMod - Plus (two).
+3. **Turn MyMod off, then on.** Its two archives go with it; `MyMod - Plus - Main.ba2` never moves.
+   Byte-identical after.
+4. **Disable all, then Enable all.** The base master and its archive never leave `Data`.
+5. **Upgrade shape:** with the app closed, put only `MyMod - Plus.esp` in holding (with its meta) and leave
+   its archive live. Open: MyMod does not claim the archive; turning MyMod - Plus on reunites the pair.
+6. **Large load:** a fixture with 600 plugins and 1,200 archives opens and toggles without a visible stall
+   (the scan measured about 15 ms).
