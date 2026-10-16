@@ -40,7 +40,11 @@ public static partial class RestorePointEngine
     /// (Elden Ring's regulation.bin), with no record that 626 placed it, starts. The reason says the file could be
     /// a modded copy installed by hand, so a user returning to vanilla before going online is told to verify
     /// the game's files. Read by its ending (<see cref="UnprovenGameFileSuffix"/>): its start would collide with
-    /// <see cref="CantTellNote"/>'s. See <see cref="UnprovenGameFileNote"/>.</summary>
+    /// <see cref="CantTellNote"/>'s. See <see cref="UnprovenGameFileNote"/>.
+    /// <para><b>Frozen wording.</b> This text is sealed into every restore-point manifest that carries the note,
+    /// and the off-boarding sheet recognises the note by it. Editing it stops older restore points from counting
+    /// the file as left in place. To reword, keep this constant and add the new ending as a second match in
+    /// <see cref="OffBoardingHydrator"/>.</para></summary>
     public const string UnprovenGameFileSuffix = " from a modded copy it didn't install. Verify the game's files in Steam before playing online.";
 
     /// <summary>The reason for a file that is the game's by name and has no provenance: 626 left it, and says
