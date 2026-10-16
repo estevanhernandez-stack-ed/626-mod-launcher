@@ -2692,3 +2692,18 @@ Reorder on a Bethesda game renamed plugins to `0010__X.esp`, which makes them mi
 5. `0010__MyMod.esp` beside `MyMod.esp`. Expected: Undo touches neither and the status names the collision.
 
 **Run 2026-10-02 by the agent (v0.23.0 build of f1ff2db): PASS on all five.** Cases 2 to 5 are the harness cases `load-order-bethesda-refuses-and-undoes` and `load-order-ue-round-trip`, run with `-OutDir` pointed at the session scratchpad. Reorder on the clean Bethesda fixture read `On Bethesda games the load order lives in Plugins.txt. 626 doesn't edit it yet, so it won't rename your plugins.`, `ApplyOrderButton` never appeared, the fixture tree was hash-identical and no `loadorder.json` existed. The prefixed fixture showed `StateChip.load-order-prefix` reading `2 plugins carry a load-order prefix from 626.` with `StateChipAction` = `Undo`; after Undo the status read `Removed 626's prefix from 2 files.`, Data held `MyMod.esp`, `Other.esp` and `Skyrim.esm` with the SHA-256s they had under the prefixed names, and the chip was gone. UE: Apply gave `0010__LoFixture1_P.pak`, `0020__LoFixture2_P.pak`, `0030__LoFixture3_P.pak` and `loadorder.json`; chip `3 mod files carry a load-order prefix from 626.`; Undo left the tree hash-identical (files and folders) and removed `loadorder.json`. Collision: both files untouched, status `Removed 626's prefix from 0 files. 0010__MyMod.esp was left as is: MyMod.esp already exists.` `games.json` restored byte-identical (SHA-256 `FEDEBF9D...523C5E`), fixtures deleted. Not driven: dragging a row or typing a position in load-order mode (Apply ran with the order unchanged); the prefixed files were written before the fixture was registered, not while the app was closed (the harness has the app open throughout).
+
+## Agent sweep 2026-10-16: full harness on master before v0.24.0
+
+Full `smoke-run.ps1` run (no `-Only`) on a clean Debug build of master `c1e68d0`, stamped `-p:Version=0.24.0`.
+Core suite first: 3797 passed, 0 failed, 2 skipped (the 7z and rar extract tests, skipped by design).
+
+- **Harness: 42 of 42 PASS.** 71 cases need a human and were not run; 2 are agentable but have no harness case yet
+  (`multi-tree-toggle-round-trip`, `multi-tree-toggle-cross-volume`).
+- **#385 to #387 on master: PASS.** `game-files-stay-on-through-disable-all` (five GAME FILE chips, Disable all moved
+  only the three mod files, Enable all left the fixture hash-identical), `load-order-bethesda-refuses-and-undoes`
+  and `load-order-ue-round-trip` all green on the merged code, not only on their branches.
+- **Real installs untouched.** `mod-toggle-round-trip` ran on Elden Ring: `Simple ReShade Pack for Elden Ring`
+  On -> Off -> On (restored). The holding folders on C: and G: were listed by path and size before and after: no mod
+  file moved. `games.json` was byte-identical. Changes were only the feed refresh (`game-manifest.json`), the Windrose
+  agent log (the save-mod case appends), and Windrose `metadata.json` from the Nexus stats refresh; no fixture key in it.
