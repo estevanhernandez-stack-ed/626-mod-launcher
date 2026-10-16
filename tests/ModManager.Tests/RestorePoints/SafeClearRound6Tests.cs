@@ -391,7 +391,7 @@ public class SafeClearPublishedFeedTests : IDisposable
 
         var root = Path.Combine(_root, "cp");
         Directory.CreateDirectory(Path.Combine(root, "archive", "pc", "mod"));
-        File.WriteAllText(Path.Combine(root, "archive", "pc", "mod", "Orphan.archive.xl"), "XL");
+        File.WriteAllText(Path.Combine(root, "archive", "pc", "mod", "notes.txt"), "TXT");
         var g = new GameEntry
         {
             Id = "cyberpunk-2077", GameName = "Cyberpunk 2077", Engine = "custom", SteamAppId = "1091500", GameRoot = root,
@@ -403,6 +403,6 @@ public class SafeClearPublishedFeedTests : IDisposable
 
         Assert.Equal("marked mod-only by the game's definition", ModOnlyFolders.WhyModOnly(c, c.Locations[0]));
         Assert.Contains(RestorePointEngine.PlanVanillaRemainder(c, Array.Empty<ClearSkip>()).Files,
-            f => f.Rel.Replace('\\', '/') == "archive/pc/mod/Orphan.archive.xl");
+            f => f.Rel.Replace('\\', '/') == "archive/pc/mod/notes.txt");
     }
 }

@@ -261,7 +261,13 @@ public static class Scanner
 
     private static string ModKey(string filename, GameContext c)
     {
-        var baseName = c.FileRe.Replace(filename, "");
+        return GroupKey(c.FileRe.Replace(filename, ""), c);
+    }
+
+    /// <summary>The grouping half of <see cref="ModKey"/>: a name already stripped of its extension -> its
+    /// mod key. Shared with <see cref="StandaloneSidecars.KeyFor"/> so both name a mod the same way.</summary>
+    internal static string GroupKey(string baseName, GameContext c)
+    {
         baseName = LoadOrderApply.StripPrefix(baseName); // ignore a launcher load-order prefix (NNNN__)
         return c.GroupingRule switch
         {
@@ -378,6 +384,11 @@ public static class Scanner
     {
         ScanCostProbe.CountModList();
         var outMap = new Dictionary<string, Mod>();
+        // Names currently in holding. A standalone file whose row name is held is NOT listed: the live row
+        // would take the name, the held row would be skipped below, and the held copy would become
+        // unreachable (can't turn off, and an uninstall of the visible row would delete the hidden folder).
+        var heldNames = new HashSet<string>(
+            HoldingName.Listed(SafeReadDirs(c.DisabledRoot)).Select(h => h.Name), StringComparer.OrdinalIgnoreCase);
         // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
@@ -448,6 +459,23 @@ public static class Scanner
                     }
                     mod.Files.Add(f);
                     foreach (var sidecar in SidecarsFor(f, allInDir)) mod.Files.Add(sidecar);
+                }
+                // A sidecar-type file no mod file claims (a plain .xl, an .archive.xl with no .archive) is
+                // a mod in its own right: unclaimed, it would never be listed and so never toggled.
+                foreach (var f in StandaloneSidecars.Find(allInDir, allInDir.Where(n => c.FileRe.IsMatch(n)).ToList(), c))
+                {
+                    var k = StandaloneSidecars.KeyFor(f, c);
+                    if (heldNames.Contains(k) && !outMap.ContainsKey(k)) continue;
+                    if (!outMap.TryGetValue(k, out var mod))
+                    {
+                        mod = new Mod
+                        {
+                            Name = k, Location = loc.Name, Enabled = true, IsFolder = false,
+                            Managed = managedLabel, ReadOnly = readOnly,
+                        };
+                        outMap[k] = mod;
+                    }
+                    mod.Files.Add(f);
                 }
             }
         }
@@ -1689,6 +1717,9 @@ public static class Scanner
             foreach (var side in SidecarsFor(mod, prefixed))
                 if (seen.Add(side)) yield return (side, group);
         }
+        // Standalone sidecar-type files (a plain .xl) ride the load order too, so undo has to find them.
+        foreach (var alone in StandaloneSidecars.Find(prefixed, prefixed.Where(n => c.FileRe.IsMatch(n)).ToList(), c))
+            if (seen.Add(alone)) yield return (alone, StandaloneSidecars.KeyFor(alone, c));
     }
 
     /// <summary>Undo 626's load-order renames (<see cref="PlanUndoLoadOrder"/>) one mod group at a time,

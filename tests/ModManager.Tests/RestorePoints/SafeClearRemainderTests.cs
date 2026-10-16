@@ -67,7 +67,8 @@ public class SafeClearRemainderTests : IDisposable
     };
 
     // Two mods with rows, and in every extra tree something no row claims, plus .xl sidecars the archive
-    // lane never lists (one whose archive is held under a prefixed name, one an orphan).
+    // lane never lists (one whose archive is held under a prefixed name; the orphan .archive.xl is a row
+    // of its own now, so Safe Clear holds it with the mods rather than sweeping it as a remainder).
     private GameEntry Cyberpunk()
     {
         var root = Path.Combine(_root, "Cyberpunk 2077");
@@ -130,7 +131,8 @@ public class SafeClearRemainderTests : IDisposable
         var ga = RestorePointManifestStore.Read(RpDir)!.Games[0];
         Assert.NotNull(ga.VanillaRemainder);
         Assert.Empty(ga.LeftInPlace!);
-        Assert.Contains(ga.VanillaRemainder!, f => f.Rel.Replace('\\', '/') == "archive/pc/mod/Orphan.archive.xl");
+        Assert.DoesNotContain(ga.VanillaRemainder!, f => f.Rel.Replace('\\', '/') == "archive/pc/mod/Orphan.archive.xl");
+        Assert.Contains(ga.HeldCopies!, h => h.Name == "Orphan" && h.Files.Any(f => f.Rel.EndsWith("Orphan.archive.xl", StringComparison.Ordinal)));
         Assert.Contains(ga.VanillaRemainder!, f => f.Rel.Replace('\\', '/') == "red4ext/plugins/ArchiveXL/ArchiveXL.dll");
         foreach (var f in ga.VanillaRemainder!)
             Assert.Equal(f.Sha256, FileTally.Sha256(Path.Combine(RpDir, "games", g.Id, RestorePointEngine.RemainderDirName, f.Rel)), ignoreCase: true);
