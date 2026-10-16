@@ -77,10 +77,22 @@ public class GameWriteToolsTests : IDisposable
     public void A_relative_folder_is_refused()
     {
         // A relative path that DOES exist from this process's working folder: still refused.
-        var relative = Path.GetRelativePath(Environment.CurrentDirectory, BepInExGame());
-        Assert.True(Directory.Exists(relative));
-        Assert.Equal("not_found", Json(GameWriteTools.RegisterGame("Valheim", relative)).GetProperty("refusal").GetString());
-        Assert.False(File.Exists(Path.Combine(McpConfig.DataRoot, "games.json")));
+        // The game is built under the working folder, not in temp: CI checks out on D: with temp on C:,
+        // and GetRelativePath across drives quietly returns the ABSOLUTE path, which registers fine.
+        var local = Path.Combine(Environment.CurrentDirectory, "mmb-relative-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(local, "BepInEx", "plugins"));
+        try
+        {
+            var relative = Path.GetRelativePath(Environment.CurrentDirectory, local);
+            Assert.False(Path.IsPathRooted(relative), $"fixture path is not relative: {relative}");
+            Assert.True(Directory.Exists(relative));
+            Assert.Equal("not_found", Json(GameWriteTools.RegisterGame("Valheim", relative)).GetProperty("refusal").GetString());
+            Assert.False(File.Exists(Path.Combine(McpConfig.DataRoot, "games.json")));
+        }
+        finally
+        {
+            try { Directory.Delete(local, recursive: true); } catch { }
+        }
     }
 
     // Review on #373: an undetectable engine was registered as "custom", a guess the app refuses to make.
