@@ -23,4 +23,18 @@ public class BethesdaArchiveOwnershipTests
         Assert.True(own.IsClaimed("P 3 - Main.ba2"));
         Assert.Empty(own.OwnedBy("P 3 - Main.ba2")); // not a plugin
     }
+
+    // Two " - " separators can overlap (" - - "). The lookup stepped back past the overlapping one and never
+    // tried the shorter stem, so "Foo - - Main.ba2" lost its owner and stayed live when Foo was turned off.
+    [Theory]
+    [InlineData("Foo.esp", "Foo - - Main.ba2", "Foo")]
+    [InlineData("A.esp", "A - - B.ba2", "A")]
+    [InlineData("Foo -.esp", "Foo - - Main.ba2", "Foo -")]
+    public void Overlapping_separators_still_find_the_owner(string plugin, string archive, string owner)
+    {
+        var own = PluginArchives.Ownership.Build(new[] { plugin, archive });
+
+        Assert.Equal(owner, own.OwnerOf(archive));
+        Assert.Equal(new[] { archive }, own.OwnedBy(plugin));
+    }
 }

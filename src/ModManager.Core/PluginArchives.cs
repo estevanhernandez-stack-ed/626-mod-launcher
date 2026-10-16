@@ -106,7 +106,9 @@ internal static class PluginArchives
             for (var end = archiveStem.Length; end > 0;)
             {
                 if (stems.TryGetValue(archiveStem.Substring(0, end), out var s)) return s;
-                end = archiveStem.LastIndexOf(" - ", end - 1, StringComparison.Ordinal);
+                // A " - " fits in [0..end+1] exactly when it starts before end, so an overlapping " - - " is
+                // still found (bounding at end-1 skipped it and lost the shorter stem) and end always shrinks.
+                end = archiveStem.LastIndexOf(" - ", Math.Min(end + 1, archiveStem.Length - 1), StringComparison.Ordinal);
             }
             return null;
         }
