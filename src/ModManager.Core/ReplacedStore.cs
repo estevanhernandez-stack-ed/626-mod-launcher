@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace ModManager.Core;
 
@@ -35,5 +36,26 @@ public static class ReplacedStore
 
     /// <summary>Write the batch manifest (provenance for a future revert) atomically.</summary>
     public static void WriteManifest(string batchDir, IReadOnlyList<ReplacedEntry> entries)
-        => AtomicJson.WriteJsonAtomic(Path.Combine(batchDir, "__626replaced.json"), entries);
+        => AtomicJson.WriteJsonAtomic(Path.Combine(batchDir, ManifestFile), entries);
+
+    private const string ManifestFile = "__626replaced.json";
+    private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>Every file recorded in any batch manifest under <paramref name="replacedRoot"/>. A missing
+    /// root or a torn manifest yields fewer entries, never an exception: one unreadable batch must not hide
+    /// the rest. Read-only.</summary>
+    public static IReadOnlyList<ReplacedEntry> ReadAll(string replacedRoot)
+    {
+        var found = new List<ReplacedEntry>();
+        if (string.IsNullOrEmpty(replacedRoot) || !Directory.Exists(replacedRoot)) return found;
+        IEnumerable<string> manifests;
+        try { manifests = Directory.EnumerateFiles(replacedRoot, ManifestFile, SearchOption.AllDirectories).ToList(); }
+        catch { return found; }
+        foreach (var mf in manifests)
+        {
+            try { found.AddRange(JsonSerializer.Deserialize<List<ReplacedEntry>>(File.ReadAllText(mf), ReadOptions) ?? new List<ReplacedEntry>()); }
+            catch { /* a torn record: nothing known from it */ }
+        }
+        return found;
+    }
 }

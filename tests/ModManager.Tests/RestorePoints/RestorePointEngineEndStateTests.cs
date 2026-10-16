@@ -43,11 +43,11 @@ public class RestorePointEngineEndStateTests : IDisposable
     public void Vanilla_moves_detected_directinject_files_to_archive_and_records_them()
     {
         var (game, c, _) = MakeGame();
-        // "modded-regulation" catalog entry: InstallSignatureFiles = ["regulation.bin"].
-        // Verified against KnownDirectInjectMod.Catalog — single-file, no dirs, no contains.
+        // "erss2-frame-gen" catalog entry: InstallSignatureFiles includes "erss-fg.dll".
+        // Verified against KnownDirectInjectMod.Catalog: erss-fg.dll is one of its signature files (regulation.bin is NOT used here, it is the game's own file; see RegulationBinProvenanceTests).
         // DirectInject.Detect receives basenames (Path.GetFileName applied by MoveDirectInjectToArchive);
-        // a "regulation.bin" in the game root matches and its Entries list contains "regulation.bin".
-        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1, 2, 3 });
+        // an "erss-fg.dll" in the game root matches and its Entries list contains "erss-fg.dll".
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "erss-fg.dll"), new byte[] { 1, 2, 3 });
         var gameArchiveDir = Path.Combine(_tmp, "archive", "games", "t");
         RestorePointEngine.CaptureGame(new GameCaptureInput(game, c, "vanilla"), gameArchiveDir);
 
@@ -59,7 +59,7 @@ public class RestorePointEngineEndStateTests : IDisposable
                 $"missing archived {mf.Rel}");
         Assert.All(result.MovedFiles, mf => Assert.False(string.IsNullOrEmpty(mf.Sha256)));
         // The game root file is gone — moved into the archive.
-        Assert.False(File.Exists(Path.Combine(c.GameRoot, "regulation.bin")));
+        Assert.False(File.Exists(Path.Combine(c.GameRoot, "erss-fg.dll")));
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class RestorePointEngineEndStateTests : IDisposable
     public void ApplyEndState_vanilla_moves_exactly_the_supplied_plan()
     {
         var (game, c, _) = MakeGame();
-        File.WriteAllBytes(Path.Combine(c.GameRoot, "regulation.bin"), new byte[] { 1, 2 });
+        File.WriteAllBytes(Path.Combine(c.GameRoot, "erss-fg.dll"), new byte[] { 1, 2 });
         var gameArchiveDir = Path.Combine(_tmp, "archive", "games", "t");
         RestorePointEngine.CaptureGame(new GameCaptureInput(game, c, "vanilla"), gameArchiveDir);
         var plan = RestorePointEngine.PlanVanillaMoves(c);

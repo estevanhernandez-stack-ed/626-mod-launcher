@@ -26,8 +26,8 @@ public class RestorePointEngineReplayTests : IDisposable
     public void Vanilla_then_replay_restores_the_moved_game_folder_file()
     {
         var (game, c, _) = MakeGame();
-        // regulation.bin is a real direct-inject catalog signature (modded-regulation).
-        var reg = Path.Combine(c.GameRoot, "regulation.bin");
+        // erss-fg.dll is a real direct-inject catalog signature (erss2-frame-gen).
+        var reg = Path.Combine(c.GameRoot, "erss-fg.dll");
         File.WriteAllBytes(reg, new byte[] { 9, 9, 9 });
         var gameArchiveDir = Path.Combine(_tmp, "archive", "games", "t");
 

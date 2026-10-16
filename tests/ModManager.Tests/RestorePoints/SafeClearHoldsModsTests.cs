@@ -87,14 +87,17 @@ public class SafeClearHoldsModsTests : IDisposable
         };
     }
 
-    // FromSoft direct-inject: regulation.bin at the game root (the existing vanilla-moved step plans it),
-    // plus a regulation.bin-shaped mod under Game\ that the root-only plan never reached.
+    // FromSoft direct-inject: a real mod (erss-fg.dll) in the play folder, beside the game's OWN regulation.bin.
+    // At the game root the existing vanilla-moved step plans the mod; under Game\ the root-only plan never
+    // reached it. The regulation.bin has no provenance (626 never placed it), so it is the game's and no
+    // turn-off may move it (RegulationBinProvenanceTests).
     private GameEntry DirectInjectGame(bool withGameSubfolder)
     {
         var root = Path.Combine(_root, withGameSubfolder ? "digame-sub" : "digame");
         var play = withGameSubfolder ? Path.Combine(root, "Game") : root;
         Directory.CreateDirectory(play);
-        File.WriteAllBytes(Path.Combine(play, "regulation.bin"), new byte[] { 7, 7, 7 });
+        File.WriteAllBytes(Path.Combine(play, "erss-fg.dll"), new byte[] { 7, 7, 7 });
+        File.WriteAllBytes(Path.Combine(play, "regulation.bin"), new byte[] { 4, 4, 4 });
         return new GameEntry
         {
             Id = withGameSubfolder ? "di-sub" : "di", GameName = "DI Game", Engine = "fromsoft",
@@ -160,8 +163,11 @@ public class SafeClearHoldsModsTests : IDisposable
         Assert.Equal(new[] { "alpha" }, Archive(m, "pak").TurnedOffByClear!.Select(x => x.Name));
         Assert.Equal(new[] { "CoolMod" }, Archive(m, "tree").TurnedOffByClear!.Select(x => x.Name));
         Assert.Empty(Archive(m, "di").TurnedOffByClear!);
-        Assert.Contains(Archive(m, "di").MovedFiles, mf => mf.Rel == "regulation.bin");
-        Assert.False(File.Exists(Path.Combine(di.GameRoot, "regulation.bin")));
+        Assert.Contains(Archive(m, "di").MovedFiles, mf => mf.Rel == "erss-fg.dll");
+        Assert.False(File.Exists(Path.Combine(di.GameRoot, "erss-fg.dll")));
+        // The game's own regulation.bin is neither sealed as moved nor moved.
+        Assert.DoesNotContain(Archive(m, "di").MovedFiles, mf => mf.Rel == "regulation.bin");
+        Assert.Equal(new byte[] { 4, 4, 4 }, File.ReadAllBytes(Path.Combine(di.GameRoot, "regulation.bin")));
         Assert.Null(Archive(m, "pak").TurnOffSkipped);
     }
 
@@ -314,13 +320,83 @@ public class SafeClearHoldsModsTests : IDisposable
         var orch = Make(p);
 
         Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
-        Assert.False(File.Exists(Path.Combine(di.GameRoot, "Game", "regulation.bin")));
+        Assert.False(File.Exists(Path.Combine(di.GameRoot, "Game", "erss-fg.dll")));
+        Assert.Equal(new byte[] { 4, 4, 4 }, File.ReadAllBytes(Path.Combine(di.GameRoot, "Game", "regulation.bin")));   // the game's own stays
         Assert.NotEmpty(Archive(RestorePointManifestStore.Read(RpDir)!, di.Id).TurnedOffByClear!);
 
         var restore = await orch.RestoreAsync(Ts, default);
         Assert.True(restore.Ok);
         Assert.Empty(restore.Warnings);
         AssertSameTree(before, di.GameRoot);
+    }
+
+    [Fact]
+    public async Task Vanilla_says_so_when_it_leaves_a_regulation_bin_it_cannot_tell_from_a_modded_one()
+    {
+        // No provenance: it could be the game's file or a modded copy installed by hand. Vanilla must not move it,
+        // and must not stay silent about it either (an anti-cheat title returned to "vanilla" with a modded file).
+        var di = DirectInjectGame(withGameSubfolder: true);
+        var play = Path.Combine(di.GameRoot, "Game");
+        File.WriteAllText(Path.Combine(play, "eldenring.exe"), "game");   // a plain base file: no mod signature
+        var orch = Make(new Provider(new[] { di }));
+
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+
+        Assert.Equal(new byte[] { 4, 4, 4 }, File.ReadAllBytes(Path.Combine(play, "regulation.bin")));
+        var ga = Archive(RestorePointManifestStore.Read(RpDir)!, di.Id);
+        var note = Assert.Single(ga.LeftInPlace!, n => n.Reason.Contains("regulation.bin"));
+        Assert.Equal("Modded regulation.bin", note.Path);
+        Assert.Equal("626 can't tell the game's regulation.bin from a modded copy it didn't install. "
+            + "Verify the game's files in Steam before playing online.", note.Reason);
+        // Only the file a mod signature matched by name: the plain base file is not named.
+        Assert.DoesNotContain(ga.LeftInPlace!, n => n.Path.Contains("eldenring.exe") || n.Reason.Contains("eldenring.exe"));
+        // The sheet counts it as an item left in place, never as "all mods turned off".
+        Assert.Contains("can't tell from the game's own files", OffBoardingHydrator.WhatHappened(ga));
+        Assert.False(OffBoardingHydrator.FullyVanilla(ga));
+    }
+
+    [Fact]
+    public async Task A_regulation_bin_626_replaced_is_held_with_no_cant_tell_note()
+    {
+        var di = DirectInjectGame(withGameSubfolder: true);
+        var play = Path.Combine(di.GameRoot, "Game");
+        var drop = Path.Combine(_root, "drop");
+        Put(Path.Combine(drop, "regulation.bin"), "MODDED-REGULATION");
+        var plan = DirectInject.Plan(play, new[] { Path.Combine(drop, "regulation.bin") });
+        DirectInject.Execute(play, DirectInject.ReplacedRoot(play), plan, new HashSet<string>(new[] { "regulation.bin" }));
+
+        Assert.True((await Make(new Provider(new[] { di })).SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+
+        Assert.False(File.Exists(Path.Combine(play, "regulation.bin")));   // held, as before
+        var ga = Archive(RestorePointManifestStore.Read(RpDir)!, di.Id);
+        Assert.DoesNotContain(ga.LeftInPlace ?? Array.Empty<InPlaceNote>(), n => n.Reason.Contains("regulation.bin"));
+    }
+
+    [Fact]
+    public async Task A_regulation_bin_626_replaced_is_a_mod_so_vanilla_holds_it_and_restore_returns_it_byte_identical()
+    {
+        // The other half of the provenance rule: 626 replaced the game's file (the original went into the
+        // replaced store), so this regulation.bin is the mod's and goes with the rest.
+        var di = DirectInjectGame(withGameSubfolder: true);
+        var play = Path.Combine(di.GameRoot, "Game");
+        var drop = Path.Combine(_root, "drop");
+        Put(Path.Combine(drop, "regulation.bin"), "MODDED-REGULATION");
+        var plan = DirectInject.Plan(play, new[] { Path.Combine(drop, "regulation.bin") });
+        DirectInject.Execute(play, DirectInject.ReplacedRoot(play), plan, new HashSet<string>(new[] { "regulation.bin" }));
+        Assert.Equal("MODDED-REGULATION", File.ReadAllText(Path.Combine(play, "regulation.bin")));
+        var p = new Provider(new[] { di });
+        var before = Snapshot(di.GameRoot);
+        var orch = Make(p);
+
+        Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
+        Assert.False(File.Exists(Path.Combine(play, "regulation.bin")));
+        Assert.Contains(Archive(RestorePointManifestStore.Read(RpDir)!, di.Id).TurnedOffByClear!, t => t.Name == "Modded regulation.bin");
+
+        var restore = await orch.RestoreAsync(Ts, default);
+        Assert.True(restore.Ok);
+        Assert.Empty(restore.Warnings);
+        AssertSameTree(before, di.GameRoot);
+        Assert.Equal("MODDED-REGULATION", File.ReadAllText(Path.Combine(play, "regulation.bin")));
     }
 
     [Fact]

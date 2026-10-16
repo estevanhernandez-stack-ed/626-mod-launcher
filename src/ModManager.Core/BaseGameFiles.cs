@@ -189,6 +189,115 @@ public static class BaseGameFiles
         catch { return false; }
     }
 
+    // ---------- FromSoft direct-inject: a game file the catalog matches by NAME alone ----------
+
+    // Catalog signatures (KnownDirectInjectMod) that match a file by its name only, where that name is ALSO
+    // a file the game itself ships in the play folder. Elden Ring's Game\regulation.bin is the one: the
+    // "Modded regulation.bin" entry cannot tell the game's file from a modded one by name.
+    private static readonly HashSet<string> DirectInjectGameFileNames = new(StringComparer.OrdinalIgnoreCase) { "regulation.bin" };
+
+    /// <summary>True when a direct-inject entry (a play-folder-relative name) is one the game itself ships,
+    /// whatever else is true of it. Name only: it says the file CAN be the game's. Whether it is a mod is
+    /// provenance (<see cref="IsDirectInjectGameFile"/>).</summary>
+    public static bool IsDirectInjectGameFileName(string? entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry)) return false;
+        var rel = entry.Replace('\\', '/').Trim('/');
+        return rel.IndexOf('/') < 0 && DirectInjectGameFileNames.Contains(rel);
+    }
+
+    /// <summary>
+    /// True when a direct-inject entry is the game's own file: it is a name the game ships
+    /// (<see cref="IsDirectInjectGameFileName"/>) and 626 has no record of putting it there
+    /// (<see cref="Placed"/>). A file is a mod only with provenance. A modded copy installed by hand, before
+    /// 626 or by another tool, has none, and reads as the game's: locked on, never moved. That is the safe
+    /// side of the call, because moving it leaves the game without the file either way.
+    /// </summary>
+    public static bool IsDirectInjectGameFile(string? entry, Placed placed)
+        => IsDirectInjectGameFileName(entry) && !placed.Claims(entry!);
+
+    /// <summary>A direct-inject row is the game's when any file it owns is (<see cref="IsDirectInjectGameFile"/>).</summary>
+    public static bool IsDirectInjectGameRow(IEnumerable<string> entries, Placed placed)
+        => entries.Any(e => IsDirectInjectGameFile(e, placed));
+
+    /// <summary>
+    /// What 626 can prove it put in a play folder. Three records, each read only when asked (so a listing with
+    /// nothing to judge costs no disk): an install record naming the file in THIS folder
+    /// (<see cref="ModInstallRegistry"/>, matched by its location path so a same-named file in another folder
+    /// proves nothing); the replaced store beside the game (<c>_626\replaced</c>, which a direct-inject drop
+    /// writes the displaced original into, matched by play-folder-relative path); and the replaced store in the
+    /// data folder, matched by the exact absolute path (its relative paths are relative to whichever mod
+    /// location that intake used, so they prove nothing about the play folder).
+    /// </summary>
+    public sealed class Placed
+    {
+        private readonly string? _gameRoot;
+        private readonly string? _dataDir;
+        private readonly string? _folder;
+        private HashSet<string>? _rels;
+        private HashSet<string>? _fulls;
+
+        /// <param name="gameRoot">The game root, which an install record's location path is relative to.</param>
+        /// <param name="dataDir">Where install records and the data-folder replaced store live.</param>
+        /// <param name="folder">The folder the entries are relative to (the play folder).</param>
+        public Placed(string? gameRoot, string? dataDir, string? folder)
+        {
+            _gameRoot = gameRoot;
+            _dataDir = dataDir;
+            _folder = folder;
+        }
+
+        /// <summary>Nothing is proven: every name the game ships reads as the game's.</summary>
+        public static Placed None => new(null, null, null);
+
+        /// <summary>True when 626 placed <paramref name="rel"/> (relative to the play folder).</summary>
+        public bool Claims(string rel)
+        {
+            if (string.IsNullOrEmpty(_folder) || string.IsNullOrWhiteSpace(rel)) return false;
+            Load();
+            if (_rels!.Contains(NormRel(rel))) return true;
+            return FullNorm(Path.Combine(_folder, rel)) is { } full && _fulls!.Contains(full);
+        }
+
+        private void Load()
+        {
+            if (_rels is not null) return;
+            var rels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var fulls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!string.IsNullOrEmpty(_dataDir))
+                {
+                    var here = string.IsNullOrEmpty(_gameRoot) ? null : ModInstallRegistry.LocationPathFor(_gameRoot, _folder!);
+                    if (here is not null)
+                        foreach (var rec in ModInstallRegistry.List(_dataDir))
+                            if (rec.LocationPath is { Length: > 0 } where && ModInstallRegistry.SameLocationPath(where, here))
+                                foreach (var f in rec.Files) rels.Add(NormRel(f));
+
+                    foreach (var e in ReplacedStore.ReadAll(Path.Combine(_dataDir, "replaced")))
+                        if (FullNorm(e.OriginalPath) is { } p) fulls.Add(p);
+                }
+                foreach (var e in ReplacedStore.ReadAll(DirectInject.ReplacedRoot(_folder!)))
+                {
+                    if (!string.IsNullOrEmpty(e.RelPath)) rels.Add(NormRel(e.RelPath));
+                    if (FullNorm(e.OriginalPath) is { } p) fulls.Add(p);
+                }
+            }
+            catch { /* an unreadable record proves nothing; the file reads as the game's, the safe side */ }
+            _rels = rels;
+            _fulls = fulls;
+        }
+
+        private static string NormRel(string p) => p.Replace('\\', '/').Trim('/');
+
+        private static string? FullNorm(string? p)
+        {
+            if (string.IsNullOrEmpty(p)) return null;
+            try { return Path.TrimEndingDirectorySeparator(Path.GetFullPath(p)); }
+            catch { return null; }
+        }
+    }
+
     /// <summary>The refusal an explicit turn-off gets.</summary>
     public static string TurnOffRefusal(string file) => $"{file} is part of the game, so 626 won't turn it off.";
 

@@ -36,6 +36,22 @@ public static partial class RestorePointEngine
     /// already on disk carry.</summary>
     public const string BaseFileRowNote = "still active: it is the game's own file, so 626 left it on";
 
+    /// <summary>How a row left on because a mod signature matched a file by NAME that the game also ships
+    /// (Elden Ring's regulation.bin), with no record that 626 placed it, starts. The reason says the file could be
+    /// a modded copy installed by hand, so a user returning to vanilla before going online is told to verify
+    /// the game's files. Read by its ending (<see cref="UnprovenGameFileSuffix"/>): its start would collide with
+    /// <see cref="CantTellNote"/>'s. See <see cref="UnprovenGameFileNote"/>.
+    /// <para><b>Frozen wording.</b> This text is sealed into every restore-point manifest that carries the note,
+    /// and the off-boarding sheet recognises the note by it. Editing it stops older restore points from counting
+    /// the file as left in place. To reword, keep this constant and add the new ending as a second match in
+    /// <see cref="OffBoardingHydrator"/>.</para></summary>
+    public const string UnprovenGameFileSuffix = " from a modded copy it didn't install. Verify the game's files in Steam before playing online.";
+
+    /// <summary>The reason for a file that is the game's by name and has no provenance: 626 left it, and says
+    /// it could be a modded copy it didn't install.</summary>
+    public static string UnprovenGameFileNote(string file)
+        => $"626 can't tell the game's {file}{UnprovenGameFileSuffix}";
+
     /// <summary>How a system folder location starts on the sheet.</summary>
     public const string SystemFolderPrefix = "not a mod folder: ";
 
@@ -85,8 +101,17 @@ public static partial class RestorePointEngine
         // A game file 626 replaced at intake (a cleaned Update.esm) keeps the replaced-file note: it is a mod
         // that is still active, which says more than "the game's own file".
         var replacedAtIntake = basePakRows.Count == 0 ? ReplacedFiles.None : ReplacedGameFiles(c);
+        var placed = basePakRows.Count == 0 ? null : DirectInjectListing.PlacedBy626(c.Game, DirectInjectListing.PlayFolder(c.GameRoot) ?? c.GameRoot);
         foreach (var m in basePakRows)
-            left.Add(new InPlaceNote(m.Name, ReplacedAGameFile(c, m, replacedAtIntake) ? ReplacedGameFileNote : BaseRowNote(c, m)));
+        {
+            // A direct-inject file a mod signature matches by name that the game also ships (regulation.bin) and 626
+            // never placed: left on like any game file, but the reason says it may be a modded copy, because on an
+            // anti-cheat title "vanilla" with a modded file in it is the one thing a user must be told.
+            var unproven = ModListing.MechanismFor(c.Game, c) == ListingMechanism.DirectInject
+                ? m.Files.FirstOrDefault(f => BaseGameFiles.IsDirectInjectGameFile(f, placed!)) : null;
+            left.Add(new InPlaceNote(m.Name, unproven is not null ? UnprovenGameFileNote(Path.GetFileName(unproven))
+                : ReplacedAGameFile(c, m, replacedAtIntake) ? ReplacedGameFileNote : BaseRowNote(c, m)));
+        }
         var basePakPaths = basePakRows.SelectMany(m => BaseDirFor(c, m) is { } bd
                 ? m.Files.Select(f => FullNorm(Path.Combine(bd, f))) : Enumerable.Empty<string?>())
             .Where(p => p is not null).Select(p => p!).ToList();

@@ -53,8 +53,8 @@ public class RestorePointEngineCombinedTests : IDisposable
         File.WriteAllText(Path.Combine(fwDir, "install.json"),
             System.Text.Json.JsonSerializer.Serialize(fwManifest, camel));
 
-        // (3) A root direct-inject file (modded-regulation signature).
-        File.WriteAllBytes(Path.Combine(gameRoot, "regulation.bin"), new byte[] { 1, 2, 3, 4 });
+        // (3) A root direct-inject file (erss2-frame-gen signature).
+        File.WriteAllBytes(Path.Combine(gameRoot, "erss-fg.dll"), new byte[] { 1, 2, 3, 4 });
 
         // (4) A UE4SS loader mod, enabled in the manifest.
         File.WriteAllText(Path.Combine(ue4ssMods, "mods.txt"), "Cheat : 1\n");
@@ -69,7 +69,7 @@ public class RestorePointEngineCombinedTests : IDisposable
         // Capture must not have touched live state.
         Assert.True(File.Exists(Path.Combine(c.DisabledRoot, "cool", "cool.pak")));
         Assert.True(File.Exists(Path.Combine(gameRoot, "dinput8.dll")));
-        Assert.True(File.Exists(Path.Combine(gameRoot, "regulation.bin")));
+        Assert.True(File.Exists(Path.Combine(gameRoot, "erss-fg.dll")));
         Assert.True(File.Exists(Path.Combine(fwDir, "install.json")));
         Assert.Single(entry.Frameworks);
         Assert.Contains(entry.LoaderMods, l => l.Name == "Cheat" && l.Loader == "ue4ss" && l.Enabled);
@@ -79,7 +79,7 @@ public class RestorePointEngineCombinedTests : IDisposable
         entry = entry with { MovedFiles = end.MovedFiles };
 
         // Vanilla mutated live: direct-inject moved out, framework files + manifest deleted, loader flipped off.
-        Assert.False(File.Exists(Path.Combine(gameRoot, "regulation.bin")));
+        Assert.False(File.Exists(Path.Combine(gameRoot, "erss-fg.dll")));
         Assert.False(File.Exists(Path.Combine(gameRoot, "dinput8.dll")));   // framework Uninstall deleted the file
         Assert.False(File.Exists(Path.Combine(fwDir, "install.json")));     // ...and the LIVE manifest
         Assert.False(Ue4ssManifest.IsEnabled(ue4ssMods, "Cheat"));          // loader flipped off
@@ -88,7 +88,7 @@ public class RestorePointEngineCombinedTests : IDisposable
         RestorePointEngine.ReplayGame(entry, gameArchiveDir, c);
 
         // Direct-inject restored byte-for-byte.
-        Assert.Equal(new byte[] { 1, 2, 3, 4 }, File.ReadAllBytes(Path.Combine(gameRoot, "regulation.bin")));
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, File.ReadAllBytes(Path.Combine(gameRoot, "erss-fg.dll")));
         // Framework FILE restored from frameworks-state.
         Assert.Equal(new byte[] { 10, 20, 30 }, File.ReadAllBytes(Path.Combine(gameRoot, "dinput8.dll")));
         // Framework MANIFEST restored from the archived data dir (so a later Uninstall still works).
