@@ -18,7 +18,7 @@ public static class SaveWriteRiskPrompt
         var body = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Text = "This game uses anti-cheat, and its publisher's rules can treat a modified save as a reason "
+            Text = "This game carries a ban risk, and its publisher's rules can treat a modified save as a reason "
                  + "to ban an account. The launcher snapshots the save first, so you can put it back. It can't "
                  + "tell you whether an edited save is safe to take online, and it won't guess.",
         };

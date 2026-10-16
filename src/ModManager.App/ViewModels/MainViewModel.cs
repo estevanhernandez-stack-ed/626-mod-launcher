@@ -426,7 +426,7 @@ public sealed partial class MainViewModel : ObservableObject
     // MpWarning when the active game changes.
     public Visibility BanRiskWarningVisibility =>
         _ctx is not null && BanRiskCatalog.Effective(_ctx.Game) >= GameBanRisk.Medium ? Visibility.Visible : Visibility.Collapsed;
-    public string BanRiskWarningText => "This game uses anti-cheat — enabling mods for online play can get your account banned.";
+    public string BanRiskWarningText => "Modding this game for online play can get your account banned.";
     private void NotifyBanRiskWarning() { OnPropertyChanged(nameof(BanRiskWarningVisibility)); OnPropertyChanged(nameof(BanRiskWarningText)); }
 
     // ---------------------------------------------------------------------------------------------
