@@ -384,6 +384,11 @@ public static class Scanner
     {
         ScanCostProbe.CountModList();
         var outMap = new Dictionary<string, Mod>();
+        // Names currently in holding. A standalone file whose row name is held is NOT listed: the live row
+        // would take the name, the held row would be skipped below, and the held copy would become
+        // unreachable (can't turn off, and an uninstall of the visible row would delete the hidden folder).
+        var heldNames = new HashSet<string>(
+            HoldingName.Listed(SafeReadDirs(c.DisabledRoot)).Select(h => h.Name), StringComparer.OrdinalIgnoreCase);
         // Each location is scanned according to its form: "folders" = one folder per mod (UE4SS Lua
         // mods); "files" = pak files grouped by filename. A managed location (Vortex) tags its mods.
         foreach (var loc in c.Locations)
@@ -460,6 +465,7 @@ public static class Scanner
                 foreach (var f in StandaloneSidecars.Find(allInDir, allInDir.Where(n => c.FileRe.IsMatch(n)).ToList(), c))
                 {
                     var k = StandaloneSidecars.KeyFor(f, c);
+                    if (heldNames.Contains(k) && !outMap.ContainsKey(k)) continue;
                     if (!outMap.TryGetValue(k, out var mod))
                     {
                         mod = new Mod

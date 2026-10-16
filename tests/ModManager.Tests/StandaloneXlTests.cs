@@ -148,6 +148,54 @@ public class StandaloneXlTests
         Assert.True(File.Exists(Path.Combine(modsDir, "Plain.xl")));
     }
 
+    // The archive is held in disabled/X/ and an orphan X.archive.xl is live. The live .xl must not take the
+    // name "X" from the held row: it would read on, could not be turned off (the holding folder is taken),
+    // and an uninstall of it would delete the held archive nobody was shown.
+    [Fact]
+    public async Task A_live_xl_does_not_hide_a_held_copy_with_the_same_name()
+    {
+        var (modsDir, c) = Fixture();
+        var archive = new byte[] { 1, 2, 3, 0, 255 };
+        var xl = new byte[] { 9, 8, 7, 0, 13, 10 };
+        File.WriteAllBytes(Path.Combine(modsDir, "X.archive"), archive);
+        await Scanner.DisableModAsync("X", c);
+        File.WriteAllBytes(Path.Combine(modsDir, "X.archive.xl"), xl);
+
+        var row = Assert.Single(await Scanner.BuildModListAsync(c));
+        Assert.Equal("X", row.Name);
+        Assert.False(row.Enabled);
+        Assert.Equal(new[] { "X.archive" }, row.Files);
+
+        await Scanner.EnableModAsync("X", c);
+
+        Assert.Equal(archive, File.ReadAllBytes(Path.Combine(modsDir, "X.archive")));
+        Assert.Equal(xl, File.ReadAllBytes(Path.Combine(modsDir, "X.archive.xl")));
+        var after = Assert.Single(await Scanner.BuildModListAsync(c));
+        Assert.True(after.Enabled);
+        Assert.Equal(new[] { "X.archive", "X.archive.xl" }, after.Files.OrderBy(f => f, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Uninstalling_while_a_same_named_copy_is_held_deletes_only_what_the_row_shows()
+    {
+        var (modsDir, c) = Fixture();
+        File.WriteAllText(Path.Combine(modsDir, "X.archive"), "A");
+        await Scanner.DisableModAsync("X", c);
+        File.WriteAllText(Path.Combine(modsDir, "X.archive.xl"), "XL");
+
+        var row = Assert.Single(await Scanner.BuildModListAsync(c));
+        Assert.False(row.Enabled);   // the row IS the held copy; the live .xl is not a second thing to delete
+
+        // The live .xl is untouched by anything the row offers until the pair is reunited.
+        Assert.True(File.Exists(Path.Combine(modsDir, "X.archive.xl")));
+        Assert.True(File.Exists(Path.Combine(c.DisabledRoot, "X", "X.archive")));
+
+        // Uninstalling that row removes the held copy it shows, and nothing it does not: the live .xl stays.
+        await Scanner.UninstallModAsync("X", c);
+        Assert.False(Directory.Exists(Path.Combine(c.DisabledRoot, "X")));
+        Assert.True(File.Exists(Path.Combine(modsDir, "X.archive.xl")));
+    }
+
     [Fact]
     public async Task A_game_that_does_not_list_archive_gets_no_xl_rows()
     {
