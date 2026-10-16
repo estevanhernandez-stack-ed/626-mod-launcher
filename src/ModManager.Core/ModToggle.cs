@@ -146,7 +146,12 @@ public static class ModToggle
         var folder = DirectInjectListing.PlayFolder(game.GameRoot);
         if (folder is null) return;
         var holding = DirectInjectListing.Holding(game);
-        if (enabled) { DirectInject.Enable(folder, holding, modName); return; }
+        if (enabled)
+        {
+            RefuseOverLiveGameFile(game, folder, holding, modName);
+            DirectInject.Enable(folder, holding, modName);
+            return;
+        }
 
         var mod = DirectInjectListing.Enabled(folder).FirstOrDefault(m => m.Name == modName);
         if (mod is null) return;
@@ -155,6 +160,42 @@ public static class ModToggle
         // single explicit toggle was already refused in words by DispatchAsync.
         if (BaseGameFiles.IsDirectInjectGameRow(mod.Entries, DirectInjectListing.PlacedBy626(game, folder))) return;
         DirectInject.Disable(folder, holding, mod);
+    }
+
+    // A held copy can't come back over a live file the game ships (a fresh regulation.bin from Steam's verify, with an
+    // older build's copy still held). DirectInject.Enable's own collision advice is to turn the live copy off or remove
+    // it, and for the game's file both are impossible, so say what is true instead. The held copy stays where it is.
+    private static void RefuseOverLiveGameFile(GameEntry game, string folder, string holding, string modName)
+    {
+        var held = DirectInject.ListDisabled(holding).FirstOrDefault(m => m.Name == modName);
+        if (held is null) return;
+        var placed = DirectInjectListing.PlacedBy626(game, folder);
+        var live = held.Entries.FirstOrDefault(e => BaseGameFiles.IsDirectInjectGameFile(e, placed)
+                                                    && (File.Exists(Path.Combine(folder, e)) || Directory.Exists(Path.Combine(folder, e))));
+        if (live is null) return;
+        throw new HeldCopyCollisionException(
+            $"Couldn't turn \"{held.Name}\" back on: {live} in the game folder is the game's own file, so 626 won't move it or "
+            + $"swap the held copy in over it. The held copy stays in {Path.Combine(holding, EnginePresets.Slugify(held.Name))}; "
+            + "remove it by hand if you don't want it. Nothing was moved.");
+    }
+
+    /// <summary>A bulk direct-inject change that isn't from a tracked refusal: the name and why.</summary>
+    public sealed record BulkRefusal(string Name, string Error);
+
+    /// <summary>
+    /// Enable all / Disable all on a direct-inject game: each row through <see cref="SetDirectInjectEnabled"/>, one at a
+    /// time, so one refusal doesn't stop the rest. The game's own files are skipped on a turn-off (not a refusal);
+    /// anything that throws is returned by name with its message for the status line. Turning one ON is always tried.
+    /// </summary>
+    public static IReadOnlyList<BulkRefusal> SetDirectInjectAll(GameEntry game, IEnumerable<Mod> rows, bool on)
+    {
+        var refused = new List<BulkRefusal>();
+        foreach (var m in rows.Where(m => m.Enabled != on && !(m.IsBase && !on)).ToList())
+        {
+            try { SetDirectInjectEnabled(game, m.Name, on); }
+            catch (Exception e) { refused.Add(new BulkRefusal(m.Name, ErrorRemedy.Describe(e))); }
+        }
+        return refused;
     }
 
     /// <summary>Loose-root (decima): the same reversible move, in the game root, with

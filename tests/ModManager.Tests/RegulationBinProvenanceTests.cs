@@ -291,4 +291,74 @@ public class RegulationBinProvenanceTests : IDisposable
         AssertVanillaInPlace();
         Assert.True(Row(RowName).Enabled);
     }
+
+    // ---------- the repair path when Steam verify put a fresh copy back ----------
+
+    // An older build held regulation.bin in direct-disabled; the play folder now has a fresh one (Steam verify).
+    private string HoldOldCopyThenPutFreshOneBack()
+    {
+        var folder = DirectInjectListing.PlayFolder(GameRoot)!;
+        var holding = DirectInjectListing.Holding(Game());
+        DirectInject.Disable(folder, holding, DirectInjectListing.Enabled(folder).Single(m => m.Name == RowName));
+        File.WriteAllBytes(RegPath, Modded);   // the fresh live copy, distinguishable from the held one
+        return Path.Combine(holding, EnginePresets.Slugify(RowName));
+    }
+
+    [Fact]
+    public void Turning_on_a_held_copy_over_a_live_game_file_refuses_with_a_specific_message_and_moves_nothing()
+    {
+        var heldDir = HoldOldCopyThenPutFreshOneBack();
+
+        var ex = Assert.Throws<HeldCopyCollisionException>(() => ModToggle.SetDirectInjectEnabled(Game(), RowName, enabled: true));
+
+        // Says the live file is the game's (so "turn the live copy off" is not the advice) and where the held copy is.
+        Assert.Contains("the game's", ex.Message);
+        Assert.DoesNotContain("Turn that copy off", ex.Message);
+        Assert.Contains(heldDir, ex.Message);
+        Assert.Equal(Modded, File.ReadAllBytes(RegPath));                         // the live file untouched
+        Assert.Equal(Vanilla, File.ReadAllBytes(Path.Combine(heldDir, Reg)));      // the held copy stays held
+    }
+
+    [Fact]
+    public void A_live_copy_626_replaced_keeps_the_ordinary_collision_message()
+    {
+        // Provenance on the live file: it is a mod, so the usual "turn that copy off or remove it" advice is true.
+        var heldDir = HoldOldCopyThenPutFreshOneBack();
+        ModInstallRegistry.Save(DataDir, new ModInstallManifest(
+            "reg-pack", "RegPack.zip", "direct-inject", new[] { Reg }, DateTime.UtcNow,
+            LocationPath: ModInstallRegistry.LocationPathFor(GameRoot, Play)));
+
+        var ex = Assert.Throws<HeldCopyCollisionException>(() => ModToggle.SetDirectInjectEnabled(Game(), RowName, enabled: true));
+
+        Assert.Contains("Turn that copy off", ex.Message);
+        Assert.Equal(Vanilla, File.ReadAllBytes(Path.Combine(heldDir, Reg)));
+    }
+
+    [Fact]
+    public void Enable_all_carries_on_past_a_refusal_and_reports_it()
+    {
+        // The real mod is held too; the regulation.bin collision must not stop it coming back.
+        var folder = DirectInjectListing.PlayFolder(GameRoot)!;
+        var holding = DirectInjectListing.Holding(Game());
+        DirectInject.Disable(folder, holding, DirectInjectListing.Enabled(folder).Single(m => m.Name == "ERSS2 Frame Gen"));
+        HoldOldCopyThenPutFreshOneBack();
+        Assert.False(File.Exists(Path.Combine(Play, "erss-fg.dll")));
+
+        var refused = ModToggle.SetDirectInjectAll(Game(), ModListing.Resolve(Game()), on: true);
+
+        Assert.Equal("fg", File.ReadAllText(Path.Combine(Play, "erss-fg.dll")));    // the rest went on
+        var one = Assert.Single(refused);
+        Assert.Equal(RowName, one.Name);
+        Assert.Contains("the game's", one.Error);
+    }
+
+    [Fact]
+    public void Disable_all_through_the_bulk_helper_skips_the_game_file_and_moves_the_mod()
+    {
+        var refused = ModToggle.SetDirectInjectAll(Game(), ModListing.Resolve(Game()), on: false);
+
+        Assert.Empty(refused);                       // a game file is skipped, not a refusal
+        AssertVanillaInPlace();
+        Assert.False(File.Exists(Path.Combine(Play, "erss-fg.dll")));
+    }
 }

@@ -1666,6 +1666,7 @@ public sealed partial class MainViewModel : ObservableObject
         // knowing which of them were on, and Enable all is not the undo for Disable all.
         var saved = await SnapshotBeforeBulkAsync(on ? "enable all" : "disable all");
 
+        IReadOnlyList<ModToggle.BulkRefusal> directRefused = Array.Empty<ModToggle.BulkRefusal>();
         await BulkAsync(() =>
         {
             // A bulk enable/disable is a manual state change too — clear the vanilla stash so the mode
@@ -1676,8 +1677,9 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 // The game's own files (Mod.IsBase, e.g. Elden Ring's regulation.bin) stay where they are: a bulk
                 // turn-off skips them, like the scanner's bulk loops. Turning one ON is always fine.
-                foreach (var m in _allRows.Where(m => m.Enabled != on && !(m.Mod.IsBase && !on)))
-                    _direct.SetEnabled(_ctx!.Game, m.Mod.Name, on);
+                // One row's refusal (a held copy that can't come back over a live game file) must not stop the rest;
+                // the refused ones are named in the status line below.
+                directRefused = ModToggle.SetDirectInjectAll(_ctx!.Game, _allRows.Select(r => r.Mod), on);
                 return Task.CompletedTask;
             }
             if (LooseRootBacked)
@@ -1695,6 +1697,11 @@ public sealed partial class MainViewModel : ObservableObject
             return Scanner.SetAllModsAsync(on, _ctx!);
         });
         if (saved is not null) StatusText = BulkSnapshot.Reassurance(saved);
+        // The rest went through; the ones that refused are named, with the reason 626 gave for each.
+        if (directRefused.Count > 0)
+            StatusText = (saved is not null ? StatusText + " " : "")
+                + $"{directRefused.Count} couldn't be turned {(on ? "on" : "off")}: "
+                + string.Join(" ", directRefused.Select(r => $"{r.Name}: {r.Error}"));
     }
 
     /// <summary>Save the current enabled set before a bulk operation, and say where it went.
