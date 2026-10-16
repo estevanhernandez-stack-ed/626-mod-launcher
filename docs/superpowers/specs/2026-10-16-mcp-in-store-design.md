@@ -53,10 +53,15 @@ Sanduhr ships its MCP in its Store app. Read in
   (`%USERPROFILE%\.claude.json` for the default home, inside the home when `CLAUDE_CONFIG_DIR`
   selects it). Re-read, mutate only the owned key, timestamped backup, temp file plus atomic move,
   never overwrite a file that does not parse, deregister only an entry that still points at Sanduhr.
-- **Backups.** Beside the config, as `<.claude.json>.sanduhr-backup-<yyyyMMddHHmmss>`
-  (`WriteConfigSafely`). Not under `%APPDATA%\Sanduhr\backups\`; there is no such folder in the
-  Windows code. `docs/PRIVACY.md` row 27 agrees: "a timestamped backup is saved beside it first".
-- **Privacy.** `docs/PRIVACY.md` rows 26 and 27: what is written where, which home, how to remove it.
+- **Backups.** Under `%APPDATA%\Sanduhr\backups\`, through `ConfigCommit`
+  (`McpIntegrationInstaller.Commit => new(Path.Combine(_sanduhrDir, "backups"))` on Sanduhr's
+  `origin/main`, 2026-10-11, 44be5a5). Older code wrote `<.claude.json>.sanduhr-backup-<stamp>` beside
+  the config; the local Sanduhr checkout on Neb is on a branch that still has that version, so read
+  `origin/main`, not the working tree, before copying the pattern. Backups away from the config file are
+  the shape to copy: a sibling backup of `.claude.json` duplicates the sign-in block next to it.
+- **Privacy.** `docs/PRIVACY.md` on `origin/main`: the "MCP registration" row (server copy, launcher,
+  the `mcpServers` entry, which home) and the "Install receipts and backups" row (`%APPDATA%\Sanduhr\backups\`),
+  plus Reset Sanduhr… for removal.
 - **The cost.** The copy-out only works because Sanduhr 3.4.3 turned off AppData write
   virtualization: `desktop6:FileSystemWriteVirtualization` disabled plus
   `virtualization:ExcludedDirectories`, behind the restricted capability `unvirtualizedResources`,
