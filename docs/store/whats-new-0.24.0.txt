@@ -1,0 +1,17 @@
+Version 0.24.0
+
+• The game's own files stay put. Turning off every mod, loading a profile or returning to vanilla never touches a game's own files. On Skyrim and other Bethesda games, 0.23.0 could move the game's main file aside and stop it launching. That is fixed, and a game file already moved aside can be switched back on.
+
+• Load order never renames a Bethesda game's plugins, which broke the mods that depend on them. Where the launcher did rename files for load order, Undo puts the original names back.
+
+• Return to vanilla now turns off the mods it can prove are mods, and Restore puts them back. Anything it cannot tell apart from the game is left in place and named.
+
+• A Cyberpunk 2077 mod now turns off in every folder it uses, not just one.
+
+• Uninstall names everything it will delete before you confirm.
+
+• A new warning when a mod loader is older than the game, the usual reason a game crashes after a patch.
+
+• Windrose save mods install, and a restore into the wrong folder is refused before anything changes.
+
+• Close to tray, off by default, in Settings.
