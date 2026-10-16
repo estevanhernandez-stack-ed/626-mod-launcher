@@ -105,7 +105,7 @@ The game's own files stay put: Disable All, loadouts and load order can no longe
 - **Discovery (#363, #367).** `LooseIdentify.SearchEachAsync` is the one capped engine behind both name passes, and only names you approve grow the per-game index. `AdoptionReviewText` gives both review dialogs one spelling.
 - **Registration-repair smoke (#381).** All 15 repair steps were driven live through UI Automation and found the two setup bugs fixed above. `DiscoverySweep.ModPathsFor` makes the sweep read the same corrected folders as the listing.
 - **Build hygiene (#366).** All 33 `[ObservableProperty]` fields are partial properties, and the App builds with warnings as errors again.
-- 3797 Core tests passing, 2 skipped, at the cut (`c1e68d0`). The full smoke harness ran 42 of 42 green on the same commit.
+- 3797 Core tests passing, 2 skipped, at the cut. The full smoke harness ran 42 of 42 green before it.
 
 ## Known issues / not yet
 
