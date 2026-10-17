@@ -155,6 +155,15 @@ public static class PatchDay
         };
     }
 
+    /// <summary>
+    /// Whether Play should stop and ask: the game is Patched, the player has not chosen yet, and there is a
+    /// stored record for the choice to land on. Snooze does not count as a choice, so a snoozed game that is
+    /// still Patched asks again; Play is the moment the answer matters, and the snooze only hides the chip.
+    /// Once a choice is recorded this is false and Play launches whatever the choice left on disk.
+    /// </summary>
+    public static bool ShouldAskAtPlay(PatchDayVerdict? verdict)
+        => verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None, Record: not null };
+
     public static PatchDayRecord Choose(PatchDayRecord record, PatchDayChoice choice) => record with { Choice = choice };
 
     /// <summary>"Tell me when it's fixed": hide the chip until the state or the build changes.</summary>

@@ -96,6 +96,13 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<string, IReadOnlyList<BanSafeLoaderOption>, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
 
     /// <summary>
+    /// Asks the Patch Day question at Play: given the PATCH DAY chip for the active game, returns the action the
+    /// player picked (PlayVanilla, PlayModded or Snooze), or null when they dismissed it. The view owns the dialog
+    /// (XamlRoot), same as <see cref="ConfirmBanRiskEnable"/>. When unset, Play launches as it always did.
+    /// </summary>
+    public Func<GameStateChip, Task<PatchDayAction?>>? AskPatchDayAtPlay { get; set; }
+
+    /// <summary>
     /// Shows the save-write prompt for a high-risk game and returns (proceed, dontAskAgain). The view wires
     /// it (dialog + XamlRoot live in code-behind). Unlike the enable gate, an UNWIRED delegate refuses:
     /// writing a changed save without the prompt is the one thing this gate exists to prevent.
@@ -2364,6 +2371,17 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task Launch()
     {
         if (_ctx is null) return;
+        // Patch Day: a patched game with no choice recorded asks first. The answer goes through the chip's own
+        // action path, which records it and (for modded) passes the ban-risk gate; nothing launches from here.
+        // Once a choice is recorded ShouldAskAtPlay is false, so this falls straight through and launches the
+        // state the choice left on disk (vanilla: mods already stepped aside; modded: mods in place).
+        if (PatchDay.ShouldAskAtPlay(_patchDayVerdict) && AskPatchDayAtPlay is { } ask
+            && string.Equals(_patchDayVerdictGameId, _ctx.Game.Id, StringComparison.Ordinal))
+        {
+            var pick = await ask(GameStateStrip.PatchDayChip(_patchDayVerdict!, _ctx.Game.GameName));
+            if (pick is { } action) await RunPatchDayActionAsync(action);
+            return;
+        }
         // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
         if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
         {

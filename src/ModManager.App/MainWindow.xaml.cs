@@ -89,6 +89,13 @@ public sealed partial class MainWindow : Window
         // The safe-loader list lets the dialog surface "Launch / Get" buttons — installed loaders can
         // be started in one click; uninstalled loaders open the Get-it-here URL.
         ViewModel.ConfirmBanRiskEnable = ConfirmBanRiskEnableAsync;
+        // Patch Day at Play: the VM decides whether to ask (PatchDay.ShouldAskAtPlay); the window owns the dialog.
+        ViewModel.AskPatchDayAtPlay = async chip =>
+        {
+            var dialog = new PatchDayDialog(chip) { XamlRoot = Content.XamlRoot };
+            await dialog.ShowAsync();
+            return dialog.Choice;
+        };
         // Save-write prompt for high-risk games. The VM decides whether to ask
         // (BanRiskRules.ShouldGateSaveWrite); the shared helper owns the copy.
         ViewModel.ConfirmSaveWrite = name => ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(Content.XamlRoot, name);

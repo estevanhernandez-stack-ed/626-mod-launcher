@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ModManager.App.PatchDayDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    DefaultButton="None"
+    AutomationProperties.Name="The game updated">
+
+    <!-- Dialog shell (vibe-glow F-008): 3px accent rail + mono-caps stencil eyebrow + title,
+         per the design language's dialog rules. Rail bleeds toward the dialog edges. -->
+    <ContentDialog.Title>
+        <StackPanel Spacing="6">
+            <Border Height="3" Background="{StaticResource ThemeAccent}" Margin="-24,0,-24,4"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="PATCH DAY // PLAY" FontFamily="{StaticResource MonoFontFamily}" AutomationProperties.AccessibilityView="Raw"
+                       FontSize="{StaticResource TagFontSize}" CharacterSpacing="80"
+                       Foreground="{StaticResource ThemeInkDim}" />
+            <TextBlock Text="Before you play" FontSize="{StaticResource ViewTitleFontSize}" FontWeight="SemiBold" />
+        </StackPanel>
+    </ContentDialog.Title>
+
+    <!-- No built-in buttons: the three choices (and Not now) are real Buttons in the content so each carries
+         its own AutomationId. Escape still closes the dialog with nothing chosen. -->
+    <StackPanel Spacing="12" Width="440">
+        <TextBlock AutomationProperties.AutomationId="PatchDayDialog" x:Name="SentenceText"
+                   TextWrapping="Wrap" Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}" />
+        <StackPanel Spacing="8">
+            <Button AutomationProperties.AutomationId="PatchDayPlayVanilla" x:Name="PlayVanillaButton"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnPlayVanilla" />
+            <Button AutomationProperties.AutomationId="PatchDayPlayModded" x:Name="PlayModdedButton"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnPlayModded" />
+            <Button AutomationProperties.AutomationId="PatchDaySnooze" x:Name="SnoozeButton"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnSnooze" />
+            <Button AutomationProperties.AutomationId="PatchDayNotNow" AutomationProperties.Name="Not now"
+                    Content="Not now" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnNotNow" />
+        </StackPanel>
+    </StackPanel>
+</ContentDialog>
