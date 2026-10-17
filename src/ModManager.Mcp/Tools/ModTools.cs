@@ -52,13 +52,16 @@ public static class ModTools
     [Description("What a game's registration claims versus where its mods actually are: the listing "
                + "mechanism, the play folder, declared locations with an exists flag, the real "
                + "directories mods were found in, any loaders present, and an alignment verdict with "
-               + "plain-language notes. Start here when something looks wrong — drift is common and "
+               + "plain-language notes, and a patchDay block (null unless a game patch is in play). Start here when something looks wrong — drift is common and "
                + "usually harmless, and this says which it is.")]
     public static object GetGameShape([Description("The game id, from list_games.")] string gameId)
     {
         var game = Find(gameId);
         if (game is null) return UnknownGame(gameId);
         var s = GameShape.Of(game);
+        var feed = ModManager.Core.Manifest.EffectiveManifest.Current.LoaderReleases
+            .Select(r => r.ToRelease()).OfType<LoaderRelease>().ToList();
+        var pd = PatchDayShape.Of(game, Scanner.GameContext(game), feed);
         return new
         {
             gameId = s.GameId,
@@ -93,6 +96,20 @@ public static class ModTools
                 fileCount = r.FileCount, insideDeclared = r.InsideDeclared,
             }).ToArray(),
             loaders = s.Loaders,
+            // Read-only. Null while no patch is in play. No live Steam build here, so state is one of
+            // patched | playingVanilla | updateAvailable | loaderUpdated, derived from the record.
+            patchDay = pd is null ? null : new
+            {
+                state = pd.State,
+                detectedBuild = pd.DetectedBuild,
+                choice = pd.Choice,
+                snoozed = pd.Snoozed,
+                restorePoint = pd.RestorePoint,
+                restorePointError = pd.RestorePointError,
+                loader = pd.Loader is null ? null : new { name = pd.Loader.Name, fileUtc = pd.Loader.FileUtc },
+                latestRelease = pd.LatestRelease is null ? null
+                    : new { version = pd.LatestRelease.Version, publishedUtc = pd.LatestRelease.PublishedUtc, url = pd.LatestRelease.Url },
+            },
             notes = s.Notes,
             hint = "modCount counts mod keys; rowCount counts what a person sees, after variantFamilies "
                    + "collapse into single rows. They differ only by those families. A declaredLocation "

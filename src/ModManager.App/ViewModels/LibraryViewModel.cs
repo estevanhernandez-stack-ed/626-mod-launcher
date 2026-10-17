@@ -76,11 +76,21 @@ public sealed partial class GameLibraryRowViewModel : LibraryCoverRowViewModel
     /// render identically (no badge). See <see cref="UpdateBadgeVisibility"/>.</summary>
     public int PendingUpdateCount { get; }
 
-    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0) : base(row.CoverPath)
+    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0, string? patchDayLine = null) : base(row.CoverPath)
     {
         Row = row;
         PendingUpdateCount = pendingUpdateCount;
+        PatchDayLine = patchDayLine;
     }
+
+    /// <summary>Patch Day state line from the persisted record and the cheap launch-mode check; null when quiet.</summary>
+    public string? PatchDayLine { get; }
+    public string PatchDayText => PatchDayLine ?? "";
+    public Visibility PatchDayVisibility => PatchDayLine is null ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Bound id for the patch-day line; prefixed apart from the row and recent-card ids.</summary>
+    public string PatchDayAutomationId => $"GameRowPatchDay.{Id}";
+    public string PatchDayAutomationName => PatchDayLine is null ? "" : $"{Name}: {PatchDayLine}";
 
     public string Id => Row.Id;
     public override string Name => Row.Name;
@@ -403,7 +413,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         foreach (var r in rows)
         {
             var pending = updateByGameId.TryGetValue(r.Id, out var summary) && summary.Checked ? summary.Count : 0;
-            var vm = new GameLibraryRowViewModel(r, pending);
+            var vm = new GameLibraryRowViewModel(r, pending, PatchDayLineFor(games.FirstOrDefault(g => g.Id == r.Id)));
             _allRows.Add(vm);
             _managedByRow[r] = vm;
         }
@@ -471,6 +481,18 @@ public sealed partial class LibraryViewModel : ObservableObject
         => game.StoreKind == "steam" ? _covers.LocalPortrait(game.AppId) : null;
 
     // --- Builder delegates (App-side lookups over the existing services) -----------------------------
+
+    // Persisted record + one file check (the vanilla stash). No Steam scan, no loader scan per row.
+    private static string? PatchDayLineFor(GameEntry? g)
+    {
+        if (g?.PatchDay is null) return null;
+        try
+        {
+            var mode = string.IsNullOrEmpty(g.DataDir) ? LaunchMode.Modded : VanillaLaunch.CurrentMode(g.DataDir);
+            return PatchDay.LibraryLine(g.PatchDay, mode);
+        }
+        catch (Exception) { return null; }
+    }
 
     private static GameModState ModStateFor(GameEntry g)
     {

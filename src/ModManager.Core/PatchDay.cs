@@ -155,6 +155,18 @@ public static class PatchDay
         };
     }
 
+    /// <summary>
+    /// The Library home row's state line, from the persisted record and the cheap launch-mode file check
+    /// only (no Steam scan, no loader scan per row). Null when there is nothing to say. A Vanilla choice
+    /// with the mods back in place is quiet: the player already undid it.
+    /// </summary>
+    public static string? LibraryLine(PatchDayRecord? record, LaunchMode mode) => record switch
+    {
+        null => null,
+        { Choice: PatchDayChoice.Vanilla } => mode == LaunchMode.Vanilla ? "Playing vanilla since the patch" : null,
+        _ => "Updated since your last modded launch",
+    };
+
     public static PatchDayRecord Choose(PatchDayRecord record, PatchDayChoice choice) => record with { Choice = choice };
 
     /// <summary>"Tell me when it's fixed": hide the chip until the state or the build changes.</summary>

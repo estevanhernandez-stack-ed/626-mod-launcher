@@ -57,6 +57,11 @@
                             <TextBlock Text="{x:Bind RecencyText}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkDim}" />
                         </StackPanel>
                         <TextBlock Text="{x:Bind ModStateText}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource ThemeInkSoft}" />
+                        <TextBlock Text="{x:Bind PatchDayText}" FontSize="{StaticResource BodyFontSize}"
+                                   Foreground="{StaticResource ThemeAccent}"
+                                   Visibility="{x:Bind PatchDayVisibility}"
+                                   AutomationProperties.AutomationId="{x:Bind PatchDayAutomationId}"
+                                   AutomationProperties.Name="{x:Bind PatchDayAutomationName}" />
 
                         <!-- Chips: tier · ban risk · detected loaders -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
