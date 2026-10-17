@@ -33,8 +33,8 @@ public sealed record RestorePointManifest(
     int FileCount,
     IReadOnlyList<GameArchive> Games,
     // Optional, omitted when null (a Safe Clear point). "patchDay" marks the capture-only, one-game snapshot
-    // Patch Day takes: it carries no turn-off record and Restore treats it as an overlay (see
-    // RestorePointOrchestrator.CaptureGameOnlyAsync). Additive, no SchemaVersion bump.
+    // Patch Day takes (see RestorePointOrchestrator.CaptureGameOnlyAsync): it carries no turn-off record, and
+    // RestoreAsync refuses any point that has a kind until a safe restore exists. Additive, no SchemaVersion bump.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Kind = null);
 
 /// <summary>One game's archived state. EndState is "vanilla" | "modsActive".</summary>

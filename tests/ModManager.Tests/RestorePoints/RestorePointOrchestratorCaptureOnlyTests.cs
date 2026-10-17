@@ -94,7 +94,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         var r = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
 
         Assert.True(r.Ok, r.RefusedReason);
-        Assert.Equal("20261016-120000", r.RestorePointTimestamp);
+        Assert.Equal("20261016-120000-t", r.RestorePointTimestamp);   // folder name: {timestamp}-{gameId}
         Assert.Equal(gameBefore, Hash(t.GameRoot));            // game folder + mod dirs
         Assert.Equal(dataBefore, Hash(t.DataDir!));            // no RESTORE-AVAILABLE.json, nothing held or moved
         Assert.Equal(otherBefore, Hash(u.GameRoot));
@@ -113,7 +113,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         var r = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
         Assert.True(r.Ok, r.RefusedReason);
 
-        var rp = RpDir(dataRoot, "20261016-120000");
+        var rp = RpDir(dataRoot, "20261016-120000-t");
         var m = RestorePointManifestStore.Read(rp)!;
         Assert.True(RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion).Ok);
         var only = Assert.Single(m.Games);
@@ -137,7 +137,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         Assert.True((await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default)).Ok);
 
         var info = Assert.Single(orch.ListRestorePoints());
-        Assert.Equal("20261016-120000", info.Timestamp);
+        Assert.Equal("20261016-120000-t", info.Timestamp);
         Assert.Equal(new[] { "T" }, info.GameNames);
         Assert.Equal(RestorePointKinds.PatchDay, info.Kind);
         Assert.True(info.Complete);
@@ -166,7 +166,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         Assert.False(r.Ok);
         Assert.Null(r.RestorePointTimestamp);
         Assert.Contains("free space", r.RefusedReason!);
-        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000")));
+        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000-t")));
         Assert.Empty(orch.ListRestorePoints());
         Assert.Equal(gameBefore, Hash(t.GameRoot));
     }
@@ -178,7 +178,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         var r = await orch.CaptureGameOnlyAsync("nope", RestorePointKinds.PatchDay, "20261016-120000", default);
         Assert.False(r.Ok);
         Assert.Contains("nope", r.RefusedReason!);
-        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000")));
+        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000-t")));
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         Assert.False(r.Ok);
         Assert.Contains("reset", r.RefusedReason!, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("20261016-110000", File.ReadAllText(lockPath));     // the clear's breadcrumb is not ours to touch
-        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000")));
+        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000-t")));
     }
 
     [Fact]
@@ -201,12 +201,12 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
     {
         var (_, _, dataRoot, orch, _, _) = await Fixture();
         Assert.True((await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default)).Ok);
-        var before = Hash(RpDir(dataRoot, "20261016-120000"));
+        var before = Hash(RpDir(dataRoot, "20261016-120000-t"));
 
         var again = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
 
         Assert.False(again.Ok);
-        Assert.Equal(before, Hash(RpDir(dataRoot, "20261016-120000")));  // never delete a point we did not make
+        Assert.Equal(before, Hash(RpDir(dataRoot, "20261016-120000-t")));  // never delete a point we did not make
         Assert.Single(orch.ListRestorePoints());
     }
 
@@ -225,7 +225,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
             Assert.False(string.IsNullOrWhiteSpace(r.RefusedReason));
         }
 
-        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000")));   // partial archive cleaned up
+        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000-t")));   // partial archive cleaned up
         Assert.Empty(orch.ListRestorePoints());
         Assert.Equal(gameBefore, Hash(t.GameRoot));
         // and a retry after the lock is gone works: the failure left nothing behind to trip over
@@ -233,39 +233,156 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
     }
 
     [Fact]
-    public async Task Capture_then_Restore_puts_the_launcher_state_back_and_leaves_the_players_mods_alone()
+    public async Task Restore_of_a_kind_point_is_refused_and_touches_nothing()
+    {
+        var (t, u, dataRoot, orch, prov, _) = await Fixture();
+        var ctx = Scanner.GameContext(t);
+        var cap = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
+        Assert.True(cap.Ok, cap.RefusedReason);
+
+        // The player carries on after capture: a restore that replayed would have things to undo here.
+        File.WriteAllText(Path.Combine(t.DataDir!, "notes.json"), "{\"v\":2}");
+        await Scanner.EnableModAsync("held", ctx);
+        File.WriteAllText(Path.Combine(t.GameRoot, "mods", "live.pak"), "LIVE-EDITED");
+        File.WriteAllText(Path.Combine(dataRoot, "games.json"), "{\"version\":1,\"games\":[{\"edited\":true}]}");
+        RestoreMarkers.WriteLastClear(dataRoot, "20261001-000000", "20261001-000000");
+        var gameBefore = Hash(t.GameRoot); var dataBefore = Hash(t.DataDir!);
+        var otherBefore = Hash(u.GameRoot); var topBefore = HashTopLevel(dataRoot);
+        var pointBefore = Hash(RpDir(dataRoot, cap.RestorePointTimestamp!));
+        var reloadsBefore = prov.ReloadCalls;
+
+        var restore = await orch.RestoreAsync(cap.RestorePointTimestamp!, default);
+
+        Assert.False(restore.Ok);
+        Assert.Equal(RestorePointOrchestrator.KindRestoreUnavailable, restore.RefusedReason);
+        Assert.Empty(restore.Conflicts); Assert.Empty(restore.Warnings);
+        Assert.Equal(gameBefore, Hash(t.GameRoot));              // game folder and every mod in it
+        Assert.Equal(dataBefore, Hash(t.DataDir!));              // data dir: nothing overlaid, nothing resurrected
+        Assert.Equal(otherBefore, Hash(u.GameRoot));
+        Assert.Equal(topBefore, HashTopLevel(dataRoot));         // registry and the earlier reset's offer
+        Assert.NotNull(RestoreMarkers.ReadLastClear(dataRoot));
+        Assert.Equal(reloadsBefore, prov.ReloadCalls);
+        Assert.Equal(pointBefore, Hash(RpDir(dataRoot, cap.RestorePointTimestamp!)));   // the snapshot is kept
+        Assert.Single(orch.ListRestorePoints());
+    }
+
+    [Fact]
+    public async Task Two_games_captured_with_the_same_timestamp_both_succeed()
+    {
+        var (_, _, dataRoot, orch, _, _) = await Fixture();
+
+        var a = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
+        var b = await orch.CaptureGameOnlyAsync("u", RestorePointKinds.PatchDay, "20261016-120000", default);
+
+        Assert.True(a.Ok, a.RefusedReason); Assert.True(b.Ok, b.RefusedReason);
+        Assert.NotEqual(a.RestorePointTimestamp, b.RestorePointTimestamp);
+        var list = orch.ListRestorePoints();
+        Assert.Equal(2, list.Count);
+        Assert.Equal(new[] { "T" }, list.Single(i => i.Timestamp == a.RestorePointTimestamp).GameNames);
+        Assert.Equal(new[] { "U" }, list.Single(i => i.Timestamp == b.RestorePointTimestamp).GameNames);
+        Assert.Equal("t", Assert.Single(RestorePointManifestStore.Read(RpDir(dataRoot, a.RestorePointTimestamp!))!.Games).Id);
+    }
+
+    [Fact]
+    public async Task A_safe_clear_point_keeps_the_bare_timestamp_name()
+    {
+        var (_, _, dataRoot, orch, _, _) = await Fixture();
+        var r = await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "modsActive" }, "20261016-130000", default);
+        Assert.Equal("20261016-130000", r.RestorePointTimestamp);
+        Assert.True(Directory.Exists(RpDir(dataRoot, "20261016-130000")));
+    }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData("../evil")]
+    [InlineData("..\\evil")]
+    [InlineData("a/b")]
+    [InlineData("a\\b")]
+    [InlineData("2026..1016")]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("C:evil")]
+    public async Task A_timestamp_that_is_not_a_plain_name_is_refused(string ts)
     {
         var (t, _, dataRoot, orch, _, _) = await Fixture();
-        var ctx = Scanner.GameContext(t);
+        var gameBefore = Hash(t.GameRoot);
+
+        var r = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, ts, default);
+
+        Assert.False(r.Ok);
+        Assert.False(string.IsNullOrWhiteSpace(r.RefusedReason));
+        Assert.Null(r.RestorePointTimestamp);
+        Assert.False(Directory.Exists(Path.Combine(dataRoot, "restore-points")) && Directory.GetDirectories(Path.Combine(dataRoot, "restore-points")).Length > 0);
+        Assert.False(Directory.Exists(Path.Combine(_root, "evil")));
+        Assert.Equal(gameBefore, Hash(t.GameRoot));
+    }
+
+    [Fact]
+    public async Task A_game_id_that_is_not_a_plain_name_is_refused()
+    {
+        var (_, _, dataRoot, orch, _, _) = await Fixture();
+        var r = await orch.CaptureGameOnlyAsync("../t", RestorePointKinds.PatchDay, "20261016-120000", default);
+        Assert.False(r.Ok);
+        Assert.False(Directory.Exists(Path.Combine(dataRoot, "restore-points")) && Directory.GetDirectories(Path.Combine(dataRoot, "restore-points")).Length > 0);
+    }
+
+    [Fact]
+    public async Task The_claim_marker_is_not_counted_in_the_manifest_totals()
+    {
+        var (_, _, dataRoot, orch, _, _) = await Fixture();
+        var r = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
+        var rp = RpDir(dataRoot, r.RestorePointTimestamp!);
+        var m = RestorePointManifestStore.Read(rp)!;
+        var files = Directory.GetFiles(rp, "*", SearchOption.AllDirectories)
+            .Where(f => !f.EndsWith(RestorePointManifestStore.FileName) && !f.EndsWith(RestorePointOrchestrator.CaptureClaimFile)).ToList();
+        Assert.Equal(files.Count, m.FileCount);
+        Assert.Equal(files.Sum(f => new FileInfo(f).Length), m.TotalBytes);
+    }
+
+    private static string Abandon(string dataRoot, string name, bool claimed, bool sealedPoint, TimeSpan age)
+    {
+        var dir = Path.Combine(dataRoot, "restore-points", name);
+        Directory.CreateDirectory(Path.Combine(dir, "games", "x"));
+        File.WriteAllText(Path.Combine(dir, "games", "x", "half.bin"), "half");
+        if (claimed)
+        {
+            var claim = Path.Combine(dir, RestorePointOrchestrator.CaptureClaimFile);
+            File.WriteAllText(claim, name);
+            File.SetLastWriteTimeUtc(claim, DateTime.UtcNow - age);
+        }
+        if (sealedPoint)
+            RestorePointManifestStore.WriteSealed(dir, new RestorePointManifest(1, "0.25.0", name, true, true, 1, 1, Array.Empty<GameArchive>(), "patchDay"));
+        return dir;
+    }
+
+    [Fact]
+    public async Task A_later_capture_sweeps_an_old_unsealed_claimed_folder_and_nothing_else()
+    {
+        var (_, _, dataRoot, orch, _, _) = await Fixture();
+        var old = TimeSpan.FromHours(2);
+        var stale = Abandon(dataRoot, "20260101-000000-x", claimed: true, sealedPoint: false, age: old);
+        var young = Abandon(dataRoot, "20260101-000001-x", claimed: true, sealedPoint: false, age: TimeSpan.FromSeconds(5));
+        var unclaimed = Abandon(dataRoot, "20260101-000002", claimed: false, sealedPoint: false, age: old);   // a Safe Clear's partial
+        var sealedOld = Abandon(dataRoot, "20260101-000003-x", claimed: true, sealedPoint: true, age: old);
+
         Assert.True((await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default)).Ok);
 
-        // The player carries on after capture.
-        File.WriteAllText(Path.Combine(t.DataDir!, "notes.json"), "{\"v\":2}");            // launcher state changes
-        File.WriteAllText(Path.Combine(t.DataDir!, "extra.json"), "{}");                     // and grows
-        await Scanner.EnableModAsync("held", ctx);                                           // a mod captured as disabled is switched on
-        File.WriteAllText(Path.Combine(t.GameRoot, "mods", "live.pak"), "LIVE-EDITED");      // a live mod is edited
-        File.WriteAllText(Path.Combine(t.GameRoot, "mods", "new.pak"), "NEW");               // and a new one arrives
-        File.WriteAllText(Path.Combine(dataRoot, "games.json"), "{\"version\":1,\"games\":[{\"edited\":true}]}");
-        RestoreMarkers.WriteLastClear(dataRoot, "20261001-000000", "20261001-000000");       // an earlier Safe Clear offer is pending
-        var gameBefore = Hash(t.GameRoot);
-        Assert.True(File.Exists(Path.Combine(t.GameRoot, "mods", "held.pak")));
+        Assert.False(Directory.Exists(stale));
+        Assert.True(Directory.Exists(young));       // might be another process mid-copy
+        Assert.True(Directory.Exists(unclaimed));   // not ours: recovery's to deal with
+        Assert.True(Directory.Exists(sealedOld));   // a real restore point
+    }
 
-        var restore = await orch.RestoreAsync("20261016-120000", default);
+    [Fact]
+    public async Task A_capture_blocked_by_a_safe_clear_lock_sweeps_nothing()
+    {
+        var (_, _, dataRoot, orch, _, _) = await Fixture();
+        var stale = Abandon(dataRoot, "20260101-000000-x", claimed: true, sealedPoint: false, age: TimeSpan.FromHours(2));
+        File.WriteAllText(Path.Combine(dataRoot, SafeClearLock.FileName), "20260101-000000-x");
 
-        Assert.True(restore.Ok, restore.RefusedReason);
-        Assert.Empty(restore.Warnings);
-        // Launcher-owned state is back to what it was at capture...
-        Assert.Equal("{\"v\":1}", File.ReadAllText(Path.Combine(t.DataDir!, "notes.json")));
-        // ...but a restore only overlays: it does not delete what arrived since.
-        Assert.True(File.Exists(Path.Combine(t.DataDir!, "extra.json")));
-        // The game folder, and every mod in it, is exactly as the player left it: nothing disabled, moved or replaced.
-        Assert.Equal(gameBefore, Hash(t.GameRoot));
-        // The held-then-enabled mod is not resurrected into holding (no double state).
-        var disabled = Path.Combine(t.DataDir!, "disabled");
-        Assert.False(Directory.Exists(disabled) && Directory.GetFiles(disabled, "held*", SearchOption.AllDirectories).Length > 0);
-        // A one-game point does not roll the whole registry back, nor eat an earlier clear's offer.
-        Assert.Contains("edited", File.ReadAllText(Path.Combine(dataRoot, "games.json")));
-        Assert.NotNull(RestoreMarkers.ReadLastClear(dataRoot));
+        Assert.False((await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default)).Ok);
+
+        Assert.True(Directory.Exists(stale));
     }
 
     [Fact]
@@ -287,7 +404,7 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         using var cts = new CancellationTokenSource(); cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", cts.Token));
-        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000")));
+        Assert.False(Directory.Exists(RpDir(dataRoot, "20261016-120000-t")));
     }
 
     [Fact]
