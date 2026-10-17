@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ModManager.Core.RestorePoints;
 
 /// <summary>Version + sentinel constants for restore-point manifests.</summary>
@@ -11,6 +13,14 @@ public static class RestorePoint
     public const int SchemaVersion = 2;
 }
 
+/// <summary>What a restore point is for, when it isn't a plain Safe Clear. Stored as <c>kind</c> on the
+/// manifest; absent means a Safe Clear point.</summary>
+public static class RestorePointKinds
+{
+    /// <summary>The automatic single-game snapshot taken when Patch Day detects a patch.</summary>
+    public const string PatchDay = "patchDay";
+}
+
 /// <summary>The sealed on-disk record of a Safe Clear. camelCase JSON. <c>Complete</c> is the seal,
 /// written LAST by the orchestrator — Restore refuses a manifest that isn't complete.</summary>
 public sealed record RestorePointManifest(
@@ -21,7 +31,11 @@ public sealed record RestorePointManifest(
     bool KeepNexus,
     long TotalBytes,
     int FileCount,
-    IReadOnlyList<GameArchive> Games);
+    IReadOnlyList<GameArchive> Games,
+    // Optional, omitted when null (a Safe Clear point). "patchDay" marks the capture-only, one-game snapshot
+    // Patch Day takes (see RestorePointOrchestrator.CaptureGameOnlyAsync): it carries no turn-off record, and
+    // RestoreAsync refuses any point that has a kind until a safe restore exists. Additive, no SchemaVersion bump.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Kind = null);
 
 /// <summary>One game's archived state. EndState is "vanilla" | "modsActive".</summary>
 public sealed record GameArchive(
