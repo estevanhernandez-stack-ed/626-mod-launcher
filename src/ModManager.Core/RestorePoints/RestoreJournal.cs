@@ -60,6 +60,29 @@ public static class RestoreJournal
         catch { return null; }
     }
 
+    /// <summary>Every restore-point name a record on disk points at (the point being restored and the undo
+    /// snapshot), read loosely so a record <see cref="Read"/> would not trust still protects them. Empty when
+    /// there is no record; null when a record exists but can't be understood, which a caller that deletes
+    /// things must treat as "don't".</summary>
+    public static IReadOnlySet<string>? NamedPoints(string dataRoot)
+    {
+        try
+        {
+            var path = PathFor(dataRoot);
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!File.Exists(path)) return names;
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            foreach (var p in doc.RootElement.EnumerateObject())
+                if (p.Value.ValueKind == JsonValueKind.String
+                    && (string.Equals(p.Name, "restorePoint", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(p.Name, "undoSnapshot", StringComparison.OrdinalIgnoreCase)))
+                    names.Add(p.Value.GetString()!);
+            return names;
+        }
+        catch { return null; }
+    }
+
     /// <summary>What the player is told at the next start. Says what happened, what state the game may be
     /// in, and the one thing to do; nothing has been put right on their behalf.</summary>
     public static string Message(InterruptedRestore r)
