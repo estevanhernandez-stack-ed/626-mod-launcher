@@ -51,7 +51,7 @@ public sealed class PatchDayDetector
 
         var game = ctx.Game;
         var verdict = PatchDay.Evaluate(new PatchDayInput(
-            game.LastKnownSteamBuildId, liveBuild, game.PatchDay, report, Array.Empty<LoaderRelease>(), mode));
+            game.LastKnownSteamBuildId, liveBuild, game.PatchDay, report, FeedLoaderReleases(), mode));
 
         var takeSnapshot = false;
         if (verdict.NeedsDetect && !string.IsNullOrEmpty(liveBuild))
@@ -61,7 +61,7 @@ public sealed class PatchDayDetector
             _svc.SetPatchDay(game.Id, detected);
             game.PatchDay = detected;
             verdict = PatchDay.Evaluate(new PatchDayInput(
-                game.LastKnownSteamBuildId, liveBuild, detected, report, Array.Empty<LoaderRelease>(), mode));
+                game.LastKnownSteamBuildId, liveBuild, detected, report, FeedLoaderReleases(), mode));
             takeSnapshot = PatchDay.NeedsRestorePoint(detected);
         }
         else if (game.PatchDay is { } held && verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None }
@@ -135,4 +135,9 @@ public sealed class PatchDayDetector
         }
         finally { _capturing.Remove(gameId); }
     }
+
+    /// <summary>The signed feed's loader releases, for "Update available". Empty when the feed has none.</summary>
+    internal static IReadOnlyList<LoaderRelease> FeedLoaderReleases()
+        => ModManager.Core.Manifest.EffectiveManifest.Current.LoaderReleases
+            .Select(r => r.ToRelease()).OfType<LoaderRelease>().ToList();
 }

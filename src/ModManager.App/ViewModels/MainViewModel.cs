@@ -1831,6 +1831,10 @@ public sealed partial class MainViewModel : ObservableObject
     // button press, apart from the restore-point capture, which writes only inside restore-points.
     // ---------------------------------------------------------------------------------------------
 
+    /// <summary>The feed's latest loader releases (already validated), mapped to what Patch Day reads.</summary>
+    private static IReadOnlyList<LoaderRelease> FeedLoaderReleases()
+        => Services.PatchDayDetector.FeedLoaderReleases();
+
     private async Task EvaluatePatchDayAsync(GameContext ctx, string? liveBuild, StaleLoaderReport liveReport)
     {
         var evaluation = await _patchDay.EvaluateAsync(ctx, liveBuild, liveReport);
@@ -1848,7 +1852,7 @@ public sealed partial class MainViewModel : ObservableObject
         var game = _ctx.Game;
         _patchDayVerdict = PatchDay.Evaluate(new PatchDayInput(
             game.LastKnownSteamBuildId, _patchDayLiveBuild, game.PatchDay, _patchDayReport,
-            Array.Empty<LoaderRelease>(), VanillaLaunch.CurrentMode(_ctx.DataDir)));
+            FeedLoaderReleases(), VanillaLaunch.CurrentMode(_ctx.DataDir)));
         _patchDayVerdictGameId = game.Id;
         RebuildStateChips();
     }

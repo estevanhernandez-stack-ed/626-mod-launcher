@@ -72,7 +72,15 @@ The string-contains assertion is what protects you — without it, the round-tri
   `RemoteManifestCache`; `ModPathModOnlyTests.Round_trips_as_camelCase`)
 - Restore-point manifest `kind` (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs` — optional, omitted when null; 
   `"patchDay"` marks the capture-only one-game snapshot from `RestorePointOrchestrator.CaptureGameOnlyAsync`; covered by
-  `RestorePointOrchestratorCaptureOnlyTests.Manifest_kind_round_trips_as_camelCase_and_is_omitted_when_null`)
+  `RestorePointOrchestratorCaptureOnlyTests.Manifest_kind_round_trips_as_camelCase_and_is_omitted_when_null`);
+  `"beforeRestore"` marks the snapshot a kind-point restore takes of the current state first; and
+  `frameworks[].installedUtc` (`FrameworkArchive`), the install stamp an overlay restore compares, covered by
+  `RestorePointOrchestratorKindRestoreTests.The_framework_install_stamp_is_recorded_in_camelCase`
+- `GameEntry.patchDay` (`src/ModManager.Core/PatchDayRecord.cs` — the per-game Patch Day record in the
+  registry; the choice serializes as a camelCase string; covered by
+  `PatchDayRecordTests.PatchDay_round_trips_as_camelCase`)
+- Game manifest `loaderReleases` list (`src/ModManager.Core/Manifest/GameManifest.cs` — `LoaderReleaseEntry`;
+  covered by `LoaderReleasesTests.Round_trips_as_camelCase_with_key_assertions`)
 - `TakenOverState` taken-over.json (`src/ModManager.Core/VortexTakeover.cs`)
 - `VanillaStash` vanilla-stash.json (`src/ModManager.Core/VanillaLaunch.cs`)
 - `NexusOAuthConfig` nexus-oauth-cache.json (`src/ModManager.Core/Nexus/NexusOAuthConfig.cs` — `JsonOpts`; written/read via `src/ModManager.App/Services/NexusOAuthConfigSource.cs`)
