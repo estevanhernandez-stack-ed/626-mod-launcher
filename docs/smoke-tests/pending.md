@@ -2759,3 +2759,30 @@ Creation Club, `SFBGS*`) are game files. Skyrim's `.bsa` rows are unchanged.
    its archive live. Open: MyMod does not claim the archive; turning MyMod - Plus on reunites the pair.
 6. **Large load:** a fixture with 600 plugins and 1,200 archives opens and toggles without a visible stall
    (the scan measured about 15 ms).
+
+## Patch Day: a game updates under a stale loader (read-and-warn)
+
+Shipped: when a game's build moves past the one a loader was last known to work on, 626 shows a PATCH DAY
+chip after BAN RISK, saves a capture-only restore point (kind `patchDay`), and offers Play vanilla for now,
+Bring my mods back and Tell me when it's fixed. It reads and warns; it never moves a mod on its own.
+Ban-risk games still gate as before. Restoring a Patch Day snapshot is refused for now, by design.
+The Play gate dialog (Play vanilla / Play modded anyway at launch) arrives with the Play gate, not here.
+
+1. **Monster Hunter Wilds** (REFramework, GitHub-watched). Close 626 and Steam's hold on the game first.
+   Back up `steamapps/appmanifest_<appid>.acf`, then edit its `buildid` to a different number. Reload the
+   game in 626.
+2. **Expect the chip.** PATCH DAY sits after BAN RISK. No UPDATED and no OLD LOADER chip beside it.
+3. **Expect the snapshot.** The restore-point list holds a Patch Day snapshot for this game only.
+4. **Play vanilla for now,** then **Bring my mods back.** The mod tree is byte-identical to before
+   (hash it first). Nothing was deleted along the way.
+5. **Tell me when it's fixed** hides the chip. It stays hidden until the state or the build changes.
+6. **Library row.** The game's row carries its Patch Day line ("Updated since your last modded launch",
+   or "Playing vanilla since the patch" while vanilla).
+7. **Restore the fixture.** Put the original `.acf` back, reload, and confirm the chip clears. Do this even
+   if a step failed, so the next run does not start dirty.
+8. **Elden Ring** (Elden Mod Loader, no release watch). Same `buildid` edit and reload. Detection and the
+   vanilla path work; there is no "update available" offer, because nothing is watched for this loader.
+   Restore the `.acf` afterward.
+
+"Update available" (Get the update) needs a feed carrying `loaderReleases`. The feed CI does not publish
+that list yet, so it cannot be smoked against the live feed; use a local feed fixture until it does.
