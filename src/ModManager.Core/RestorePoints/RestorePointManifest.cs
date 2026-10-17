@@ -38,7 +38,7 @@ public sealed record RestorePointManifest(
     IReadOnlyList<GameArchive> Games,
     // Optional, omitted when null (a Safe Clear point). "patchDay" marks the capture-only, one-game snapshot
     // Patch Day takes (see RestorePointOrchestrator.CaptureGameOnlyAsync): it carries no turn-off record, and
-    // RestoreAsync replays it as an overlay (see RestorePointEngine.ReplayOverlay), never as a Safe Clear
+    // RestoreAsync replays it as an overlay (see RestorePointEngine.PlanOverlay), never as a Safe Clear
     // replay. "beforeRestore" is the snapshot such a restore takes of the current state first.
     // Additive, no SchemaVersion bump.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Kind = null);

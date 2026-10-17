@@ -134,6 +134,15 @@ public static class FrameworkRegistry
         try { Directory.Delete(holding, recursive: true); } catch { /* may hold un-restored entries */ }
     }
 
+    /// <summary>True when ANY of the framework's proxy files is in the holding folder. Wider than
+    /// <see cref="IsDisabled"/>, which also needs every live proxy gone: an interrupted step-aside (one held,
+    /// one still live) reads not-disabled there, but its proxies are still not the player's to have put back.</summary>
+    internal static bool AnyProxyHeld(string gameDataDir, FrameworkInstallManifest m)
+    {
+        var holding = Path.Combine(gameDataDir, "frameworks", m.FrameworkId, DisabledProxyDir);
+        return Directory.Exists(holding) && ProxyFiles(m).Any(rel => File.Exists(Path.Combine(holding, rel)));
+    }
+
     /// <summary>True when the framework's proxy is currently stepped aside (holding has a proxy AND the
     /// live proxy is gone) — i.e. installed but not injecting.</summary>
     public static bool IsDisabled(string gameDataDir, string frameworkId)

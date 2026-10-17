@@ -33,7 +33,7 @@ public static class VanillaStashStore
         PropertyNameCaseInsensitive = true,
     };
 
-    private static string PathFor(string dataDir) => Path.Combine(dataDir, "vanilla-stash.json");
+    internal static string PathFor(string dataDir) => Path.Combine(dataDir, "vanilla-stash.json");
 
     public static VanillaStash? Load(string dataDir)
     {

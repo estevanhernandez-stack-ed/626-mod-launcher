@@ -336,7 +336,7 @@ public sealed class RestorePointOrchestrator
     /// never touched. A crash mid-copy leaves a claimed, unsealed folder, which the next capture sweeps once it
     /// is old enough; <see cref="ListRestorePoints"/> never shows it.</para>
     /// <para>Restore: <see cref="RestoreAsync"/> restores a point that has a <c>kind</c> as an overlay that takes a
-    /// <c>beforeRestore</c> snapshot first and toggles no mod (see <see cref="RestorePointEngine.ReplayOverlay"/>).</para>
+    /// <c>beforeRestore</c> snapshot first and toggles no mod (see <see cref="RestorePointEngine.PlanOverlay"/>).</para>
     /// </summary>
     public Task<CaptureOnlyResult> CaptureGameOnlyAsync(string gameId, string kind, string timestamp, CancellationToken ct)
         => CaptureGameOnlyCoreAsync(gameId, kind, timestamp, gateHeld: false, ct);
@@ -607,18 +607,26 @@ public sealed class RestorePointOrchestrator
         catch { return Refused($"Couldn't verify whether {game.GameName} is running. Close it and try again."); }   // fails closed, as Safe Clear does
         if (running) return Refused($"Close {game.GameName} before restoring its snapshot.");
 
+        // Plan (and validate) first: a snapshot that can't be applied is refused before a pre-restore snapshot
+        // is taken, so a refusal leaves nothing behind.
+        var ctx = _provider.ContextFor(game);
+        OverlayPlan plan;
+        try { plan = RestorePointEngine.PlanOverlay(ga, gameArchiveDir, ctx); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        { return Refused($"This snapshot can't be restored safely: {e.Message} Nothing was changed."); }
+
         var snap = await CaptureGameOnlyCoreAsync(game.Id, RestorePointKinds.BeforeRestore,
             snapshotTimestamp ?? DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"), gateHeld: true, ct);
         if (!snap.Ok) return Refused($"Couldn't save your current setup first, so nothing was restored. {snap.RefusedReason}");
         var undo = snap.RestorePointTimestamp!;
 
-        IReadOnlyList<string> notes;
-        try { notes = RestorePointEngine.ReplayOverlay(ga, gameArchiveDir, _provider.ContextFor(game)); }
+        IReadOnlyList<string> applied;
+        try { applied = RestorePointEngine.ApplyOverlay(plan, gameArchiveDir, ctx); }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             return Refused($"626 couldn't finish the restore: {e.Message} Your setup from before it is saved as {undo}; restore that to go back to where you were.");
         }
-        var warnings = notes.Select(n => $"{ga.GameName}: {n}")
+        var warnings = plan.Notes.Concat(applied).Select(n => $"{ga.GameName}: {n}")
             .Append($"Your setup from before this restore is saved as {undo}. Restore it to go back.").ToList();
         return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
     }

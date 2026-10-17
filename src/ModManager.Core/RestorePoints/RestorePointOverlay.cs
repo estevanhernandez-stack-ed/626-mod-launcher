@@ -1,10 +1,16 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModManager.Core.Frameworks;
 
 namespace ModManager.Core.RestorePoints;
 
+/// <summary>What an overlay restore will do, decided and validated BEFORE anything is written (and before the
+/// pre-restore snapshot is taken): the framework files to put back, and notes for the player.</summary>
+public sealed record OverlayPlan(IReadOnlyList<string> Notes, IReadOnlyList<(string Src, string Dest)> FrameworkWrites);
+
 public static partial class RestorePointEngine
 {
-    /// <summary>Why <see cref="ReplayOverlay"/> wrote no framework file on a ban-risk game.</summary>
+    /// <summary>Why <see cref="PlanOverlay"/> plans no framework file on a ban-risk game.</summary>
     public const string FrameworksKeptForBanRisk =
         "this game carries a ban risk, so 626 left its mod loader files as they are. "
         + "Put them back from the launcher, which asks first.";
@@ -24,84 +30,127 @@ public static partial class RestorePointEngine
     //     what 626 placed. Putting a record back for something gone claims ownership of files it no longer
     //     owns, and a framework registry entry back is a framework "installed" with no say-so.
     // Files are replaced, never deleted: a file the player has now that the snapshot lacks stays.
-    private static readonly string[] OverlayDataFiles =
+    //
+    // The keyed files are MERGED, not replaced: each is a map keyed by mod (or mod id), so a mod installed or
+    // classified since the snapshot would otherwise lose its source URL, confidence, install time and update
+    // tracking. The snapshot's value wins for a key both have; keys only the live file has are kept. Depth is
+    // how many levels of keys are merged (config-overrides.json nests its map one level down).
+    private static readonly (string Rel, int Depth)[] OverlayKeyedFiles =
     {
-        "metadata.json", "loadorder.json", "classification.json", "direct-inject/config-overrides.json",
+        ("metadata.json", 1), ("classification.json", 1), ("direct-inject/config-overrides.json", 2),
     };
+    private static readonly string[] OverlayWholeFiles = { "loadorder.json" };   // one ordered list: the snapshot's order
     private static readonly string[] OverlayDataDirs = { "profiles", "saves", "config-backups", ".ini-history" };
 
     // Files that carry a loader mod's on/off. A framework ships some of them (UE4SS ships Mods/mods.txt and
-    // per-mod enabled.txt); putting the captured copy back would flip mods the player has switched since.
+    // per-mod enabled.txt; BepInEx's doorstop_config.ini holds the switch that makes BepInEx inject at all);
+    // putting the captured copy back would flip what the player has switched since.
     private static bool CarriesEnableState(string rel)
     {
         var name = Path.GetFileName(rel);
         return name.Equals("mods.txt", StringComparison.OrdinalIgnoreCase)
             || name.Equals("mods.json", StringComparison.OrdinalIgnoreCase)
             || name.Equals("enabled.txt", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("doorstop_config.ini", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// Restore a KIND point's game as an overlay on the live game. It is the safe counterpart of
-    /// <see cref="ReplayGame"/>, which assumes a Safe Clear emptied the game first. Over a live, modded game
-    /// it does only two things, and neither toggles a mod:
-    /// <list type="number">
-    /// <item>Puts back the allow-listed launcher data (see <c>OverlayDataFiles</c>), file by file, each swap atomic.</item>
-    /// <item>Puts back the captured files of each framework that is installed NOW, unchanged in version since
-    /// the capture, and not stepped aside, on a game that is not ban-gated. Loader on/off files are skipped.</item>
-    /// </list>
-    /// It never runs ReplayGame's loader re-apply (step 4: it switched off mods enabled since capture and
-    /// deleted <c>enabled.txt</c>), its vanilla-moved / remainder / turn-on steps, or the sheet removal, and
-    /// it never enables anything, so the ban-risk gate reduces to "do not write framework files". The caller
-    /// has already taken a pre-restore snapshot, so every write here is undoable. Paths are validated for
-    /// every framework BEFORE the first write. Returns notes for the player (what was left as it is, and why);
-    /// throws if a write fails, with every file either whole-old or whole-new.
+    /// Decide what restoring a KIND point's game as an overlay will do. Writes nothing; throws
+    /// <see cref="InvalidOperationException"/> if the snapshot names a framework file outside its install
+    /// root, so the caller can refuse before taking the pre-restore snapshot. The safe counterpart of
+    /// <see cref="ReplayGame"/>, which assumes a Safe Clear emptied the game first: over a live, modded game
+    /// it never runs ReplayGame's loader re-apply (step 4 switched off mods enabled since capture and deleted
+    /// <c>enabled.txt</c>), its vanilla-moved / remainder / turn-on steps, or the sheet removal, and it
+    /// never enables anything, so the ban-risk gate reduces to "do not write framework files".
+    /// <para>A framework's files are planned only while ALL of these hold; otherwise it is left as it is,
+    /// with a note: the game is not ban-gated and has no Play-vanilla stash; the framework is registered
+    /// NOW, with the install stamp it had at capture, at the same install path; and none of its proxy files
+    /// is in the holding folder (any one held means a step-aside, finished or interrupted). Of its captured
+    /// files only those the LIVE record still lists are planned, minus loader on/off files, minus any file
+    /// the catalog forbids a framework to touch (the game executable).</para>
     /// </summary>
-    public static IReadOnlyList<string> ReplayOverlay(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
+    public static OverlayPlan PlanOverlay(GameArchive ga, string gameArchiveDir, GameContext liveCtx)
     {
         var notes = new List<string>();
-
-        // Plan and validate first: the framework writes, for every framework, before anything is written.
-        var banGated = BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(liveCtx.Game),
-            BanRiskAckStore.IsAcked(liveCtx.DataDir, liveCtx.Game.Id ?? ""));
         var writes = new List<(string Src, string Dest)>();
-        if (ga.Frameworks.Count > 0 && banGated)
-            notes.Add(FrameworksKeptForBanRisk);
-        else
-        {
-            var live = FrameworkRegistry.List(liveCtx.DataDir);
-            foreach (var fw in ga.Frameworks)
-            {
-                if (fw.CapturedStateRel is null) continue;
-                var capturedAbs = Path.Combine(gameArchiveDir, fw.CapturedStateRel);
-                if (!Directory.Exists(capturedAbs)) continue;
-                var now = live.FirstOrDefault(l => string.Equals(l.FrameworkId, fw.FrameworkId, StringComparison.OrdinalIgnoreCase));
-                if (now is null)
-                { notes.Add($"{fw.DisplayName} isn't installed now, so 626 didn't put it back."); continue; }
-                if (fw.InstalledUtc is null || now.InstalledUtc.ToUniversalTime() != fw.InstalledUtc.Value.ToUniversalTime())
-                { notes.Add($"{fw.DisplayName} was installed or updated since the snapshot, so 626 left its files as they are."); continue; }
-                if (!SameFolder(now.InstallPath, fw.InstallPath))
-                { notes.Add($"{fw.DisplayName} now lives somewhere else, so 626 left its files as they are."); continue; }
-                if (FrameworkRegistry.IsDisabled(liveCtx.DataDir, fw.FrameworkId))
-                { notes.Add($"{fw.DisplayName} is switched off, so 626 left its files as they are."); continue; }
+        if (ga.Frameworks.Count == 0) return new OverlayPlan(notes, writes);
 
-                var installFull = Path.GetFullPath(now.InstallPath);
-                foreach (var rel in fw.InstalledFiles)
-                {
-                    if (IsRooted(rel) || !PathGate.IsContained(rel, installFull))
-                        throw new InvalidOperationException($"Restore refused: framework file \"{rel}\" escapes the install root.");
-                    if (CarriesEnableState(rel)) continue;
-                    var src = Path.Combine(capturedAbs, rel);
-                    if (File.Exists(src)) writes.Add((src, Path.Combine(now.InstallPath, rel)));
-                }
-            }
+        if (BanRiskRules.ShouldGateEnable(BanRiskCatalog.Effective(liveCtx.Game),
+                BanRiskAckStore.IsAcked(liveCtx.DataDir, liveCtx.Game.Id ?? "")))
+        { notes.Add(FrameworksKeptForBanRisk); return new OverlayPlan(notes, writes); }
+        if (File.Exists(VanillaStashStore.PathFor(liveCtx.DataDir)))
+        {
+            notes.Add("Play vanilla is on for this game (626 stepped some mod loader files aside), so 626 left its mod loader files as they are.");
+            return new OverlayPlan(notes, writes);
         }
 
-        // 1. The launcher's own data, by allow-list.
+        var live = FrameworkRegistry.List(liveCtx.DataDir);
+        foreach (var fw in ga.Frameworks)
+        {
+            if (fw.CapturedStateRel is null) continue;
+            var capturedAbs = Path.Combine(gameArchiveDir, fw.CapturedStateRel);
+            if (!Directory.Exists(capturedAbs)) continue;
+            var now = live.FirstOrDefault(l => string.Equals(l.FrameworkId, fw.FrameworkId, StringComparison.OrdinalIgnoreCase));
+            if (now is null)
+            { notes.Add($"{fw.DisplayName} isn't installed now, so 626 didn't put it back."); continue; }
+            if (fw.InstalledUtc is null || now.InstalledUtc.ToUniversalTime() != fw.InstalledUtc.Value.ToUniversalTime())
+            { notes.Add($"{fw.DisplayName} was installed or updated since the snapshot, so 626 left its files as they are."); continue; }
+            if (!SameFolder(now.InstallPath, fw.InstallPath))
+            { notes.Add($"{fw.DisplayName} now lives somewhere else, so 626 left its files as they are."); continue; }
+            if (FrameworkRegistry.AnyProxyHeld(liveCtx.DataDir, now))
+            { notes.Add($"{fw.DisplayName} is switched off, so 626 left its files as they are."); continue; }
+
+            // The snapshot is untrusted input: every path in it is checked, whether or not it is written.
+            var installFull = Path.GetFullPath(now.InstallPath);
+            foreach (var rel in fw.InstalledFiles)
+                if (IsRooted(rel) || !PathGate.IsContained(rel, installFull))
+                    throw new InvalidOperationException($"Restore refused: framework file \"{rel}\" escapes the install root.");
+
+            var listedNow = new HashSet<string>(now.InstalledFiles.Select(NormRel), StringComparer.OrdinalIgnoreCase);
+            var forbidden = KnownFramework.Catalog
+                .FirstOrDefault(k => string.Equals(k.FrameworkId, fw.FrameworkId, StringComparison.OrdinalIgnoreCase))?.ForbiddenPaths
+                ?? Array.Empty<string>();
+            foreach (var rel in fw.InstalledFiles)
+            {
+                if (!listedNow.Contains(NormRel(rel))) continue;
+                if (CarriesEnableState(rel) || PathGate.IsForbidden(NormRel(rel), forbidden)) continue;
+                var src = Path.Combine(capturedAbs, rel);
+                if (File.Exists(src)) writes.Add((src, Path.Combine(now.InstallPath, rel)));
+            }
+        }
+        return new OverlayPlan(notes, writes);
+    }
+
+    /// <summary>
+    /// Carry out an <see cref="OverlayPlan"/> (the caller has already taken the pre-restore snapshot, so every
+    /// write is undoable): the allow-listed launcher data first, then the planned framework files, hash-
+    /// verified (this is code the game loads). Every write is temp + verify + atomic move, so each file is
+    /// whole-old or whole-new; throws if one fails. Returns notes for the player: a keyed file that couldn't
+    /// be merged and was replaced whole.
+    /// </summary>
+    public static IReadOnlyList<string> ApplyOverlay(OverlayPlan plan, string gameArchiveDir, GameContext liveCtx)
+    {
+        var notes = new List<string>();
         var archivedData = Path.Combine(gameArchiveDir, "data");
         if (Directory.Exists(archivedData))
         {
-            foreach (var rel in OverlayDataFiles)
+            foreach (var (rel, depth) in OverlayKeyedFiles)
+            {
+                var src = Path.Combine(archivedData, rel);
+                if (!File.Exists(src)) continue;
+                var dest = Path.Combine(liveCtx.DataDir, rel);
+                if (File.Exists(dest) && TryMerge(src, dest, depth) is { } merged)
+                    AtomicJson.WriteTextAtomic(dest, merged);
+                else
+                {
+                    if (File.Exists(dest))
+                        notes.Add($"{rel} couldn't be merged with the snapshot's copy, so 626 replaced it whole. "
+                            + "Anything added to it since the snapshot is only in the copy saved before this restore.");
+                    CopyFileAtomic(src, dest, verifyHash: false);
+                }
+            }
+            foreach (var rel in OverlayWholeFiles)
             {
                 var src = Path.Combine(archivedData, rel);
                 if (File.Exists(src)) CopyFileAtomic(src, Path.Combine(liveCtx.DataDir, rel), verifyHash: false);
@@ -112,10 +161,42 @@ public static partial class RestorePointEngine
                 if (Directory.Exists(src)) CopyTreeAtomic(src, Path.Combine(liveCtx.DataDir, dir));
             }
         }
-
-        // 2. Framework files, hash-verified (this is code the game loads).
-        foreach (var (src, dest) in writes) CopyFileAtomic(src, dest, verifyHash: true);
+        foreach (var (src, dest) in plan.FrameworkWrites) CopyFileAtomic(src, dest, verifyHash: true);
         return notes;
+    }
+
+    // The merged text of a keyed file, or null when either side isn't a JSON object (the caller then replaces whole).
+    private static string? TryMerge(string snapshotFile, string liveFile, int depth)
+    {
+        try
+        {
+            if (JsonNode.Parse(File.ReadAllText(snapshotFile)) is not JsonObject snap
+                || JsonNode.Parse(File.ReadAllText(liveFile)) is not JsonObject live) return null;
+            return MergeKeyed(snap, live, depth).ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (JsonException) { return null; }
+    }
+
+    // Live entries in their order, the snapshot's value where both have the key (names compare case-
+    // insensitively, as the launcher reads them), then the snapshot's remaining keys.
+    private static JsonObject MergeKeyed(JsonObject snap, JsonObject live, int depth)
+    {
+        var snapKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, _) in snap) snapKeys.TryAdd(k, k);
+        var result = new JsonObject();
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, liveValue) in live)
+        {
+            if (!snapKeys.TryGetValue(k, out var sk)) { result[k] = liveValue?.DeepClone(); continue; }
+            taken.Add(k);
+            var sv = snap[sk];
+            result[sk] = depth > 1 && sv is JsonObject so && liveValue is JsonObject lo
+                ? MergeKeyed(so, lo, depth - 1)
+                : sv?.DeepClone();
+        }
+        foreach (var (k, sv) in snap)
+            if (!taken.Contains(k)) result[k] = sv?.DeepClone();
+        return result;
     }
 
     private static bool SameFolder(string a, string b)

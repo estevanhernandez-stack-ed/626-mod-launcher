@@ -65,7 +65,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
     }
 
     private static readonly string[] Ue4ssFiles =
-        { "dwmapi.dll", "ue4ss/UE4SS.dll", "ue4ss/UE4SS-settings.ini", "ue4ss/Mods/mods.txt" };
+        { "dwmapi.dll", "xinput1_3.dll", "ue4ss/UE4SS.dll", "ue4ss/UE4SS-settings.ini", "ue4ss/Mods/mods.txt" };
 
     // A UE4SS game. CoolLua is OFF and OtherLua ON at capture; UE4SS is registered; metadata.json is v1.
     private Fx Ue4ss(string? steamAppId = null)
@@ -75,6 +75,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         var luaMods = Path.Combine(win64, "ue4ss", "Mods");
         Put(Path.Combine(win64, "Palworld-Win64-Shipping.exe"), "EXE");
         Put(Path.Combine(win64, "dwmapi.dll"), "PROXY-V1");
+        Put(Path.Combine(win64, "xinput1_3.dll"), "PROXY2-V1");
         Put(Path.Combine(win64, "ue4ss", "UE4SS.dll"), "UE4SS-V1");
         Put(Path.Combine(win64, "ue4ss", "UE4SS-settings.ini"), "cfg=1");
         Put(Path.Combine(luaMods, "mods.txt"), "CoolLua : 0\r\nOtherLua : 1\r\n");
@@ -116,6 +117,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         Put(Path.Combine(fx.LuaMods, "mods.txt"), "CoolLua : 1\r\nOtherLua : 0\r\n");
         Put(Path.Combine(fx.LuaMods, "CoolLua", "enabled.txt"), "");
         Put(Path.Combine(fx.Win64, "dwmapi.dll"), "PROXY-V2");
+        Put(Path.Combine(fx.Win64, "xinput1_3.dll"), "PROXY2-V2");
         Put(Path.Combine(fx.Win64, "ue4ss", "UE4SS-settings.ini"), "cfg=2");
         Put(Path.Combine(fx.Data, "metadata.json"), "{\"v\":2}");
     }
@@ -145,12 +147,12 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         // What the overlay is for: the framework's files and launcher metadata, as captured.
         Assert.Equal("PROXY-V1", File.ReadAllText(Path.Combine(fx.Win64, "dwmapi.dll")));
         Assert.Equal("cfg=1", File.ReadAllText(Path.Combine(fx.Win64, "ue4ss", "UE4SS-settings.ini")));
-        Assert.Equal("{\"v\":1}", File.ReadAllText(Path.Combine(fx.Data, "metadata.json")));
+        Assert.Equal(1, MetaV(fx));
         // Nothing else in the game folder moved, and no temp file was left behind.
         var rootAfter = Snapshot(fx.Root);
         Assert.Equal(rootBefore.Keys.OrderBy(k => k), rootAfter.Keys.OrderBy(k => k));
         foreach (var (rel, sha) in rootBefore)
-            if (!rel.EndsWith("dwmapi.dll") && !rel.EndsWith("UE4SS-settings.ini")) Assert.Equal(sha, rootAfter[rel]);
+            if (!rel.EndsWith("dwmapi.dll") && !rel.EndsWith("xinput1_3.dll") && !rel.EndsWith("UE4SS-settings.ini")) Assert.Equal(sha, rootAfter[rel]);
         Assert.DoesNotContain(Directory.GetFiles(fx.Data, "*", SearchOption.AllDirectories), f => f.EndsWith(".rp-tmp"));
     }
 
@@ -163,6 +165,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         Put(Path.Combine(plugins, "Later.dll.disabled"), "LATER");
         Put(Path.Combine(root, "winhttp.dll"), "WINHTTP-V1");
         Put(Path.Combine(root, "BepInEx", "core", "BepInEx.dll"), "CORE-V1");
+        Put(Path.Combine(root, "doorstop_config.ini"), "enabled=true");
         var data = Path.Combine(DataRoot, "_626mods", "valheim");
         Directory.CreateDirectory(data);
         var g = new GameEntry
@@ -171,7 +174,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
             FileExtensions = new[] { "dll" }, GroupingRule = "filename_no_ext",
             ModLocations = new[] { new ModLocation("mods", "plugins", "BepInEx/plugins") },
         };
-        RegisterFramework(g, "bepinex", root, new[] { "winhttp.dll", "BepInEx/core/BepInEx.dll" }, Installed);
+        RegisterFramework(g, "bepinex", root, new[] { "winhttp.dll", "BepInEx/core/BepInEx.dll", "doorstop_config.ini" }, Installed);
         var fx = Wire(g, root, root, plugins, data);
         var ts = await Capture(fx);
 
@@ -179,6 +182,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         File.Move(Path.Combine(plugins, "Early.dll"), Path.Combine(plugins, "Early.dll.disabled"));   // off since capture
         Put(Path.Combine(root, "winhttp.dll"), "WINHTTP-V2");
         Put(Path.Combine(root, "BepInEx", "core", "BepInEx.dll"), "CORE-V2");
+        Put(Path.Combine(root, "doorstop_config.ini"), "enabled=false");   // the player turned BepInEx off
         var pluginsBefore = Snapshot(plugins);
 
         var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
@@ -189,6 +193,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         Assert.False(BepInExPlugins.IsEnabled(plugins, "Early"));
         Assert.Equal("WINHTTP-V1", File.ReadAllText(Path.Combine(root, "winhttp.dll")));
         Assert.Equal("CORE-V1", File.ReadAllText(Path.Combine(root, "BepInEx", "core", "BepInEx.dll")));
+        Assert.Equal("enabled=false", File.ReadAllText(Path.Combine(root, "doorstop_config.ini")));   // doorstop's switch is the player's
     }
 
     // ---- the restore is itself undoable ----
@@ -227,7 +232,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         Assert.True(back.Ok, back.RefusedReason);
         Assert.Equal("PROXY-V2", File.ReadAllText(Path.Combine(fx.Win64, "dwmapi.dll")));
         Assert.Equal("cfg=2", File.ReadAllText(Path.Combine(fx.Win64, "ue4ss", "UE4SS-settings.ini")));
-        Assert.Equal("{\"v\":2}", File.ReadAllText(Path.Combine(fx.Data, "metadata.json")));
+        Assert.Equal(2, MetaV(fx));
         Assert.Equal(luaBefore, Snapshot(fx.LuaMods));
         Assert.Equal(3, fx.Orch.ListRestorePoints().Count);
     }
@@ -248,7 +253,7 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         Assert.Equal(rootBefore, Snapshot(fx.Root));   // not one framework byte, not one enable state
         Assert.Contains(r.Warnings, w => w.Contains("ban risk", StringComparison.OrdinalIgnoreCase));
         Assert.False(BanRiskAckStore.IsAcked(fx.Data, "palworld"));   // and no consent was invented
-        Assert.Equal("{\"v\":1}", File.ReadAllText(Path.Combine(fx.Data, "metadata.json")));   // launcher data still restored
+        Assert.Equal(1, MetaV(fx));   // launcher data still restored
     }
 
     [Fact]
@@ -342,6 +347,180 @@ public class RestorePointOrchestratorKindRestoreTests : IDisposable
         Assert.True(r.Ok, r.RefusedReason);
         Assert.Equal(rootBefore, Snapshot(fx.Root));
         Assert.Contains(r.Warnings, w => w.Contains("UE4SS") && w.Contains("since"));
+    }
+
+    // ---- a framework that is stepped aside, moved, or no longer lists the file is not written ----
+
+    // metadata.json is merged, so it is compared by value, not bytes.
+    private static int MetaV(Fx fx) => Read(Path.Combine(fx.Data, "metadata.json"))["v"]!.GetValue<int>();
+
+    private static string Holding(Fx fx) => Path.Combine(fx.Data, "frameworks", "ue4ss", FrameworkRegistry.DisabledProxyDir);
+
+    [Fact]
+    public async Task A_stepped_aside_framework_is_left_alone()
+    {
+        var fx = Ue4ss();
+        var ts = await Capture(fx);
+        CarryOn(fx);
+        FrameworkRegistry.Disable(fx.Data, "ue4ss");
+        Assert.True(FrameworkRegistry.IsDisabled(fx.Data, "ue4ss"));
+        var root = Snapshot(fx.Root); var held = Snapshot(Holding(fx));
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal(root, Snapshot(fx.Root));            // no proxy back in the game folder, no other framework file touched
+        Assert.Equal(held, Snapshot(Holding(fx)));
+        Assert.Contains(r.Warnings, w => w.Contains("UE4SS") && w.Contains("switched off"));
+    }
+
+    [Fact]
+    public async Task A_half_stepped_aside_framework_is_left_alone_too()
+    {
+        var fx = Ue4ss();
+        var ts = await Capture(fx);
+        CarryOn(fx);
+        // An interrupted step-aside: one proxy held, the other still live. IsDisabled reads this as "not disabled".
+        Directory.CreateDirectory(Holding(fx));
+        File.Move(Path.Combine(fx.Win64, "dwmapi.dll"), Path.Combine(Holding(fx), "dwmapi.dll"));
+        Assert.False(FrameworkRegistry.IsDisabled(fx.Data, "ue4ss"));
+        var root = Snapshot(fx.Root); var held = Snapshot(Holding(fx));
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal(root, Snapshot(fx.Root));            // xinput1_3.dll is still the player's V2; dwmapi.dll is still absent
+        Assert.Equal(held, Snapshot(Holding(fx)));
+        Assert.Contains(r.Warnings, w => w.Contains("UE4SS") && w.Contains("switched off"));
+    }
+
+    [Fact]
+    public async Task A_play_vanilla_stash_on_the_game_means_no_framework_is_written()
+    {
+        var fx = Ue4ss();
+        var ts = await Capture(fx);
+        CarryOn(fx);
+        Put(Path.Combine(fx.Data, "vanilla-stash.json"), "{}");
+        var root = Snapshot(fx.Root);
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal(root, Snapshot(fx.Root));
+        Assert.Contains(r.Warnings, w => w.Contains("vanilla", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task A_framework_that_now_lives_in_another_folder_is_left_alone()
+    {
+        var fx = Ue4ss();
+        var ts = await Capture(fx);
+        CarryOn(fx);
+        var elsewhere = Path.Combine(_root, "elsewhere");
+        Directory.CreateDirectory(elsewhere);
+        RegisterFramework(fx.Game, "ue4ss", elsewhere, Ue4ssFiles, Installed);   // same stamp, new home
+        var root = Snapshot(fx.Root);
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal(root, Snapshot(fx.Root));
+        Assert.Empty(Directory.GetFiles(elsewhere, "*", SearchOption.AllDirectories));
+        Assert.Contains(r.Warnings, w => w.Contains("somewhere else"));
+    }
+
+    [Fact]
+    public async Task Only_files_the_live_record_still_lists_are_written_and_never_a_forbidden_one()
+    {
+        var fx = Ue4ss();
+        var withExe = Ue4ssFiles.Append("Palworld-Win64-Shipping.exe").ToArray();   // ue4ss forbids "*-Shipping.exe"
+        RegisterFramework(fx.Game, "ue4ss", fx.Win64, withExe, Installed);
+        var ts = await Capture(fx);
+        CarryOn(fx);
+        Put(Path.Combine(fx.Win64, "Palworld-Win64-Shipping.exe"), "EXE-PATCHED");   // the game updated its exe
+        // The live record has since dropped the settings file.
+        RegisterFramework(fx.Game, "ue4ss", fx.Win64, withExe.Where(f => !f.EndsWith("UE4SS-settings.ini")).ToArray(), Installed);
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal("PROXY-V1", File.ReadAllText(Path.Combine(fx.Win64, "dwmapi.dll")));
+        Assert.Equal("cfg=2", File.ReadAllText(Path.Combine(fx.Win64, "ue4ss", "UE4SS-settings.ini")));   // not in the live record
+        Assert.Equal("EXE-PATCHED", File.ReadAllText(Path.Combine(fx.Win64, "Palworld-Win64-Shipping.exe")));   // forbidden
+    }
+
+    [Fact]
+    public async Task A_snapshot_whose_framework_file_escapes_the_install_root_is_refused_before_anything_is_taken_or_changed()
+    {
+        var fx = Ue4ss();
+        var ts = await Capture(fx);
+        CarryOn(fx);
+        var rp = Path.Combine(Points, ts);
+        var m = RestorePointManifestStore.Read(rp)!;
+        var ga = m.Games[0];
+        var fw = ga.Frameworks[0] with { InstalledFiles = ga.Frameworks[0].InstalledFiles.Append("../evil.dll").ToList() };
+        RestorePointManifestStore.WriteSealed(rp, m with { Games = new[] { ga with { Frameworks = new[] { fw } } } });
+        var root = Snapshot(fx.Root); var data = Snapshot(fx.Data); var points = Snapshot(Points);
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.False(r.Ok);
+        Assert.Contains("Nothing was changed", r.RefusedReason!);
+        Assert.Equal(root, Snapshot(fx.Root));
+        Assert.Equal(data, Snapshot(fx.Data));
+        Assert.Equal(points, Snapshot(Points));            // and no beforeRestore point left behind
+        Assert.Single(fx.Orch.ListRestorePoints());
+    }
+
+    // ---- keyed launcher data is merged, not replaced ----
+
+    private static System.Text.Json.Nodes.JsonNode Read(string path) => System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+
+    [Fact]
+    public async Task Keyed_launcher_data_keeps_what_was_added_since_and_takes_the_snapshots_value_where_both_have_a_key()
+    {
+        var fx = Ue4ss();
+        Put(Path.Combine(fx.Data, "metadata.json"), "{\"Alpha\":{\"url\":\"u1\"},\"Beta\":{\"url\":\"b1\"}}");
+        Put(Path.Combine(fx.Data, "classification.json"), "{\"Alpha\":\"gameplay\"}");
+        Put(Path.Combine(fx.Data, "direct-inject", "config-overrides.json"), "{\"overridesByModId\":{\"m1\":{\"k\":\"1\"}}}");
+        var ts = await Capture(fx);
+        // Since: a mod was installed (Gamma, with its source and install time), Alpha was re-matched, another classified.
+        Put(Path.Combine(fx.Data, "metadata.json"),
+            "{\"alpha\":{\"url\":\"u2\"},\"Gamma\":{\"url\":\"g\",\"sourceConfidence\":\"high\",\"installedUtc\":\"2026-10-10T00:00:00Z\"}}");
+        Put(Path.Combine(fx.Data, "classification.json"), "{\"Alpha\":\"cosmetic\",\"Gamma\":\"qol\"}");
+        Put(Path.Combine(fx.Data, "direct-inject", "config-overrides.json"),
+            "{\"overridesByModId\":{\"m1\":{\"k\":\"2\"},\"m2\":{\"k\":\"3\"}}}");
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        var meta = (System.Text.Json.Nodes.JsonObject)Read(Path.Combine(fx.Data, "metadata.json"));
+        Assert.Equal(3, meta.Count);                                                   // Alpha once (not Alpha and alpha), Beta, Gamma
+        Assert.Equal("u1", meta.Single(kv => kv.Key.Equals("alpha", StringComparison.OrdinalIgnoreCase)).Value!["url"]!.GetValue<string>());
+        Assert.Equal("b1", meta["Beta"]!["url"]!.GetValue<string>());
+        Assert.Equal("high", meta["Gamma"]!["sourceConfidence"]!.GetValue<string>());   // the new mod keeps its provenance
+        Assert.Equal("2026-10-10T00:00:00Z", meta["Gamma"]!["installedUtc"]!.GetValue<string>());
+        var cls = Read(Path.Combine(fx.Data, "classification.json"));
+        Assert.Equal("gameplay", cls["Alpha"]!.GetValue<string>());
+        Assert.Equal("qol", cls["Gamma"]!.GetValue<string>());
+        var ov = Read(Path.Combine(fx.Data, "direct-inject", "config-overrides.json"))["overridesByModId"]!;
+        Assert.Equal("1", ov["m1"]!["k"]!.GetValue<string>());
+        Assert.Equal("3", ov["m2"]!["k"]!.GetValue<string>());                          // one level down, too
+        Assert.DoesNotContain(r.Warnings, w => w.Contains("metadata.json"));
+    }
+
+    [Fact]
+    public async Task A_launcher_data_file_that_is_not_a_keyed_map_is_replaced_whole_and_the_note_names_it()
+    {
+        var fx = Ue4ss();
+        var ts = await Capture(fx);
+        Put(Path.Combine(fx.Data, "metadata.json"), "[1,2,3]");
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal("{\"v\":1}", File.ReadAllText(Path.Combine(fx.Data, "metadata.json")));
+        Assert.Contains(r.Warnings, w => w.Contains("metadata.json") && w.Contains("replaced"));
     }
 
     // ---- refusals touch nothing ----
