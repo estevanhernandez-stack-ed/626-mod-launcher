@@ -1996,8 +1996,13 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         var back = PatchDay.BringBack(rec);
-        _svc.SetSteamBuildBaseline(ctx.Game.Id, back.BaselineBuildId);
-        ctx.Game.LastKnownSteamBuildId = back.BaselineBuildId;
+        // The spec moves the baseline to the CURRENT build. The live id the last reload read is that; the
+        // record's build is only the fallback for a game whose live build is unknown.
+        var liveKnown = string.Equals(_patchDayVerdictGameId, ctx.Game.Id, StringComparison.Ordinal)
+                        && !string.IsNullOrEmpty(_patchDayLiveBuild);
+        var baseline = liveKnown ? _patchDayLiveBuild! : back.BaselineBuildId;
+        _svc.SetSteamBuildBaseline(ctx.Game.Id, baseline);
+        ctx.Game.LastKnownSteamBuildId = baseline;
         PersistPatchDay(back.Record);
         await ReloadModsAsync();
         StatusText = "Your mods are back.";
