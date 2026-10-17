@@ -337,9 +337,56 @@ public class RestorePointOrchestratorPruneTests : IDisposable
         Assert.True(r.Ok, r.RefusedReason);
         Assert.True(Directory.Exists(Path.Combine(Points, stuck)));
         Assert.False(Directory.Exists(Path.Combine(Points, gone)));
-        Assert.Contains(r.Warnings, w => w.StartsWith("Couldn't remove 1 older undo snapshot for Palworld") && w.Contains(stuck));
+        Assert.Contains(r.Warnings, w => w.StartsWith("Couldn't fully remove 1 older undo snapshot for Palworld") && w.Contains(stuck));
         Assert.Contains("Removed 1 older undo snapshot for Palworld (kept the newest 3).", r.Warnings);
         Assert.Equal("PROXY-V1", File.ReadAllText(Path.Combine(fx.Win64, "dwmapi.dll")));   // and the restore itself landed
+    }
+
+    [Fact]
+    public async Task A_point_that_fails_to_delete_is_unsealed_first_so_it_is_hidden_and_the_sweep_finishes_it()
+    {
+        var fx = Ue4ss();
+        await Seed(fx, 2); await Seed(fx, 3);
+        var stuck = await Seed(fx, 4);
+        var ts = await CapturePatchDay(fx);
+        var claim = Path.Combine(Points, stuck, RestorePointOrchestrator.CaptureClaimFile);
+        Assert.True(File.Exists(claim));                                              // sealing leaves the claim in place
+        var held = new FileStream(claim, FileMode.Open, FileAccess.Read, FileShare.None);
+        try
+        {
+            var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+            Assert.True(r.Ok, r.RefusedReason);
+            Assert.True(Directory.Exists(Path.Combine(Points, stuck)));               // the folder could not go...
+            Assert.False(File.Exists(Path.Combine(Points, stuck, RestorePointManifestStore.FileName)));   // ...but the seal did
+            Assert.DoesNotContain(fx.Orch.ListRestorePoints(), p => p.Timestamp == stuck);
+            Assert.Contains(r.Warnings, w => w.StartsWith("Couldn't fully remove 1 older undo snapshot for Palworld") && w.Contains(stuck));
+        }
+        finally { held.Dispose(); }
+
+        // Once it has sat unsealed and claimed for longer than AbandonedCaptureAge, the next capture sweeps it.
+        File.SetLastWriteTimeUtc(claim, DateTime.UtcNow - RestorePointOrchestrator.AbandonedCaptureAge - TimeSpan.FromMinutes(1));
+        Assert.True((await fx.Orch.CaptureGameOnlyAsync("palworld", RestorePointKinds.PatchDay, "20261017-115900", default)).Ok);
+        Assert.False(Directory.Exists(Path.Combine(Points, stuck)));
+    }
+
+    [Fact]
+    public async Task A_manifest_that_cannot_be_removed_leaves_the_point_whole_and_still_sealed()
+    {
+        var fx = Ue4ss();
+        await Seed(fx, 2); await Seed(fx, 3);
+        var stuck = await Seed(fx, 4);
+        var ts = await CapturePatchDay(fx);
+        using var held = new FileStream(Path.Combine(Points, stuck, RestorePointManifestStore.FileName),
+            FileMode.Open, FileAccess.Read, FileShare.Read);                           // readable, but not deletable
+        var before = Snapshot(Path.Combine(Points, stuck));
+
+        var r = await fx.Orch.RestoreAsync(ts, default, Snap1);
+
+        Assert.True(r.Ok, r.RefusedReason);
+        Assert.Equal(before, Snapshot(Path.Combine(Points, stuck)));                   // not one file of it went
+        Assert.Contains(fx.Orch.ListRestorePoints(), p => p.Timestamp == stuck);
+        Assert.Contains(r.Warnings, w => w.StartsWith("Couldn't fully remove 1 older undo snapshot"));
     }
 
     // ---- Safe Clear is not this ----

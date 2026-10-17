@@ -693,14 +693,14 @@ public sealed class RestorePointOrchestrator
             foreach (var name in doomed)
             {
                 if (!IsPlainName(name)) continue;
-                if (TryDeleteRestorePoint(name)) removed++; else stuck.Add(name);
+                if (TryDeleteUnsealedFirst(name)) removed++; else stuck.Add(name);
             }
             if (removed > 0)
                 notes.Add($"Removed {removed} older undo snapshot{(removed == 1 ? "" : "s")} for {gameName} "
                     + $"(kept the newest {RestorePointRetention.KeepBeforeRestore}).");
             if (stuck.Count > 0)
-                notes.Add($"Couldn't remove {stuck.Count} older undo snapshot{(stuck.Count == 1 ? "" : "s")} for {gameName}: "
-                    + $"{string.Join(", ", stuck)}. {(stuck.Count == 1 ? "It stays" : "They stay")} where {(stuck.Count == 1 ? "it is" : "they are")}.");
+                notes.Add($"Couldn't fully remove {stuck.Count} older undo snapshot{(stuck.Count == 1 ? "" : "s")} for {gameName}: "
+                    + $"{string.Join(", ", stuck)}. 626 will try again later.");
         }
         catch { /* tidying is a courtesy; the restore it follows has already succeeded */ }
     }
@@ -724,6 +724,23 @@ public sealed class RestorePointOrchestrator
     }
 
     public void DeleteRestorePoint(string timestamp) => TryDeleteRestorePoint(timestamp);
+
+    // The prune's removal: the seal goes FIRST, then the folder. A folder that then fails partway is unsealed
+    // and still carries its capture claim, so ListRestorePoints never shows it (no half-restorable point) and
+    // SweepAbandonedCaptures removes it once it is AbandonedCaptureAge old. If the seal itself can't be
+    // removed, nothing else is touched and the point stays whole. A point with no claim file (not one a
+    // capture made) would be an orphan nothing sweeps, so it gets the plain removal instead; no claim is added.
+    private bool TryDeleteUnsealedFirst(string timestamp)
+    {
+        var dir = Path.Combine(_restorePointsRoot, timestamp);
+        if (File.Exists(Path.Combine(dir, CaptureClaimFile)))
+        {
+            var manifest = Path.Combine(dir, RestorePointManifestStore.FileName);
+            try { File.Delete(manifest); } catch { /* checked below */ }
+            if (File.Exists(manifest)) return false;
+        }
+        return TryDeleteRestorePoint(timestamp);
+    }
 
     // DeleteRestorePoint's removal, reporting whether the folder is gone afterwards.
     private bool TryDeleteRestorePoint(string timestamp)
