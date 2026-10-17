@@ -79,7 +79,7 @@ public static class FrameworkRegistry
         try { Directory.Delete(fwDir, recursive: true); } catch { }
     }
 
-    private const string DisabledProxyDir = "disabled-proxy";
+    internal const string DisabledProxyDir = "disabled-proxy";
 
     /// <summary>The top-level (no-slash) InstalledFiles entries — the loader proxy DLL(s) that make the
     /// framework inject (e.g. dwmapi.dll). Everything else lives under ue4ss/ and isn't a process hijack.</summary>
