@@ -86,6 +86,9 @@ public static class EffectiveManifest
         {
             Games = order.Select(id => byId[id]).ToList(),
             Loaders = MergeLoaders(embedded.Loaders, remote.Loaders),
+            // One whole list, not a per-loader merge: the feed publishes the newest release per loader
+            // as a set, so a remote that has any rows is the fresher statement. No rows falls back.
+            LoaderReleases = remote.LoaderReleases is { Count: > 0 } ? remote.LoaderReleases : embedded.LoaderReleases,
         };
     }
 

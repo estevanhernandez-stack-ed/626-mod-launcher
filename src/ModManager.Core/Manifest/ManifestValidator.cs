@@ -15,6 +15,11 @@ public sealed record ManifestValidationResult(
     /// <summary>Game ids whose <c>modPathModOnly</c> was dropped (no modPath, the game root, or a known
     /// base-content folder); the rest of each entry was kept.</summary>
     public IReadOnlyList<string> DroppedModOnlyFlags { get; init; } = Array.Empty<string>();
+
+    /// <summary>Loader names of <see cref="GameManifest.LoaderReleases"/> rows that were dropped (non-https
+    /// url, future date, unreadable date, empty loader or version; "(null)" for a null row). The rest of
+    /// the manifest, and the other rows, were kept.</summary>
+    public IReadOnlyList<string> DroppedLoaderReleases { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -29,7 +34,8 @@ public sealed record ManifestValidationResult(
 /// </summary>
 public static class ManifestValidator
 {
-    public static ManifestValidationResult Validate(GameManifest manifest, IReadOnlySet<string> knownEngines)
+    public static ManifestValidationResult Validate(
+        GameManifest manifest, IReadOnlySet<string> knownEngines, DateTime? nowUtc = null)
     {
         var kept = new List<GameManifestEntry>();
         var skipped = new List<string>();
@@ -97,15 +103,53 @@ public static class ManifestValidator
             keptLoaders.Add(l);
         }
 
+        // Release rows are judged one by one and dropped alone. "Now" is a seam (default: the clock) so a
+        // row dated in the future is testable; no skew allowance, a row that early reappears on the next
+        // fetch.
+        var now = nowUtc ?? DateTime.UtcNow;
+        var keptReleases = new List<LoaderReleaseEntry>();
+        var droppedReleases = new List<string>();
+        foreach (var r in manifest.LoaderReleases ?? Array.Empty<LoaderReleaseEntry>())
+        {
+            if (r is null) { droppedReleases.Add("(null)"); continue; }
+            if (LoaderReleaseProblem(r, now) is not null) { droppedReleases.Add(r.Loader ?? ""); continue; }
+            keptReleases.Add(r);
+        }
+
         return new ManifestValidationResult(
-            manifest with { Games = kept, Loaders = keptLoaders },
+            manifest with { Games = kept, Loaders = keptLoaders, LoaderReleases = keptReleases },
             skipped,
             rejected)
         {
             SkippedLoaders = skippedLoaders,
             RejectedLoaders = rejectedLoaders,
             DroppedModOnlyFlags = droppedFlags,
+            DroppedLoaderReleases = droppedReleases,
         };
+    }
+
+    /// <summary>Why a <see cref="LoaderReleaseEntry"/> must not be used, or null when it may. Shared with
+    /// the miner so a bad row is refused before it is signed.</summary>
+    public static string? LoaderReleaseProblem(LoaderReleaseEntry release, DateTime nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(release.Loader)) return "a release names no loader";
+        if (string.IsNullOrWhiteSpace(release.Version)) return $"release of '{release.Loader}' has no version";
+        if (!TryParseUtc(release.PublishedUtc, out var when)) return $"release of '{release.Loader}' publishedUtc is not a date";
+        if (when > nowUtc) return $"release of '{release.Loader}' is dated in the future";
+        if (!Uri.TryCreate(release.Url, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps)
+            return $"release of '{release.Loader}' url is not an absolute https URL";
+        return null;
+    }
+
+    /// <summary>Parse an ISO-8601 date to UTC; a value with no offset is read as UTC.</summary>
+    public static bool TryParseUtc(string? text, out DateTime utc)
+    {
+        utc = default;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (!DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var dto)) return false;
+        utc = dto.UtcDateTime;
+        return true;
     }
 
     /// <summary>
