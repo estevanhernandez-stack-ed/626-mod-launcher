@@ -907,11 +907,22 @@ public sealed partial class SettingsDialog : ContentDialog
         RestorePointsList.ItemsSource = pts
             .Select(p => new RestorePointRow(
                 Timestamp: p.Timestamp,
-                Detail: $"{string.Join(", ", p.GameNames)} · {FormatSize(p.TotalBytes)}",
+                Detail: $"{KindLabel(p.Kind)} · {string.Join(", ", p.GameNames)} · {FormatSize(p.TotalBytes)}",
                 Id: p.Timestamp))
             .ToList();
         NoRestorePointsText.Visibility = pts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    /// <summary>What made the restore point, in the player's words. Patch Day snapshots and the undo
+    /// snapshot a restore takes first sit in the same list as Safe Clear points; without this they read
+    /// identically. An unknown kind from a newer build still says something true.</summary>
+    private static string KindLabel(string? kind) => kind switch
+    {
+        null => "Safe Clear",
+        ModManager.Core.RestorePoints.RestorePointKinds.PatchDay => "Patch Day snapshot",
+        ModManager.Core.RestorePoints.RestorePointKinds.BeforeRestore => "Before a restore",
+        _ => "Snapshot",
+    };
 
     private static string FormatSize(long bytes)
     {
