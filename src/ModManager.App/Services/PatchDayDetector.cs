@@ -76,16 +76,16 @@ public sealed class PatchDayDetector
     }
 
     /// <summary>
-    /// The library home's Play click: should this game open to ask instead of launching? A stored record is
-    /// answered for free. With none, a game that has a Steam app id gets the game view's detection run for it
-    /// alone, off the UI thread. Anything that goes wrong answers false: Play launches as it always did.
+    /// The library home's Play click: should this game open to ask instead of launching? A stored Vanilla or
+    /// Modded choice answers for free, no scan. Otherwise (no record, or a record with no choice) a game with
+    /// a Steam app id gets the game view's evaluation run for it alone, off the UI thread, so a patch that has
+    /// since gone quiet launches. Anything that goes wrong answers false: Play launches as it always did.
     /// </summary>
     public async Task<bool> ShouldOpenToAskAsync(GameEntry game)
     {
         try
         {
-            if (game.PatchDay is not null) return PatchDay.ShouldOpenToAsk(game.PatchDay, null);
-            if (string.IsNullOrEmpty(game.SteamAppId)) return false;
+            if (!PatchDay.NeedsPlayCheck(game.PatchDay) || string.IsNullOrEmpty(game.SteamAppId)) return false;
 
             // Same inputs the game view reads on reload: the local Steam scan (no network) and the loader dates.
             var (ctx, liveBuild, stale) = await Task.Run(() =>
@@ -97,7 +97,7 @@ public sealed class PatchDayDetector
             if (string.IsNullOrEmpty(liveBuild)) return false;
 
             var evaluation = await EvaluateAsync(ctx, liveBuild, stale);
-            return PatchDay.ShouldOpenToAsk(game.PatchDay, evaluation.Verdict);
+            return PatchDay.ShouldAskAtPlay(evaluation.Verdict);
         }
         catch
         {

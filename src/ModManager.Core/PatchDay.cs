@@ -165,15 +165,13 @@ public static class PatchDay
         => verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None, Record: not null };
 
     /// <summary>
-    /// Whether Play on the library home should open the game instead of launching it, so the question can be
-    /// asked in the game view. Given a verdict (a fresh evaluation, detection already applied) it is
-    /// <see cref="ShouldAskAtPlay"/>. Without one, the stored record alone answers: a record with no choice
-    /// means a patch was seen and the player has not decided. Cheap on purpose: a game with a record costs no
-    /// disk scan, and the game view re-checks the real verdict on load, so a record that has since gone
-    /// quiet lands the player in the game with nothing asked.
+    /// Whether Play on the library home must look at this game before launching it. A stored Vanilla or
+    /// Modded choice settles it for free: the question is answered, so Play launches. No record (a patch
+    /// may not have been seen yet) or a record with no choice needs a fresh verdict; the answer to "open to
+    /// ask" is then <see cref="ShouldAskAtPlay"/> on that verdict, so a patch that has since gone quiet
+    /// launches instead of dropping the player into the game view.
     /// </summary>
-    public static bool ShouldOpenToAsk(PatchDayRecord? record, PatchDayVerdict? verdict)
-        => verdict is not null ? ShouldAskAtPlay(verdict) : record is { Choice: PatchDayChoice.None };
+    public static bool NeedsPlayCheck(PatchDayRecord? record) => record is null or { Choice: PatchDayChoice.None };
 
     public static PatchDayRecord Choose(PatchDayRecord record, PatchDayChoice choice) => record with { Choice = choice };
 
