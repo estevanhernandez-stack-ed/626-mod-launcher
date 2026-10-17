@@ -1814,6 +1814,11 @@ public sealed partial class MainViewModel : ObservableObject
     // button press, apart from the restore-point capture, which writes only inside restore-points.
     // ---------------------------------------------------------------------------------------------
 
+    /// <summary>The feed's latest loader releases (already validated), mapped to what Patch Day reads.</summary>
+    private static IReadOnlyList<LoaderRelease> FeedLoaderReleases()
+        => ModManager.Core.Manifest.EffectiveManifest.Current.LoaderReleases
+            .Select(r => r.ToRelease()).OfType<LoaderRelease>().ToList();
+
     private async Task EvaluatePatchDayAsync(GameContext ctx, string? liveBuild, StaleLoaderReport liveReport)
     {
         var mode = VanillaLaunch.CurrentMode(ctx.DataDir);
@@ -1825,7 +1830,7 @@ public sealed partial class MainViewModel : ObservableObject
         _patchDayLiveBuild = liveBuild;
         var game = ctx.Game;
         var verdict = PatchDay.Evaluate(new PatchDayInput(
-            game.LastKnownSteamBuildId, liveBuild, game.PatchDay, report, Array.Empty<LoaderRelease>(), mode));
+            game.LastKnownSteamBuildId, liveBuild, game.PatchDay, report, FeedLoaderReleases(), mode));
 
         var takeSnapshot = false;
         if (verdict.NeedsDetect && !string.IsNullOrEmpty(liveBuild))
@@ -1835,7 +1840,7 @@ public sealed partial class MainViewModel : ObservableObject
             _svc.SetPatchDay(game.Id, detected);
             game.PatchDay = detected;
             verdict = PatchDay.Evaluate(new PatchDayInput(
-                game.LastKnownSteamBuildId, liveBuild, detected, report, Array.Empty<LoaderRelease>(), mode));
+                game.LastKnownSteamBuildId, liveBuild, detected, report, FeedLoaderReleases(), mode));
             takeSnapshot = PatchDay.NeedsRestorePoint(detected);
         }
         else if (game.PatchDay is { } held && verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None }
@@ -1858,7 +1863,7 @@ public sealed partial class MainViewModel : ObservableObject
         var game = _ctx.Game;
         _patchDayVerdict = PatchDay.Evaluate(new PatchDayInput(
             game.LastKnownSteamBuildId, _patchDayLiveBuild, game.PatchDay, _patchDayReport,
-            Array.Empty<LoaderRelease>(), VanillaLaunch.CurrentMode(_ctx.DataDir)));
+            FeedLoaderReleases(), VanillaLaunch.CurrentMode(_ctx.DataDir)));
         _patchDayVerdictGameId = game.Id;
         RebuildStateChips();
     }
