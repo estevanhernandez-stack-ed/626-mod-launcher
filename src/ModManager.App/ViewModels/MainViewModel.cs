@@ -409,9 +409,13 @@ public sealed partial class MainViewModel : ObservableObject
     private StaleLoaderReport _patchDayReport = StaleLoaderReport.None;
     private string? _patchDayLiveBuild;
 
-    // Games whose automatic restore point is being copied right now, so a reload that lands mid-copy
-    // never starts a second one for the same game.
-    private readonly HashSet<string> _patchDayCapturing = new(StringComparer.OrdinalIgnoreCase);
+    // Detection, persistence and the automatic restore point live in the shared detector, which the library
+    // home's Play click also runs; its in-flight set keeps the two from capturing one game twice.
+    private readonly Services.PatchDayDetector _patchDay;
+
+    // One-shot hand-off from the library home: Play opened this game because a patch is waiting on a choice.
+    // Consumed once, at the end of the load that follows, after the reload has computed the real verdict.
+    private string? _pendingPatchDayAskGameId;
 
     // 626's own load-order prefixes on disk (Scanner.PlanUndoLoadOrder), as the LOAD ORDER chip's sentence.
     [ObservableProperty] public partial string? LoadOrderPrefixMessage { get; set; }
@@ -642,7 +646,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources, Services.DiscoveryScanService discovery, Services.ModNameIndexSource nameIndex)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources, Services.DiscoveryScanService discovery, Services.ModNameIndexSource nameIndex, Services.PatchDayDetector patchDay)
     {
         _svc = svc;
         _me2 = me2;
@@ -658,6 +662,8 @@ public sealed partial class MainViewModel : ObservableObject
         _sources = sources;
         _discovery = discovery;
         _nameIndex = nameIndex;
+        _patchDay = patchDay;
+        _patchDay.RestorePointSettled += OnPatchDayRestorePointSettled;
         ThemeOptions = themes.Themes;
         // Restore the user's saved pick (F-080); Default (the flagship) covers first-run, a
         // cleared setting, and a saved id whose theme has since been deleted.
@@ -836,6 +842,10 @@ public sealed partial class MainViewModel : ObservableObject
             } while (_loadPending);
         }
         finally { _loading = false; }
+
+        // After the loop, so the verdict is the reload's own and a caller that bounced off _loading never
+        // asks early; the outermost load is the one that reaches here with the final state.
+        await AskPatchDayIfPendingAsync();
     }
 
     partial void OnActiveGameChanged(GameOption? value)
@@ -1823,38 +1833,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task EvaluatePatchDayAsync(GameContext ctx, string? liveBuild, StaleLoaderReport liveReport)
     {
-        var mode = VanillaLaunch.CurrentMode(ctx.DataDir);
-        var report = liveReport;
-        if (mode == LaunchMode.Vanilla && VanillaStashStore.Load(ctx.DataDir) is { } stash)
-            report = await Task.Run(() => StaleLoaders.Find(ctx, stash));
-
-        _patchDayReport = report;
+        var evaluation = await _patchDay.EvaluateAsync(ctx, liveBuild, liveReport);
+        _patchDayReport = evaluation.Report;
         _patchDayLiveBuild = liveBuild;
-        var game = ctx.Game;
-        var verdict = PatchDay.Evaluate(new PatchDayInput(
-            game.LastKnownSteamBuildId, liveBuild, game.PatchDay, report, Array.Empty<LoaderRelease>(), mode));
-
-        var takeSnapshot = false;
-        if (verdict.NeedsDetect && !string.IsNullOrEmpty(liveBuild))
-        {
-            // The baseline stays put: it moves only in Bring my mods back.
-            var detected = PatchDay.Detect(game.PatchDay, liveBuild, DateTime.UtcNow);
-            _svc.SetPatchDay(game.Id, detected);
-            game.PatchDay = detected;
-            verdict = PatchDay.Evaluate(new PatchDayInput(
-                game.LastKnownSteamBuildId, liveBuild, detected, report, Array.Empty<LoaderRelease>(), mode));
-            takeSnapshot = PatchDay.NeedsRestorePoint(detected);
-        }
-        else if (game.PatchDay is { } held && verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None }
-                 && PatchDay.NeedsRestorePoint(held) && held.RestorePointError is null)
-        {
-            // A capture the app was closed in the middle of: no id, no error. Try once more.
-            takeSnapshot = true;
-        }
-
-        _patchDayVerdict = verdict;
-        _patchDayVerdictGameId = game.Id;
-        if (takeSnapshot) _ = CapturePatchDayRestorePointAsync(game.Id);
+        _patchDayVerdict = evaluation.Verdict;
+        _patchDayVerdictGameId = ctx.Game.Id;
     }
 
     /// <summary>Re-derive the verdict from what the last reload read and the record as it is now, then redraw
@@ -1877,39 +1860,39 @@ public sealed partial class MainViewModel : ObservableObject
         _ctx.Game.PatchDay = record;
     }
 
-    /// <summary>The automatic restore point. Off the UI thread, never twice at once for a game, and a failure
-    /// is recorded on the PATCH DAY record rather than thrown: the warning never depends on the snapshot.</summary>
-    private async Task CapturePatchDayRestorePointAsync(string gameId)
+    /// <summary>The detector finished a restore point (any game): when it is the one on screen, take the
+    /// record as stored now and redraw the chip.</summary>
+    private void OnPatchDayRestorePointSettled(string gameId, PatchDayRecord? saved)
     {
-        if (!_patchDayCapturing.Add(gameId)) return;
-        try
-        {
-            ModManager.Core.RestorePoints.CaptureOnlyResult result;
-            try
-            {
-                var rp = App.AppHost.Services.GetRequiredService<RestorePointService>();
-                result = await Task.Run(() => rp.CaptureGameOnlyAsync(gameId));
-            }
-            catch (Exception e)
-            {
-                result = new ModManager.Core.RestorePoints.CaptureOnlyResult(false, ErrorRemedy.Describe(e), null);
-            }
+        if (_ctx is null || !string.Equals(_ctx.Game.Id, gameId, StringComparison.OrdinalIgnoreCase)) return;
+        _ctx.Game.PatchDay = saved;
+        RefreshPatchDayVerdict();
+    }
 
-            // From what is stored now: the player may have chosen or snoozed while the snapshot copied.
-            var saved = _svc.UpdatePatchDay(gameId, rec =>
-            {
-                if (rec is null || !PatchDay.NeedsRestorePoint(rec)) return rec;
-                return result.Ok && result.RestorePointTimestamp is { } id
-                    ? PatchDay.WithRestorePoint(rec, id)
-                    : PatchDay.WithRestorePointError(rec, result.RefusedReason ?? "the snapshot could not be written");
-            });
-            if (_ctx is not null && string.Equals(_ctx.Game.Id, gameId, StringComparison.OrdinalIgnoreCase))
-            {
-                _ctx.Game.PatchDay = saved;
-                RefreshPatchDayVerdict();
-            }
-        }
-        finally { _patchDayCapturing.Remove(gameId); }
+    /// <summary>Ask the Patch Day question for the game on screen when its verdict calls for it. Shared by
+    /// Play and by the library hand-off. True when it asked (the answer has been routed), so the caller
+    /// stops: nothing launches from here except through the chosen action.</summary>
+    private async Task<bool> TryAskPatchDayAsync()
+    {
+        if (_ctx is null || !PatchDay.ShouldAskAtPlay(_patchDayVerdict) || AskPatchDayAtPlay is not { } ask
+            || !string.Equals(_patchDayVerdictGameId, _ctx.Game.Id, StringComparison.Ordinal))
+            return false;
+        var pick = await ask(GameStateStrip.PatchDayChip(_patchDayVerdict!, _ctx.Game.GameName));
+        if (pick is { } action) await RunPatchDayActionAsync(action);
+        return true;
+    }
+
+    /// <summary>The library home opened this game from Play because a patch awaits a choice. The question is
+    /// asked once the next load has computed the game's verdict; see <see cref="AskPatchDayIfPendingAsync"/>.</summary>
+    public void AskPatchDayOnNextLoad(string gameId) => _pendingPatchDayAskGameId = gameId;
+
+    private async Task AskPatchDayIfPendingAsync()
+    {
+        var gameId = _pendingPatchDayAskGameId;
+        _pendingPatchDayAskGameId = null;
+        // Not the game on screen, or no longer Patched with no choice: land in the game view, ask nothing.
+        if (gameId is null || _ctx is null || !string.Equals(_ctx.Game.Id, gameId, StringComparison.Ordinal)) return;
+        await TryAskPatchDayAsync();
     }
 
     /// <summary>The detail row's first button, routed by the chip's action key.</summary>
@@ -2375,13 +2358,7 @@ public sealed partial class MainViewModel : ObservableObject
         // action path, which records it and (for modded) passes the ban-risk gate; nothing launches from here.
         // Once a choice is recorded ShouldAskAtPlay is false, so this falls straight through and launches the
         // state the choice left on disk (vanilla: mods already stepped aside; modded: mods in place).
-        if (PatchDay.ShouldAskAtPlay(_patchDayVerdict) && AskPatchDayAtPlay is { } ask
-            && string.Equals(_patchDayVerdictGameId, _ctx.Game.Id, StringComparison.Ordinal))
-        {
-            var pick = await ask(GameStateStrip.PatchDayChip(_patchDayVerdict!, _ctx.Game.GameName));
-            if (pick is { } action) await RunPatchDayActionAsync(action);
-            return;
-        }
+        if (await TryAskPatchDayAsync()) return;
         // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
         if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
         {

@@ -67,6 +67,8 @@ public partial class App : Application
                 services.AddSingleton<NexusUpdatePoll>();
                 services.AddSingleton<RemoteManifestSource>();
                 services.AddSingleton<RestorePointService>();
+                // Patch Day detection + the automatic restore point, shared by the game view and the library Play click.
+                services.AddSingleton<Services.PatchDayDetector>();
                 // Find-what's-already-there discovery: read-only sweep + the per-game Nexus name
                 // index it identifies against.
                 services.AddSingleton<Services.DiscoveryScanService>();

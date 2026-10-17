@@ -73,6 +73,12 @@ public sealed partial class MainWindow : Window
         // game through the existing + Game flow, then reloads the home.
         _libraryVm = App.AppHost.Services.GetRequiredService<LibraryViewModel>();
         _libraryVm.GameOpened += OnLibraryGameOpened;
+        // Play found a patch waiting on a choice: open the game, and ask once its verdict is computed.
+        _libraryVm.GameOpenedToAskPatchDay += gameId =>
+        {
+            ViewModel.AskPatchDayOnNextLoad(gameId);
+            HideLibraryForGame();
+        };
         _libraryVm.AddGameRequested += OnLibraryAddGameRequested;
         _libraryVm.UpdatesRequested += ShowUpdates;
         _libraryView = new LibraryView(_libraryVm);
