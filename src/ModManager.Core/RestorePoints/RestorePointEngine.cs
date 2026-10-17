@@ -997,7 +997,7 @@ public static partial class RestorePointEngine
                 if (File.Exists(srcAbs)) SafeMove.CopyFileVerified(srcAbs, Path.Combine(capturedAbs, rel));
             }
             frameworks.Add(new FrameworkArchive(fw.FrameworkId, fw.DisplayName, fw.Author,
-                fw.InstallPath, fw.InstalledFiles, capturedRel));
+                fw.InstallPath, fw.InstalledFiles, capturedRel, fw.InstalledUtc));
         }
 
         var modList = Scanner.BuildModListAsync(c).GetAwaiter().GetResult();

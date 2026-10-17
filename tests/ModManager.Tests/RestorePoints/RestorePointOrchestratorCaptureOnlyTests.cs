@@ -233,14 +233,14 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
     }
 
     [Fact]
-    public async Task Restore_of_a_kind_point_is_refused_and_touches_nothing()
+    public async Task Restore_of_a_kind_point_on_a_plain_game_leaves_its_mods_the_registry_and_the_reset_offer_alone()
     {
         var (t, u, dataRoot, orch, prov, _) = await Fixture();
         var ctx = Scanner.GameContext(t);
         var cap = await orch.CaptureGameOnlyAsync("t", RestorePointKinds.PatchDay, "20261016-120000", default);
         Assert.True(cap.Ok, cap.RefusedReason);
 
-        // The player carries on after capture: a restore that replayed would have things to undo here.
+        // The player carries on after capture. A Safe Clear replay would have things to undo here; an overlay does not.
         File.WriteAllText(Path.Combine(t.DataDir!, "notes.json"), "{\"v\":2}");
         await Scanner.EnableModAsync("held", ctx);
         File.WriteAllText(Path.Combine(t.GameRoot, "mods", "live.pak"), "LIVE-EDITED");
@@ -251,19 +251,17 @@ public class RestorePointOrchestratorCaptureOnlyTests : IDisposable
         var pointBefore = Hash(RpDir(dataRoot, cap.RestorePointTimestamp!));
         var reloadsBefore = prov.ReloadCalls;
 
-        var restore = await orch.RestoreAsync(cap.RestorePointTimestamp!, default);
+        var restore = await orch.RestoreAsync(cap.RestorePointTimestamp!, default, "20261016-130000");
 
-        Assert.False(restore.Ok);
-        Assert.Equal(RestorePointOrchestrator.KindRestoreUnavailable, restore.RefusedReason);
-        Assert.Empty(restore.Conflicts); Assert.Empty(restore.Warnings);
-        Assert.Equal(gameBefore, Hash(t.GameRoot));              // game folder and every mod in it
-        Assert.Equal(dataBefore, Hash(t.DataDir!));              // data dir: nothing overlaid, nothing resurrected
+        Assert.True(restore.Ok, restore.RefusedReason);
+        Assert.Equal(gameBefore, Hash(t.GameRoot));              // game folder and every mod in it: no mod toggled, none replaced
+        Assert.Equal(dataBefore, Hash(t.DataDir!));              // notes.json is not on the overlay's list: the current one stays
         Assert.Equal(otherBefore, Hash(u.GameRoot));
         Assert.Equal(topBefore, HashTopLevel(dataRoot));         // registry and the earlier reset's offer
         Assert.NotNull(RestoreMarkers.ReadLastClear(dataRoot));
         Assert.Equal(reloadsBefore, prov.ReloadCalls);
         Assert.Equal(pointBefore, Hash(RpDir(dataRoot, cap.RestorePointTimestamp!)));   // the snapshot is kept
-        Assert.Single(orch.ListRestorePoints());
+        Assert.Equal(2, orch.ListRestorePoints().Count);         // it, and the way back
     }
 
     [Fact]
