@@ -79,6 +79,31 @@ public sealed class LauncherService
         g.LastKnownSteamBuildId = buildId;
     });
 
+    /// <summary>Patch Day. Store (or, with null, clear) the game's <see cref="GameEntry.PatchDay"/> record, as one
+    /// locked registry step like <see cref="SetSteamBuildBaseline"/>. The baseline is NOT touched here: it moves
+    /// only when the player brings their mods back.</summary>
+    public void SetPatchDay(string gameId, PatchDayRecord? record) => UpdateRegistry(reg =>
+    {
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        g.PatchDay = record;
+    });
+
+    /// <summary>Patch Day. Change a game's record from what is stored NOW, as one locked step, and return the
+    /// result. For a writer that finishes later than it started (the background restore-point capture): it must
+    /// not overwrite a choice or snooze the player made while the snapshot was being copied.</summary>
+    public PatchDayRecord? UpdatePatchDay(string gameId, Func<PatchDayRecord?, PatchDayRecord?> change)
+    {
+        PatchDayRecord? result = null;
+        UpdateRegistry(reg =>
+        {
+            var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+            if (g is null) return;
+            result = g.PatchDay = change(g.PatchDay);
+        });
+        return result;
+    }
+
     /// <summary>A17. Record the game executable's write time the user checked their loaders against, so the
     /// OLD LOADER chip stays away until a patch rewrites the executable.</summary>
     public void SetLoaderChecked(string gameId, DateTime exeUtc) => UpdateRegistry(reg =>

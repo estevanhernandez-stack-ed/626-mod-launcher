@@ -158,6 +158,34 @@ public sealed record LoaderManifestEntry
     public bool? EditsSaves { get; init; }
 }
 
+/// <summary>
+/// The newest published release of one version-locked loader (Patch Day). Keyed by the product name
+/// <c>StaleLoaders</c> uses (REFramework, UE4SS, Mod Engine 2, Elden Mod Loader), not by a
+/// <see cref="LoaderManifestEntry"/> id: that list only holds engine loaders. Descriptive only: a newer
+/// release does not prove it supports the new game build.
+///
+/// <para>Every field is nullable and the date is a string so a malformed row deserializes and is
+/// dropped alone by <see cref="ManifestValidator"/>, rather than failing the whole manifest.</para>
+/// </summary>
+public sealed record LoaderReleaseEntry
+{
+    public string? Loader { get; init; }
+    public string? Version { get; init; }
+
+    /// <summary>ISO-8601 UTC, e.g. <c>2026-10-10T00:00:00Z</c>.</summary>
+    public string? PublishedUtc { get; init; }
+
+    /// <summary>Absolute https link to the release page.</summary>
+    public string? Url { get; init; }
+
+    /// <summary>The runtime shape Patch Day reads, or null when the row is unreadable.</summary>
+    public LoaderRelease? ToRelease()
+        => string.IsNullOrWhiteSpace(Loader) || string.IsNullOrWhiteSpace(Version) || string.IsNullOrWhiteSpace(Url)
+           || !ManifestValidator.TryParseUtc(PublishedUtc, out var when)
+            ? null
+            : new LoaderRelease(Loader, Version, when, Url);
+}
+
 /// <summary>The on-disk / embedded manifest: a schema version, the game list, and the loaders.</summary>
 public sealed record GameManifest
 {
@@ -172,6 +200,14 @@ public sealed record GameManifest
     /// not). Added without a schema bump: an older binary ignores the key and keeps its own list.
     /// </summary>
     public IReadOnlyList<LoaderManifestEntry> Loaders { get; init; } = Array.Empty<LoaderManifestEntry>();
+
+    /// <summary>
+    /// Newest release per version-locked loader, for Patch Day's "has an update" line. Top-level and
+    /// keyed by loader product name because <see cref="Loaders"/> only holds engine loaders. Added
+    /// without a schema bump: this type reads unknown members leniently, so a binary without the field
+    /// ignores the key. A remote list replaces the embedded one when it has any rows.
+    /// </summary>
+    public IReadOnlyList<LoaderReleaseEntry> LoaderReleases { get; init; } = Array.Empty<LoaderReleaseEntry>();
 }
 
 /// <summary>Provenance source tags. Phase 0 uses the legacy-array names so the facades can

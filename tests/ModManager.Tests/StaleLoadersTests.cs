@@ -236,4 +236,61 @@ public class StaleLoadersTests
         Assert.DoesNotContain("\"LoaderCheckedExeUtc\"", json);
         Assert.Equal(GameDate, RegistryStore.Load(dir).Games[0].LoaderCheckedExeUtc);
     }
+
+    // Patch Day D7. A vanilla step-aside moves the loader's proxy into a holding folder, so a live scan sees
+    // no loader; given the stash, the held file's own date speaks for it.
+
+    [Fact]
+    public void A_stepped_aside_REFramework_proxy_is_still_reported_when_the_stash_names_it()
+    {
+        var root = WildsShape();
+        var game = Game(root);
+        ModToggle.SetProxyLoaderEnabled(game, "dinput8.dll", enabled: false);   // the real step-aside
+        var ctx = Scanner.GameContext(game);
+        var stash = new VanillaStash { DirectInjectProxies = { "dinput8.dll" } };
+
+        Assert.Empty(StaleLoaders.Find(ctx).Loaders);   // live: nothing there
+        var stale = Assert.Single(StaleLoaders.Find(ctx, stash).Loaders);
+
+        Assert.Equal("REFramework", stale.Name);
+        Assert.Equal(LoaderDate, stale.LoaderUtc);     // a move keeps the write time
+        Assert.Contains("vanilla-proxy", stale.LoaderPath);
+        Assert.Equal(GameDate, StaleLoaders.Find(ctx, stash).GameExeUtc);
+    }
+
+    [Fact]
+    public void A_held_file_the_stash_does_not_name_is_not_a_stepped_aside_loader()
+    {
+        var root = WildsShape();
+        var game = Game(root);
+        ModToggle.SetProxyLoaderEnabled(game, "dinput8.dll", enabled: false);
+        var ctx = Scanner.GameContext(game);
+
+        Assert.Empty(StaleLoaders.Find(ctx, new VanillaStash()).Loaders);
+        Assert.Empty(StaleLoaders.Find(ctx, new VanillaStash { DirectInjectProxies = { "dxgi.dll" } }).Loaders);
+    }
+
+    [Fact]
+    public void A_stepped_aside_UE4SS_framework_proxy_is_reported_from_its_holding_folder()
+    {
+        var root = TestSupport.TempDir("stale-");
+        Put(root, "R5/Binaries/Win64/R5-Win64-Shipping.exe", GameDate, bytes: 8192);
+        Put(root, "R5/Binaries/Win64/ue4ss/UE4SS.dll", LoaderDate);
+        var ctx = Scanner.GameContext(Game(root, "ue-pak", "R5/Content/Paks/~mods"));
+        Put(ctx.DataDir, "frameworks/ue4ss/disabled-proxy/dwmapi.dll", LoaderDate);
+
+        Assert.Empty(StaleLoaders.Find(ctx).Loaders);   // runtime without its proxy injects nothing
+        var stale = Assert.Single(StaleLoaders.Find(ctx, new VanillaStash { Frameworks = { "ue4ss" } }).Loaders);
+        Assert.Equal("UE4SS", stale.Name);
+        Assert.Empty(StaleLoaders.Find(ctx, new VanillaStash { Frameworks = { "other" } }).Loaders);
+    }
+
+    [Fact]
+    public void A_live_loader_wins_over_the_stash()
+    {
+        var root = WildsShape();
+        var ctx = Scanner.GameContext(Game(root));
+        var stale = Assert.Single(StaleLoaders.Find(ctx, new VanillaStash { DirectInjectProxies = { "dinput8.dll" } }).Loaders);
+        Assert.DoesNotContain("vanilla-proxy", stale.LoaderPath);
+    }
 }

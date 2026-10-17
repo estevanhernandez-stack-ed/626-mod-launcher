@@ -76,11 +76,21 @@ public sealed partial class GameLibraryRowViewModel : LibraryCoverRowViewModel
     /// render identically (no badge). See <see cref="UpdateBadgeVisibility"/>.</summary>
     public int PendingUpdateCount { get; }
 
-    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0) : base(row.CoverPath)
+    public GameLibraryRowViewModel(GameLibraryRow row, int pendingUpdateCount = 0, string? patchDayLine = null) : base(row.CoverPath)
     {
         Row = row;
         PendingUpdateCount = pendingUpdateCount;
+        PatchDayLine = patchDayLine;
     }
+
+    /// <summary>Patch Day state line from the persisted record and the cheap launch-mode check; null when quiet.</summary>
+    public string? PatchDayLine { get; }
+    public string PatchDayText => PatchDayLine ?? "";
+    public Visibility PatchDayVisibility => PatchDayLine is null ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Bound id for the patch-day line; prefixed apart from the row and recent-card ids.</summary>
+    public string PatchDayAutomationId => $"GameRowPatchDay.{Id}";
+    public string PatchDayAutomationName => PatchDayLine is null ? "" : $"{Name}: {PatchDayLine}";
 
     public string Id => Row.Id;
     public override string Name => Row.Name;
@@ -241,6 +251,10 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     private readonly LauncherService _svc;
     private readonly IStoreLibrary _store;
+    private readonly PatchDayDetector _patchDay;
+    // Games whose Play click is still being checked for a waiting patch, so an impatient second click
+    // never launches the game twice.
+    private readonly HashSet<string> _playChecking = new(StringComparer.Ordinal);
     private readonly CoverCache _covers;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcher;
 
@@ -350,6 +364,11 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// The VM only sets the active game + fires this; the view swap is the shell's job (Task 7).</summary>
     public event Action<string>? GameOpened;
 
+    /// <summary>Raised instead of <see cref="GameOpened"/> when Play found a patch waiting on a choice: the
+    /// shell opens the game and asks there (<see cref="PatchDayDetector.ShouldOpenToAskAsync"/>). Nothing
+    /// launches.</summary>
+    public event Action<string>? GameOpenedToAskPatchDay;
+
     /// <summary>Raised when the user asks to start managing an installed game — the shell runs the Add
     /// flow (one click when the game can be added as-is, the dialog otherwise).</summary>
     public event Action<InstalledGame>? AddGameRequested;
@@ -357,10 +376,11 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>Raised when the user opens the cross-game Updates directory — the shell swaps it in.</summary>
     public event Action? UpdatesRequested;
 
-    public LibraryViewModel(LauncherService svc, IStoreLibrary store)
+    public LibraryViewModel(LauncherService svc, IStoreLibrary store, PatchDayDetector patchDay)
     {
         _svc = svc;
         _store = store;
+        _patchDay = patchDay;
         _covers = new CoverCache(store);
         _dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     }
@@ -403,7 +423,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         foreach (var r in rows)
         {
             var pending = updateByGameId.TryGetValue(r.Id, out var summary) && summary.Checked ? summary.Count : 0;
-            var vm = new GameLibraryRowViewModel(r, pending);
+            var vm = new GameLibraryRowViewModel(r, pending, PatchDayLineFor(games.FirstOrDefault(g => g.Id == r.Id)));
             _allRows.Add(vm);
             _managedByRow[r] = vm;
         }
@@ -471,6 +491,18 @@ public sealed partial class LibraryViewModel : ObservableObject
         => game.StoreKind == "steam" ? _covers.LocalPortrait(game.AppId) : null;
 
     // --- Builder delegates (App-side lookups over the existing services) -----------------------------
+
+    // Persisted record + one file check (the vanilla stash). No Steam scan, no loader scan per row.
+    private static string? PatchDayLineFor(GameEntry? g)
+    {
+        if (g?.PatchDay is null) return null;
+        try
+        {
+            var mode = string.IsNullOrEmpty(g.DataDir) ? LaunchMode.Modded : VanillaLaunch.CurrentMode(g.DataDir);
+            return PatchDay.LibraryLine(g.PatchDay, mode);
+        }
+        catch (Exception) { return null; }
+    }
 
     private static GameModState ModStateFor(GameEntry g)
     {
@@ -575,13 +607,28 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// toggle lives in the game view, coupled to the active context. Reuses the existing reversible
     /// launch path — no new launch mechanism, exactly what the game view's Play button drives.</summary>
     [RelayCommand]
-    private void Play(GameLibraryRowViewModel? row) => LaunchAndStamp(row);
-
-    private void LaunchAndStamp(GameLibraryRowViewModel? row)
+    private async Task Play(GameLibraryRowViewModel? row)
     {
         if (row is null) return;
         var g = _svc.LoadRegistry().Games.FirstOrDefault(x => x.Id == row.Id);
-        if (g is null) return;
+        if (g is null || !_playChecking.Add(g.Id)) return;
+        try
+        {
+            // Patch Day: a patched game with no choice yet is asked about in the game view, not launched
+            // blind. A game with a stored choice (or no Steam build to check) answers without a scan.
+            if (await _patchDay.ShouldOpenToAskAsync(g))
+            {
+                _svc.SetActiveGame(g.Id);
+                GameOpenedToAskPatchDay?.Invoke(g.Id);
+                return;
+            }
+        }
+        finally { _playChecking.Remove(g.Id); }
+        LaunchAndStamp(g);
+    }
+
+    private void LaunchAndStamp(GameEntry g)
+    {
         try
         {
             if (_svc.Launch(g)) StampLaunch(g.Id);

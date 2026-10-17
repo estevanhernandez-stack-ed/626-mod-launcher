@@ -56,6 +56,19 @@ public sealed partial class GameStateChipViewModel : ObservableObject
     public Visibility ActionVisibility =>
         string.IsNullOrEmpty(_chip.ActionLabel) ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>The detail row's second and third buttons (PATCH DAY only today). Empty when the chip has none.</summary>
+    public string SecondaryActionLabel => _chip.SecondaryActionLabel ?? "";
+    public string TertiaryActionLabel => _chip.TertiaryActionLabel ?? "";
+    public Visibility SecondaryActionVisibility =>
+        string.IsNullOrEmpty(_chip.SecondaryActionLabel) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility TertiaryActionVisibility =>
+        string.IsNullOrEmpty(_chip.TertiaryActionLabel) ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>The stable keys the App routes PATCH DAY presses on, never the label text.</summary>
+    public PatchDayAction? PrimaryPatchDayAction => _chip.PrimaryPatchDayAction;
+    public PatchDayAction? SecondaryPatchDayAction => _chip.SecondaryPatchDayAction;
+    public PatchDayAction? TertiaryPatchDayAction => _chip.TertiaryPatchDayAction;
+
     public Visibility DismissVisibility => _chip.Dismissible ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>The warning glyph for anything that costs something, the info glyph for the one state

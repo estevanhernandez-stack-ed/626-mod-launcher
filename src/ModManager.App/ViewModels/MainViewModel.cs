@@ -96,6 +96,13 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<string, IReadOnlyList<BanSafeLoaderOption>, Task<(bool proceed, bool dontWarnAgain)>>? ConfirmBanRiskEnable { get; set; }
 
     /// <summary>
+    /// Asks the Patch Day question at Play: given the PATCH DAY chip for the active game, returns the action the
+    /// player picked (PlayVanilla, PlayModded or Snooze), or null when they dismissed it. The view owns the dialog
+    /// (XamlRoot), same as <see cref="ConfirmBanRiskEnable"/>. When unset, Play launches as it always did.
+    /// </summary>
+    public Func<GameStateChip, Task<PatchDayAction?>>? AskPatchDayAtPlay { get; set; }
+
+    /// <summary>
     /// Shows the save-write prompt for a high-risk game and returns (proceed, dontAskAgain). The view wires
     /// it (dialog + XamlRoot live in code-behind). Unlike the enable gate, an UNWIRED delegate refuses:
     /// writing a changed save without the prompt is the one thing this gate exists to prevent.
@@ -395,6 +402,21 @@ public sealed partial class MainViewModel : ObservableObject
     // The executable write time "Mark as checked" records.
     private DateTime? _staleLoaderExeUtc;
 
+    // Patch Day (design 2026-10-16). The verdict is derived from the pieces below on every reload and again
+    // after a chip action; it belongs to ONE game (the id), so a game switch never shows the last game's chip.
+    private PatchDayVerdict? _patchDayVerdict;
+    private string? _patchDayVerdictGameId;
+    private StaleLoaderReport _patchDayReport = StaleLoaderReport.None;
+    private string? _patchDayLiveBuild;
+
+    // Detection, persistence and the automatic restore point live in the shared detector, which the library
+    // home's Play click also runs; its in-flight set keeps the two from capturing one game twice.
+    private readonly Services.PatchDayDetector _patchDay;
+
+    // One-shot hand-off from the library home: Play opened this game because a patch is waiting on a choice.
+    // Consumed once, at the end of the load that follows, after the reload has computed the real verdict.
+    private string? _pendingPatchDayAskGameId;
+
     // 626's own load-order prefixes on disk (Scanner.PlanUndoLoadOrder), as the LOAD ORDER chip's sentence.
     [ObservableProperty] public partial string? LoadOrderPrefixMessage { get; set; }
 
@@ -464,6 +486,10 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(StateDetailText))]
     [NotifyPropertyChangedFor(nameof(StateDetailActionLabel))]
     [NotifyPropertyChangedFor(nameof(StateDetailActionVisibility))]
+    [NotifyPropertyChangedFor(nameof(StateDetailSecondaryActionLabel))]
+    [NotifyPropertyChangedFor(nameof(StateDetailSecondaryActionVisibility))]
+    [NotifyPropertyChangedFor(nameof(StateDetailTertiaryActionLabel))]
+    [NotifyPropertyChangedFor(nameof(StateDetailTertiaryActionVisibility))]
     [NotifyPropertyChangedFor(nameof(StateDetailDismissVisibility))]
     [NotifyPropertyChangedFor(nameof(StateDetailAccent))]
     public partial GameStateChipViewModel? ExpandedChip { get; set; }
@@ -472,6 +498,10 @@ public sealed partial class MainViewModel : ObservableObject
     public string StateDetailText => ExpandedChip?.Detail ?? "";
     public string StateDetailActionLabel => ExpandedChip?.ActionLabel ?? "";
     public Visibility StateDetailActionVisibility => ExpandedChip?.ActionVisibility ?? Visibility.Collapsed;
+    public string StateDetailSecondaryActionLabel => ExpandedChip?.SecondaryActionLabel ?? "";
+    public Visibility StateDetailSecondaryActionVisibility => ExpandedChip?.SecondaryActionVisibility ?? Visibility.Collapsed;
+    public string StateDetailTertiaryActionLabel => ExpandedChip?.TertiaryActionLabel ?? "";
+    public Visibility StateDetailTertiaryActionVisibility => ExpandedChip?.TertiaryActionVisibility ?? Visibility.Collapsed;
     public Visibility StateDetailDismissVisibility => ExpandedChip?.DismissVisibility ?? Visibility.Collapsed;
     public Brush StateDetailAccent => ExpandedChip?.Accent ?? (Brush)Application.Current.Resources["ThemeInk"];
 
@@ -525,6 +555,10 @@ public sealed partial class MainViewModel : ObservableObject
         // were held rather than guessed at a path. The game exists now, which is the first moment
         // there is anywhere to put it.
         HeldBackup = HeldForActiveGame is { } h ? ModManager.Core.Transport.PendingRestore.Describe(h) : null,
+        GameName = _ctx?.Game.GameName,
+        // Only this game's verdict: it is computed in the reload, so a game switch reads null until then.
+        PatchDay = _ctx is not null && string.Equals(_patchDayVerdictGameId, _ctx.Game.Id, StringComparison.Ordinal)
+            ? _patchDayVerdict : null,
     };
 
     /// <summary>What is being held for the active game, or null. Read fresh rather than cached: it
@@ -612,7 +646,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility LoadOrderVisibility => IsLoadOrderMode ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NormalBarVisibility => IsLoadOrderMode ? Visibility.Collapsed : Visibility.Visible;
 
-    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources, Services.DiscoveryScanService discovery, Services.ModNameIndexSource nameIndex)
+    public MainViewModel(LauncherService svc, ModEngineService me2, DirectInjectService direct, ThemeService themes, LudusaviService ludu, NexusService nexus, NexusOAuthService oauth, AvatarService avatars, SteamService steam, AppSettingsService appSettings, NexusUpdatePoll nexusPoll, ModSourceRegistry sources, Services.DiscoveryScanService discovery, Services.ModNameIndexSource nameIndex, Services.PatchDayDetector patchDay)
     {
         _svc = svc;
         _me2 = me2;
@@ -628,6 +662,8 @@ public sealed partial class MainViewModel : ObservableObject
         _sources = sources;
         _discovery = discovery;
         _nameIndex = nameIndex;
+        _patchDay = patchDay;
+        _patchDay.RestorePointSettled += OnPatchDayRestorePointSettled;
         ThemeOptions = themes.Themes;
         // Restore the user's saved pick (F-080); Default (the flagship) covers first-run, a
         // cleared setting, and a saved id whose theme has since been deleted.
@@ -806,6 +842,10 @@ public sealed partial class MainViewModel : ObservableObject
             } while (_loadPending);
         }
         finally { _loading = false; }
+
+        // After the loop, so the verdict is the reload's own and a caller that bounced off _loading never
+        // asks early; the outermost load is the one that reaches here with the final state.
+        await AskPatchDayIfPendingAsync();
     }
 
     partial void OnActiveGameChanged(GameOption? value)
@@ -1092,6 +1132,11 @@ public sealed partial class MainViewModel : ObservableObject
             var stale = await Task.Run(() => StaleLoaders.Find(loaderCtx));
             _staleLoaderExeUtc = stale.Loaders.Count > 0 ? stale.GameExeUtc : null;
             StaleLoaderMessage = stale.Summary(loaderCtx.Game.LoaderCheckedExeUtc);
+
+            // Patch Day. While mods are stepped aside a live scan sees no loaders (their proxies sit in holding
+            // folders), so the verdict reads the stash's named proxies by their held files' dates instead (D7).
+            // The UPDATED and OLD LOADER paths above keep their behavior; the strip hides them while this shows.
+            await EvaluatePatchDayAsync(loaderCtx, liveBuild, stale);
 
             // 626's own load-order prefixes, on any game: the only way to see them, and to take them off.
             // Off the UI thread for the same reason — it lists every mod folder and runs on every toggle.
@@ -1780,6 +1825,191 @@ public sealed partial class MainViewModel : ObservableObject
             await RefreshNexusStatsAsync();
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Patch Day (design 2026-10-16). Core decides (PatchDay.Evaluate); this is the wiring: detection on
+    // reload, the automatic restore point, and the chip's buttons. Nothing here moves a file except from a
+    // button press, apart from the restore-point capture, which writes only inside restore-points.
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>The feed's latest loader releases (already validated), mapped to what Patch Day reads.</summary>
+    private static IReadOnlyList<LoaderRelease> FeedLoaderReleases()
+        => Services.PatchDayDetector.FeedLoaderReleases();
+
+    private async Task EvaluatePatchDayAsync(GameContext ctx, string? liveBuild, StaleLoaderReport liveReport)
+    {
+        var evaluation = await _patchDay.EvaluateAsync(ctx, liveBuild, liveReport);
+        _patchDayReport = evaluation.Report;
+        _patchDayLiveBuild = liveBuild;
+        _patchDayVerdict = evaluation.Verdict;
+        _patchDayVerdictGameId = ctx.Game.Id;
+    }
+
+    /// <summary>Re-derive the verdict from what the last reload read and the record as it is now, then redraw
+    /// the strip. For after a chip action; no disk scan.</summary>
+    private void RefreshPatchDayVerdict()
+    {
+        if (_ctx is null) return;
+        var game = _ctx.Game;
+        _patchDayVerdict = PatchDay.Evaluate(new PatchDayInput(
+            game.LastKnownSteamBuildId, _patchDayLiveBuild, game.PatchDay, _patchDayReport,
+            FeedLoaderReleases(), VanillaLaunch.CurrentMode(_ctx.DataDir)));
+        _patchDayVerdictGameId = game.Id;
+        RebuildStateChips();
+    }
+
+    private void PersistPatchDay(PatchDayRecord? record)
+    {
+        if (_ctx is null) return;
+        _svc.SetPatchDay(_ctx.Game.Id, record);
+        _ctx.Game.PatchDay = record;
+    }
+
+    /// <summary>The detector finished a restore point (any game): when it is the one on screen, take the
+    /// record as stored now and redraw the chip.</summary>
+    private void OnPatchDayRestorePointSettled(string gameId, PatchDayRecord? saved)
+    {
+        if (_ctx is null || !string.Equals(_ctx.Game.Id, gameId, StringComparison.OrdinalIgnoreCase)) return;
+        _ctx.Game.PatchDay = saved;
+        RefreshPatchDayVerdict();
+    }
+
+    /// <summary>Ask the Patch Day question for the game on screen when its verdict calls for it. Shared by
+    /// Play and by the library hand-off. True when it asked (the answer has been routed), so the caller
+    /// stops: nothing launches from here except through the chosen action.</summary>
+    private async Task<bool> TryAskPatchDayAsync()
+    {
+        if (_ctx is null || !PatchDay.ShouldAskAtPlay(_patchDayVerdict) || AskPatchDayAtPlay is not { } ask
+            || !string.Equals(_patchDayVerdictGameId, _ctx.Game.Id, StringComparison.Ordinal))
+            return false;
+        var pick = await ask(GameStateStrip.PatchDayChip(_patchDayVerdict!, _ctx.Game.GameName));
+        if (pick is { } action) await RunPatchDayActionAsync(action);
+        return true;
+    }
+
+    /// <summary>The library home opened this game from Play because a patch awaits a choice. The question is
+    /// asked once the next load has computed the game's verdict; see <see cref="AskPatchDayIfPendingAsync"/>.</summary>
+    public void AskPatchDayOnNextLoad(string gameId) => _pendingPatchDayAskGameId = gameId;
+
+    private async Task AskPatchDayIfPendingAsync()
+    {
+        var gameId = _pendingPatchDayAskGameId;
+        _pendingPatchDayAskGameId = null;
+        // Not the game on screen, or no longer Patched with no choice: land in the game view, ask nothing.
+        if (gameId is null || _ctx is null || !string.Equals(_ctx.Game.Id, gameId, StringComparison.Ordinal)) return;
+        await TryAskPatchDayAsync();
+    }
+
+    /// <summary>The detail row's first button, routed by the chip's action key.</summary>
+    public Task RunPatchDayPrimaryActionAsync()
+        => ExpandedChip?.PrimaryPatchDayAction is { } key ? RunPatchDayActionAsync(key) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task RunPatchDaySecondaryAction()
+        => ExpandedChip?.SecondaryPatchDayAction is { } key ? RunPatchDayActionAsync(key) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task RunPatchDayTertiaryAction()
+        => ExpandedChip?.TertiaryPatchDayAction is { } key ? RunPatchDayActionAsync(key) : Task.CompletedTask;
+
+    private async Task RunPatchDayActionAsync(PatchDayAction action)
+    {
+        if (_ctx is null) return;
+        try
+        {
+            switch (action)
+            {
+                case PatchDayAction.PlayVanilla: await PatchDayPlayVanillaAsync(); break;
+                case PatchDayAction.PlayModded: await PatchDayPlayModdedAsync(); break;
+                case PatchDayAction.Snooze:
+                    if (_ctx.Game.PatchDay is { } rec) PersistPatchDay(PatchDay.Snooze(rec));
+                    RefreshPatchDayVerdict();
+                    break;
+                case PatchDayAction.BringBack: await PatchDayBringBackAsync(); break;
+                case PatchDayAction.GetUpdate: OpenPatchDayUpdate(); break;
+            }
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+    }
+
+    /// <summary>Record the player's choice. Persisted first so the reload that follows a step-aside or a
+    /// restore already shows the chip for it.</summary>
+    private void RecordPatchDayChoice(PatchDayChoice choice)
+    {
+        if (_ctx?.Game.PatchDay is { } rec) PersistPatchDay(PatchDay.Choose(rec, choice));
+    }
+
+    private async Task PatchDayPlayVanillaAsync()
+    {
+        if (_ctx is null) return;
+        if (CurrentLaunchMode == LaunchMode.Vanilla)
+        {
+            // Already stepped aside: stepping aside again would overwrite the stash with an empty set and lose
+            // the record of what to bring back. Record the choice and launch.
+            RecordPatchDayChoice(PatchDayChoice.Vanilla);
+            RefreshPatchDayVerdict();
+            var target = EffectiveLaunchTarget;
+            if (target is not null) await LaunchTargetExplicit(target);
+            else LaunchWithNoTarget();
+            return;
+        }
+        await StepAsideAndLaunchAsync(afterStepAside: () => RecordPatchDayChoice(PatchDayChoice.Vanilla));
+    }
+
+    private async Task PatchDayPlayModdedAsync()
+    {
+        if (_ctx is null) return;
+        if (CurrentLaunchMode == LaunchMode.Vanilla)
+        {
+            // Turning mods back on is an enable: the ban-risk gate stands in front of it.
+            if (!await GateBanRiskEnableAsync()) return;
+            await RestoreAndLaunchAsync(afterRestore: () => RecordPatchDayChoice(PatchDayChoice.Modded));
+            return;
+        }
+        // Mods are already in place; this is the ordinary Play. Launch() is the existing modded path (required
+        // launcher enforcement, state-aware target, auto-backup, launch verification).
+        RecordPatchDayChoice(PatchDayChoice.Modded);
+        RefreshPatchDayVerdict();
+        await Launch();
+    }
+
+    private async Task PatchDayBringBackAsync()
+    {
+        if (_ctx is null || _ctx.Game.PatchDay is not { } rec) return;
+        var ctx = _ctx;
+        if (CurrentLaunchMode == LaunchMode.Vanilla)
+        {
+            // Restoring re-enables the stashed set, so it passes the ban-risk gate like any enable.
+            if (!await GateBanRiskEnableAsync()) return;
+            IsBusy = true;
+            try
+            {
+                var r = await VanillaLaunch.RestoreAsync(ctx.DataDir, BuildVanillaOps());
+                if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}"; return; }
+            }
+            finally { IsBusy = false; }
+        }
+
+        var back = PatchDay.BringBack(rec);
+        // The spec moves the baseline to the CURRENT build. The live id the last reload read is that; the
+        // record's build is only the fallback for a game whose live build is unknown.
+        var liveKnown = string.Equals(_patchDayVerdictGameId, ctx.Game.Id, StringComparison.Ordinal)
+                        && !string.IsNullOrEmpty(_patchDayLiveBuild);
+        var baseline = liveKnown ? _patchDayLiveBuild! : back.BaselineBuildId;
+        _svc.SetSteamBuildBaseline(ctx.Game.Id, baseline);
+        ctx.Game.LastKnownSteamBuildId = baseline;
+        PersistPatchDay(back.Record);
+        await ReloadModsAsync();
+        StatusText = "Your mods are back.";
+    }
+
+    private void OpenPatchDayUpdate()
+    {
+        var url = _patchDayVerdict?.Release?.Url ?? _patchDayVerdict?.Loader?.Url;
+        if (!SafeUrl.IsHttpUrl(url)) { StatusText = "No release page to open for this loader."; return; }
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url!) { UseShellExecute = true }); }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+    }
+
     [RelayCommand]
     private void DismissBuildWarning()
     {
@@ -2128,6 +2358,11 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task Launch()
     {
         if (_ctx is null) return;
+        // Patch Day: a patched game with no choice recorded asks first. The answer goes through the chip's own
+        // action path, which records it and (for modded) passes the ban-risk gate; nothing launches from here.
+        // Once a choice is recorded ShouldAskAtPlay is false, so this falls straight through and launches the
+        // state the choice left on disk (vanilla: mods already stepped aside; modded: mods in place).
+        if (await TryAskPatchDayAsync()) return;
         // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
         if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
         {
@@ -2213,7 +2448,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// Refuses before any stash write when the game has no mod lane (F1) — there is nothing to step
     /// aside, and the menu item that reaches this is itself omitted for such a game; this is the
     /// defence-in-depth copy of that guard.</summary>
-    public async Task StepAsideAndLaunchAsync()
+    public async Task StepAsideAndLaunchAsync(Action? afterStepAside = null)
     {
         if (_ctx is null) return;
         if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
@@ -2222,6 +2457,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var r = await VanillaLaunch.StepAsideAsync(_ctx.DataDir, BuildVanillaOps());
             if (!r.Success) { StatusText = $"Couldn't switch to vanilla: {r.Error}"; return; }
+            afterStepAside?.Invoke();   // Patch Day records its choice before the reload draws the strip
             await ReloadModsAsync();
             StatusText = "Vanilla mode — mods stepped aside. Launching…";
             var target = EffectiveLaunchTarget;
@@ -2234,7 +2470,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Play modded: restore exactly the stashed set, refresh rows, then launch with mods.
     /// Refuses before any restore when the game has no mod lane (F1) — see <see cref="StepAsideAndLaunchAsync"/>.</summary>
-    public async Task RestoreAndLaunchAsync()
+    public async Task RestoreAndLaunchAsync(Action? afterRestore = null)
     {
         if (_ctx is null) return;
         if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
@@ -2243,6 +2479,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var r = await VanillaLaunch.RestoreAsync(_ctx.DataDir, BuildVanillaOps());
             if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}"; return; }
+            afterRestore?.Invoke();
             await ReloadModsAsync();
             StatusText = "Modded mode — mods restored. Launching…";
             var target = EffectiveLaunchTarget;

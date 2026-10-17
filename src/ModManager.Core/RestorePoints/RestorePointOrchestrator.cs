@@ -305,6 +305,169 @@ public sealed class RestorePointOrchestrator
         finally { _gate.Release(); }
     }
 
+    /// <summary>Tests only: replaces the free-space check of <see cref="CaptureGameOnlyAsync"/>.</summary>
+    internal Func<string, long, SpaceCheck.Result>? SpaceCheckForTests { get; set; }
+
+    /// <summary>Marks a restore-point folder as one <see cref="CaptureGameOnlyAsync"/> started, created with
+    /// <c>FileMode.CreateNew</c> so two writers can't both own a folder. A claimed folder with no manifest is
+    /// an unsealed leftover and is swept (see <see cref="SweepAbandonedCaptures"/>).</summary>
+    internal const string CaptureClaimFile = ".capture-only";
+
+    /// <summary>How old an unsealed, claimed folder must be before a later capture removes it. A capture in
+    /// another process that is still copying is younger than this.</summary>
+    internal static readonly TimeSpan AbandonedCaptureAge = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Snapshot ONE game and change nothing. The Patch Day restore point: it copies the game's launcher-owned
+    /// data folder and its framework install state into a new restore point, seals the manifest, and stops.
+    /// It never calls <see cref="RestorePointEngine.ApplyEndState"/>, never writes to the game folder or the
+    /// mod folders, never touches games.json, nexus.json or the reset markers, and writes no off-boarding sheet.
+    /// <para>The restore point's folder (and the <c>RestorePointTimestamp</c> returned, which is what
+    /// <see cref="ListRestorePoints"/> and <see cref="RestoreAsync"/> are keyed by) is
+    /// <c>{timestamp}-{gameId}</c>, so captures of two games in the same second don't collide. Safe Clear's
+    /// folders are still the bare timestamp. Both arguments must be plain names: a path separator, "..", or a
+    /// character a file name can't hold is refused.</para>
+    /// <para>Guards, as Safe Clear's where they apply: the one-writer gate; refuses while a
+    /// <c>safe-clear.lock</c> is on disk (a reset is running, or died and awaits recovery); a reachable-drive
+    /// check; a free-space pre-flight sized to the copy. It does NOT refuse for a running game: Safe Clear's
+    /// Law E protects files it is about to mutate, and this only reads them (every copy is size-verified).</para>
+    /// <para>A failure returns <see cref="CaptureOnlyResult"/> with a reason. A restore point this call started
+    /// is removed on failure so no partial point is left; one that already exists under the name is refused and
+    /// never touched. A crash mid-copy leaves a claimed, unsealed folder, which the next capture sweeps once it
+    /// is old enough; <see cref="ListRestorePoints"/> never shows it.</para>
+    /// <para>Restore: <see cref="RestoreAsync"/> restores a point that has a <c>kind</c> as an overlay that takes a
+    /// <c>beforeRestore</c> snapshot first and toggles no mod (see <see cref="RestorePointEngine.PlanOverlay"/>).</para>
+    /// </summary>
+    public Task<CaptureOnlyResult> CaptureGameOnlyAsync(string gameId, string kind, string timestamp, CancellationToken ct)
+        => CaptureGameOnlyCoreAsync(gameId, kind, timestamp, gateHeld: false, ct);
+
+    // The capture itself. <paramref name="gateHeld"/>: the caller (a restore taking its pre-restore snapshot)
+    // already holds the one-writer gate, which is not reentrant, so this must not wait on it again.
+    private async Task<CaptureOnlyResult> CaptureGameOnlyCoreAsync(string gameId, string kind, string timestamp, bool gateHeld, CancellationToken ct)
+    {
+        if (!gateHeld) await _gate.WaitAsync(ct);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!IsPlainName(timestamp))
+                return Refused("Couldn't save a restore point: the restore point's name isn't a plain name.");
+            if (!IsPlainName(gameId))
+                return Refused($"Couldn't find the game \"{gameId}\" to save a restore point.");
+            var game = _provider.Games.FirstOrDefault(g => string.Equals(g.Id, gameId, StringComparison.OrdinalIgnoreCase));
+            if (game is null) return Refused($"Couldn't find the game \"{gameId}\" to save a restore point.");
+
+            if (File.Exists(Path.Combine(_dataRoot, LockName)))
+                return Refused("A reset didn't finish. Deal with it first, then 626 can save a restore point.");
+
+            var ctx = _provider.ContextFor(game);
+            if (!DriveReachable(ctx.GameRoot) || !DriveReachable(ctx.DataDir))
+                return Refused($"{game.GameName}'s drive is unavailable, so 626 couldn't save a restore point.");
+
+            var name = $"{timestamp}-{game.Id}";
+            if (!IsPlainName(name))
+                return Refused($"Couldn't save a restore point for {game.GameName}: its id can't be used in a name.");
+            var rpDir = Path.Combine(_restorePointsRoot, name);
+            SweepAbandonedCaptures();
+            if (Directory.Exists(rpDir) || File.Exists(rpDir))
+                return Refused($"A restore point named {name} already exists, so 626 didn't save another.");
+
+            var payload = CaptureBytes(ctx);
+            var space = SpaceCheckForTests is { } fake ? fake(_restorePointsRoot, payload) : SpaceCheck.Require(_restorePointsRoot, payload);
+            if (!space.Ok)
+                return Refused($"Not enough free space: need ~{Gb(space.RequiredBytes)} GB, have {Gb(space.AvailableBytes)} GB on {space.VolumeRoot}.");
+
+            var claim = Path.Combine(rpDir, CaptureClaimFile);
+            try { Directory.CreateDirectory(rpDir); }
+            catch (Exception e) when (e is not OperationCanceledException)
+            { return Refused($"Couldn't save a restore point for {game.GameName}: {e.Message}"); }
+            long claimBytes;
+            try
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(name);
+                using (var f = new FileStream(claim, FileMode.CreateNew, FileAccess.Write, FileShare.None)) f.Write(bytes, 0, bytes.Length);
+                claimBytes = bytes.Length;
+            }
+            catch (IOException) when (File.Exists(claim))
+            {
+                // Someone else claimed this folder between the check and here: it is theirs, not ours to remove.
+                return Refused($"A restore point named {name} already exists, so 626 didn't save another.");
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                DeleteRestorePoint(name);
+                return Refused($"Couldn't save a restore point for {game.GameName}: {e.Message}");
+            }
+
+            try
+            {
+                var ga = RestorePointEngine.CaptureGame(
+                    new GameCaptureInput(game, ctx, "modsActive"), Path.Combine(rpDir, "games", game.Id));
+                // The claim marker is bookkeeping, not part of what was captured.
+                var manifest = new RestorePointManifest(
+                    1, _launcherVersion, name, Complete: true, KeepNexus: true,
+                    FileTally.ByteSize(rpDir) - claimBytes, FileTally.FileCount(rpDir) - 1, new[] { ga }, kind);
+                RestorePointManifestStore.WriteSealed(rpDir, manifest);   // the seal, last
+                return new CaptureOnlyResult(true, null, name);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Ours alone: this call created rpDir (it did not exist above) and holds its claim, so it
+                // holds only what this call copied.
+                DeleteRestorePoint(name);
+                return Refused($"Couldn't save a restore point for {game.GameName}: {e.Message}");
+            }
+        }
+        finally { if (!gateHeld) _gate.Release(); }
+
+        static CaptureOnlyResult Refused(string reason) => new(false, reason, null);
+    }
+
+    // A plain file name: no separators, no "..", nothing a file name can't hold.
+    private static bool IsPlainName(string? s)
+        => !string.IsNullOrWhiteSpace(s) && s != "." && !s.Contains("..")
+           && s.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && s.IndexOfAny(new[] { '/', '\\' }) < 0;
+
+    // Remove the unsealed leftovers of a capture that died: a folder carrying our claim file, with no manifest,
+    // untouched for AbandonedCaptureAge. Only folders WE claimed (a Safe Clear's partial point has no claim and
+    // is recovery's to deal with), and never the folder an interrupted reset's lock names.
+    private void SweepAbandonedCaptures()
+    {
+        try
+        {
+            if (!Directory.Exists(_restorePointsRoot)) return;
+            string? lockedName = null;
+            var lockPath = Path.Combine(_dataRoot, LockName);
+            if (File.Exists(lockPath)) lockedName = File.ReadAllText(lockPath).Trim();
+            foreach (var dir in Directory.GetDirectories(_restorePointsRoot))
+            {
+                var claim = Path.Combine(dir, CaptureClaimFile);
+                if (!File.Exists(claim)) continue;
+                if (string.Equals(Path.GetFileName(dir), lockedName, StringComparison.Ordinal)) continue;
+                if (File.Exists(Path.Combine(dir, RestorePointManifestStore.FileName))) continue;   // sealed: a real point
+                if (DateTime.UtcNow - File.GetLastWriteTimeUtc(claim) < AbandonedCaptureAge) continue;
+                try { Directory.Delete(dir, recursive: true); } catch { /* best effort: it is only wasted space */ }
+            }
+        }
+        catch { /* best effort */ }
+    }
+
+    // What the capture copies: the data folder plus each framework's installed files (CaptureGame's two payloads).
+    private static long CaptureBytes(GameContext ctx)
+    {
+        long n = FileTally.ByteSize(ctx.DataDir);
+        try
+        {
+            foreach (var fw in Frameworks.FrameworkRegistry.List(ctx.DataDir))
+                foreach (var rel in fw.InstalledFiles)
+                {
+                    var p = Path.Combine(fw.InstallPath, rel);
+                    if (File.Exists(p)) n += new FileInfo(p).Length;
+                }
+        }
+        catch { /* an estimate */ }
+        return n;
+    }
+
     private static string EndStateFor(string id, SafeClearOptions opts)
         => opts.PerGameEndState.TryGetValue(id, out var s) ? s : opts.DefaultEndState;
 
@@ -352,13 +515,23 @@ public sealed class RestorePointOrchestrator
 
     // ── Tasks 4 + 5 ─────────────────────────────────────────────────────────────────────────────
 
-    public async Task<RestoreResult> RestoreAsync(string timestamp, CancellationToken ct)
+    /// <summary>
+    /// Restore a restore point. A Safe Clear point is replayed exactly as before (it assumes the clear emptied
+    /// the game). A point with a <c>kind</c> (the Patch Day snapshot, or a <c>beforeRestore</c> one) is restored
+    /// over the LIVE game by <see cref="RestoreKindPoint"/>: refused while a Safe Clear lock is on disk, the
+    /// game is running or it has moved; a <c>beforeRestore</c> snapshot of the current state is taken FIRST and
+    /// the restore is refused, changing nothing, if that fails. <paramref name="snapshotTimestamp"/> names
+    /// that snapshot (<c>{snapshotTimestamp}-{gameId}</c>); null = now, UTC, in Safe Clear's format.
+    /// </summary>
+    public async Task<RestoreResult> RestoreAsync(string timestamp, CancellationToken ct, string? snapshotTimestamp = null)
     {
         await _gate.WaitAsync(ct);
         try
         {
             var rpDir = Path.Combine(_restorePointsRoot, timestamp);
             var m = RestorePointManifestStore.Read(rpDir);
+            if (m?.Kind is not null)
+                return await RestoreKindPoint(timestamp, rpDir, m, snapshotTimestamp, ct);
             var v = RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion);
             if (!v.Ok) return new RestoreResult(false, v.Reason, Array.Empty<RestoreConflict>(), Array.Empty<string>());
 
@@ -402,6 +575,62 @@ public sealed class RestorePointOrchestrator
         finally { _gate.Release(); }
     }
 
+    // Restore a kind point over the live game (caller holds the gate). Every refusal below happens before
+    // anything is written. Then: snapshot the current state (kind beforeRestore; if that fails, refuse), then
+    // the overlay. Deliberately NOT done here, because they belong to undoing a reset and would be wrong
+    // over a live game: restoring games.json / themes / profile / app-settings, reloading the registry,
+    // and clearing the "undo your reset" marker.
+    private async Task<RestoreResult> RestoreKindPoint(string timestamp, string rpDir, RestorePointManifest m,
+        string? snapshotTimestamp, CancellationToken ct)
+    {
+        static RestoreResult Refused(string reason, IReadOnlyList<RestoreConflict>? conflicts = null)
+            => new(false, reason, conflicts ?? Array.Empty<RestoreConflict>(), Array.Empty<string>());
+
+        ct.ThrowIfCancellationRequested();
+        if (!IsPlainName(timestamp)) return Refused("Couldn't restore: the restore point's name isn't a plain name.");
+        var v = RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion);
+        if (!v.Ok) return Refused(v.Reason!);
+        if (File.Exists(Path.Combine(_dataRoot, LockName)))
+            return Refused("A reset didn't finish. Deal with it first, then 626 can restore this snapshot.");
+        if (m.Games.Count != 1) return Refused("This snapshot isn't of a single game, so 626 can't restore it.");
+        var ga = m.Games[0];
+        var gameArchiveDir = Path.Combine(rpDir, "games", ga.Id);
+        if (!IsPlainName(ga.Id) || !Directory.Exists(gameArchiveDir))
+            return Refused("This snapshot's files are missing, so nothing was restored.");
+        var conflicts = RestoreReconcile.Check(m, _provider.Games);
+        if (conflicts.Count > 0)
+            return Refused($"{ga.GameName} has moved since this snapshot, so 626 didn't restore it.", conflicts);
+        var game = _provider.Games.FirstOrDefault(g => string.Equals(g.Id, ga.Id, StringComparison.OrdinalIgnoreCase));
+        if (game is null) return Refused($"{ga.GameName} isn't in your library any more, so 626 can't restore its snapshot.");
+        bool running;
+        try { running = _probe.AnyRunning(game); }
+        catch { return Refused($"Couldn't verify whether {game.GameName} is running. Close it and try again."); }   // fails closed, as Safe Clear does
+        if (running) return Refused($"Close {game.GameName} before restoring its snapshot.");
+
+        // Plan (and validate) first: a snapshot that can't be applied is refused before a pre-restore snapshot
+        // is taken, so a refusal leaves nothing behind.
+        var ctx = _provider.ContextFor(game);
+        OverlayPlan plan;
+        try { plan = RestorePointEngine.PlanOverlay(ga, gameArchiveDir, ctx); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        { return Refused($"This snapshot can't be restored safely: {e.Message} Nothing was changed."); }
+
+        var snap = await CaptureGameOnlyCoreAsync(game.Id, RestorePointKinds.BeforeRestore,
+            snapshotTimestamp ?? DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"), gateHeld: true, ct);
+        if (!snap.Ok) return Refused($"Couldn't save your current setup first, so nothing was restored. {snap.RefusedReason}");
+        var undo = snap.RestorePointTimestamp!;
+
+        IReadOnlyList<string> applied;
+        try { applied = RestorePointEngine.ApplyOverlay(plan, gameArchiveDir, ctx); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return Refused($"626 couldn't finish the restore: {e.Message} Your setup from before it is saved as {undo}; restore that to go back to where you were.");
+        }
+        var warnings = plan.Notes.Concat(applied).Select(n => $"{ga.GameName}: {n}")
+            .Append($"Your setup from before this restore is saved as {undo}. Restore it to go back.").ToList();
+        return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
+    }
+
     public IReadOnlyList<RestorePointInfo> ListRestorePoints()
     {
         if (!Directory.Exists(_restorePointsRoot)) return Array.Empty<RestorePointInfo>();
@@ -414,7 +643,8 @@ public sealed class RestorePointOrchestrator
                 Path.GetFileName(dir),
                 m.Games.Select(g => g.GameName).ToList(),
                 m.TotalBytes,
-                m.Complete));
+                m.Complete,
+                m.Kind));
         }
         return list.OrderByDescending(r => r.Timestamp, StringComparer.Ordinal).ToList();
     }

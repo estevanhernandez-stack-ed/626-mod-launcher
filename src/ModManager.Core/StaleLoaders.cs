@@ -138,8 +138,16 @@ public static class StaleLoaders
     }
 
     /// <summary>Every live version-locked loader older than the game's executable. A file read per loader
-    /// and a directory listing per probe root; callers on a UI thread run it in the background.</summary>
-    public static StaleLoaderReport Find(GameContext ctx)
+    /// and a directory listing per probe root; callers on a UI thread run it in the background.
+    ///
+    /// <para><paramref name="stash"/> is the vanilla stash while mods are stepped aside (Patch Day). A vanilla
+    /// launch moves a loader's proxy DLL into a holding folder, so a live scan finds nothing and a caller
+    /// cannot tell "no loader" from "loader set aside". With the stash, a proxy it lists is also looked for
+    /// in its holding folder (the play folder's <c>_626/vanilla-proxy</c> for a direct-inject proxy; the
+    /// framework's <c>disabled-proxy</c> folder for a framework), and the held file's date stands in for the
+    /// live one. A move keeps the file's write time, so the date is the loader's own. Only proxies the stash
+    /// names count: a stray file in a holding folder is not a loader this launcher stepped aside.</para></summary>
+    public static StaleLoaderReport Find(GameContext ctx, VanillaStash? stash = null)
     {
         if (string.IsNullOrEmpty(ctx.GameRoot) || !Directory.Exists(ctx.GameRoot)) return StaleLoaderReport.None;
         var roots = FrameworkDeps.ResolveProbeRoots(ctx);
@@ -153,7 +161,7 @@ public static class StaleLoaders
         foreach (var loader in Catalog)
         {
             var where = loader.InModEngineFolder && me2Folder is not null ? roots.Append(me2Folder).ToList() : roots;
-            if (FileFor(loader, where) is not { } file) continue;
+            if (FileFor(loader, where, HeldLookup(ctx, stash)) is not { } file) continue;
             DateTime loaderUtc;
             try { loaderUtc = File.GetLastWriteTimeUtc(file); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { continue; }
@@ -163,18 +171,51 @@ public static class StaleLoaders
         return new StaleLoaderReport(exe.Path, exe.Utc, found);
     }
 
-    private static string? FileFor(VersionLocked loader, IReadOnlyList<string> roots)
+    private static string? FileFor(VersionLocked loader, IReadOnlyList<string> roots, Func<string, string?>? held = null)
     {
         foreach (var root in roots)
         {
-            if (loader.AlongsideAnyOf.Count > 0 && !loader.AlongsideAnyOf.Any(rel => Exists(Combine(root, rel)))) continue;
+            if (loader.AlongsideAnyOf.Count > 0
+                && !loader.AlongsideAnyOf.Any(rel => Exists(Combine(root, rel)) || held?.Invoke(rel) is not null)) continue;
             foreach (var rel in loader.AnyOf)
             {
                 var p = Combine(root, rel);
                 if (File.Exists(p)) return p;
+                if (held?.Invoke(rel) is { } heldPath) return heldPath;
             }
         }
         return null;
+    }
+
+    /// <summary>Where a top-level file the stash says was stepped aside sits now, or null.</summary>
+    private static Func<string, string?>? HeldLookup(GameContext ctx, VanillaStash? stash)
+    {
+        if (stash is null) return null;
+        var playFolder = DirectInjectListing.PlayFolder(ctx.GameRoot);
+        return rel =>
+        {
+            // A framework's holding folder is keyed by the proxy's file name inside its install root; the
+            // catalog names it by a path from the probe root ("Binaries/Win64/dwmapi.dll"). A direct-inject
+            // proxy only ever sits at the top of the play folder.
+            var name = Path.GetFileName(rel);
+            var topLevel = !rel.Contains('/') && !rel.Contains((char)92);
+            try
+            {
+                if (topLevel && playFolder is not null
+                    && stash.DirectInjectProxies.Contains(name, StringComparer.OrdinalIgnoreCase))
+                {
+                    var p = Path.Combine(DirectInject.VanillaProxyHolding(playFolder), name);
+                    if (File.Exists(p)) return p;
+                }
+                foreach (var id in stash.Frameworks)
+                {
+                    var p = Path.Combine(ctx.DataDir, "frameworks", id, Frameworks.FrameworkRegistry.DisabledProxyDir, name);
+                    if (File.Exists(p)) return p;
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { }
+            return null;
+        };
     }
 
     private static string Combine(string root, string rel) => Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));

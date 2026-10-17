@@ -37,6 +37,13 @@ public sealed class RestorePointService
         return result;
     }
 
+    /// <summary>Snapshot one game into a restore point without changing it (the Patch Day snapshot). Same
+    /// timestamp scheme as <see cref="SafeClearAsync"/>; writes no off-boarding sheet. Expected failures come
+    /// back as a result with a reason.</summary>
+    public Task<CaptureOnlyResult> CaptureGameOnlyAsync(string gameId, string kind = RestorePointKinds.PatchDay,
+        CancellationToken ct = default)
+        => _orch.CaptureGameOnlyAsync(gameId, kind, Ts(), ct);
+
     public Task<RestoreResult> RestoreAsync(string timestamp, CancellationToken ct = default)
         => _orch.RestoreAsync(timestamp, ct);
 

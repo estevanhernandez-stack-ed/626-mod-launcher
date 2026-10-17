@@ -79,7 +79,7 @@ public static class FrameworkRegistry
         try { Directory.Delete(fwDir, recursive: true); } catch { }
     }
 
-    private const string DisabledProxyDir = "disabled-proxy";
+    internal const string DisabledProxyDir = "disabled-proxy";
 
     /// <summary>The top-level (no-slash) InstalledFiles entries — the loader proxy DLL(s) that make the
     /// framework inject (e.g. dwmapi.dll). Everything else lives under ue4ss/ and isn't a process hijack.</summary>
@@ -132,6 +132,15 @@ public static class FrameworkRegistry
             File.Move(held, live);
         }
         try { Directory.Delete(holding, recursive: true); } catch { /* may hold un-restored entries */ }
+    }
+
+    /// <summary>True when ANY of the framework's proxy files is in the holding folder. Wider than
+    /// <see cref="IsDisabled"/>, which also needs every live proxy gone: an interrupted step-aside (one held,
+    /// one still live) reads not-disabled there, but its proxies are still not the player's to have put back.</summary>
+    internal static bool AnyProxyHeld(string gameDataDir, FrameworkInstallManifest m)
+    {
+        var holding = Path.Combine(gameDataDir, "frameworks", m.FrameworkId, DisabledProxyDir);
+        return Directory.Exists(holding) && ProxyFiles(m).Any(rel => File.Exists(Path.Combine(holding, rel)));
     }
 
     /// <summary>True when the framework's proxy is currently stepped aside (holding has a proxy AND the

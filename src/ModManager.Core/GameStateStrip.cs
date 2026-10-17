@@ -33,6 +33,9 @@ public enum GameStateTone
     Quiet,
 }
 
+/// <summary>Stable keys for the PATCH DAY chip's buttons. Labels may be reworded; the App routes on these.</summary>
+public enum PatchDayAction { PlayVanilla, PlayModded, Snooze, BringBack, GetUpdate }
+
 /// <summary>One thing that is true about this game right now.</summary>
 /// <param name="Id">Stable and kebab-case — a harness keys on it, so it outlives any label change.</param>
 /// <param name="Label">The chip's face. Short enough to sit in a row of them.</param>
@@ -46,7 +49,12 @@ public sealed record GameStateChip(
     string Label,
     string Detail,
     string? ActionLabel,
-    bool Dismissible)
+    bool Dismissible,
+    string? SecondaryActionLabel = null,
+    string? TertiaryActionLabel = null,
+    PatchDayAction? PrimaryPatchDayAction = null,
+    PatchDayAction? SecondaryPatchDayAction = null,
+    PatchDayAction? TertiaryPatchDayAction = null)
 {
     /// <summary>The colour this chip renders in. See <see cref="GameStateTone"/> for why it is not
     /// simply the severity.</summary>
@@ -54,6 +62,7 @@ public sealed record GameStateChip(
     {
         "ban-risk" => GameStateTone.Danger,
         "launch-options" => GameStateTone.Caution,
+        "patch-day" => GameStateTone.Caution,
         "framework-missing" => GameStateTone.Notice,
         _ => Severity == GameStateSeverity.Info ? GameStateTone.Quiet : GameStateTone.Accent,
     };
@@ -88,6 +97,13 @@ public sealed record GameStateConditions
     public bool VortexReDeployed { get; init; }
     public bool VortexManaged { get; init; }
 
+    /// <summary>The game's display name, for chips that name it (PATCH DAY).</summary>
+    public string? GameName { get; init; }
+
+    /// <summary>The Patch Day verdict (<see cref="PatchDay.Evaluate"/>). Null or Quiet: no chip, and the
+    /// UPDATED and OLD LOADER chips speak for themselves as before.</summary>
+    public PatchDayVerdict? PatchDay { get; init; }
+
     /// <summary>Non-empty when a profile backup is being held for this game, describing what it
     /// carries — e.g. "12 mods and 79 save files". Set once the game is registered here, which is the
     /// first moment there is anywhere to put it.</summary>
@@ -118,6 +134,11 @@ public static class GameStateStrip
         var chips = new List<GameStateChip>();
         if (c is null) return chips;
 
+        // Patch Day replaces UPDATED and OLD LOADER while it is in play, snoozed or not: they are the same
+        // two facts under older names, and a snooze means "tell me when it's fixed", not "show it again
+        // as something else".
+        var patchDay = c.PatchDay is { State: not PatchDayState.Quiet } v ? v : null;
+
         // 1. The only one whose cost lands outside this machine.
         //
         // It said "This game uses anti-cheat" for every flagged game, which is a claim about a
@@ -131,6 +152,13 @@ public static class GameStateStrip
             chips.Add(new GameStateChip("ban-risk", GameStateSeverity.Danger, "BAN RISK",
                 "Modding this game for online play can get your account banned.",
                 null, Dismissible: false));
+
+        // 1b. A game updated and its version-locked loader didn't. Amber, never red: red is the account.
+        // Snooze is NOT Dismissible: dismiss is session-only (it comes back next launch), snooze is
+        // persisted in the record until something changes. So the chip stays non-dismissible and carries
+        // snooze as a third action key the App routes to PatchDay.Snooze. A hidden verdict emits nothing.
+        if (patchDay is { Hidden: false })
+            chips.Add(PatchDayChip(patchDay, c.GameName));
 
         // 2. Nothing loads at all until this is set.
         if (c.LaunchOptionsNeeded)
@@ -152,7 +180,7 @@ public static class GameStateStrip
                 "Check setup", Dismissible: true));
 
         // 5. What worked yesterday may not today.
-        if (c.SteamUpdated)
+        if (c.SteamUpdated && patchDay is null)
             chips.Add(new GameStateChip("steam-updated", GameStateSeverity.Warning, "UPDATED",
                 string.IsNullOrWhiteSpace(c.SteamMessage)
                     ? "Steam updated this game since you last modded it — your installed mods may need rechecking."
@@ -164,7 +192,7 @@ public static class GameStateStrip
         // 5b. The same question asked of the loader: it hooks the game's own code, and it is older than
         // the binary it hooks. Below UPDATED because that one is a fact (Steam changed the build) and this
         // one is an inference from file dates.
-        if (!string.IsNullOrWhiteSpace(c.StaleLoader))
+        if (!string.IsNullOrWhiteSpace(c.StaleLoader) && patchDay is null)
             chips.Add(new GameStateChip("stale-loader", GameStateSeverity.Warning, "OLD LOADER",
                 c.StaleLoader!.Trim(),
                 // An ACTION like UPDATED's: it records the executable it was checked against, so the next
@@ -217,6 +245,60 @@ public static class GameStateStrip
                 "Take them over", Dismissible: true));
 
         return chips;
+    }
+
+    /// <summary>The PATCH DAY chip for a verdict. Public so the App's Play dialog shows the chip's own
+    /// sentence and button labels instead of a second copy that could drift.</summary>
+    public static GameStateChip PatchDayChip(PatchDayVerdict v, string? gameName)
+    {
+        var game = string.IsNullOrWhiteSpace(gameName) ? "This game" : gameName.Trim();
+        string detail;
+        (string Label, PatchDayAction Key) primary;
+        (string Label, PatchDayAction Key)? secondary = null, tertiary = null;
+
+        const string BringBackLabel = "Bring my mods back";
+        const string VanillaLabel = "Play vanilla for now";
+
+        switch (v.State)
+        {
+            case PatchDayState.PlayingVanilla:
+                detail = "Your mods are set aside since the patch. Bring them back any time.";
+                primary = (BringBackLabel, PatchDayAction.BringBack);
+                break;
+            case PatchDayState.UpdateAvailable:
+                detail = (v.Loader?.Name ?? "Your loader") + " has an update since the patch.";
+                primary = ("Get the update", PatchDayAction.GetUpdate);
+                secondary = (BringBackLabel, PatchDayAction.BringBack);
+                break;
+            case PatchDayState.LoaderUpdated:
+                detail = "Your loader is newer than the game now. Bring your mods back?";
+                primary = (BringBackLabel, PatchDayAction.BringBack);
+                break;
+            default: // Patched
+                if (v.Choice == PatchDayChoice.Modded)
+                {
+                    detail = $"You chose to play modded after the {game} update. Your loader may not load.";
+                    primary = (VanillaLabel, PatchDayAction.PlayVanilla);
+                    break;
+                }
+                var when = (v.GameExeUtc ?? v.Record?.DetectedUtc)?.ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture);
+                detail = (when is null ? $"{game} updated." : $"{game} updated on {when}.")
+                    + " Your mod loader is from before that update and probably won't load yet.";
+                // 626 can't intercept a launch from Steam; say so once, before a choice is made.
+                if (v.Choice == PatchDayChoice.None)
+                    detail += " If you launch from Steam, your mods load as they are.";
+                primary = (VanillaLabel, PatchDayAction.PlayVanilla);
+                secondary = ("Play modded anyway", PatchDayAction.PlayModded);
+                tertiary = ("Tell me when it's fixed", PatchDayAction.Snooze);
+                break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(v.Record?.RestorePointError))
+            detail += $" Couldn't save a restore point: {v.Record!.RestorePointError!.Trim().TrimEnd('.')}.";
+
+        return new GameStateChip("patch-day", GameStateSeverity.Warning, "PATCH DAY", detail,
+            primary.Label, Dismissible: false,
+            secondary?.Label, tertiary?.Label, primary.Key, secondary?.Key, tertiary?.Key);
     }
 
     // One id in both places: a harness keys on the fact (626 renamed files here), not on how bad it is.
