@@ -268,6 +268,10 @@ public sealed partial class MainWindow : Window
         if (interrupted is not null)
             await HandleInterruptedClearAsync(rp, interrupted);
 
+        // A Kind restore a previous launcher died in the middle of: said once, never fixed for them.
+        if (rp.DetectInterruptedRestore() is { } interruptedRestore)
+            await HandleInterruptedRestoreAsync(rp, interruptedRestore);
+
         // A data-folder move a previous launcher left mid-save is finished or reported before the
         // first load reads the registry (A6).
         // Off the UI thread: it reads folders (one may be on a slow drive) and takes the registry lock.
@@ -349,6 +353,45 @@ public sealed partial class MainWindow : Window
         };
         ModManager.App.Services.DialogTheming.Apply(d); // vibe-glow wave 1: popup-scope theme brushes
         await d.ShowAsync();
+    }
+
+    // A Kind restore writes over a live game one file at a time. If 626 stopped partway, some of the game's
+    // files are from the snapshot and some from before. Say so once, name the snapshot that goes back, and
+    // restore nothing: Got it removes the reminder and only the reminder (Core: RestoreJournal).
+    private async Task HandleInterruptedRestoreAsync(Services.RestorePointService rp, ModManager.Core.RestorePoints.InterruptedRestore ir)
+    {
+        var acknowledged = false;
+        var message = new TextBlock
+        {
+            Text = ModManager.Core.RestorePoints.RestoreJournal.Message(ir),
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(message, "InterruptedRestoreMessage");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(message, "Interrupted restore");
+        var note = new TextBlock { Text = ModManager.Core.RestorePoints.RestoreJournal.AcknowledgeNote, TextWrapping = TextWrapping.Wrap };
+        var gotIt = new Button { Content = "Got it" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(gotIt, "InterruptedRestoreAcknowledgeButton");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(gotIt, "Got it, stop reminding me");
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(message);
+        panel.Children.Add(note);
+        panel.Children.Add(gotIt);
+
+        var d = new ContentDialog
+        {
+            Title = "A restore didn't finish",
+            Content = panel,
+            CloseButtonText = "Remind me next time",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(d, "InterruptedRestoreDialog");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(d, "A restore didn't finish");
+        gotIt.Click += (_, _) => { acknowledged = true; d.Hide(); };
+        ModManager.App.Services.DialogTheming.Apply(d);
+        await d.ShowAsync();
+        if (acknowledged) rp.AcknowledgeInterruptedRestore();
     }
 
     private async Task HandleInterruptedClearAsync(Services.RestorePointService rp, ModManager.Core.RestorePoints.InterruptedClear ic)
@@ -1439,10 +1482,16 @@ public sealed partial class MainWindow : Window
         }
         else if (dialog.RestoreRequestedTimestamp is { } rts)
         {
+            // A snapshot of one game (Patch Day, or the one saved before a restore) is an overlay on the live
+            // game, not a reset of the launcher: say so, and refresh the rows by hand afterwards.
+            var restoreKind = rp.ListRestorePoints().FirstOrDefault(p => p.Timestamp == rts)?.Kind;
             var confirm = new ContentDialog
             {
                 Title = "Restore this setup?",
-                Content = "Your current launcher state will be replaced with the archived setup.",
+                Content = restoreKind is null
+                    ? "Your current launcher state will be replaced with the archived setup."
+                    : "626 saves your current setup first, then puts this snapshot's mod loader files and launcher data back. "
+                      + "Which mods are switched on stays as it is, and you can restore the saved setup to go back.",
                 PrimaryButtonText = "Restore",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary,
@@ -1452,6 +1501,11 @@ public sealed partial class MainWindow : Window
             if (await confirm.ShowAsync() == ContentDialogResult.Primary)
             {
                 var r = await rp.RestoreAsync(rts);
+                // A Kind restore is no reset and leaves games.json alone (Core never calls Reload for it), so
+                // nothing raises RegistryChanged and the rows would go on showing the old state. Refresh the
+                // active game's rows here, once. Also after a failure: an overlay that stopped partway has
+                // already changed files, and the rows should say so.
+                if (restoreKind is not null) await ViewModel.RefreshAsync();
                 if (!r.Ok)
                 {
                     string msg;
@@ -1476,7 +1530,7 @@ public sealed partial class MainWindow : Window
                     await err.ShowAsync();
                 }
                 else await ShowRestoreNotesAsync(r);
-                // On success the UI refreshes via LauncherService.RegistryChanged → RefreshAsync.
+                // A Safe Clear point refreshes via LauncherService.RegistryChanged → RefreshAsync.
             }
         }
         else if (dialog.DeleteRequestedTimestamp is { } dts)

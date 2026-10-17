@@ -52,6 +52,8 @@ public sealed class RestorePointService
     public InterruptedClear? DetectInterruptedClear() => _orch.DetectInterruptedClear();
     public void DiscardPartial(string ts) => _orch.DiscardPartial(ts);
     public void AcknowledgeInterruptedClear(string ts) => _orch.AcknowledgeInterruptedClear(ts);
+    public InterruptedRestore? DetectInterruptedRestore() => _orch.DetectInterruptedRestore();
+    public void AcknowledgeInterruptedRestore() => _orch.AcknowledgeInterruptedRestore();
 
     private void WriteOffBoardingSheets(string timestamp)
     {
