@@ -31,6 +31,9 @@ public sealed class RestorePointOrchestrator
     /// <summary>Tests only: runs after a Kind restore's record is written, just before the overlay's first write.</summary>
     internal Action? BeforeOverlayForTests { get; set; }
 
+    /// <summary>Tests only: the clock the undo-snapshot retention rule measures age against.</summary>
+    internal Func<DateTime>? UtcNowForTests { get; set; }
+
     public RestorePointOrchestrator(string dataRoot, string restorePointsRoot, string launcherVersion,
         IGameProvider provider, INexusGate nexus, IGameRunningProbe probe)
     {
@@ -645,7 +648,61 @@ public sealed class RestorePointOrchestrator
         RestoreJournal.Clear(_dataRoot);
         var warnings = plan.Notes.Concat(applied).Select(n => $"{ga.GameName}: {n}")
             .Append($"Your setup from before this restore is saved as {undo}. Restore it to go back.").ToList();
+        // Only here: the restore has fully succeeded and its record is cleared. A refusal or a failure above
+        // returned already, and Safe Clear never comes through this method.
+        PruneOlderUndoSnapshots(game.Id, ga.GameName, undo, timestamp, warnings);
         return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
+    }
+
+    // Keep a game's newest RestorePointRetention.KeepBeforeRestore undo snapshots (see RestorePointRetention for
+    // the rule). Runs under the caller's gate. Deletes only folders the rule picked, each a direct child of the
+    // restore-points root, through the same folder removal as DeleteRestorePoint. It never fails the restore: a
+    // delete that doesn't take is a note, and anything unexpected, or a journal it can't read, means nothing is
+    // removed. `undo` (the snapshot this restore just took) and `restoredFrom` are never selected, nor is
+    // anything the lock or the pending-restore record names.
+    private void PruneOlderUndoSnapshots(string gameId, string gameName, string undo, string restoredFrom, List<string> notes)
+    {
+        try
+        {
+            if (!Directory.Exists(_restorePointsRoot)) return;
+            var protectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { undo, restoredFrom };
+            var journalNames = RestoreJournal.NamedPoints(_dataRoot);
+            if (journalNames is null) return;   // a record that is there but can't be read: don't guess what it names
+            protectedNames.UnionWith(journalNames);
+            var lockPath = Path.Combine(_dataRoot, LockName);
+            if (File.Exists(lockPath)) protectedNames.Add(File.ReadAllText(lockPath).Trim());
+
+            var facts = new List<RestorePointFacts>();
+            foreach (var dir in Directory.GetDirectories(_restorePointsRoot))
+            {
+                try
+                {
+                    // A link out of the restore-points folder is not ours to follow, let alone delete through.
+                    if ((new DirectoryInfo(dir).Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    var m = RestorePointManifestStore.Read(dir);
+                    if (m is null) continue;
+                    facts.Add(new RestorePointFacts(Path.GetFileName(dir), m.Complete, m.SchemaVersion, m.Kind,
+                        m.CreatedUtc, m.Games.Select(g => g.Id).ToList()));
+                }
+                catch { /* unreadable: never a candidate */ }
+            }
+
+            var doomed = RestorePointRetention.BeforeRestoreToPrune(facts, gameId, UtcNowForTests?.Invoke() ?? DateTime.UtcNow, protectedNames);
+            var removed = 0;
+            var stuck = new List<string>();
+            foreach (var name in doomed)
+            {
+                if (!IsPlainName(name)) continue;
+                if (TryDeleteRestorePoint(name)) removed++; else stuck.Add(name);
+            }
+            if (removed > 0)
+                notes.Add($"Removed {removed} older undo snapshot{(removed == 1 ? "" : "s")} for {gameName} "
+                    + $"(kept the newest {RestorePointRetention.KeepBeforeRestore}).");
+            if (stuck.Count > 0)
+                notes.Add($"Couldn't remove {stuck.Count} older undo snapshot{(stuck.Count == 1 ? "" : "s")} for {gameName}: "
+                    + $"{string.Join(", ", stuck)}. {(stuck.Count == 1 ? "It stays" : "They stay")} where {(stuck.Count == 1 ? "it is" : "they are")}.");
+        }
+        catch { /* tidying is a courtesy; the restore it follows has already succeeded */ }
     }
 
     public IReadOnlyList<RestorePointInfo> ListRestorePoints()
@@ -666,10 +723,14 @@ public sealed class RestorePointOrchestrator
         return list.OrderByDescending(r => r.Timestamp, StringComparer.Ordinal).ToList();
     }
 
-    public void DeleteRestorePoint(string timestamp)
+    public void DeleteRestorePoint(string timestamp) => TryDeleteRestorePoint(timestamp);
+
+    // DeleteRestorePoint's removal, reporting whether the folder is gone afterwards.
+    private bool TryDeleteRestorePoint(string timestamp)
     {
         var dir = Path.Combine(_restorePointsRoot, timestamp);
         try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        return !Directory.Exists(dir);
     }
 
     /// <summary>If a safe-clear.lock exists, a Safe Clear was interrupted.
