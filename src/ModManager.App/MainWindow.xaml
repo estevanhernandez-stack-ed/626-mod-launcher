@@ -436,6 +436,8 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock AutomationProperties.AutomationId="StateChipDetail" Grid.Column="0"
                                    IsTextSelectionEnabled="True"
@@ -447,7 +449,21 @@
                                 Command="{x:Bind ViewModel.RunStateChipActionCommand}"
                                 Visibility="{x:Bind ViewModel.StateDetailActionVisibility, Mode=OneWay}"
                                 VerticalAlignment="Center" />
-                        <Button AutomationProperties.AutomationId="StateChipDismiss" Grid.Column="2"
+                        <!-- PATCH DAY's second and third actions. Singletons like the one above: only one chip is
+                             expanded at a time, so there is at most one of each in the tree. -->
+                        <Button AutomationProperties.AutomationId="PatchDaySecondaryAction" Grid.Column="2"
+                                AutomationProperties.Name="{x:Bind ViewModel.StateDetailSecondaryActionLabel, Mode=OneWay}"
+                                Content="{x:Bind ViewModel.StateDetailSecondaryActionLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.RunPatchDaySecondaryActionCommand}"
+                                Visibility="{x:Bind ViewModel.StateDetailSecondaryActionVisibility, Mode=OneWay}"
+                                VerticalAlignment="Center" />
+                        <Button AutomationProperties.AutomationId="PatchDayTertiaryAction" Grid.Column="3"
+                                AutomationProperties.Name="{x:Bind ViewModel.StateDetailTertiaryActionLabel, Mode=OneWay}"
+                                Content="{x:Bind ViewModel.StateDetailTertiaryActionLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.RunPatchDayTertiaryActionCommand}"
+                                Visibility="{x:Bind ViewModel.StateDetailTertiaryActionVisibility, Mode=OneWay}"
+                                VerticalAlignment="Center" />
+                        <Button AutomationProperties.AutomationId="StateChipDismiss" Grid.Column="4"
                                 Content="Dismiss"
                                 Command="{x:Bind ViewModel.DismissStateChipCommand}"
                                 Visibility="{x:Bind ViewModel.StateDetailDismissVisibility, Mode=OneWay}"

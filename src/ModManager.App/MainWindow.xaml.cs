@@ -1782,6 +1782,9 @@ public sealed partial class MainWindow : Window
             case "load-order-prefix": ViewModel.UndoLoadOrderPrefixesCommand.Execute(null); break;
             case "framework-missing": _ = OfferMissingFrameworkAsync(); break;
             case "backup-waiting": _ = PutHeldBackupBackAsync(); break;
+            // PATCH DAY routes on the chip's action KEYS inside the view-model, never the button text; the
+            // second and third buttons bind straight to their commands.
+            case "patch-day": _ = ViewModel.RunPatchDayPrimaryActionAsync(); break;
         }
     }
 
