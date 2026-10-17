@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ModManager.Core.Manifest;
 
 namespace ManifestMiner;
@@ -10,6 +11,20 @@ namespace ManifestMiner;
 /// attribution.</summary>
 public static class PublishManifest
 {
+    /// <summary>The exact bytes that get written and signed. With <paramref name="loaderReleases"/> null
+    /// (no <c>--loader-releases</c> flag) this is byte-for-byte the pre-Patch-Day output.</summary>
+    public static async Task<byte[]> BuildBytesAsync(GameManifest current, LoaderReleaseOptions? loaderReleases)
+    {
+        var final = ForPublish(current);
+        if (loaderReleases is not null)
+        {
+            var rows = await LoaderReleaseWatch.RunAsync(
+                loaderReleases.Handler, loaderReleases.Previous, loaderReleases.Token, loaderReleases.NowUtc, loaderReleases.Log);
+            final = final with { LoaderReleases = rows };
+        }
+        return JsonSerializer.SerializeToUtf8Bytes(final, ManifestJson.Options);
+    }
+
     public static GameManifest ForPublish(GameManifest manifest)
     {
         var kept = new List<GameManifestEntry>();

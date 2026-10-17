@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ModManager.Tests" />
+    <InternalsVisibleTo Include="ManifestMiner.Tests" />
   </ItemGroup>
 
 </Project>
