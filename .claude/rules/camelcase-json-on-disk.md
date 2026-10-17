@@ -70,6 +70,9 @@ The string-contains assertion is what protects you — without it, the round-tri
   `SafeClearRemainderTests.Remainder_record_round_trips_as_camelCase`)
 - Game-definition manifest `modPathModOnly` (`src/ModManager.Core/Manifest/GameManifest.cs`, cached on disk by
   `RemoteManifestCache`; `ModPathModOnlyTests.Round_trips_as_camelCase`)
+- Restore-point manifest `kind` (`src/ModManager.Core/RestorePoints/RestorePointManifest.cs` — optional, omitted when null; 
+  `"patchDay"` marks the capture-only one-game snapshot from `RestorePointOrchestrator.CaptureGameOnlyAsync`; covered by
+  `RestorePointOrchestratorCaptureOnlyTests.Manifest_kind_round_trips_as_camelCase_and_is_omitted_when_null`)
 - `TakenOverState` taken-over.json (`src/ModManager.Core/VortexTakeover.cs`)
 - `VanillaStash` vanilla-stash.json (`src/ModManager.Core/VanillaLaunch.cs`)
 - `NexusOAuthConfig` nexus-oauth-cache.json (`src/ModManager.Core/Nexus/NexusOAuthConfig.cs` — `JsonOpts`; written/read via `src/ModManager.App/Services/NexusOAuthConfigSource.cs`)

@@ -305,6 +305,93 @@ public sealed class RestorePointOrchestrator
         finally { _gate.Release(); }
     }
 
+    /// <summary>Tests only: replaces the free-space check of <see cref="CaptureGameOnlyAsync"/>.</summary>
+    internal Func<string, long, SpaceCheck.Result>? SpaceCheckForTests { get; set; }
+
+    /// <summary>
+    /// Snapshot ONE game and change nothing. The Patch Day restore point: it copies the game's launcher-owned
+    /// data folder and its framework install state into a new restore point, seals the manifest, and stops.
+    /// It never calls <see cref="RestorePointEngine.ApplyEndState"/>, never writes to the game folder or the
+    /// mod folders, never touches games.json, nexus.json or the reset markers, and writes no off-boarding sheet.
+    /// <para>Guards, as Safe Clear's where they apply: the one-writer gate; refuses while a
+    /// <c>safe-clear.lock</c> is on disk (a reset is running, or died and awaits recovery); a reachable-drive
+    /// check; a free-space pre-flight sized to the copy. It does NOT refuse for a running game: Safe Clear's
+    /// Law E protects files it is about to mutate, and this only reads them (every copy is size-verified).</para>
+    /// <para>A failure returns <see cref="CaptureOnlyResult"/> with a reason. A restore point this call started
+    /// is removed on failure so no partial point is left; one that already exists under the timestamp is
+    /// refused and never touched.</para>
+    /// <para>Restore: the manifest records EndState "modsActive" and no turn-off record, so
+    /// <see cref="RestoreAsync"/> overlays the captured data folder (minus its held/disabled copies, which would
+    /// duplicate mods the player has since switched on) and the framework files and loader states. It disables
+    /// and moves no mod, and (no games.json in the point, <c>kind</c> set) leaves the registry and an earlier
+    /// reset's restore offer alone. Mods enabled in the game folder are not copied, so a restore does not
+    /// bring back a mod's files that changed or vanished since.</para>
+    /// </summary>
+    public async Task<CaptureOnlyResult> CaptureGameOnlyAsync(string gameId, string kind, string timestamp, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var game = _provider.Games.FirstOrDefault(g => string.Equals(g.Id, gameId, StringComparison.OrdinalIgnoreCase));
+            if (game is null) return Refused($"Couldn't find the game \"{gameId}\" to save a restore point.");
+
+            if (File.Exists(Path.Combine(_dataRoot, LockName)))
+                return Refused("A reset didn't finish. Deal with it first, then 626 can save a restore point.");
+
+            var ctx = _provider.ContextFor(game);
+            if (!DriveReachable(ctx.GameRoot) || !DriveReachable(ctx.DataDir))
+                return Refused($"{game.GameName}'s drive is unavailable, so 626 couldn't save a restore point.");
+
+            var rpDir = Path.Combine(_restorePointsRoot, timestamp);
+            if (Directory.Exists(rpDir) || File.Exists(rpDir))
+                return Refused($"A restore point named {timestamp} already exists, so 626 didn't save another.");
+
+            var payload = CaptureBytes(ctx);
+            var space = SpaceCheckForTests is { } fake ? fake(_restorePointsRoot, payload) : SpaceCheck.Require(_restorePointsRoot, payload);
+            if (!space.Ok)
+                return Refused($"Not enough free space: need ~{Gb(space.RequiredBytes)} GB, have {Gb(space.AvailableBytes)} GB on {space.VolumeRoot}.");
+
+            try
+            {
+                Directory.CreateDirectory(rpDir);
+                var ga = RestorePointEngine.CaptureGame(
+                    new GameCaptureInput(game, ctx, "modsActive"), Path.Combine(rpDir, "games", game.Id));
+                var manifest = new RestorePointManifest(
+                    1, _launcherVersion, timestamp, Complete: true, KeepNexus: true,
+                    FileTally.ByteSize(rpDir), FileTally.FileCount(rpDir), new[] { ga }, kind);
+                RestorePointManifestStore.WriteSealed(rpDir, manifest);   // the seal, last
+                return new CaptureOnlyResult(true, null, timestamp);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Ours alone: this call created rpDir (it did not exist above), so it holds only what this call copied.
+                DeleteRestorePoint(timestamp);
+                return Refused($"Couldn't save a restore point for {game.GameName}: {e.Message}");
+            }
+        }
+        finally { _gate.Release(); }
+
+        static CaptureOnlyResult Refused(string reason) => new(false, reason, null);
+    }
+
+    // What the capture copies: the data folder plus each framework's installed files (CaptureGame's two payloads).
+    private static long CaptureBytes(GameContext ctx)
+    {
+        long n = FileTally.ByteSize(ctx.DataDir);
+        try
+        {
+            foreach (var fw in Frameworks.FrameworkRegistry.List(ctx.DataDir))
+                foreach (var rel in fw.InstalledFiles)
+                {
+                    var p = Path.Combine(fw.InstallPath, rel);
+                    if (File.Exists(p)) n += new FileInfo(p).Length;
+                }
+        }
+        catch { /* an estimate */ }
+        return n;
+    }
+
     private static string EndStateFor(string id, SafeClearOptions opts)
         => opts.PerGameEndState.TryGetValue(id, out var s) ? s : opts.DefaultEndState;
 
@@ -396,7 +483,9 @@ public sealed class RestorePointOrchestrator
                 }
             }
 
-            RestoreMarkers.ClearLastClear(_dataRoot);
+            // A one-game point (Patch Day) is not the point a Safe Clear's "restore your previous setup" offer
+            // names: restoring it must not take that offer away.
+            if (m.Kind is null) RestoreMarkers.ClearLastClear(_dataRoot);
             return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
         }
         finally { _gate.Release(); }
@@ -414,7 +503,8 @@ public sealed class RestorePointOrchestrator
                 Path.GetFileName(dir),
                 m.Games.Select(g => g.GameName).ToList(),
                 m.TotalBytes,
-                m.Complete));
+                m.Complete,
+                m.Kind));
         }
         return list.OrderByDescending(r => r.Timestamp, StringComparer.Ordinal).ToList();
     }

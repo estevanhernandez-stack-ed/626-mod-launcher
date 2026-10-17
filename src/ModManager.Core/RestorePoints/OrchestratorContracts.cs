@@ -20,7 +20,14 @@ public sealed record SafeClearResult(
 /// <summary>A pre-flight blocker (free space, game running, offline drive).</summary>
 public sealed record PreflightBlocker(string Kind, string Detail);
 
-public sealed record RestorePointInfo(string Timestamp, IReadOnlyList<string> GameNames, long TotalBytes, bool Complete);
+/// <summary><c>Kind</c> is the manifest's kind (see <see cref="RestorePointKinds"/>); null for a Safe Clear point.</summary>
+public sealed record RestorePointInfo(string Timestamp, IReadOnlyList<string> GameNames, long TotalBytes, bool Complete,
+    string? Kind = null);
+
+/// <summary>Result of <see cref="RestorePointOrchestrator.CaptureGameOnlyAsync"/>. An expected failure
+/// (unknown game, a Safe Clear in progress, no space, an unreadable file) is <c>Ok=false</c> with a reason in
+/// the app's voice, never a throw; nothing is left behind.</summary>
+public sealed record CaptureOnlyResult(bool Ok, string? RefusedReason, string? RestorePointTimestamp);
 
 public sealed record RestoreResult(bool Ok, string? RefusedReason, IReadOnlyList<RestoreConflict> Conflicts, IReadOnlyList<string> Warnings);
 
