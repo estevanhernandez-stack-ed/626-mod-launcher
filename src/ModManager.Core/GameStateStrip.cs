@@ -247,7 +247,9 @@ public static class GameStateStrip
         return chips;
     }
 
-    private static GameStateChip PatchDayChip(PatchDayVerdict v, string? gameName)
+    /// <summary>The PATCH DAY chip for a verdict. Public so the App's Play dialog shows the chip's own
+    /// sentence and button labels instead of a second copy that could drift.</summary>
+    public static GameStateChip PatchDayChip(PatchDayVerdict v, string? gameName)
     {
         var game = string.IsNullOrWhiteSpace(gameName) ? "This game" : gameName.Trim();
         string detail;

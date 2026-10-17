@@ -73,6 +73,12 @@ public sealed partial class MainWindow : Window
         // game through the existing + Game flow, then reloads the home.
         _libraryVm = App.AppHost.Services.GetRequiredService<LibraryViewModel>();
         _libraryVm.GameOpened += OnLibraryGameOpened;
+        // Play found a patch waiting on a choice: open the game, and ask once its verdict is computed.
+        _libraryVm.GameOpenedToAskPatchDay += gameId =>
+        {
+            ViewModel.AskPatchDayOnNextLoad(gameId);
+            HideLibraryForGame();
+        };
         _libraryVm.AddGameRequested += OnLibraryAddGameRequested;
         _libraryVm.UpdatesRequested += ShowUpdates;
         _libraryView = new LibraryView(_libraryVm);
@@ -89,6 +95,13 @@ public sealed partial class MainWindow : Window
         // The safe-loader list lets the dialog surface "Launch / Get" buttons — installed loaders can
         // be started in one click; uninstalled loaders open the Get-it-here URL.
         ViewModel.ConfirmBanRiskEnable = ConfirmBanRiskEnableAsync;
+        // Patch Day at Play: the VM decides whether to ask (PatchDay.ShouldAskAtPlay); the window owns the dialog.
+        ViewModel.AskPatchDayAtPlay = async chip =>
+        {
+            var dialog = new PatchDayDialog(chip) { XamlRoot = Content.XamlRoot };
+            await dialog.ShowAsync();
+            return dialog.Choice;
+        };
         // Save-write prompt for high-risk games. The VM decides whether to ask
         // (BanRiskRules.ShouldGateSaveWrite); the shared helper owns the copy.
         ViewModel.ConfirmSaveWrite = name => ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(Content.XamlRoot, name);

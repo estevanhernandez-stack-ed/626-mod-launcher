@@ -156,6 +156,24 @@ public static class PatchDay
     }
 
     /// <summary>
+    /// Whether Play should stop and ask: the game is Patched, the player has not chosen yet, and there is a
+    /// stored record for the choice to land on. Snooze does not count as a choice, so a snoozed game that is
+    /// still Patched asks again; Play is the moment the answer matters, and the snooze only hides the chip.
+    /// Once a choice is recorded this is false and Play launches whatever the choice left on disk.
+    /// </summary>
+    public static bool ShouldAskAtPlay(PatchDayVerdict? verdict)
+        => verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None, Record: not null };
+
+    /// <summary>
+    /// Whether Play on the library home must look at this game before launching it. A stored Vanilla or
+    /// Modded choice settles it for free: the question is answered, so Play launches. No record (a patch
+    /// may not have been seen yet) or a record with no choice needs a fresh verdict; the answer to "open to
+    /// ask" is then <see cref="ShouldAskAtPlay"/> on that verdict, so a patch that has since gone quiet
+    /// launches instead of dropping the player into the game view.
+    /// </summary>
+    public static bool NeedsPlayCheck(PatchDayRecord? record) => record is null or { Choice: PatchDayChoice.None };
+
+    /// <summary>
     /// The Library home row's state line, from the persisted record and the cheap launch-mode file check
     /// only (no Steam scan, no loader scan per row). Null when there is nothing to say. A Vanilla choice
     /// with the mods back in place is quiet: the player already undid it.

@@ -328,4 +328,78 @@ public class PatchDayTests
         Assert.Equal("300", outcome.BaselineBuildId);
         Assert.Null(outcome.Record);
     }
+
+    // ----- Play asks only when the answer is still open -----
+
+    [Fact]
+    public void Play_asks_when_patched_and_no_choice_is_recorded()
+        => Assert.True(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec()))));
+
+    [Fact]
+    public void Play_asks_again_for_a_snoozed_game_that_is_still_patched()
+    {
+        var v = PatchDay.Evaluate(Input(baseline: "100", live: "200", record: Rec(snoozed: true)));
+
+        Assert.True(v.Hidden); // the chip is quiet...
+        Assert.True(PatchDay.ShouldAskAtPlay(v)); // ...but Play is where it matters
+    }
+
+    [Theory]
+    [InlineData(PatchDayChoice.Vanilla, LaunchMode.Vanilla)]
+    [InlineData(PatchDayChoice.Modded, LaunchMode.Modded)]
+    public void Play_does_not_ask_once_a_choice_is_recorded(PatchDayChoice choice, LaunchMode mode)
+        => Assert.False(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec(choice: choice), mode: mode))));
+
+    [Fact]
+    public void Play_does_not_ask_in_any_other_state()
+    {
+        Assert.False(PatchDay.ShouldAskAtPlay(null));
+        Assert.False(PatchDay.ShouldAskAtPlay(PatchDayVerdict.Quiet));
+        Assert.False(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec(choice: PatchDayChoice.Vanilla), mode: LaunchMode.Vanilla))));
+        Assert.False(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec(), releases: new[] { Release() }))));
+        Assert.False(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec(), loaders: FreshReport()))));
+    }
+
+    [Fact]
+    public void Play_does_not_ask_before_a_record_exists_to_hold_the_answer()
+    {
+        var v = PatchDay.Evaluate(Input()); // Patched, NeedsDetect, Record null
+
+        Assert.Equal(PatchDayState.Patched, v.State);
+        Assert.False(PatchDay.ShouldAskAtPlay(v));
+    }
+
+    // ----- Play on the library home looks before it launches -----
+
+    [Fact]
+    public void Library_play_checks_a_game_with_no_record_or_no_choice()
+    {
+        Assert.True(PatchDay.NeedsPlayCheck(null));
+        Assert.True(PatchDay.NeedsPlayCheck(Rec()));
+    }
+
+    [Theory]
+    [InlineData(PatchDayChoice.Vanilla)]
+    [InlineData(PatchDayChoice.Modded)]
+    public void Library_play_skips_the_check_once_a_choice_is_stored(PatchDayChoice choice)
+        => Assert.False(PatchDay.NeedsPlayCheck(Rec(choice: choice)));
+
+    [Fact]
+    public void Library_play_asks_only_while_the_fresh_verdict_is_still_patched()
+    {
+        // A record with no choice, and the verdict still Patched: ask.
+        Assert.True(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec()))));
+        // The same record, but the loader is current again: the patch went quiet, launch.
+        Assert.False(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(record: Rec(), loaders: FreshReport()))));
+    }
+
+    [Fact]
+    public void Library_play_asks_once_detection_has_stored_a_record()
+    {
+        // Patched, never seen: the verdict wants a detect first, and ShouldAskAtPlay says no without a record.
+        Assert.False(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input())));
+
+        var record = PatchDay.Detect(null, "200", Now);
+        Assert.True(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(baseline: "100", live: "200", record: record))));
+    }
 }
