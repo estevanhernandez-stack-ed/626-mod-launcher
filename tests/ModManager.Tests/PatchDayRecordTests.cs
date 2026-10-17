@@ -78,4 +78,24 @@ public class PatchDayRecordTests
 
         Assert.Equal(record, clone.PatchDay);
     }
+
+    [Theory]
+    [InlineData("\"somethingNew\"")]
+    [InlineData("7")]
+    [InlineData("null")]
+    [InlineData("{ \"x\": [1, 2] }")]
+    public void An_unknown_or_non_string_choice_reads_as_None_and_keeps_the_registry(string rawChoice)
+    {
+        var dir = TestSupport.TempDir("regstore-patchday-unknown-");
+        File.WriteAllText(RegistryStore.PathFor(dir),
+            "{ \"games\": [ { \"id\": \"g1\", \"gameName\": \"G1\", \"patchDay\": { \"buildId\": \"9\", \"choice\": " + rawChoice + ", \"snoozedUntilChange\": true } } ] }");
+
+        var reg = RegistryStore.Load(dir);
+
+        var game = Assert.Single(reg.Games);
+        Assert.Equal("g1", game.Id);
+        Assert.Equal(PatchDayChoice.None, game.PatchDay!.Choice);
+        Assert.Equal("9", game.PatchDay.BuildId);
+        Assert.True(game.PatchDay.SnoozedUntilChange);
+    }
 }

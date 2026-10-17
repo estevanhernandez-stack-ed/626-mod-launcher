@@ -8,11 +8,23 @@ namespace ModManager.Core;
 public enum PatchDayChoice { None, Vanilla, Modded }
 
 // Written as "none" | "vanilla" | "modded". The registry's serializer carries no naming policy of its
-// own, so the enum owns it: camelCase on disk is the rule, and a bare string-enum converter would
-// write PascalCase.
-public sealed class PatchDayChoiceConverter : JsonStringEnumConverter<PatchDayChoice>
+// own, so the enum owns it: camelCase on disk is the rule. Reads are tolerant: RegistryStore.Load turns
+// any parse failure into an empty registry, so a newer build's unknown choice (or a non-string token)
+// must read as None rather than throw and drop every game.
+public sealed class PatchDayChoiceConverter : JsonConverter<PatchDayChoice>
 {
-    public PatchDayChoiceConverter() : base(JsonNamingPolicy.CamelCase) { }
+    public override PatchDayChoice Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String
+            && Enum.TryParse<PatchDayChoice>(reader.GetString(), ignoreCase: true, out var choice)
+            && Enum.IsDefined(choice))
+            return choice;
+        reader.TrySkip();
+        return PatchDayChoice.None;
+    }
+
+    public override void Write(Utf8JsonWriter writer, PatchDayChoice value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(JsonNamingPolicy.CamelCase.ConvertName(value.ToString()));
 }
 
 /// <summary>
