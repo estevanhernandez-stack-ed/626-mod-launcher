@@ -218,7 +218,24 @@ if (args.Contains("--sign"))
     // none. The unsigned manifest-draft.json above stays the full set for review; only the published
     // games-manifest.json is the tagged, filtered set.
     var finalManifest = PublishManifest.ForPublish(current);
-    var bytes = JsonSerializer.SerializeToUtf8Bytes(finalManifest, ManifestJson.Options);
+
+    // --loader-releases (opt-in): write loaderReleases from GitHub before signing. Without the flag the
+    // bytes are exactly what they were. --previous <games-manifest.json> is where a failed lookup finds
+    // its last value; absent, the manifest embedded in this build is used. GITHUB_TOKEN is optional.
+    LoaderReleaseOptions? releaseOptions = null;
+    if (args.Contains("--loader-releases"))
+    {
+        var previousPath = GetArg(args, "--previous");
+        IReadOnlyList<LoaderReleaseEntry> previousReleases = previousPath is null
+            ? EmbeddedGameManifest.Current.LoaderReleases
+            : ReadPreviousReleases(previousPath);
+        releaseOptions = new LoaderReleaseOptions(
+            new HttpClientHandler(), previousReleases,
+            Environment.GetEnvironmentVariable("GITHUB_TOKEN"), DateTime.UtcNow, Console.Out);
+    }
+    var bytes = await PublishManifest.BuildBytesAsync(current, releaseOptions);
+    if (releaseOptions is not null)
+        finalManifest = JsonSerializer.Deserialize<GameManifest>(bytes, ManifestJson.Options) ?? finalManifest;
     var manifestOut = Path.Combine(outDir, "games-manifest.json");
     File.WriteAllBytes(manifestOut, bytes);   // the published artifact
 
@@ -236,6 +253,22 @@ if (args.Contains("--sign"))
 }
 
 return 0;
+
+// The last published feed's loaderReleases. A missing or unreadable file means "no previous", never a crash:
+// a failed lookup then simply writes no row for that loader.
+static IReadOnlyList<LoaderReleaseEntry> ReadPreviousReleases(string path)
+{
+    try
+    {
+        var m = JsonSerializer.Deserialize<GameManifest>(File.ReadAllBytes(path), ManifestJson.Options);
+        return m?.LoaderReleases ?? Array.Empty<LoaderReleaseEntry>();
+    }
+    catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"--previous: could not read {path} ({e.GetType().Name}); no previous loader releases.");
+        return Array.Empty<LoaderReleaseEntry>();
+    }
+}
 
 static string? GetArg(string[] args, string name)
 {
