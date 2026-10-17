@@ -335,14 +335,17 @@ public sealed class RestorePointOrchestrator
     /// is removed on failure so no partial point is left; one that already exists under the name is refused and
     /// never touched. A crash mid-copy leaves a claimed, unsealed folder, which the next capture sweeps once it
     /// is old enough; <see cref="ListRestorePoints"/> never shows it.</para>
-    /// <para>Restore: <see cref="RestoreAsync"/> REFUSES a point that has a <c>kind</c>, touching nothing. Replaying
-    /// one would overlay the data folder, overwrite framework files and re-apply loader enable states with no
-    /// pre-restore snapshot and no ban-risk gate; a safe restore for these points is a separate piece of work.
-    /// The point is kept, not deleted.</para>
+    /// <para>Restore: <see cref="RestoreAsync"/> restores a point that has a <c>kind</c> as an overlay that takes a
+    /// <c>beforeRestore</c> snapshot first and toggles no mod (see <see cref="RestorePointEngine.PlanOverlay"/>).</para>
     /// </summary>
-    public async Task<CaptureOnlyResult> CaptureGameOnlyAsync(string gameId, string kind, string timestamp, CancellationToken ct)
+    public Task<CaptureOnlyResult> CaptureGameOnlyAsync(string gameId, string kind, string timestamp, CancellationToken ct)
+        => CaptureGameOnlyCoreAsync(gameId, kind, timestamp, gateHeld: false, ct);
+
+    // The capture itself. <paramref name="gateHeld"/>: the caller (a restore taking its pre-restore snapshot)
+    // already holds the one-writer gate, which is not reentrant, so this must not wait on it again.
+    private async Task<CaptureOnlyResult> CaptureGameOnlyCoreAsync(string gameId, string kind, string timestamp, bool gateHeld, CancellationToken ct)
     {
-        await _gate.WaitAsync(ct);
+        if (!gateHeld) await _gate.WaitAsync(ct);
         try
         {
             ct.ThrowIfCancellationRequested();
@@ -414,7 +417,7 @@ public sealed class RestorePointOrchestrator
                 return Refused($"Couldn't save a restore point for {game.GameName}: {e.Message}");
             }
         }
-        finally { _gate.Release(); }
+        finally { if (!gateHeld) _gate.Release(); }
 
         static CaptureOnlyResult Refused(string reason) => new(false, reason, null);
     }
@@ -512,21 +515,23 @@ public sealed class RestorePointOrchestrator
 
     // ── Tasks 4 + 5 ─────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Why <see cref="RestoreAsync"/> refuses a restore point that has a kind (the Patch Day snapshot).</summary>
-    public const string KindRestoreUnavailable = "Restoring a Patch Day snapshot isn't available yet. Your snapshot is kept.";
-
-    public async Task<RestoreResult> RestoreAsync(string timestamp, CancellationToken ct)
+    /// <summary>
+    /// Restore a restore point. A Safe Clear point is replayed exactly as before (it assumes the clear emptied
+    /// the game). A point with a <c>kind</c> (the Patch Day snapshot, or a <c>beforeRestore</c> one) is restored
+    /// over the LIVE game by <see cref="RestoreKindPoint"/>: refused while a Safe Clear lock is on disk, the
+    /// game is running or it has moved; a <c>beforeRestore</c> snapshot of the current state is taken FIRST and
+    /// the restore is refused, changing nothing, if that fails. <paramref name="snapshotTimestamp"/> names
+    /// that snapshot (<c>{snapshotTimestamp}-{gameId}</c>); null = now, UTC, in Safe Clear's format.
+    /// </summary>
+    public async Task<RestoreResult> RestoreAsync(string timestamp, CancellationToken ct, string? snapshotTimestamp = null)
     {
         await _gate.WaitAsync(ct);
         try
         {
             var rpDir = Path.Combine(_restorePointsRoot, timestamp);
             var m = RestorePointManifestStore.Read(rpDir);
-            // A capture-only point (Patch Day) has no safe restore yet: replaying it would overlay the data
-            // folder, overwrite framework files and re-apply loader states with no pre-restore snapshot and no
-            // ban-risk gate. Refuse before anything is read or written; the point stays where it is.
             if (m?.Kind is not null)
-                return new RestoreResult(false, KindRestoreUnavailable, Array.Empty<RestoreConflict>(), Array.Empty<string>());
+                return await RestoreKindPoint(timestamp, rpDir, m, snapshotTimestamp, ct);
             var v = RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion);
             if (!v.Ok) return new RestoreResult(false, v.Reason, Array.Empty<RestoreConflict>(), Array.Empty<string>());
 
@@ -568,6 +573,62 @@ public sealed class RestorePointOrchestrator
             return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
         }
         finally { _gate.Release(); }
+    }
+
+    // Restore a kind point over the live game (caller holds the gate). Every refusal below happens before
+    // anything is written. Then: snapshot the current state (kind beforeRestore; if that fails, refuse), then
+    // the overlay. Deliberately NOT done here, because they belong to undoing a reset and would be wrong
+    // over a live game: restoring games.json / themes / profile / app-settings, reloading the registry,
+    // and clearing the "undo your reset" marker.
+    private async Task<RestoreResult> RestoreKindPoint(string timestamp, string rpDir, RestorePointManifest m,
+        string? snapshotTimestamp, CancellationToken ct)
+    {
+        static RestoreResult Refused(string reason, IReadOnlyList<RestoreConflict>? conflicts = null)
+            => new(false, reason, conflicts ?? Array.Empty<RestoreConflict>(), Array.Empty<string>());
+
+        ct.ThrowIfCancellationRequested();
+        if (!IsPlainName(timestamp)) return Refused("Couldn't restore: the restore point's name isn't a plain name.");
+        var v = RestorePointManifestStore.Validate(m, RestorePoint.SchemaVersion);
+        if (!v.Ok) return Refused(v.Reason!);
+        if (File.Exists(Path.Combine(_dataRoot, LockName)))
+            return Refused("A reset didn't finish. Deal with it first, then 626 can restore this snapshot.");
+        if (m.Games.Count != 1) return Refused("This snapshot isn't of a single game, so 626 can't restore it.");
+        var ga = m.Games[0];
+        var gameArchiveDir = Path.Combine(rpDir, "games", ga.Id);
+        if (!IsPlainName(ga.Id) || !Directory.Exists(gameArchiveDir))
+            return Refused("This snapshot's files are missing, so nothing was restored.");
+        var conflicts = RestoreReconcile.Check(m, _provider.Games);
+        if (conflicts.Count > 0)
+            return Refused($"{ga.GameName} has moved since this snapshot, so 626 didn't restore it.", conflicts);
+        var game = _provider.Games.FirstOrDefault(g => string.Equals(g.Id, ga.Id, StringComparison.OrdinalIgnoreCase));
+        if (game is null) return Refused($"{ga.GameName} isn't in your library any more, so 626 can't restore its snapshot.");
+        bool running;
+        try { running = _probe.AnyRunning(game); }
+        catch { return Refused($"Couldn't verify whether {game.GameName} is running. Close it and try again."); }   // fails closed, as Safe Clear does
+        if (running) return Refused($"Close {game.GameName} before restoring its snapshot.");
+
+        // Plan (and validate) first: a snapshot that can't be applied is refused before a pre-restore snapshot
+        // is taken, so a refusal leaves nothing behind.
+        var ctx = _provider.ContextFor(game);
+        OverlayPlan plan;
+        try { plan = RestorePointEngine.PlanOverlay(ga, gameArchiveDir, ctx); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        { return Refused($"This snapshot can't be restored safely: {e.Message} Nothing was changed."); }
+
+        var snap = await CaptureGameOnlyCoreAsync(game.Id, RestorePointKinds.BeforeRestore,
+            snapshotTimestamp ?? DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"), gateHeld: true, ct);
+        if (!snap.Ok) return Refused($"Couldn't save your current setup first, so nothing was restored. {snap.RefusedReason}");
+        var undo = snap.RestorePointTimestamp!;
+
+        IReadOnlyList<string> applied;
+        try { applied = RestorePointEngine.ApplyOverlay(plan, gameArchiveDir, ctx); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return Refused($"626 couldn't finish the restore: {e.Message} Your setup from before it is saved as {undo}; restore that to go back to where you were.");
+        }
+        var warnings = plan.Notes.Concat(applied).Select(n => $"{ga.GameName}: {n}")
+            .Append($"Your setup from before this restore is saved as {undo}. Restore it to go back.").ToList();
+        return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
     }
 
     public IReadOnlyList<RestorePointInfo> ListRestorePoints()

@@ -19,6 +19,10 @@ public static class RestorePointKinds
 {
     /// <summary>The automatic single-game snapshot taken when Patch Day detects a patch.</summary>
     public const string PatchDay = "patchDay";
+
+    /// <summary>The snapshot of a game's current state that a restore of a kind point takes first, so the
+    /// restore can itself be undone. Restored through the same safe path as any kind point.</summary>
+    public const string BeforeRestore = "beforeRestore";
 }
 
 /// <summary>The sealed on-disk record of a Safe Clear. camelCase JSON. <c>Complete</c> is the seal,
@@ -34,7 +38,9 @@ public sealed record RestorePointManifest(
     IReadOnlyList<GameArchive> Games,
     // Optional, omitted when null (a Safe Clear point). "patchDay" marks the capture-only, one-game snapshot
     // Patch Day takes (see RestorePointOrchestrator.CaptureGameOnlyAsync): it carries no turn-off record, and
-    // RestoreAsync refuses any point that has a kind until a safe restore exists. Additive, no SchemaVersion bump.
+    // RestoreAsync replays it as an overlay (see RestorePointEngine.PlanOverlay), never as a Safe Clear
+    // replay. "beforeRestore" is the snapshot such a restore takes of the current state first.
+    // Additive, no SchemaVersion bump.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Kind = null);
 
 /// <summary>One game's archived state. EndState is "vanilla" | "modsActive".</summary>
@@ -95,7 +101,12 @@ public sealed record FrameworkArchive(
     string Author,
     string InstallPath,
     IReadOnlyList<string> InstalledFiles,
-    string? CapturedStateRel);
+    string? CapturedStateRel,
+    // When the framework's install record was written, at capture. An overlay restore puts a framework's
+    // files back only while the live install still carries this same stamp: a framework reinstalled or
+    // updated since would otherwise end up a mix of two versions. Null = not recorded; the overlay then
+    // leaves that framework alone. Additive.
+    DateTime? InstalledUtc = null);
 
 /// <summary>A loader-driven mod (UE4SS/BepInEx) whose enable state lives in a manifest, not files.</summary>
 public sealed record LoaderModState(string Name, string Loader, bool Enabled, string Location);
