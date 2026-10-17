@@ -48,6 +48,7 @@ public class GameEntryCloneTests
         LoaderCheckedExeUtc = new DateTime(2026, 8, 17, 9, 0, 0, DateTimeKind.Utc),
         UserSet = new[] { GameEntry.UserSetModLocations },
         ManifestId = "madden-nfl-27",
+        PatchDay = new PatchDayRecord { BuildId = "18752700", DetectedUtc = new DateTime(2026, 10, 16, 8, 0, 0, DateTimeKind.Utc), Choice = PatchDayChoice.Vanilla },
     };
 
     // The whole point: no property list in this test either. Reflection walks whatever GameEntry has

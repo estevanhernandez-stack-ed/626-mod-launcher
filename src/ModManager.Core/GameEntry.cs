@@ -87,6 +87,11 @@ public sealed class GameEntry
     // chip stays away until the executable is rewritten (a patch); null = never checked.
     public DateTime? LoaderCheckedExeUtc { get; set; }
 
+    // The patch in play (new build, its snapshot, the user's choice). Null = Quiet. Immutable record,
+    // so CloneShallow sharing it is safe.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PatchDayRecord? PatchDay { get; set; }
+
     // Where this game came from ("steam"|"gog"|"epic"|"xbox"|"manual"); null for older registries.
     public string? StoreSource { get; set; }
 
