@@ -1960,8 +1960,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (_ctx is null) return;
         if (CurrentLaunchMode == LaunchMode.Vanilla)
         {
-            // Turning mods back on is an enable: the ban-risk gate stands in front of it.
-            if (!await GateBanRiskEnableAsync()) return;
+            // Turning mods back on is an enable; RestoreAndLaunchAsync puts the ban-risk gate in front of it.
             await RestoreAndLaunchAsync(afterRestore: () => RecordPatchDayChoice(PatchDayChoice.Modded));
             return;
         }
@@ -2474,6 +2473,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
+        // Restoring re-enables the stashed set, so it is an enable like any other: on a ban-risk game the
+        // player acknowledges first. Every caller (the Launch menu's "Play modded (restore mods)", Patch Day's
+        // Play modded anyway) comes through here, so the gate lives here once rather than at each call site.
+        if (!await GateBanRiskEnableAsync()) return;
         IsBusy = true;
         try
         {
