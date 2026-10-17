@@ -28,6 +28,9 @@ public sealed class RestorePointOrchestrator
     /// <summary>Tests only: runs just before the manifest rewrite that records a game's held copies.</summary>
     internal Action? BeforeManifestRewriteForTests { get; set; }
 
+    /// <summary>Tests only: runs after a Kind restore's record is written, just before the overlay's first write.</summary>
+    internal Action? BeforeOverlayForTests { get; set; }
+
     public RestorePointOrchestrator(string dataRoot, string restorePointsRoot, string launcherVersion,
         IGameProvider provider, INexusGate nexus, IGameRunningProbe probe)
     {
@@ -620,12 +623,26 @@ public sealed class RestorePointOrchestrator
         if (!snap.Ok) return Refused($"Couldn't save your current setup first, so nothing was restored. {snap.RefusedReason}");
         var undo = snap.RestorePointTimestamp!;
 
+        // The breadcrumb goes down before the overlay's first write, so a launcher that dies partway can say so
+        // at the next start. If it can't be written, nothing has been overlaid yet: refuse, as for the snapshot.
+        try
+        {
+            RestoreJournal.Write(_dataRoot, new InterruptedRestore(timestamp, undo, game.Id!, ga.GameName, DateTime.UtcNow));
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return Refused($"Couldn't note the restore first, so nothing was restored. {e.Message} Your setup from before is saved as {undo}.");
+        }
+        BeforeOverlayForTests?.Invoke();
+
         IReadOnlyList<string> applied;
         try { applied = RestorePointEngine.ApplyOverlay(plan, gameArchiveDir, ctx); }
         catch (Exception e) when (e is not OperationCanceledException)
         {
+            // The record STAYS: some files may be from the snapshot, some from before.
             return Refused($"626 couldn't finish the restore: {e.Message} Your setup from before it is saved as {undo}; restore that to go back to where you were.");
         }
+        RestoreJournal.Clear(_dataRoot);
         var warnings = plan.Notes.Concat(applied).Select(n => $"{ga.GameName}: {n}")
             .Append($"Your setup from before this restore is saved as {undo}. Restore it to go back.").ToList();
         return new RestoreResult(true, null, Array.Empty<RestoreConflict>(), warnings);
@@ -676,6 +693,14 @@ public sealed class RestorePointOrchestrator
         }
         catch { return null; }
     }
+
+    /// <summary>A Kind restore that stopped partway (see <see cref="RestoreJournal"/>), or null. Looking does
+    /// not consume it: the record stays until <see cref="AcknowledgeInterruptedRestore"/>.</summary>
+    public InterruptedRestore? DetectInterruptedRestore() => RestoreJournal.Read(_dataRoot);
+
+    /// <summary>The player has seen it. Removes the record and only the record: no restore point is touched
+    /// and nothing is restored.</summary>
+    public void AcknowledgeInterruptedRestore() => RestoreJournal.Clear(_dataRoot);
 
     /// <summary>What to tell the user about an interrupted clear sealed by a newer 626.</summary>
     public const string InterruptedNewerMessage =

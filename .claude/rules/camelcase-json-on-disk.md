@@ -96,6 +96,11 @@ The string-contains assertion is what protects you — without it, the round-tri
   breadcrumb for a data-folder move, written via `AtomicJson`; covered by
   `DataDirMoveJournalTests.A_record_round_trips_as_camelCase`)
 
+- `RestoreJournal` pending-restore.json (`src/ModManager.Core/RestorePoints/RestoreJournal.cs` — the breadcrumb a
+  Kind restore leaves in the data root between its `beforeRestore` snapshot and the end of its overlay:
+  `{ restorePoint, undoSnapshot, gameId, gameName, startedUtc }`, written via `AtomicJson`, read case-insensitively
+  and never throwing; covered by `RestoreJournalTests.A_record_round_trips_as_camelCase_with_every_field`)
+
 - Game manifest `loaders` list (`src/ModManager.Core/Manifest/GameManifest.cs` — `LoaderManifestEntry`,
   serialized with `ManifestJson.Options`; written by the miner to `games-manifest.json`, curated in
   `overrides/loaders/*.json`; covered by `ManifestLoadersTests.Loaders_round_trip_as_camelCase`)
