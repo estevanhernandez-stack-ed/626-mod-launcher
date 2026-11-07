@@ -68,7 +68,7 @@ public class VanillaLaunchTests : IDisposable
                                           new StashedModRow { Name = "RareDrops", Location = "mods" } },
             ActiveFrameworks = () => new[] { "ue4ss" },
             ActiveDirectInjectProxies = () => new[] { "dwmapi.dll" },
-            DisableModRow = (name, loc) => { disabledRows.Add(name); return Task.CompletedTask; },
+            DisableModRow = (name, loc) => { disabledRows.Add(name); return Task.FromResult(true); },
             EnableModRow = (name, loc) => Task.CompletedTask,
             DisableFramework = id => disabledFw.Add(id),
             EnableFramework = id => { },
@@ -103,7 +103,7 @@ public class VanillaLaunchTests : IDisposable
             ActiveDirectInjectProxies = () => Array.Empty<string>(),
             DisableModRow = (name, loc) => name == "B"
                 ? throw new IOException("locked")
-                : Task.CompletedTask,
+                : Task.FromResult(true),
             EnableModRow = (name, loc) => { enabledBack.Add(name); return Task.CompletedTask; },
             DisableFramework = _ => { }, EnableFramework = _ => { },
             DisableDirectInjectProxy = _ => { }, EnableDirectInjectProxy = _ => { },
@@ -130,7 +130,7 @@ public class VanillaLaunchTests : IDisposable
             ActiveModRows = () => new[] { new StashedModRow { Name = "A", Location = "mods" } },
             ActiveFrameworks = () => new[] { "ue4ss" },
             ActiveDirectInjectProxies = () => new[] { "dwmapi.dll" },
-            DisableModRow = (_, _) => Task.CompletedTask,
+            DisableModRow = (_, _) => Task.FromResult(true),
             EnableModRow = (name, _) => { enabledBack.Add("row:" + name); return Task.CompletedTask; },
             DisableFramework = _ => { },
             EnableFramework = id => enabledBack.Add("fw:" + id),
@@ -210,7 +210,7 @@ public class VanillaLaunchTests : IDisposable
             ActiveModRows = () => Array.Empty<StashedModRow>(),
             ActiveFrameworks = () => Array.Empty<string>(),
             ActiveDirectInjectProxies = () => Array.Empty<string>(),
-            DisableModRow = (_, _) => Task.CompletedTask,
+            DisableModRow = (_, _) => Task.FromResult(true),
             EnableModRow = (_, _) => Task.CompletedTask,
             DisableFramework = _ => { },
             EnableFramework = _ => throw new IOException("framework enable failed mid-restore"),
@@ -224,6 +224,56 @@ public class VanillaLaunchTests : IDisposable
         Assert.NotNull(VanillaStashStore.Load(data));          // stash SURVIVES -> a retry can finish
     }
 
+    [Fact]
+    public async Task Restore_tries_every_row_and_keeps_only_the_ones_that_failed()
+    {
+        // One refusal (a held copy colliding with a fresh install) used to strand every row after it.
+        var data = DataDir();
+        VanillaStashStore.Save(data, new VanillaStash
+        {
+            ModRows = new()
+            {
+                new StashedModRow { Name = "A", Location = "mods" },
+                new StashedModRow { Name = "B", Location = "mods" },
+                new StashedModRow { Name = "C", Location = "mods" },
+            },
+        });
+        var back = new List<string>();
+        var ops = MakeOps(enableRow: (name, _) =>
+        {
+            if (name == "B") throw new IOException("name taken");
+            back.Add(name);
+            return Task.CompletedTask;
+        });
+
+        var result = await VanillaLaunch.RestoreAsync(data, ops);
+
+        Assert.False(result.Success);
+        Assert.Contains("B", result.Error);
+        Assert.Equal(new[] { "A", "C" }, back);
+        Assert.Equal(new[] { "B" }, VanillaStashStore.Load(data)!.ModRows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task Step_aside_stashes_only_the_rows_that_moved()
+    {
+        var data = DataDir();
+        var ops = new VanillaLaunchOps
+        {
+            ActiveModRows = () => new[] { new StashedModRow { Name = "On", Location = "mods" },
+                                          new StashedModRow { Name = "AlreadyOff", Location = "mods" } },
+            ActiveFrameworks = () => Array.Empty<string>(),
+            ActiveDirectInjectProxies = () => Array.Empty<string>(),
+            DisableModRow = (name, _) => Task.FromResult(name == "On"),
+            EnableModRow = (_, _) => Task.CompletedTask,
+            DisableFramework = _ => { }, EnableFramework = _ => { },
+            DisableDirectInjectProxy = _ => { }, EnableDirectInjectProxy = _ => { },
+        };
+
+        Assert.True((await VanillaLaunch.StepAsideAsync(data, ops)).Success);
+        Assert.Equal(new[] { "On" }, VanillaStashStore.Load(data)!.ModRows.Select(r => r.Name));
+    }
+
     // Helper: an ops with no-op defaults, overridable per call.
     private static VanillaLaunchOps MakeOps(
         Func<string, string, Task>? enableRow = null,
@@ -233,7 +283,7 @@ public class VanillaLaunchTests : IDisposable
         ActiveModRows = () => Array.Empty<StashedModRow>(),
         ActiveFrameworks = () => Array.Empty<string>(),
         ActiveDirectInjectProxies = () => Array.Empty<string>(),
-        DisableModRow = (_, _) => Task.CompletedTask,
+        DisableModRow = (_, _) => Task.FromResult(true),
         EnableModRow = enableRow ?? ((_, _) => Task.CompletedTask),
         DisableFramework = _ => { },
         EnableFramework = enableFw ?? (_ => { }),

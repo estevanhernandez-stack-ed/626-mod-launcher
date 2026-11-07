@@ -2327,7 +2327,7 @@ public sealed partial class MainViewModel : ObservableObject
             DisableModRow = (name, location) =>
             {
                 if (location == LooseRootListing.LooseRootLocation)
-                { LooseRootService.SetEnabled(ctx.Game, name, false); return Task.CompletedTask; }
+                { LooseRootService.SetEnabled(ctx.Game, name, false); return Task.FromResult(true); }
                 return ModToggle.SetEnabledByNameAsync(ctx, name, location, false);
             },
             EnableModRow = (name, location) =>
