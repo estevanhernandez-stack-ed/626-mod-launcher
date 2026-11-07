@@ -248,8 +248,10 @@ public static class GameStateStrip
     }
 
     /// <summary>The PATCH DAY chip for a verdict. Public so the App's Play dialog shows the chip's own
-    /// sentence and button labels instead of a second copy that could drift.</summary>
-    public static GameStateChip PatchDayChip(PatchDayVerdict v, string? gameName)
+    /// sentence and button labels instead of a second copy that could drift. <paramref name="zone"/> is the
+    /// zone the "updated on" date is read in (default: this machine's); the stamp is UTC, and an evening patch
+    /// in the Americas is already tomorrow in UTC.</summary>
+    public static GameStateChip PatchDayChip(PatchDayVerdict v, string? gameName, TimeZoneInfo? zone = null)
     {
         var game = string.IsNullOrWhiteSpace(gameName) ? "This game" : gameName.Trim();
         string detail;
@@ -281,7 +283,10 @@ public static class GameStateStrip
                     primary = (VanillaLabel, PatchDayAction.PlayVanilla);
                     break;
                 }
-                var when = (v.GameExeUtc ?? v.Record?.DetectedUtc)?.ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture);
+                var when = (v.GameExeUtc ?? v.Record?.DetectedUtc) is { } stamp
+                    ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(stamp, DateTimeKind.Utc), zone ?? TimeZoneInfo.Local)
+                        .ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture)
+                    : null;
                 detail = (when is null ? $"{game} updated." : $"{game} updated on {when}.")
                     + " Your mod loader is from before that update and probably won't load yet.";
                 // 626 can't intercept a launch from Steam; say so once, before a choice is made.
