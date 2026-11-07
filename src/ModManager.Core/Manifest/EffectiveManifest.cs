@@ -171,6 +171,7 @@ public static class EffectiveManifest
             // EveryOptionalFieldMerges pins this shape for whatever gets added next.
             SaveLayout = remote.SaveLayout ?? embedded.SaveLayout,
             SavePlayerPaths = remote.SavePlayerPaths ?? embedded.SavePlayerPaths,
+            SaveTypes = remote.SaveTypes ?? embedded.SaveTypes,
             SafeRoute = remote.SafeRoute ?? embedded.SafeRoute,
             SafeRouteHint = remote.SafeRouteHint ?? embedded.SafeRouteHint,
             Provenance = embedded.Provenance with { Sources = sources, Status = status },

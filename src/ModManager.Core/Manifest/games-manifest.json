@@ -11,6 +11,28 @@
         "steamAppId": "1245620"
       },
       "nexusDomain": "eldenring",
+      "saveTypes": [
+        {
+          "extension": ".sl2",
+          "label": "Vanilla",
+          "kind": "vanilla"
+        },
+        {
+          "extension": ".co2",
+          "label": "Seamless Co-op",
+          "kind": "coop"
+        },
+        {
+          "extension": ".err",
+          "label": "Reforged",
+          "kind": "overhaul"
+        },
+        {
+          "extension": ".mod",
+          "label": "Alt Saves",
+          "kind": "overhaul"
+        }
+      ],
       "provenance": {
         "sources": [
           "known-engines",

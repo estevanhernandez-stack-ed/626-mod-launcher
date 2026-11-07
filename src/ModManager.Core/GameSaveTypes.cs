@@ -1,7 +1,20 @@
 namespace ModManager.Core;
 
-/// <summary>One save kind a game uses: file extension + plain-English label.</summary>
-public sealed record SaveType(string Extension, string Label);
+/// <summary>One save kind a game uses: file extension + plain-English label, and its <see cref="SaveTypeKind"/>
+/// (null when nobody said, which the save-type offer treats as the most cautious kind).</summary>
+public sealed record SaveType(string Extension, string Label, string? Kind = null);
+
+/// <summary>What a save format is, for deciding how loudly a copy into the vanilla save warns. Strings, matching
+/// the manifest's <c>kind</c>; an unknown word is not one of these and reads as overhaul.</summary>
+public static class SaveTypeKind
+{
+    /// <summary>The unmodded game's own save: the one FromSoftware's servers and anti-cheat see.</summary>
+    public const string Vanilla = "vanilla";
+    /// <summary>A co-op mod's copy of a vanilla character (Seamless Co-op). Same game content.</summary>
+    public const string Coop = "coop";
+    /// <summary>An overhaul's save (Reforged, Alt Saves): can carry items the unmodded game doesn't have.</summary>
+    public const string Overhaul = "overhaul";
+}
 
 /// <summary>
 /// Declarable per-game knowledge the app consults to decide which features apply to a game. This
@@ -115,19 +128,26 @@ public static class GameSaveTypesCatalog
     /// rather than an app release. See <see cref="SaveLayoutCatalog"/>. Resolved through every identity
     /// the game carries, so an EA app game (no Steam id) and a second store copy get their entry's.</summary>
     public static GameSaveTypes Resolve(GameEntry game)
-        => new(game.Engine ?? "", SaveTypesFor(game.Engine), SaveLayoutCatalog.For(game));
+        => new(game.Engine ?? "", SaveTypesFor(game), SaveLayoutCatalog.For(game));
 
-    private static IReadOnlyList<SaveType> SaveTypesFor(string? engine) => engine switch
+    // The manifest's list first (decision 4 of the save-type offer: a new game or mod save type is a data PR),
+    // then the engine fallback for games nobody has curated.
+    private static IReadOnlyList<SaveType> SaveTypesFor(GameEntry game)
     {
-        // FromSoftware (Elden Ring et al.): vanilla .sl2, Seamless Co-op .co2, Reforged .err.
-        "fromsoft" => new[]
+        var declared = Manifest.ManifestValidator.SafeSaveTypes(ManifestIdLookup.ConfirmedEntryFor(game)?.SaveTypes);
+        if (declared is not null) return declared.Select(t => new SaveType(t.Extension, t.Label, t.Kind)).ToList();
+        return game.Engine switch
         {
-            new SaveType(".sl2", "Vanilla"),
-            new SaveType(".co2", "Seamless Co-op"),
-            new SaveType(".err", "Reforged"),
-        },
-        _ => Array.Empty<SaveType>(),
-    };
+            // FromSoftware (Elden Ring et al.): vanilla .sl2, Seamless Co-op .co2, Reforged .err.
+            "fromsoft" => new[]
+            {
+                new SaveType(".sl2", "Vanilla", SaveTypeKind.Vanilla),
+                new SaveType(".co2", "Seamless Co-op", SaveTypeKind.Coop),
+                new SaveType(".err", "Reforged", SaveTypeKind.Overhaul),
+            },
+            _ => Array.Empty<SaveType>(),
+        };
+    }
 }
 
 /// <summary>
