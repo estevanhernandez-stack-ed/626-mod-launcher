@@ -102,6 +102,13 @@ public sealed partial class MainWindow : Window
             await dialog.ShowAsync();
             return dialog.Choice;
         };
+        // Save-type offer at Play: the VM probes and decides (SaveOfferProbe); the window owns the dialog.
+        ViewModel.AskSaveOffer = async (plan, gameName) =>
+        {
+            var dialog = new SaveOfferDialog(plan, gameName) { XamlRoot = Content.XamlRoot };
+            await dialog.ShowAsync();
+            return dialog.Answer;
+        };
         // Save-write prompt for high-risk games. The VM decides whether to ask
         // (BanRiskRules.ShouldGateSaveWrite); the shared helper owns the copy.
         ViewModel.ConfirmSaveWrite = name => ModManager.App.Services.SaveWriteRiskPrompt.ShowAsync(Content.XamlRoot, name);

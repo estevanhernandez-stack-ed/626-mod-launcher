@@ -207,6 +207,11 @@ Added since, with Patch Day:
 
 None of these has been walked on a live tree yet. Verify with a UIA walk before a harness relies on them.
 
+Added with the save-type offer (`SaveOfferDialog.xaml`): `SaveOfferDialog` on the sentence `TextBlock`,
+`SaveOfferSourceDetail` (one source), bound `SaveOfferSource.<ext without dot>` on each source `RadioButton` (several),
+`SaveOfferWarning`, `SaveOfferAcknowledge`, then `SaveOfferCopyAndPlay`, `SaveOfferPlayWithout` and `SaveOfferDontAsk` on
+in-content buttons. Not walked live yet either.
+
 ## An id on a `Border` does nothing
 
 Found the hard way giving the ban-risk warning an id before wave 7 moved it. The id went on the

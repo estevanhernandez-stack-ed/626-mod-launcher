@@ -95,3 +95,17 @@ public static class SaveOffer
 
     private static bool SameExt(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }
+
+/// <summary>What the player chose in the save-type offer at Play.</summary>
+public enum SaveOfferChoice
+{
+    /// <summary>Snapshot the save folder, copy <see cref="SaveOfferAnswer.Source"/> over the target, then launch.</summary>
+    CopyAndPlay,
+    /// <summary>Launch with nothing changed.</summary>
+    PlayWithout,
+    /// <summary>Launch with nothing changed, and stop offering for this game and this target type.</summary>
+    DontAsk,
+}
+
+/// <summary>The dialog's answer. <see cref="Source"/> is set for <see cref="SaveOfferChoice.CopyAndPlay"/>.</summary>
+public sealed record SaveOfferAnswer(SaveOfferChoice Choice, SaveOfferSource? Source = null);

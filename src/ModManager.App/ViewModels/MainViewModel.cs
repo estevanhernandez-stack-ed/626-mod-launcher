@@ -103,6 +103,14 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<GameStateChip, Task<PatchDayAction?>>? AskPatchDayAtPlay { get; set; }
 
     /// <summary>
+    /// The save-type offer at Play: the save this launch reads has no characters and another mode's save does
+    /// (spec 2026-11-07-save-type-offer-design). Given the plan and the game's name, returns the player's answer,
+    /// or null when they closed it (nothing launches). The view owns the dialog. When unset, Play launches as it
+    /// always did.
+    /// </summary>
+    public Func<SaveOfferPlan, string, Task<SaveOfferAnswer?>>? AskSaveOffer { get; set; }
+
+    /// <summary>
     /// Shows the save-write prompt for a high-risk game and returns (proceed, dontAskAgain). The view wires
     /// it (dialog + XamlRoot live in code-behind). Unlike the enable gate, an UNWIRED delegate refuses:
     /// writing a changed save without the prompt is the one thing this gate exists to prevent.
@@ -2409,9 +2417,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// Auto-backs up the save, then — for a Steam-DRM exe launcher with Steam closed — starts Steam
     /// and waits before launching, so the launch doesn't silently no-op (the DRM bootstrap needs the
     /// Steam client up). A steam:// target self-starts Steam, so it's not gated.</summary>
-    public async Task LaunchTargetExplicit(LaunchTarget target)
+    public async Task LaunchTargetExplicit(LaunchTarget target, bool offerSaves = true)
     {
         if (_ctx is null) return;
+        // The save-type offer: an empty save for this launch beside another mode's characters. Closed, or a copy
+        // that failed, means nothing launches. A caller that already asked (the vanilla step-aside) passes false.
+        if (offerSaves && !await OfferSaveCopyAsync(target, CurrentLaunchMode)) return;
         // Steam awareness: an exe launcher (Seamless's ersc_launcher.exe) on a Steam-DRM game
         // silently no-ops if Steam is closed. Auto-start Steam and wait (off the UI thread), or
         // surface a clear message instead of a dead click.
@@ -2462,6 +2473,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ctx is null) return;
         if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
+        // The save-type offer goes BEFORE the step-aside: closing it must leave everything as it was, mods
+        // included, not a stashed game with nothing running.
+        var vanillaTarget = LaunchTargetPicker.Pick(_ctx.Game, LaunchMode.Vanilla, _direct.SeamlessFullyInstalled(_ctx.Game));
+        if (vanillaTarget is not null && !await OfferSaveCopyAsync(vanillaTarget, LaunchMode.Vanilla)) return;
         IsBusy = true;
         try
         {
@@ -2471,7 +2486,7 @@ public sealed partial class MainViewModel : ObservableObject
             await ReloadModsAsync();
             StatusText = "Vanilla mode — mods stepped aside. Launching…";
             var target = EffectiveLaunchTarget;
-            if (target is not null) await LaunchTargetExplicit(target);
+            if (target is not null) await LaunchTargetExplicit(target, offerSaves: false);
             else LaunchWithNoTarget();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
@@ -2506,6 +2521,59 @@ public sealed partial class MainViewModel : ObservableObject
 
     // When the game opts in, snapshot the save (auto) and prune before launching. Best-effort —
     // a backup failure surfaces but never blocks play.
+    /// <summary>
+    /// The save-type offer before a launch (spec 2026-11-07-save-type-offer-design). True to go on launching.
+    /// The probe runs off the UI thread (Elden Ring's save is about 28 MB) and never blocks a launch by failing.
+    /// A copy snapshots the save folder first when the target exists, passes the save-write gate on a high-risk
+    /// game, and never writes the source.
+    /// </summary>
+    private async Task<bool> OfferSaveCopyAsync(LaunchTarget target, LaunchMode mode)
+    {
+        if (_ctx is null || AskSaveOffer is not { } ask) return true;
+        var ctx = _ctx;
+        var game = ctx.Game;
+        var dir = ctx.SaveDir;
+        SaveOfferPlan? plan;
+        try { plan = await Task.Run(() => SaveOfferProbe.For(game, dir, mode, target)); }
+        catch { return true; }
+        if (plan is null || string.IsNullOrEmpty(dir)) return true;
+
+        var answer = await ask(plan, game.GameName);
+        switch (answer?.Choice)
+        {
+            case null:
+                StatusText = "Nothing launched.";
+                return false;
+            case SaveOfferChoice.PlayWithout:
+                return true;
+            case SaveOfferChoice.DontAsk:
+                try
+                {
+                    _svc.DismissSaveOffer(game.Id, plan.Target.Extension);
+                    game.SaveOfferDismissed = (game.SaveOfferDismissed ?? Array.Empty<string>()).Append(plan.Target.Extension).ToList();
+                }
+                catch { /* a dismissal that didn't save just asks again next time */ }
+                return true;
+        }
+
+        if (answer.Source is not { } source) return true;
+        // The probe already refused to offer on a game whose saves 626 must not write; checked again here, at the write.
+        if (SaveWritePolicy.Refusal(game) is { } refusal) { StatusText = refusal; return false; }
+        if (!await GateSaveWriteAsync()) { StatusText = "Nothing was copied, so nothing launched."; return false; }
+        try
+        {
+            if (plan.TargetExists) SaveManager.Backup(dir, ctx.SavesDir, "before-clone", auto: true);
+            SaveManager.CloneToType(dir, source.File.FileName, plan.Target.Extension, overwrite: plan.TargetExists);
+            StatusText = $"Copied your {source.Type.Label} save to {plan.Target.Label}. Your {source.Type.Label} save is untouched.";
+            return true;
+        }
+        catch (Exception e)
+        {
+            StatusText = "Couldn't copy the save, so nothing launched. " + ErrorRemedy.Describe(e);
+            return false;
+        }
+    }
+
     private void AutoBackupBeforeLaunch()
     {
         if (_ctx is null || !_ctx.Game.AutoBackupOnLaunch) return;
