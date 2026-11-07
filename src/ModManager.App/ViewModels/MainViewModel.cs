@@ -2481,7 +2481,11 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var r = await VanillaLaunch.StepAsideAsync(_ctx.DataDir, BuildVanillaOps());
-            if (!r.Success) { StatusText = $"Couldn't switch to vanilla: {r.Error}"; return; }
+            if (!r.Success)
+            {
+                StatusText = $"Couldn't switch to vanilla: {r.Error}" + CopiedNote();
+                return;
+            }
             afterStepAside?.Invoke();   // Patch Day records its choice before the reload draws the strip
             await ReloadModsAsync();
             StatusText = "Vanilla mode — mods stepped aside. Launching…";
@@ -2503,24 +2507,32 @@ public sealed partial class MainViewModel : ObservableObject
         // player acknowledges first. Every caller (the Launch menu's "Play modded (restore mods)", Patch Day's
         // Play modded anyway) comes through here, so the gate lives here once rather than at each call site.
         if (!await GateBanRiskEnableAsync()) return;
+        // The save-type offer before anything is restored, like the step-aside: closing it leaves mods where they are.
+        var moddedTarget = LaunchTargetPicker.Pick(_ctx.Game, LaunchMode.Modded, _direct.SeamlessFullyInstalled(_ctx.Game));
+        if (moddedTarget is not null && !await OfferSaveCopyAsync(moddedTarget, LaunchMode.Modded)) return;
         IsBusy = true;
         try
         {
             var r = await VanillaLaunch.RestoreAsync(_ctx.DataDir, BuildVanillaOps());
-            if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}"; return; }
+            if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}" + CopiedNote(); return; }
             afterRestore?.Invoke();
             await ReloadModsAsync();
             StatusText = "Modded mode — mods restored. Launching…";
             var target = EffectiveLaunchTarget;
-            if (target is not null) await LaunchTargetExplicit(target);
+            if (target is not null) await LaunchTargetExplicit(target, offerSaves: false);
             else LaunchWithNoTarget();
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
     }
 
-    // When the game opts in, snapshot the save (auto) and prune before launching. Best-effort —
-    // a backup failure surfaces but never blocks play.
+    // The snapshot the last save-type copy took, so a launch that then fails can still point at the undo.
+    private string? _lastSaveOfferSnapshot;
+
+    private string CopiedNote() => _lastSaveOfferSnapshot is { } snap
+        ? $" Your save was already copied; to undo it, restore \"{snap}\" in Saves."
+        : "";
+
     /// <summary>
     /// The save-type offer before a launch (spec 2026-11-07-save-type-offer-design). True to go on launching.
     /// The probe runs off the UI thread (Elden Ring's save is about 28 MB) and never blocks a launch by failing.
@@ -2529,6 +2541,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task<bool> OfferSaveCopyAsync(LaunchTarget target, LaunchMode mode)
     {
+        _lastSaveOfferSnapshot = null;
         if (_ctx is null || AskSaveOffer is not { } ask) return true;
         var ctx = _ctx;
         var game = ctx.Game;
@@ -2562,18 +2575,22 @@ public sealed partial class MainViewModel : ObservableObject
         if (!await GateSaveWriteAsync()) { StatusText = "Nothing was copied, so nothing launched."; return false; }
         try
         {
-            if (plan.TargetExists) SaveManager.Backup(dir, ctx.SavesDir, "before-clone", auto: true);
-            SaveManager.CloneToType(dir, source.File.FileName, plan.Target.Extension, overwrite: plan.TargetExists);
-            StatusText = $"Copied your {source.Type.Label} save to {plan.Target.Label}. Your {source.Type.Label} save is untouched.";
+            var (snapshot, _) = SaveOfferCopy.Run(dir, ctx.SavesDir, plan, source);
+            _lastSaveOfferSnapshot = snapshot.FileName;
+            StatusText = $"Copied your {source.Type.Label} save to {plan.Target.Label}. Your {source.Type.Label} save is untouched; "
+                         + $"to undo, restore \"{snapshot.FileName}\" in Saves.";
             return true;
         }
         catch (Exception e)
         {
-            StatusText = "Couldn't copy the save, so nothing launched. " + ErrorRemedy.Describe(e);
+            StatusText = "Couldn't copy the save, so nothing launched. Your saves are as they were, and a snapshot "
+                         + "of the folder is in Saves if one was taken. " + ErrorRemedy.Describe(e);
             return false;
         }
     }
 
+    // When the game opts in, snapshot the save (auto) and prune before launching. Best-effort —
+    // a backup failure surfaces but never blocks play.
     private void AutoBackupBeforeLaunch()
     {
         if (_ctx is null || !_ctx.Game.AutoBackupOnLaunch) return;

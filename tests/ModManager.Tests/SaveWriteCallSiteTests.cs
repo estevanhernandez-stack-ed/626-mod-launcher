@@ -20,6 +20,7 @@ public class SaveWriteCallSiteTests
         "SaveManager.RestoreWorld(",
         "SaveManager.DuplicateWorld(",
         "SaveManager.CloneToType(",
+        "SaveOfferCopy.Run(",
         "SaveBundle.Restore(",
         "SaveModInstaller.",
         "SaveModFlow.TryHandleDrops(",
