@@ -1,6 +1,6 @@
 # Save-type offer at Play: "you have no characters in this mode"
 
-Status: draft, 2026-11-07. Origin: the live Play vanilla smoke for PR #407. Elden Ring started clean and showed no characters, because every character Este has lives in Seamless Co-op's `.co2` or Reforged's `.err`, and vanilla reads `.sl2`.
+Status: decided, ready to plan, 2026-11-07. Origin: the live Play vanilla smoke for PR #407. Elden Ring started clean and showed no characters, because every character Este has lives in Seamless Co-op's `.co2` or Reforged's `.err`, and vanilla reads `.sl2`.
 
 ## The problem
 
@@ -58,24 +58,48 @@ If `ReadCharacters` throws on any file, treat that file as unknown: it isn't a s
 |---|---|---|
 | Vanilla (Patch Day or the vanilla split) | `.sl2` | `LaunchMode.Vanilla` |
 | Modded with Seamless installed | `.co2` | `SeamlessFullyInstalled`, the same signal `LaunchTargetPicker` uses |
-| Modded with Reforged | `.err` | **Not known today.** See open questions. |
+| Reforged (launch target is `ReforgedLauncher.exe`, or a `.BAT` beside `internals\launcher\ReforgedLauncher.exe`) | `extension` from `<reforged>\mod\altsaves.toml`, else `.err` | The launcher (decision 3) |
+| Reforged with `--alt-save-profile-N` | unknown | No offer until an alt profile is measured on a real install. |
 | Anything else modded | none | No offer. |
 
-v1 offers on the first two rows only. A Reforged save can be a source, but `.err` is never a target until there's a real signal for it.
+Reforged installs outside the game folder (Este's is `D:\ERRv2.1.2.3`) and starts through its own launcher, so the launch target is the signal, not anything in the play folder. Its `altsaves.toml` is user-editable (`extension`, `seamless_extension`), which is why the target type is read from it rather than assumed. On Este's install both keys are `.err`.
+
+## Save types come from what the game and its mods write (decision 4)
+
+"If the game or its mods can do it, we should too." Today `GameSaveTypesCatalog` hardcodes three FromSoft types by engine. Two changes:
+
+- **Declared types move to the signed game manifest** per game, next to `saveLayout`, so a new game or a new mod's save type is a feed data PR, not an app release. The embedded snapshot carries today's three for Elden Ring so nothing regresses offline.
+- **Add `.mod` ("Alt Saves")** for Elden Ring. Reforged's README lists `ER0000.mod` beside `.sl2` / `.co2` as a save players migrate from. It's a source only until its own launch signal is known.
+
+Another FromSoft title (Dark Souls III, Sekiro, Armored Core VI) gets an entry only after its mods' save extensions are seen on a real install. The logic itself is engine-agnostic.
+
+## Warnings on the way into vanilla (decisions 1 and 2)
+
+Copying into the vanilla save puts a character where FromSoftware's servers and anti-cheat can see it. The two modded sources get different weight:
+
+| Source → vanilla | Treatment |
+|---|---|
+| Seamless Co-op (`.co2`) | **Warn.** A line in the dialog: "This character goes online with anti-cheat on. If it picked up anything a mod added, that could flag your account." Copy and play is still one click. |
+| Reforged (`.err`) or Alt Saves (`.mod`) | **Warn and acknowledge.** Same line, plus a checkbox ("I understand this character may carry Reforged items into online play") that must be ticked before Copy and play enables. Same shape as the ban-risk gate. |
+| Vanilla → any modded type | No warning. Modded co-op runs on its own servers (Reforged's README says it never connects to FromSoftware's), so this direction carries nothing new. |
+
+Reforged also migrates vanilla saves into `.err` on its own. That's the precedent for the offer: the mod already does it, so doing it in 626 is consistent with how the mod expects to be used.
 
 ## Operating laws
 
 - **Reversible:** the existing target is snapshotted before it's replaced; the source is never written to. "Restore" in the Saves dialog brings the old target back.
 - **Never forced:** nothing copies without a click. Dismissal is per game and undoable.
-- **Ban risk:** this doesn't enable a mod, so `BanRiskRules.ShouldGateEnable` doesn't apply directly. But see open question 1. A Reforged character in vanilla online is the one path that could put a player at risk.
+- **Ban risk:** this doesn't enable a mod, so `BanRiskRules.ShouldGateEnable` doesn't apply directly. Copies into vanilla carry the warnings above; Reforged and Alt Saves sources need an explicit acknowledgment.
 - **Pure core:** the decision ("should we offer, and what") is a pure Core function over file facts, `SaveOffer.Evaluate(types, files, mode, dismissed) → SaveOffer?`, fully unit-tested. The App reads the files, shows the dialog and runs the copy.
 
-## Open questions for Este
+## Decisions (Este, 2026-11-07)
 
-1. **Reforged into vanilla.** A Reforged character can carry items that don't exist in the unmodded game. Taking that character online in vanilla, with anti-cheat on, might be its own ban risk; neither of us knows that it is. Options: (a) offer `.err` as a source with the same warn-and-acknowledge as the ban-risk gate; (b) don't offer `.err` into `.sl2` at all; (c) offer it freely. Recommendation: (a), and keep (b) on the table until it's checked.
-2. **Seamless into vanilla.** Seamless characters are generally treated as safe to move into vanilla, but that isn't confirmed here either. Same question, smaller: warn, or not?
-3. **Reforged as a target.** Is there a reliable "this launch is Reforged" signal (its ME2 profile, a launch target)? Without one, v1 never targets `.err`.
-4. **Other games.** Only `fromsoft` declares typed saves today. Are Armored Core VI or Sekiro mod saves on your list? The logic is engine-agnostic, so they'd be a catalog line.
+1. **Reforged into vanilla:** offer it, behind warn-and-acknowledge.
+2. **Seamless into vanilla:** warn.
+3. **Reforged as a target:** detected by its launcher.
+4. **Other games and save types:** if the game or its mods can do it, 626 should too. Types become manifest data; `.mod` joins Elden Ring's list.
+
+Still open, not blocking: which file an alt save profile writes. Measure on a real install before offering on it.
 
 ## Risks
 
@@ -93,6 +117,9 @@ v1 offers on the first two rows only. A Reforged save can be a source, but `.err
 - Respects the dismissal per game and per target type.
 - No offer for non-`TypedFiles` games, and when writes are refused.
 - Seamless modded launch targets `.co2`; other modded launches get no offer.
+- A Reforged launch target (exe, or `.BAT` beside the launcher) targets the `altsaves.toml` extension; a missing or unreadable toml falls back to `.err`; an `--alt-save-profile-N` target gets no offer.
+- Into vanilla: a `.co2` source carries the warning; an `.err` or `.mod` source needs the acknowledgment before Copy enables; a vanilla source into a modded type carries neither.
+- Manifest-declared save types round-trip as camelCase and override the embedded set by id; an older feed without them keeps the embedded three.
 - (App, smoke) Copy and play snapshots first, copies, launches; the old target restores from the Saves dialog.
 
 ## Smoke
