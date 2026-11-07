@@ -91,6 +91,15 @@ public sealed record GameManifestEntry
     /// </summary>
     public IReadOnlyList<string>? SavePlayerPaths { get; init; }
 
+    /// <summary>
+    /// The save formats this game and its mods write, side by side in the save folder: Elden Ring's
+    /// <c>.sl2</c> (vanilla), <c>.co2</c> (Seamless Co-op), <c>.err</c> (Reforged), <c>.mod</c> (Alt Saves).
+    /// Each carries a <see cref="ManifestSaveType.Kind"/> that decides how loudly a copy into the vanilla save
+    /// warns. <b>Absent means nobody has curated it</b>, and the engine fallback in
+    /// <c>GameSaveTypesCatalog</c> applies. Descriptive: the copy itself stays compiled code.
+    /// </summary>
+    public IReadOnlyList<ManifestSaveType>? SaveTypes { get; init; }
+
     public string? SafeRoute { get; init; }
     public string? SafeRouteHint { get; init; }       // one user-facing sentence naming the route (or the absence of one)
     public ManifestProvenance Provenance { get; init; } = new();
@@ -234,4 +243,16 @@ public static class ManifestJson
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
     };
+}
+
+/// <summary>
+/// One save format as the feed carries it. <see cref="Kind"/> is a string on purpose, like
+/// <see cref="GameManifestEntry.SaveLayout"/>: <c>"vanilla"</c>, <c>"coop"</c> or <c>"overhaul"</c> today, and a
+/// word from a newer feed must degrade (it reads as the most cautious kind), never drop the whole feed.
+/// </summary>
+public sealed record ManifestSaveType
+{
+    public string Extension { get; init; } = "";
+    public string Label { get; init; } = "";
+    public string? Kind { get; init; }
 }

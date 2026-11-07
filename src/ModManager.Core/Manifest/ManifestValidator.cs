@@ -71,10 +71,15 @@ public static class ManifestValidator
             {
                 var safe = trees.Where(IsSafeExtraTree).ToList();
                 if (safe.Count != trees.Count)
-                {
-                    kept.Add(g with { ExtraModTrees = safe.Count > 0 ? safe : null });
-                    continue;
-                }
+                    g = g with { ExtraModTrees = safe.Count > 0 ? safe : null };
+            }
+            // Save types drop one at a time, like the trees: a malformed extension is never read, and the rest of
+            // the entry (and its other save types) still apply.
+            if (g.SaveTypes is { } saveTypes)
+            {
+                var safeTypes = SafeSaveTypes(saveTypes);
+                if (safeTypes is null || safeTypes.Count != saveTypes.Count)
+                    g = g with { SaveTypes = safeTypes };
             }
             kept.Add(g);
         }
@@ -236,6 +241,17 @@ public static class ManifestValidator
     }
 
     public static bool IsSafeExtraTree(string? tree) => ExtraTreeProblem(tree) is null;
+
+    /// <summary>The save types that may be read: an extension of a dot and one to eight letters or digits (never a
+    /// path), and a label that isn't blank. Null when none survive, so the engine fallback applies.</summary>
+    public static IReadOnlyList<ManifestSaveType>? SafeSaveTypes(IReadOnlyList<ManifestSaveType>? types)
+    {
+        if (types is null) return null;
+        var safe = types.Where(t => t is not null
+                                    && System.Text.RegularExpressions.Regex.IsMatch(t.Extension ?? "", "^\\.[A-Za-z0-9]{1,8}$")
+                                    && !string.IsNullOrWhiteSpace(t.Label)).ToList();
+        return safe.Count > 0 ? safe : null;
+    }
 
     private static bool IsSafeRelativePath(string path)
     {

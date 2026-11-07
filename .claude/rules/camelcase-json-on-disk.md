@@ -109,4 +109,12 @@ The string-contains assertion is what protects you — without it, the round-tri
   serialized with `ManifestJson.Options`; curated in `overrides/*.json`; covered by
   `ModTreesTests.ExtraModTrees_round_trips_as_camelCase`)
 
+- Game manifest `saveTypes` (`src/ModManager.Core/Manifest/GameManifest.cs` — `ManifestSaveType`
+  `{ extension, label, kind }`, serialized with `ManifestJson.Options`; covered by
+  `SaveTypesManifestTests.SaveTypes_round_trip_as_camelCase`)
+
+- `GameEntry.saveOfferDismissed` (`src/ModManager.Core/GameEntry.cs` — the save-type offer's per-game, per-target
+  "Don't ask" list, omitted when null; covered by
+  `SaveOfferDismissalTests.SaveOfferDismissed_round_trips_as_camelCase_and_is_omitted_when_null`)
+
 If you're adding a new on-disk shape and it isn't in this list, add it.

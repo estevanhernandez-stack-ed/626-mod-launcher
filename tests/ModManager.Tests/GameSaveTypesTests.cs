@@ -9,7 +9,9 @@ public class GameProfileTests
     [Fact]
     public void FromSoft_declares_its_three_save_types_in_order()
     {
-        var p = GameSaveTypesCatalog.Resolve(SaveTestGames.Steam("1245620", "fromsoft"));
+        // The engine fallback. Elden Ring itself now declares four in the manifest (.mod joined, save-type offer
+        // decision 4); SaveTypesManifestTests pins that list.
+        var p = GameSaveTypesCatalog.Resolve(SaveTestGames.Steam("0", "fromsoft"));
         Assert.Equal(new[] { ".sl2", ".co2", ".err" }, p.SaveTypes.Select(s => s.Extension).ToArray());
         Assert.Equal("Vanilla", p.SaveTypes[0].Label);
         Assert.Equal("Seamless Co-op", p.SaveTypes[1].Label);

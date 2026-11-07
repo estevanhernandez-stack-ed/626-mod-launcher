@@ -309,7 +309,22 @@ public static partial class SaveManager
         var dest = System.IO.Path.Combine(saveDir, destName);
         if (File.Exists(dest) && !overwrite)
             throw new IOException($"A {targetExt} save already exists ({destName}). Snapshot it first if you want to replace it.");
-        File.Copy(src, dest, overwrite);
+        // Copy to a temp beside it, then rename over: the target is the old file or the new one, never a torn
+        // 28 MB half of each when the disk fills or Steam Cloud holds the file mid-copy (same shape as AtomicJson).
+        var tmp = dest + ".tmp-" + Environment.ProcessId;
+        try
+        {
+            File.Copy(src, tmp, overwrite: true);
+            // A copy keeps the source's write time, so a months-old save would land OLDER than the file it replaced.
+            // Steam Cloud compares times: stamp it now so the copy reads as the newest save, not a stale one.
+            File.SetLastWriteTimeUtc(tmp, DateTime.UtcNow);
+            File.Move(tmp, dest, overwrite);
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch { /* nothing to clean up */ }
+            throw;
+        }
         return destName;
     }
 

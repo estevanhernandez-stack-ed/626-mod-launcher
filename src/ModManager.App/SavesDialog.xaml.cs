@@ -305,7 +305,7 @@ public sealed partial class SavesDialog : ContentDialog
         {
             if (replace)
             {
-                SaveManager.Backup(_saveDir, _savesDir, "before-clone", auto: true); // reversible
+                SaveManager.Backup(_saveDir, _savesDir, SaveOfferCopy.SnapshotLabel, auto: false); // reversible; a user snapshot so retention never prunes the only undo
                 var created = SaveManager.CloneToType(_saveDir, name, ext, overwrite: true);
                 StatusText.Text = $"Snapshotted, then replaced → {created}.";
                 Refresh();

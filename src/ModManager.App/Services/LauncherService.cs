@@ -89,6 +89,22 @@ public sealed class LauncherService
         g.PatchDay = record;
     });
 
+    /// <summary>Save-type offer. "Don't ask for this game" for one target save type, as one locked registry step.</summary>
+    public void DismissSaveOffer(string gameId, string targetExt) => UpdateRegistry(reg =>
+    {
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is null) return;
+        var now = g.SaveOfferDismissed ?? Array.Empty<string>();
+        if (!now.Contains(targetExt, StringComparer.OrdinalIgnoreCase)) g.SaveOfferDismissed = now.Append(targetExt).ToList();
+    });
+
+    /// <summary>Save-type offer. Ask again for every save type of this game.</summary>
+    public void ClearSaveOfferDismissals(string gameId) => UpdateRegistry(reg =>
+    {
+        var g = reg.Games.FirstOrDefault(x => x.Id == gameId);
+        if (g is not null) g.SaveOfferDismissed = null;
+    });
+
     /// <summary>Patch Day. Change a game's record from what is stored NOW, as one locked step, and return the
     /// result. For a writer that finishes later than it started (the background restore-point capture): it must
     /// not overwrite a choice or snooze the player made while the snapshot was being copied.</summary>

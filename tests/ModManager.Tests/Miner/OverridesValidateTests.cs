@@ -1,4 +1,5 @@
 using ManifestMiner;
+using ModManager.Core.Manifest;
 
 namespace ModManager.Tests.Miner;
 
@@ -176,6 +177,36 @@ public class OverridesValidateTests
             {
                 ModPath = "archive/pc/mod",
                 ExtraModTrees = new[] { "r6/scripts", "r6/tweaks", "r6/input", "red4ext/plugins", "bin/x64/plugins/cyber_engine_tweaks/mods" },
+            },
+        }));
+
+    [Theory]
+    [InlineData("co2")]
+    [InlineData("../saves")]
+    [InlineData(".toolongext1")]
+    public void A_curated_save_type_the_launcher_would_drop_fails_the_build(string bad)
+    {
+        var entry = E(id: "elden-ring", steam: "1245620", path: "elden-ring.json") with
+        {
+            SaveTypes = new[] { new ManifestSaveType { Extension = ".sl2", Label = "Vanilla", Kind = "vanilla" }, new ManifestSaveType { Extension = bad, Label = "Bad" } },
+        };
+
+        var p = Assert.Single(OverridesValidate.Check(new[] { entry }));
+        Assert.Contains("elden-ring.json", p.Message);
+        Assert.Contains($"'{bad}'", p.Message);
+    }
+
+    [Fact]
+    public void Curated_save_types_with_safe_extensions_pass()
+        => Assert.Empty(OverridesValidate.Check(new[]
+        {
+            E(id: "elden-ring", steam: "1245620") with
+            {
+                SaveTypes = new[]
+                {
+                    new ManifestSaveType { Extension = ".sl2", Label = "Vanilla", Kind = "vanilla" },
+                    new ManifestSaveType { Extension = ".mod", Label = "Alt Saves", Kind = "overhaul" },
+                },
             },
         }));
 }

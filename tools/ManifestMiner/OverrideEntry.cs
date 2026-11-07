@@ -30,6 +30,7 @@ public sealed record OverrideEntry
     public string? BanRisk { get; init; }
     public string? SaveLayout { get; init; }
     public IReadOnlyList<string>? SavePlayerPaths { get; init; }
+    public IReadOnlyList<ModManager.Core.Manifest.ManifestSaveType>? SaveTypes { get; init; }   // save formats the game and its mods write (descriptive)
     public string? SafeRoute { get; init; }          // ban-risk nuance: documented safe modding route (batch 4)
     public string? SafeRouteHint { get; init; }      // one user-facing sentence for the route
     public string? SaveDirHint { get; init; }

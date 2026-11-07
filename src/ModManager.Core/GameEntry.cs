@@ -131,6 +131,12 @@ public sealed class GameEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ManifestId { get; set; }
 
+    /// <summary>Save extensions (".sl2", ".co2") the player said "Don't ask for this game" to, for the save-type offer
+    /// at Play. Per target type, so dismissing it for vanilla still offers for Seamless. Null when nothing was
+    /// dismissed, and then no key is written.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? SaveOfferDismissed { get; set; }
+
     /// <summary>
     /// A field-for-field copy of this entry.
     ///
