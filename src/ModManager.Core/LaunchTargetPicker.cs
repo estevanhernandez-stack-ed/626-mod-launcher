@@ -57,6 +57,8 @@ public static class LaunchTargetPicker
     public static bool IsModLauncher(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
+        // Reforged's launcher, or a .BAT that runs it: an overhaul, never a vanilla way in.
+        if (ReforgedLaunch.IsReforgedLauncherPath(path)) return true;
         var name = path.Replace('\\', '/');
         name = name[(name.LastIndexOf('/') + 1)..];
         if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return false;
