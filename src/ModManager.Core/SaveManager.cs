@@ -315,6 +315,9 @@ public static partial class SaveManager
         try
         {
             File.Copy(src, tmp, overwrite: true);
+            // A copy keeps the source's write time, so a months-old save would land OLDER than the file it replaced.
+            // Steam Cloud compares times: stamp it now so the copy reads as the newest save, not a stale one.
+            File.SetLastWriteTimeUtc(tmp, DateTime.UtcNow);
             File.Move(tmp, dest, overwrite);
         }
         catch

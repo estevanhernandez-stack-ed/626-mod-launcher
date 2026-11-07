@@ -2488,7 +2488,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
             afterStepAside?.Invoke();   // Patch Day records its choice before the reload draws the strip
             await ReloadModsAsync();
-            StatusText = "Vanilla mode — mods stepped aside. Launching…";
+            StatusText = "Vanilla mode — mods stepped aside. Launching…" + CopiedDoneNote();
             var target = EffectiveLaunchTarget;
             if (target is not null) await LaunchTargetExplicit(target, offerSaves: false);
             else LaunchWithNoTarget();
@@ -2517,7 +2517,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}" + CopiedNote(); return; }
             afterRestore?.Invoke();
             await ReloadModsAsync();
-            StatusText = "Modded mode — mods restored. Launching…";
+            StatusText = "Modded mode — mods restored. Launching…" + CopiedDoneNote();
             var target = EffectiveLaunchTarget;
             if (target is not null) await LaunchTargetExplicit(target, offerSaves: false);
             else LaunchWithNoTarget();
@@ -2528,6 +2528,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     // The snapshot the last save-type copy took, so a launch that then fails can still point at the undo.
     private string? _lastSaveOfferSnapshot;
+
+    // After a successful copy the launch status replaces the "Copied…" line, so it carries the undo pointer along.
+    private string CopiedDoneNote() => _lastSaveOfferSnapshot is { } snap
+        ? $" Save copied; to undo, restore \"{snap}\" in Saves."
+        : "";
 
     private string CopiedNote() => _lastSaveOfferSnapshot is { } snap
         ? $" Your save was already copied; to undo it, restore \"{snap}\" in Saves."

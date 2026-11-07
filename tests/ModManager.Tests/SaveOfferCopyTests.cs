@@ -41,6 +41,19 @@ public class SaveOfferCopyTests : IDisposable
     }
 
     [Fact]
+    public void The_copy_is_stamped_now_not_with_the_source_save_date()
+    {
+        // Live smoke 2026-11-07: a Sep 3 .co2 copied over today's .sl2 kept "Sep 3", older than what Steam Cloud held.
+        var co2 = Path.Combine(SaveDir, "ER0000.co2");
+        File.SetLastWriteTimeUtc(co2, new DateTime(2026, 9, 3, 21, 24, 13, DateTimeKind.Utc));
+        var before = DateTime.UtcNow.AddSeconds(-5);
+        var plan = Plan();
+        SaveOfferCopy.Run(SaveDir, SnapDir, plan, plan.Sources[0]);
+        Assert.True(File.GetLastWriteTimeUtc(Path.Combine(SaveDir, "ER0000.sl2")) >= before);
+        Assert.Equal(new DateTime(2026, 9, 3, 21, 24, 13, DateTimeKind.Utc), File.GetLastWriteTimeUtc(co2)); // source untouched
+    }
+
+    [Fact]
     public void The_snapshot_survives_the_launch_backup_and_a_keep_of_one()
     {
         var plan = Plan();
