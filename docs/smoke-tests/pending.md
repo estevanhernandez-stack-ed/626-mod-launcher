@@ -2786,3 +2786,29 @@ The Play gate dialog (Play vanilla / Play modded anyway at launch) arrives with 
 
 "Update available" (Get the update) needs a feed carrying `loaderReleases`. The feed CI does not publish
 that list yet, so it cannot be smoked against the live feed; use a local feed fixture until it does.
+
+## Save-type offer at Play (no characters in this mode)
+
+Shipped: when the save a launch reads has no characters and another mode's save does, 626 asks before the game
+starts. Copy and play snapshots the save folder first (when the target exists), copies, then launches; the source is
+never written. Seamless into vanilla warns; Reforged or Alt Saves into vanilla needs the box ticked. Closing the
+dialog launches nothing, and on a vanilla launch nothing has been stepped aside yet. Needs Este present: these steps
+launch Elden Ring, an EAC title.
+
+Baseline on Neb, 2026-11-07: `ER0000.sl2` 0 characters, `ER0000.co2` 3 (Este, level 187), `ER0000.err` 1
+(Este, level 26), no `.mod`. Hash all three before starting.
+
+1. **Play vanilla** (title-bar split). Expect the dialog **before** any mod moves: "No Vanilla characters yet",
+   with Seamless Co-op (newest, checked) and Reforged as choices.
+2. **Close it with Escape.** Status reads "Nothing launched." The game folder diff is empty, the mode is still
+   modded, and no game process started.
+3. Play vanilla again and **select Reforged.** The warning shows, and so does the acknowledgment box; Copy and play
+   is disabled until the box is ticked. **Select Seamless:** the warning stays, the box goes, and Copy is enabled.
+4. **Copy and play** with Seamless. The save-write prompt appears first if the ban-risk save-write ack isn't on
+   file. Then mods step aside and Steam launches. The title screen shows Este, level 187. Quit.
+5. **Saves dialog:** an `auto-before-clone` snapshot exists. `ER0000.co2` is byte-identical to its baseline.
+6. **Restore** that snapshot. `ER0000.sl2` is byte-identical to its baseline (0 characters).
+7. **Steam Cloud:** note whether Steam raised a cloud-conflict prompt at step 4. One is a finding, not a pass.
+8. **Don't ask for this game:** Play vanilla, press it. The game launches vanilla with nothing copied; the next
+   Play vanilla asks nothing. Clear `saveOfferDismissed` from `games.json` (or via the service) afterward.
+9. **Bring my mods back** and confirm the game folder diff is empty, as in the PR #407 smoke.
