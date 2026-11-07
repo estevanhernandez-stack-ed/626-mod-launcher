@@ -165,6 +165,16 @@ public static class PatchDay
         => verdict is { State: PatchDayState.Patched, Choice: PatchDayChoice.None, Record: not null };
 
     /// <summary>
+    /// Whether Play must hold off because the verdict for the game on screen hasn't been computed yet. A reload
+    /// switches the active game first and computes its verdict several awaits later; Play pressed in between
+    /// reads the previous game's verdict, skips the question, and launches the new game modded. False when no
+    /// reload is running: a reload that failed before its verdict will not produce one, and Play must not
+    /// wait forever.
+    /// </summary>
+    public static bool PlayMustWait(bool reloadInFlight, string? verdictGameId, string gameId)
+        => reloadInFlight && !string.Equals(verdictGameId, gameId, StringComparison.Ordinal);
+
+    /// <summary>
     /// Whether Play on the library home must look at this game before launching it. A stored Vanilla or
     /// Modded choice settles it for free: the question is answered, so Play launches. No record (a patch
     /// may not have been seen yet) or a record with no choice needs a fresh verdict; the answer to "open to

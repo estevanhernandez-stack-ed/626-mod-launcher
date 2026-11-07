@@ -860,7 +860,18 @@ public sealed partial class MainViewModel : ObservableObject
         _ = ReloadModsAsync();
     }
 
+    /// <summary>Reloads running right now (UI thread only). Play reads it through <see cref="PatchDay.PlayMustWait"/>:
+    /// a reload switches <c>_ctx</c> first and computes the Patch Day verdict later.</summary>
+    private int _reloadsInFlight;
+
     private async Task ReloadModsAsync()
+    {
+        _reloadsInFlight++;
+        try { await ReloadModsCoreAsync(); }
+        finally { _reloadsInFlight--; }
+    }
+
+    private async Task ReloadModsCoreAsync()
     {
         _ctx = _svc.ActiveContext();
         HasGame = _ctx is not null;
@@ -2347,6 +2358,13 @@ public sealed partial class MainViewModel : ObservableObject
         // action path, which records it and (for modded) passes the ban-risk gate; nothing launches from here.
         // Once a choice is recorded ShouldAskAtPlay is false, so this falls straight through and launches the
         // state the choice left on disk (vanilla: mods already stepped aside; modded: mods in place).
+        // The game on screen may be mid-load, its verdict not computed yet; the one on hand is the previous
+        // game's, and asking from it would skip the question. Hold Play rather than launch unasked.
+        if (PatchDay.PlayMustWait(_reloadsInFlight > 0, _patchDayVerdictGameId, _ctx.Game.Id))
+        {
+            StatusText = "Still checking this game. Press Play again in a moment.";
+            return;
+        }
         if (await TryAskPatchDayAsync()) return;
         // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
         if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
