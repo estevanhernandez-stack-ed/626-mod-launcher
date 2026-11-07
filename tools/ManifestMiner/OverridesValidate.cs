@@ -88,6 +88,14 @@ public static partial class OverridesValidate
                     problems.Add(new OverrideProblem(
                         $"{FileOf(e)} has an extra mod tree '{tree}' that {why}. The launcher would drop it."));
 
+        // Same for a curated save type: one the launcher's gate would drop fails the build (save-type offer).
+        foreach (var e in overrides.Where(e => e.SaveTypes is not null))
+            foreach (var t in e.SaveTypes!)
+                if (ManifestValidator.SafeSaveTypes(new[] { t }) is null)
+                    problems.Add(new OverrideProblem(
+                        $"{FileOf(e)} has a save type '{t.Extension}' (label '{t.Label}') the launcher would drop: an "
+                        + "extension is a dot and 1 to 8 letters or digits, and the label can't be blank."));
+
         // modPathModOnly describes modPath; on an entry that names no modPath it describes nothing, and a
         // curator who meant it for the engine default should say which folder they mean.
         foreach (var e in overrides.Where(e => e.ModPathModOnly == true && string.IsNullOrWhiteSpace(e.ModPath)))

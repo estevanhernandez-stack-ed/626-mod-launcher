@@ -210,4 +210,31 @@ public class OverridesMergeTests
         var e = OverridesMerge.Apply(Backbone(), overrides).Games.Single(g => g.Id == "some-ea-only-game");
         Assert.Equal("123", e.Stores.EaContentId);
     }
+
+    // Save types (save-type offer, decision 4): curated in overrides/, carried into the signed feed.
+    private static readonly ManifestSaveType[] EldenRingTypes =
+    {
+        new() { Extension = ".sl2", Label = "Vanilla", Kind = "vanilla" },
+        new() { Extension = ".mod", Label = "Alt Saves", Kind = "overhaul" },
+    };
+
+    [Fact]
+    public void An_override_sets_save_types_on_a_matched_entry()
+    {
+        var backbone = Backbone(("elden-ring", "1245620", "fromsoft"));
+        var overrides = new[] { new OverrideEntry { SteamAppId = "1245620", SaveTypes = EldenRingTypes } };
+
+        var e = OverridesMerge.Apply(backbone, overrides).Games.Single(g => g.Id == "elden-ring");
+        Assert.Equal(new[] { ".sl2", ".mod" }, e.SaveTypes!.Select(t => t.Extension));
+        Assert.Equal("overhaul", e.SaveTypes![1].Kind);
+    }
+
+    [Fact]
+    public void An_added_override_carries_its_save_types()
+    {
+        var overrides = new[] { new OverrideEntry { Id = "some-fromsoft-game", Name = "Some Game", Engine = "fromsoft", SaveTypes = EldenRingTypes } };
+
+        var e = OverridesMerge.Apply(Backbone(), overrides).Games.Single(g => g.Id == "some-fromsoft-game");
+        Assert.Equal(2, e.SaveTypes!.Count);
+    }
 }
