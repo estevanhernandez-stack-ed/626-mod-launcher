@@ -860,7 +860,18 @@ public sealed partial class MainViewModel : ObservableObject
         _ = ReloadModsAsync();
     }
 
+    /// <summary>Reloads running right now (UI thread only). Play reads it through <see cref="PatchDay.PlayMustWait"/>:
+    /// a reload switches <c>_ctx</c> first and computes the Patch Day verdict later.</summary>
+    private int _reloadsInFlight;
+
     private async Task ReloadModsAsync()
+    {
+        _reloadsInFlight++;
+        try { await ReloadModsCoreAsync(); }
+        finally { _reloadsInFlight--; }
+    }
+
+    private async Task ReloadModsCoreAsync()
     {
         _ctx = _svc.ActiveContext();
         HasGame = _ctx is not null;
@@ -2211,25 +2222,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>True when any mod is enabled — the trigger for launch enforcement.</summary>
     public bool AnyModsEnabled => _allRows.Any(m => m.Enabled);
 
-    /// <summary>The launch target the primary Launch button will fire — state-aware. With Seamless
-    /// Co-op fully installed on a FromSoft game, the Seamless launcher IS the modded launch path
-    /// (its own bypass + private multiplayer), so default to it. Otherwise fall back to the registry's
-    /// IsDefault target. The dropdown still exposes every target — this only picks the primary.</summary>
+    /// <summary>The launch target the primary Launch button will fire — state- and mode-aware, decided in
+    /// Core (<see cref="LaunchTargetPicker"/>). Modded with Seamless fully installed runs the Seamless launcher;
+    /// vanilla never runs a mod launcher. The dropdown still exposes every target — this only picks the primary.</summary>
     public LaunchTarget? EffectiveLaunchTarget
-    {
-        get
-        {
-            if (_ctx is null) return null;
-            if (_direct.SeamlessFullyInstalled(_ctx.Game))
-            {
-                var seamless = _ctx.Game.LaunchTargets.FirstOrDefault(t =>
-                    string.Equals(t.Kind, "exe", StringComparison.OrdinalIgnoreCase)
-                    && (t.Target ?? "").Contains("ersc_launcher", StringComparison.OrdinalIgnoreCase));
-                if (seamless is not null) return seamless;
-            }
-            return LauncherService.DefaultTarget(_ctx.Game);
-        }
-    }
+        => _ctx is null ? null
+            : LaunchTargetPicker.Pick(_ctx.Game, CurrentLaunchMode, _direct.SeamlessFullyInstalled(_ctx.Game));
 
     /// <summary>The Launch button's label. Leads with the MODE (vanilla vs modded) so the word always
     /// means what it says, then appends the mechanism in parens (Steam, or the alt-launcher's name like
@@ -2321,23 +2319,22 @@ public sealed partial class MainViewModel : ObservableObject
                 .Where(f => !FrameworkRegistry.IsDisabled(ctx.DataDir, f.FrameworkId))
                 .Select(f => f.FrameworkId).ToList(),
             ActiveDirectInjectProxies = () => _direct.ActiveProxyDlls(ctx.Game),
-            // Loose-root rows step aside through their own reversible lane (the DirectInject move
-            // to <dataDir>/loose-disabled) — Scanner has no idea these rows exist, so routing them
-            // to Scanner.Disable/EnableModAsync would silently no-op and the "vanilla" launch would
-            // still load every loose mod. Routed by the row's Location, which the stash records, so
-            // Restore replays through the same lane the step-aside used. The loose-root loader row
-            // (dinput8) is an ActiveModRow like any other — decima needs no separate proxy lane.
+            // Every row goes through ModToggle's lane chooser, the same one a row toggle uses. Calling Scanner
+            // by name silently no-ops for any row Scanner doesn't list: loose-root rows (decima) first, then
+            // direct-inject rows (FromSoft), where a "vanilla" Elden Ring kept ERSS2 and ReShade in place
+            // (2026-11-07 Patch Day smoke). The stash records each row's Location, so Restore replays through
+            // the same lane. Loose-root still goes through LooseRootService, which the App wraps.
             DisableModRow = (name, location) =>
             {
                 if (location == LooseRootListing.LooseRootLocation)
-                { LooseRootService.SetEnabled(ctx.Game, name, false); return Task.CompletedTask; }
-                return Scanner.DisableModAsync(name, ctx);
+                { LooseRootService.SetEnabled(ctx.Game, name, false); return Task.FromResult(true); }
+                return ModToggle.SetEnabledByNameAsync(ctx, name, location, false);
             },
             EnableModRow = (name, location) =>
             {
                 if (location == LooseRootListing.LooseRootLocation)
                 { LooseRootService.SetEnabled(ctx.Game, name, true); return Task.CompletedTask; }
-                return Scanner.EnableModAsync(name, ctx);
+                return ModToggle.SetEnabledByNameAsync(ctx, name, location, true);
             },
             DisableFramework = id => FrameworkRegistry.Disable(ctx.DataDir, id),
             EnableFramework = id => FrameworkRegistry.Enable(ctx.DataDir, id),
@@ -2361,6 +2358,13 @@ public sealed partial class MainViewModel : ObservableObject
         // action path, which records it and (for modded) passes the ban-risk gate; nothing launches from here.
         // Once a choice is recorded ShouldAskAtPlay is false, so this falls straight through and launches the
         // state the choice left on disk (vanilla: mods already stepped aside; modded: mods in place).
+        // The game on screen may be mid-load, its verdict not computed yet; the one on hand is the previous
+        // game's, and asking from it would skip the question. Hold Play rather than launch unasked.
+        if (PatchDay.PlayMustWait(_reloadsInFlight > 0, _patchDayVerdictGameId, _ctx.Game.Id))
+        {
+            StatusText = "Still checking this game. Press Play again in a moment.";
+            return;
+        }
         if (await TryAskPatchDayAsync()) return;
         // Enforcement: with a required launcher and mods enabled, the launcher IS the default Play.
         if (LaunchGuard.RequiresLauncher(_ctx.Game, AnyModsEnabled))
@@ -2385,6 +2389,13 @@ public sealed partial class MainViewModel : ObservableObject
     private void LaunchWithNoTarget()
     {
         if (_ctx is null) return;
+        // Vanilla with no target means the picker found no way to start the game except a mod launcher. The
+        // legacy path below would run the default target, which is exactly that launcher. Don't.
+        if (CurrentLaunchMode == LaunchMode.Vanilla)
+        {
+            StatusText = "There's no way to start this game without its mod launcher, so nothing launched. Add a Steam or game exe target in game setup.";
+            return;
+        }
         AutoBackupBeforeLaunch();
         try
         {

@@ -402,4 +402,23 @@ public class PatchDayTests
         var record = PatchDay.Detect(null, "200", Now);
         Assert.True(PatchDay.ShouldAskAtPlay(PatchDay.Evaluate(Input(baseline: "100", live: "200", record: record))));
     }
+
+    // Play pressed while a reload has switched to a new game but not yet computed its verdict: the verdict on
+    // hand is the previous game's, so the ask was skipped and the new game launched modded without the question.
+    [Fact]
+    public void Play_waits_while_a_reload_is_computing_this_games_verdict()
+        => Assert.True(PatchDay.PlayMustWait(reloadInFlight: true, verdictGameId: "windrose", gameId: "elden-ring"));
+
+    [Fact]
+    public void Play_waits_when_no_verdict_exists_yet_and_a_reload_is_running()
+        => Assert.True(PatchDay.PlayMustWait(reloadInFlight: true, verdictGameId: null, gameId: "elden-ring"));
+
+    [Fact]
+    public void Play_does_not_wait_once_this_games_verdict_is_in_even_mid_reload()
+        => Assert.False(PatchDay.PlayMustWait(reloadInFlight: true, verdictGameId: "elden-ring", gameId: "elden-ring"));
+
+    [Fact]
+    public void Play_does_not_wait_forever_when_no_reload_is_running()
+        // A reload that failed before its verdict leaves a mismatch with nothing coming; blocking would strand Play.
+        => Assert.False(PatchDay.PlayMustWait(reloadInFlight: false, verdictGameId: "windrose", gameId: "elden-ring"));
 }

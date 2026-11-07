@@ -88,6 +88,18 @@ public class GameStateStripPatchDayTests
     }
 
     [Fact]
+    public void Patched_date_is_the_local_calendar_day_not_the_UTC_one()
+    {
+        // 2026-11-04 8:07 PM in Fort Worth is already Nov 5 in UTC. The chip said Nov 5 on the 2026-11-06 smoke.
+        var exe = new DateTime(2026, 11, 5, 2, 7, 0, DateTimeKind.Utc);
+        var central = TimeZoneInfo.CreateCustomTimeZone("test-central", TimeSpan.FromHours(-6), "Central", "Central");
+        var v = new PatchDayVerdict(PatchDayState.Patched, false,
+            new PatchDayRecord { BuildId = "2", DetectedUtc = exe }, Loader, null, exe, false);
+        Assert.StartsWith("ELDEN RING updated on Nov 4.", GameStateStrip.PatchDayChip(v, "ELDEN RING", central).Detail);
+        Assert.StartsWith("ELDEN RING updated on Nov 5.", GameStateStrip.PatchDayChip(v, "ELDEN RING", TimeZoneInfo.Utc).Detail);
+    }
+
+    [Fact]
     public void Patched_after_a_vanilla_choice_drops_the_steam_line_only_when_choice_is_set()
     {
         var chip = Chip(Verdict(PatchDayState.Patched, PatchDayChoice.Vanilla));

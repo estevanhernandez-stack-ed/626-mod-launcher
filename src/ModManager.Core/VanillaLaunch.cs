@@ -62,7 +62,8 @@ public sealed class VanillaLaunchOps
     public required Func<IReadOnlyList<StashedModRow>> ActiveModRows { get; init; }
     public required Func<IReadOnlyList<string>> ActiveFrameworks { get; init; }
     public required Func<IReadOnlyList<string>> ActiveDirectInjectProxies { get; init; }
-    public required Func<string, string, Task> DisableModRow { get; init; }   // (name, location)
+    /// <summary>(name, location) → true when the row actually moved; false when its lane skipped it.</summary>
+    public required Func<string, string, Task<bool>> DisableModRow { get; init; }
     public required Func<string, string, Task> EnableModRow { get; init; }
     public required Action<string> DisableFramework { get; init; }
     public required Action<string> EnableFramework { get; init; }
@@ -85,16 +86,22 @@ public static class VanillaLaunch
     {
         var rows = ops.ActiveModRows();
         var fws = ops.ActiveFrameworks();
-        var proxies = ops.ActiveDirectInjectProxies();
+        IReadOnlyList<string> proxies = Array.Empty<string>();
 
-        // Track what actually moved so a mid-step failure rolls back exactly those.
+        // Track what actually moved so a mid-step failure rolls back exactly those, and the stash records only
+        // them. A row the lane skipped (already off on disk, the game's own file, gone) is not recorded: Restore
+        // would otherwise turn on a mod that was off before vanilla.
         var movedRows = new List<StashedModRow>();
         var movedFws = new List<string>();
         var movedProxies = new List<string>();
         try
         {
-            foreach (var r in rows) { await ops.DisableModRow(r.Name, r.Location); movedRows.Add(r); }
+            foreach (var r in rows) { if (await ops.DisableModRow(r.Name, r.Location)) movedRows.Add(r); }
             foreach (var id in fws) { ops.DisableFramework(id); movedFws.Add(id); }
+            // Read the proxies AFTER the rows: a loader that is also a row (FromSoft's dinput8) has already gone
+            // to its row's holding. Recording it here too made Restore pull from both, and a stale copy in the
+            // proxy holding could come back live while the row's restore then refused the taken name.
+            proxies = ops.ActiveDirectInjectProxies();
             foreach (var p in proxies) { ops.DisableDirectInjectProxy(p); movedProxies.Add(p); }
 
             // The stash write is INSIDE the rollback region: if it fails (disk full, etc.) we must put
@@ -104,17 +111,19 @@ public static class VanillaLaunch
             {
                 Version = 1,
                 SteppedAsideUtc = DateTime.UtcNow,
-                ModRows = rows.ToList(),
+                ModRows = movedRows.ToList(),
                 Frameworks = fws.ToList(),
                 DirectInjectProxies = proxies.ToList(),
             });
         }
         catch (Exception ex)
         {
-            foreach (var p in movedProxies) try { ops.EnableDirectInjectProxy(p); } catch { }
-            foreach (var id in movedFws) try { ops.EnableFramework(id); } catch { }
-            foreach (var r in movedRows) try { await ops.EnableModRow(r.Name, r.Location); } catch { }
-            return new VanillaLaunchResult(false, ex.Message);
+            var stuck = new List<string>();
+            foreach (var p in movedProxies) try { ops.EnableDirectInjectProxy(p); } catch { stuck.Add(p); }
+            foreach (var id in movedFws) try { ops.EnableFramework(id); } catch { stuck.Add(id); }
+            foreach (var r in movedRows) try { await ops.EnableModRow(r.Name, r.Location); } catch { stuck.Add(r.Name); }
+            return new VanillaLaunchResult(false, stuck.Count == 0 ? ex.Message
+                : $"{ex.Message} These didn't go back and are still set aside: {string.Join(", ", stuck)}.");
         }
 
         return new VanillaLaunchResult(true);
@@ -131,11 +140,30 @@ public static class VanillaLaunch
             // before its mods), then the mod rows. Each Enable is itself no-clobber/idempotent.
             foreach (var p in stash.DirectInjectProxies) ops.EnableDirectInjectProxy(p);
             foreach (var id in stash.Frameworks) ops.EnableFramework(id);
-            foreach (var r in stash.ModRows) await ops.EnableModRow(r.Name, r.Location);
         }
         catch (Exception ex)
         {
             return new VanillaLaunchResult(false, ex.Message); // leave the stash so a retry can finish
+        }
+
+        // Rows one at a time: one refusal (a held copy colliding with a fresh install) must not strand every row
+        // after it. The stash keeps only the rows that didn't come back, so a retry finishes exactly those.
+        var failed = new List<(StashedModRow Row, string Error)>();
+        foreach (var r in stash.ModRows)
+        {
+            try { await ops.EnableModRow(r.Name, r.Location); }
+            catch (Exception ex) { failed.Add((r, ex.Message)); }
+        }
+        if (failed.Count > 0)
+        {
+            VanillaStashStore.Save(dataDir, new VanillaStash
+            {
+                Version = stash.Version,
+                SteppedAsideUtc = stash.SteppedAsideUtc,
+                ModRows = failed.Select(f => f.Row).ToList(),
+            });
+            return new VanillaLaunchResult(false,
+                string.Join(" ", failed.Select(f => $"{f.Row.Name}: {f.Error.Trim().TrimEnd('.')}.")));
         }
 
         VanillaStashStore.Clear(dataDir);

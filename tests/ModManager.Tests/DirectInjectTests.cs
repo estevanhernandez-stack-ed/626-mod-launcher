@@ -27,6 +27,33 @@ public class DirectInjectTests
         => Assert.Contains(Detect(new[] { "ERSS-FG.dll", "ERSS-FG.toml" }, new[] { "ERSS2" }),
             x => x.Name.Contains("ERSS") && x.Kind == "upscaler");
 
+    // ERSS2 loads through its own d3d12.dll proxy. Found on the 2026-11-07 Patch Day smoke: the row didn't own it,
+    // so a vanilla step-aside left the loader live. It is a COMPANION: claimed once ERSS2 is recognized by its
+    // own files, never a reason to recognize ERSS2.
+    [Fact]
+    public void Erss2_row_owns_its_d3d12_loader_when_erss2_is_present()
+    {
+        var erss = Detect(new[] { "d3d12.dll", "ERSS-FG.dll", "ERSS-FG.toml" }, new[] { "ERSS2" })
+            .Single(x => x.Name.Contains("ERSS"));
+        Assert.Contains("d3d12.dll", erss.Entries, StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual("d3d12.dll", erss.Evidence, StringComparer.OrdinalIgnoreCase); // identity stays ERSS2's own
+    }
+
+    [Fact]
+    public void A_lone_d3d12_dll_is_not_recognized_as_erss2()
+        => Assert.DoesNotContain(Detect(new[] { "d3d12.dll" }, Array.Empty<string>()), x => x.Name.Contains("ERSS"));
+
+    [Fact]
+    public void A_d3d12_dll_next_to_reshade_alone_is_not_claimed_by_erss2()
+    {
+        var m = Detect(new[] { "d3d12.dll", "ReShadePreset.ini" }, new[] { "reshade-shaders" });
+        Assert.DoesNotContain(m, x => x.Name.Contains("ERSS"));
+    }
+
+    [Fact]
+    public void Companions_never_count_toward_recognizing_an_archive()
+        => Assert.DoesNotContain("ERSS2 Frame Gen", DirectInject.MatchSignaturesInZip(new[] { "d3d12.dll" }));
+
     [Fact]
     public void A_loose_regulation_bin_is_a_gameplay_mod()
         => Assert.Contains(Detect(new[] { "regulation.bin", "eldenring.exe" }, Array.Empty<string>()),

@@ -154,6 +154,9 @@ public static class DirectInject
             entries.AddRange(fileList.Where(f => sig.InstallSignatureFiles.Contains(f, StringComparer.OrdinalIgnoreCase)));
             entries.AddRange(fileList.Where(f => sig.InstallSignatureContains.Any(c => f.Contains(c, StringComparison.OrdinalIgnoreCase))));
             if (entries.Count == 0) continue;
+            // Companions only after recognition, and after the evidence entry, so they never decide what the mod is.
+            entries.AddRange(fileList.Where(f => (sig.CompanionFiles ?? Array.Empty<string>()).Contains(f, StringComparer.OrdinalIgnoreCase)
+                                                 && !entries.Contains(f, StringComparer.OrdinalIgnoreCase)));
             found.Add(new DirectInjectMod(sig.DisplayName, sig.ChipKind, entries[0], entries));
         }
         return found;
