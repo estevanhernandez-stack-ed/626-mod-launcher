@@ -27,6 +27,28 @@ public static class ModToggle
         => await DispatchAsync(ctx, mod, enabled, scope: null);
 
     /// <summary>
+    /// The same dispatch for a caller that holds only a row's name and location, such as the vanilla stash.
+    /// The row is looked up in <see cref="ModListing.Resolve"/>, the listing every lane shares, so a direct-inject,
+    /// loose-root or appended row reaches its own lane. Calling Scanner directly by name would silently do
+    /// nothing for those. A row already in the requested state, the game's own files, and an unknown name
+    /// being turned off are skipped quietly, as a bulk change skips them.
+    /// </summary>
+    public static async Task SetEnabledByNameAsync(GameContext ctx, string name, string location, bool enabled)
+    {
+        var rows = ModListing.Resolve(ctx.Game);
+        var mod = rows.FirstOrDefault(m => m.Name == name && m.Location == location)
+                  ?? rows.FirstOrDefault(m => m.Name == name);
+        if (mod is null)
+        {
+            if (!enabled) return;
+            mod = new Mod { Name = name, Base = name, Location = location };
+        }
+        if (mod.Enabled == enabled) return;
+        if (!enabled && mod.IsBase) return;
+        await DispatchAsync(ctx, mod, enabled, scope: null);
+    }
+
+    /// <summary>
     /// <see cref="SetEnabledAsync(GameContext, Mod, bool)"/> for one change of a bulk operation (a profile
     /// load): the same dispatch, handing the scanner's lane the operation's <see cref="Scanner.BulkScope"/> so
     /// it reads the mod list and the extra-tree selection once per operation instead of once per change.

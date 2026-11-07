@@ -2308,23 +2308,22 @@ public sealed partial class MainViewModel : ObservableObject
                 .Where(f => !FrameworkRegistry.IsDisabled(ctx.DataDir, f.FrameworkId))
                 .Select(f => f.FrameworkId).ToList(),
             ActiveDirectInjectProxies = () => _direct.ActiveProxyDlls(ctx.Game),
-            // Loose-root rows step aside through their own reversible lane (the DirectInject move
-            // to <dataDir>/loose-disabled) — Scanner has no idea these rows exist, so routing them
-            // to Scanner.Disable/EnableModAsync would silently no-op and the "vanilla" launch would
-            // still load every loose mod. Routed by the row's Location, which the stash records, so
-            // Restore replays through the same lane the step-aside used. The loose-root loader row
-            // (dinput8) is an ActiveModRow like any other — decima needs no separate proxy lane.
+            // Every row goes through ModToggle's lane chooser, the same one a row toggle uses. Calling Scanner
+            // by name silently no-ops for any row Scanner doesn't list: loose-root rows (decima) first, then
+            // direct-inject rows (FromSoft), where a "vanilla" Elden Ring kept ERSS2 and ReShade in place
+            // (2026-11-07 Patch Day smoke). The stash records each row's Location, so Restore replays through
+            // the same lane. Loose-root still goes through LooseRootService, which the App wraps.
             DisableModRow = (name, location) =>
             {
                 if (location == LooseRootListing.LooseRootLocation)
                 { LooseRootService.SetEnabled(ctx.Game, name, false); return Task.CompletedTask; }
-                return Scanner.DisableModAsync(name, ctx);
+                return ModToggle.SetEnabledByNameAsync(ctx, name, location, false);
             },
             EnableModRow = (name, location) =>
             {
                 if (location == LooseRootListing.LooseRootLocation)
                 { LooseRootService.SetEnabled(ctx.Game, name, true); return Task.CompletedTask; }
-                return Scanner.EnableModAsync(name, ctx);
+                return ModToggle.SetEnabledByNameAsync(ctx, name, location, true);
             },
             DisableFramework = id => FrameworkRegistry.Disable(ctx.DataDir, id),
             EnableFramework = id => FrameworkRegistry.Enable(ctx.DataDir, id),
