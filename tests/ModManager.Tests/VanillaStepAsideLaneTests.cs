@@ -23,6 +23,7 @@ public class VanillaStepAsideLaneTests : IDisposable
         Directory.CreateDirectory(Path.Combine(Play, "ERSS2"));
         File.WriteAllText(Path.Combine(Play, "ERSS2", "sl.interposer.dll"), "sl");
         File.WriteAllText(Path.Combine(Play, "ERSS-FG.dll"), "fg");
+        File.WriteAllText(Path.Combine(Play, "d3d12.dll"), "erss2-loader"); // ERSS2's proxy, a companion file
         File.WriteAllText(Path.Combine(Play, "eldenring.exe"), "game");
     }
 
@@ -65,6 +66,7 @@ public class VanillaStepAsideLaneTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Play, "ReShadePreset.ini")));
         Assert.False(File.Exists(Path.Combine(Play, "ERSS-FG.dll")));
         Assert.False(Directory.Exists(Path.Combine(Play, "ERSS2")));
+        Assert.False(File.Exists(Path.Combine(Play, "d3d12.dll"))); // the loader goes with its mod
         Assert.True(File.Exists(Path.Combine(Play, "eldenring.exe"))); // the game's own file stays
         Assert.Equal(LaunchMode.Vanilla, VanillaLaunch.CurrentMode(game.DataDir!));
 

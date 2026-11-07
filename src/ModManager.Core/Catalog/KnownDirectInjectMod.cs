@@ -29,7 +29,10 @@ public sealed record KnownDirectInjectMod(
     string InstallRoot,
     IReadOnlyList<string> ConfigPaths,
     IReadOnlyList<string> ForbiddenOverridePaths,
-    bool SelfProvidesProxy = false)
+    bool SelfProvidesProxy = false,
+    // Top-level files the mod owns once it is recognized, but that never recognize it: a generic name like
+    // d3d12.dll would otherwise label any proxy of that name as this mod. The row moves them with the rest.
+    IReadOnlyList<string>? CompanionFiles = null)
 {
     /// <summary>
     /// Day-one catalog. Migrated from <c>DirectInject.Signature</c> array; same detection
@@ -64,7 +67,10 @@ public sealed record KnownDirectInjectMod(
         Mk(modId: "erss2-frame-gen", display: "ERSS2 Frame Gen", chip: "upscaler", author: "(unknown)",
            files: new[] { "erss-fg.dll", "erss-fg.toml", "erss2loader.log" },
            dirs: new[] { "erss2" },
-           configs: new[] { "erss-fg.toml" }),
+           configs: new[] { "erss-fg.toml" },
+           // Its loader: a d3d12.dll proxy that loads ERSS2Loa.dll / ERSS-FG.dll (seen on a real install,
+           // 2026-11-07). Companion only; ReShade can also install as d3d12.dll.
+           companions: new[] { "d3d12.dll" }),
 
         Mk(modId: "ultrawide-fix", display: "Ultrawide / Widescreen Fix", chip: "display",
            author: "(community)",
@@ -82,7 +88,7 @@ public sealed record KnownDirectInjectMod(
         string modId, string display, string chip, string author,
         string? getUrl = null,
         string[]? files = null, string[]? dirs = null, string[]? contains = null,
-        string[]? configs = null, bool selfProvidesProxy = false)
+        string[]? configs = null, bool selfProvidesProxy = false, string[]? companions = null)
         => new(
             Kind: "directInjectMod",
             ModId: modId,
@@ -98,5 +104,6 @@ public sealed record KnownDirectInjectMod(
             InstallRoot: "PlayFolder",
             ConfigPaths: configs ?? Array.Empty<string>(),
             ForbiddenOverridePaths: Array.Empty<string>(),
-            SelfProvidesProxy: selfProvidesProxy);
+            SelfProvidesProxy: selfProvidesProxy,
+            CompanionFiles: companions ?? Array.Empty<string>());
 }
