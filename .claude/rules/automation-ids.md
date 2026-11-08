@@ -214,8 +214,8 @@ in-content buttons. Walked live 2026-11-07 (the source radios, warning, acknowle
 
 The Launch menu (built in `MainWindow.OnLaunchMenuOpening`, so ids are set in code): `LaunchMenuPlayVanilla`,
 `LaunchMenuPlayModded`, `LaunchMenuBringModsBack`, and one `LaunchMenuTarget.<key>` per target, where the key is `steam` for a
-Steam target and otherwise the executable's file name without extension (`LaunchMenuTarget.ersc_launcher`). Walked live
-2026-11-07 in modded mode; the two vanilla-mode items not yet. Saves dialog: `SavesSaveOfferDismissed` (the notice
+Steam target and otherwise the executable's file name without extension (`LaunchMenuTarget.ersc_launcher`). All walked live
+2026-11-07, in both modes. Saves dialog: `SavesSaveOfferDismissed` (the notice
 `TextBlock`) and `SavesSaveOfferAskAgain`, walked live.
 
 ## An id on a `Border` does nothing
