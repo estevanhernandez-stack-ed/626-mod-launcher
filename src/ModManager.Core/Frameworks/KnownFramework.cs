@@ -66,11 +66,11 @@ public sealed record KnownFramework(
             // proxy DLL must sit next to the game exe there to chain-load. Resolved by the project-aware
             // arm of FrameworkInstaller.ResolveInstallRoot (needs the game's mod-location paths).
             InstallRoot: "UeProjectBinariesWin64",
-            // The game exe lives in that same Binaries/Win64 folder; its name is per-game
-            // (<Project>-Win64-Shipping.exe), so a leading-* suffix glob protects it across games.
-            // PathGate scopes the * match to top-level entries, so a same-suffix file nested in the
-            // payload (ue4ss/Mods/...) is not refused.
-            ForbiddenPaths: new[] { "*-Shipping.exe" }),
+            // The game exe lives in that same Binaries/Win64 folder and its name is per-game: usually
+            // <Project>-Win64-Shipping.exe, but not always (ACE COMBAT 8 ships AceCombat8.exe). No UE4SS
+            // release puts an exe at the top level, so any top-level exe is refused. PathGate scopes the
+            // * match to top-level entries, so an exe nested in the payload (ue4ss/Mods/...) is not.
+            ForbiddenPaths: new[] { "*.exe" }),
     };
 
     /// <summary>
