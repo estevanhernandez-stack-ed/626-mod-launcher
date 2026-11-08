@@ -1137,14 +1137,22 @@ public sealed partial class MainWindow : Window
             if (ViewModel.CurrentLaunchMode == ModManager.Core.LaunchMode.Modded)
             {
                 var vanilla = new MenuFlyoutItem { Text = "Play vanilla (no mods)" };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(vanilla, "LaunchMenuPlayVanilla");
                 vanilla.Click += OnPlayVanilla;
                 menu.Items.Add(vanilla);
             }
             else
             {
                 var modded = new MenuFlyoutItem { Text = "Play modded (restore mods)" };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(modded, "LaunchMenuPlayModded");
                 modded.Click += OnPlayModded;
                 menu.Items.Add(modded);
+                // Getting your mods back shouldn't require starting the game. Outside Patch Day this was the only
+                // way out of vanilla mode (found on the 2026-11-07 save-offer smoke).
+                var back = new MenuFlyoutItem { Text = "Bring my mods back (don't launch)" };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(back, "LaunchMenuBringModsBack");
+                back.Click += OnBringModsBack;
+                menu.Items.Add(back);
             }
         }
         // Only a separator when there's something above it to separate from — a no-mod-lane game
@@ -1157,6 +1165,7 @@ public sealed partial class MainWindow : Window
             // The per-target list is the MECHANISM picker (Steam / Seamless / ME2) — vanilla vs modded
             // is the top item — so label by how-to-launch, never the target's legacy mode-named label.
             var item = new MenuFlyoutItem { Text = ViewModel.LaunchTargetMenuLabel(target), Tag = target };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, LaunchMenuTargetId(target));
             item.Click += OnLaunchTargetClick;
             menu.Items.Add(item);
         }
@@ -1167,6 +1176,18 @@ public sealed partial class MainWindow : Window
     private async void OnPlayVanilla(object sender, RoutedEventArgs e)
     {
         await ViewModel.StepAsideAndLaunchAsync();
+    }
+
+    // A stable key per launch target, never the label: "steam" for a Steam target, else the executable's (or script's)
+    // file name without extension, e.g. LaunchMenuTarget.ersc_launcher.
+    private static string LaunchMenuTargetId(ModManager.Core.LaunchTarget t)
+        => "LaunchMenuTarget." + (string.Equals(t.Kind, "steam", StringComparison.OrdinalIgnoreCase)
+            ? "steam"
+            : System.IO.Path.GetFileNameWithoutExtension(t.Target.Replace('/', '\\').Split('\\').Last()));
+
+    private async void OnBringModsBack(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.BringModsBackAsync();
     }
 
     private async void OnPlayModded(object sender, RoutedEventArgs e)

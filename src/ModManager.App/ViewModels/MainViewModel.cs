@@ -2497,6 +2497,28 @@ public sealed partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>
+    /// Bring the stashed mods back without launching. During Patch Day this is the chip's own Bring my mods back
+    /// (which also moves the build baseline); otherwise a plain restore. Passes the ban-risk gate like any enable.
+    /// </summary>
+    public async Task BringModsBackAsync()
+    {
+        if (_ctx is null || CurrentLaunchMode != LaunchMode.Vanilla) return;
+        if (ModListing.HasNoModLane(_ctx)) { StatusText = ModListEmptyState.NoModLane; return; }
+        if (_ctx.Game.PatchDay is not null) { await PatchDayBringBackAsync(); return; }
+        if (!await GateBanRiskEnableAsync()) return;
+        IsBusy = true;
+        try
+        {
+            var r = await VanillaLaunch.RestoreAsync(_ctx.DataDir, BuildVanillaOps());
+            if (!r.Success) { StatusText = $"Couldn't restore mods: {r.Error}"; return; }
+            await ReloadModsAsync();
+            StatusText = "Your mods are back. Nothing launched.";
+        }
+        catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
+        finally { IsBusy = false; }
+    }
+
     /// <summary>Play modded: restore exactly the stashed set, refresh rows, then launch with mods.
     /// Refuses before any restore when the game has no mod lane (F1) — see <see cref="StepAsideAndLaunchAsync"/>.</summary>
     public async Task RestoreAndLaunchAsync(Action? afterRestore = null)
@@ -2551,6 +2573,10 @@ public sealed partial class MainViewModel : ObservableObject
         var ctx = _ctx;
         var game = ctx.Game;
         var dir = ctx.SaveDir;
+        // The dismissal as stored, not as loaded: the Saves dialog's "Offer again" edits the registry through its own
+        // fresh copy of this game, and this window's copy wouldn't see it until the next reload.
+        try { game.SaveOfferDismissed = _svc.LoadRegistry().Games.FirstOrDefault(g => g.Id == game.Id)?.SaveOfferDismissed; }
+        catch { /* keep the in-memory value */ }
         SaveOfferPlan? plan;
         try { plan = await Task.Run(() => SaveOfferProbe.For(game, dir, mode, target)); }
         catch { return true; }

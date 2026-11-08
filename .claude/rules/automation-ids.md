@@ -210,7 +210,13 @@ None of these has been walked on a live tree yet. Verify with a UIA walk before 
 Added with the save-type offer (`SaveOfferDialog.xaml`): `SaveOfferDialog` on the sentence `TextBlock`,
 `SaveOfferSourceDetail` (one source), bound `SaveOfferSource.<ext without dot>` on each source `RadioButton` (several),
 `SaveOfferWarning`, `SaveOfferAcknowledge`, then `SaveOfferCopyAndPlay`, `SaveOfferPlayWithout` and `SaveOfferDontAsk` on
-in-content buttons. Not walked live yet either.
+in-content buttons. Walked live 2026-11-07 (the source radios, warning, acknowledgment and all three buttons).
+
+The Launch menu (built in `MainWindow.OnLaunchMenuOpening`, so ids are set in code): `LaunchMenuPlayVanilla`,
+`LaunchMenuPlayModded`, `LaunchMenuBringModsBack`, and one `LaunchMenuTarget.<key>` per target, where the key is `steam` for a
+Steam target and otherwise the executable's file name without extension (`LaunchMenuTarget.ersc_launcher`). Walked live
+2026-11-07 in modded mode; the two vanilla-mode items not yet. Saves dialog: `SavesSaveOfferDismissed` (the notice
+`TextBlock`) and `SavesSaveOfferAskAgain`, walked live.
 
 ## An id on a `Border` does nothing
 
