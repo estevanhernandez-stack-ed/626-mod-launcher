@@ -1,0 +1,11 @@
+Version 0.27.0
+
+• Patch Day. When a game updates and your mod loader is from before that update, the launcher tells you before you press Play and gives you three choices: play without mods for now, play modded anyway, or wait for a fix. It takes a restore point of that game first and moves nothing until you choose.
+
+• Playing without mods is actually unmodded. Every kind of mod now steps aside, not just the loader, and the game always starts through its store with its anti-cheat on. On Elden Ring with Seamless Co-op installed, it used to start Seamless instead.
+
+• Bring my mods back, without launching the game. It puts every mod back exactly as it was. If one won't go back, it tries the rest and tells you which one is still set aside.
+
+• When you switch to a save that has no characters yet, the launcher offers to copy one over from another mode, with a warning when the copy could carry mod changes into unmodded play. It snapshots the save first, and "Don't ask" can be undone in the Saves dialog.
+
+• Restore points now say what made them, keep the newest three undo snapshots per game, and tell you if a restore didn't finish.

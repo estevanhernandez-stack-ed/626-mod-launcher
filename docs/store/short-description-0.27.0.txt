@@ -1,0 +1,1 @@
+A native mod manager for the PC games you already own. Drop in a mod and it works out where it goes; turn mods on and off without deleting anything; browse Nexus without leaving the app; back your whole setup up and move it to another PC.
