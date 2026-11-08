@@ -50,6 +50,15 @@
                    Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
                    TextWrapping="Wrap" Visibility="Collapsed" />
 
+        <!-- The save-type offer's "Don't ask for this game", undone here: the copy and its undo snapshot live here too. -->
+        <StackPanel x:Name="SaveOfferDismissedPanel" Orientation="Horizontal" Spacing="12" Visibility="Collapsed">
+            <TextBlock x:Name="SaveOfferDismissedText" AutomationProperties.AutomationId="SavesSaveOfferDismissed"
+                       Foreground="{StaticResource ThemeInkSoft}" FontSize="{StaticResource BodyFontSize}"
+                       TextWrapping="Wrap" VerticalAlignment="Center" />
+            <Button AutomationProperties.AutomationId="SavesSaveOfferAskAgain" AutomationProperties.Name="Offer again"
+                    Content="Offer again" Click="OnSaveOfferAskAgain" />
+        </StackPanel>
+
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />

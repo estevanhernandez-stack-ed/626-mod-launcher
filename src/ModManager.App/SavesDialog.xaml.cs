@@ -180,6 +180,7 @@ public sealed partial class SavesDialog : ContentDialog
             ReadOnlyNotice.Visibility = Visibility.Visible;
         }
         FolderBox.Text = _saveDir ?? "";
+        RefreshSaveOfferDismissed();
         Refresh();
         RefreshSaveFiles();
         RefreshWorlds();
@@ -199,6 +200,28 @@ public sealed partial class SavesDialog : ContentDialog
         SnapshotList.ItemsSource = rows;
         EmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         BackupButton.IsEnabled = !string.IsNullOrEmpty(_saveDir);
+    }
+
+    // "Don't ask for this game" from the save-type offer at Play, shown with a way back.
+    private void RefreshSaveOfferDismissed()
+    {
+        var dismissed = _game.SaveOfferDismissed ?? Array.Empty<string>();
+        if (dismissed.Count == 0) { SaveOfferDismissedPanel.Visibility = Visibility.Collapsed; return; }
+        var labels = dismissed.Select(ext => _saveTypes.FirstOrDefault(t => string.Equals(t.Extension, ext, StringComparison.OrdinalIgnoreCase))?.Label ?? ext);
+        SaveOfferDismissedText.Text = $"626 won't offer to copy a save over when your {string.Join(" or ", labels)} save is empty. You said not to ask.";
+        SaveOfferDismissedPanel.Visibility = Visibility.Visible;
+    }
+
+    private void OnSaveOfferAskAgain(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _svc.ClearSaveOfferDismissals(_gameId);
+            _game.SaveOfferDismissed = null;   // the same entry the main window probes at Play
+            RefreshSaveOfferDismissed();
+            StatusText.Text = "626 will offer again the next time a save you launch is empty.";
+        }
+        catch (Exception ex) { StatusText.Text = ModManager.Core.ErrorRemedy.Describe(ex); }
     }
 
     // Save files in the folder, each with a "Clone to…" menu of the game's other declared save types.
