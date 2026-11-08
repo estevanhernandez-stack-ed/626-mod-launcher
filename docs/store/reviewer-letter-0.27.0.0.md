@@ -114,5 +114,6 @@ question a tester will have first.
 - The agent-access (MCP) work. Not in the package; the Store cut is a separate, later submission
   (spec `docs/superpowers/specs/2026-10-16-mcp-in-store-design.md`).
 - Internal PR numbers. Same rule as every letter: answer honestly if asked.
-- The packaged-build smoke. The letter's live claim rests on the debug-build runs of 2026-11-07; the
-  owner's packaged-build pass on Elden Ring must happen before this letter is pasted.
+- The packaged-build smoke as a method. The letter's "driven end to end on a real game" covers both the
+  2026-11-07 debug-build runs and the 2026-11-08 run of this package's own binaries (empty game-folder
+  diff after Bring my mods back); details in `docs/store-listing-0.27.0.md`.
