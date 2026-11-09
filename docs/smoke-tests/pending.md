@@ -2827,4 +2827,5 @@ launcher's framework holding owns the loader again.
 3. **Play vanilla.** `dwmapi.dll` moves to the framework holding folder, Steam launches with EAC, and the
    game reaches the title screen with no "Untrusted system file" popup. Quit.
 4. **Bring my mods back.** `dwmapi.dll` returns beside the exe; the NEEDS UE4SS chip clears.
-5. **Store build only:** the AC8 launch menu lists the offline target (the seal strips the EAC toggle, not this).
+5. **Labels:** in modded mode the Play button reads "Play modded (offline)", and the launch menu lists "Launch offline, no anti-cheat".
+6. **Store build only:** the AC8 launch menu lists the offline target (the seal strips the EAC toggle, not this).

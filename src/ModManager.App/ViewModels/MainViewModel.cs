@@ -2263,6 +2263,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (t is null) return "";
         if (string.Equals(t.Kind, "steam", StringComparison.OrdinalIgnoreCase)) return "Steam";
+        // A direct start without anti-cheat (ACE COMBAT 8): say what it means, not the exe's name.
+        if (t.SkipsAntiCheat) return "offline";
         // exe target — prefer a recognizable launcher name from the label, else the exe file name.
         var label = t.Label ?? "";
         if (label.Contains("Seamless", StringComparison.OrdinalIgnoreCase)) return "Seamless Co-op";
@@ -2275,6 +2277,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// top item — so these never echo a target's legacy mode-named label ("Play vanilla (Steam)").</summary>
     public string LaunchTargetMenuLabel(LaunchTarget t)
     {
+        if (t.SkipsAntiCheat) return "Launch offline, no anti-cheat";
         var how = LaunchMechanismLabel(t);
         return string.IsNullOrEmpty(how) ? (string.IsNullOrEmpty(t.Label) ? "Launch" : t.Label) : $"Launch via {how}";
     }
