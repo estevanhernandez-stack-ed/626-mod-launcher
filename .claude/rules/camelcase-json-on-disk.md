@@ -117,4 +117,9 @@ The string-contains assertion is what protects you — without it, the round-tri
   "Don't ask" list, omitted when null; covered by
   `SaveOfferDismissalTests.SaveOfferDismissed_round_trips_as_camelCase_and_is_omitted_when_null`)
 
+- `LaunchTarget.env` / `LaunchTarget.skipsAntiCheat` in the registry (`src/ModManager.Core/GameEntry.cs` — env is
+  a dictionary whose KEYS are OS variable names and stay verbatim (`SteamAppId`), since `PropertyNamingPolicy`
+  never touches dictionary keys; both omitted when unset; covered by
+  `Ac8LaunchTests.Launch_target_env_and_skipsAntiCheat_round_trip_as_camelCase_with_env_names_kept_verbatim`)
+
 If you're adding a new on-disk shape and it isn't in this list, add it.

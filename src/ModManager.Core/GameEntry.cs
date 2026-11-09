@@ -28,6 +28,18 @@ public sealed record LaunchTarget(string Label, string Kind, string Target)
     public string? Args { get; init; }
     public string? WorkingDir { get; init; }
     public bool IsDefault { get; init; }
+
+    /// <summary>Environment variables the process needs, names kept exactly as the OS spells them (a
+    /// dictionary key is not a property, so camelCase never touches it). ACE COMBAT 8 run directly exits
+    /// mid-init without <c>SteamAppId</c>. Omitted from JSON when null.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? Env { get; init; }
+
+    /// <summary>True for a target that starts the game without its anti-cheat (the real exe run directly,
+    /// offline). Play vanilla never picks one: the whole point of vanilla is the protected, online-safe start.
+    /// Omitted from JSON when false.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SkipsAntiCheat { get; init; }
 }
 
 /// <summary>A registered game: where it lives, how its mods are shaped, how to launch it.</summary>

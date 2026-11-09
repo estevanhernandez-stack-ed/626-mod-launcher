@@ -51,6 +51,8 @@ public static class LaunchScan
                     Args = opt.Args,
                     WorkingDir = opt.WorkingSubdir is null ? gameRoot : Path.Combine(gameRoot, opt.WorkingSubdir),
                     IsDefault = targets.Count == 0,
+                    Env = opt.Env,
+                    SkipsAntiCheat = opt.SkipsAntiCheat,
                 });
             }
 

@@ -42,7 +42,7 @@ public static class LaunchTargetPicker
         if (!string.IsNullOrWhiteSpace(game.SteamAppId))
             return new LaunchTarget("Play vanilla (Steam)", "steam", $"steam://rungameid/{game.SteamAppId}");
 
-        var plain = game.LaunchTargets.FirstOrDefault(t => !IsModLauncher(t.Target));
+        var plain = game.LaunchTargets.FirstOrDefault(t => !IsModLauncher(t.Target) && !t.SkipsAntiCheat);
         if (plain is not null) return plain;
 
         if (!string.IsNullOrWhiteSpace(game.LaunchExe) && !IsModLauncher(game.LaunchExe))
