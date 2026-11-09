@@ -20,7 +20,7 @@ public sealed record LaunchOption(string Title, string Detail, LaunchOptionKind 
     public string? RealExe { get; init; }        // anti-cheat toggle: the real game exe to swap in
     public bool Recommended { get; init; }      // surface a "needs a launch option" highlight
     public IReadOnlyDictionary<string, string>? Env { get; init; } // internal: environment the process needs
-    public bool SkipsAntiCheat { get; init; }   // internal: starts the game without its anti-cheat (FULL only)
+    public bool SkipsAntiCheat { get; init; }   // internal: starts the game without its anti-cheat (never picked for vanilla)
 }
 
 /// <summary>
@@ -37,8 +37,11 @@ public static class LaunchOptions
 #if !FULL
         // STORE SKU (sealed core): the anti-cheat toggle is stripped — never surface it, even if the
         // catalog lists one. Pairs with AntiCheat.cs being absent from the Store binary entirely.
-        // An internal launch that skips anti-cheat is the same class of thing, so it goes too.
-        return options.Where(o => o.Kind != LaunchOptionKind.AntiCheatToggle && !o.SkipsAntiCheat).ToArray();
+        // An internal launch that skips anti-cheat STAYS. It is not the same class of thing as the toggle:
+        // it rewrites nothing in the game folder, it runs the game's own exe with the publisher's own
+        // internal-config args, and Play vanilla keeps the protected Steam start. Decided 2026-11-08 (Este):
+        // the toggle swaps a file the anti-cheat owns; this only chooses which of the game's exes to start.
+        return options.Where(o => o.Kind != LaunchOptionKind.AntiCheatToggle).ToArray();
 #else
         return options;
 #endif

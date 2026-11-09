@@ -2812,3 +2812,19 @@ Baseline on Neb, 2026-11-07: `ER0000.sl2` 0 characters, `ER0000.co2` 3 (Este, le
 8. **Don't ask for this game:** Play vanilla, press it. The game launches vanilla with nothing copied; the next
    Play vanilla asks nothing. Clear `saveOfferDismissed` from `games.json` (or via the service) afterward.
 9. **Bring my mods back** and confirm the game folder diff is empty, as in the PR #407 smoke.
+
+## ACE COMBAT 8: modded launch skips EAC, vanilla steps UE4SS aside (PR #413)
+
+Needs Este present and a build with #413 (Store or FULL; both carry the launch). AC8 is registered with UE4SS
+installed through the launcher. Undo the manual `dwmapi.dll.626off` rename from 2026-11-08 first, so the
+launcher's framework holding owns the loader again.
+
+1. **Re-detect** AC8. `games.json` shows a default exe target `...\Game\Binaries\Win64\AceCombat8.exe` with
+   `args: "-SaveToUserDir"`, `env: { "SteamAppId": "2288340", "SteamGameId": "2288340" }` and
+   `skipsAntiCheat: true`, plus the non-default Steam target.
+2. **Play modded** with Steam running. The game boots past the driver-warning dialog to the title screen;
+   `ue4ss\UE4SS.log` shows the mods loading (Parts Overdrive's applied-values line). No EAC splash. Quit.
+3. **Play vanilla.** `dwmapi.dll` moves to the framework holding folder, Steam launches with EAC, and the
+   game reaches the title screen with no "Untrusted system file" popup. Quit.
+4. **Bring my mods back.** `dwmapi.dll` returns beside the exe; the NEEDS UE4SS chip clears.
+5. **Store build only:** the AC8 launch menu lists the offline target (the seal strips the EAC toggle, not this).
