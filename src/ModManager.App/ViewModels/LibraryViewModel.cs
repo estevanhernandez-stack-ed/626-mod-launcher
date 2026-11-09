@@ -252,6 +252,8 @@ public sealed partial class LibraryViewModel : ObservableObject
     private readonly LauncherService _svc;
     private readonly IStoreLibrary _store;
     private readonly PatchDayDetector _patchDay;
+    private readonly DirectInjectService _direct;
+    private readonly SteamService _steam;
     // Games whose Play click is still being checked for a waiting patch, so an impatient second click
     // never launches the game twice.
     private readonly HashSet<string> _playChecking = new(StringComparer.Ordinal);
@@ -369,6 +371,10 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// launches.</summary>
     public event Action<string>? GameOpenedToAskPatchDay;
 
+    /// <summary>Play needs something only the game view does (a question, or a guard such as starting Steam): open
+    /// the game and run its Play once loaded. See <see cref="HomePlay"/>.</summary>
+    public event Action<string>? GameOpenedToLaunch;
+
     /// <summary>Raised when the user asks to start managing an installed game — the shell runs the Add
     /// flow (one click when the game can be added as-is, the dialog otherwise).</summary>
     public event Action<InstalledGame>? AddGameRequested;
@@ -376,11 +382,14 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>Raised when the user opens the cross-game Updates directory — the shell swaps it in.</summary>
     public event Action? UpdatesRequested;
 
-    public LibraryViewModel(LauncherService svc, IStoreLibrary store, PatchDayDetector patchDay)
+    public LibraryViewModel(LauncherService svc, IStoreLibrary store, PatchDayDetector patchDay,
+        DirectInjectService direct, SteamService steam)
     {
         _svc = svc;
         _store = store;
         _patchDay = patchDay;
+        _direct = direct;
+        _steam = steam;
         _covers = new CoverCache(store);
         _dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     }
@@ -602,10 +611,11 @@ public sealed partial class LibraryViewModel : ObservableObject
         GameOpened?.Invoke(row.Id);
     }
 
-    /// <summary>Play: launch the game in its current on-disk state (modded if mods are on, vanilla if
-    /// they aren't), then stamp recency. The home never toggles mode — the vanilla/modded step-aside
-    /// toggle lives in the game view, coupled to the active context. Reuses the existing reversible
-    /// launch path — no new launch mechanism, exactly what the game view's Play button drives.</summary>
+    /// <summary>Play: launch the game in its current mode (modded, or vanilla while its mods are stepped aside),
+    /// then stamp recency. The home never toggles mode. The target is the one the game view's Play picks, and
+    /// anything that Play would ask about or guard first opens the game view instead (<see cref="HomePlay"/>):
+    /// the home used to run the default target whatever the mode, which on a vanilla Elden Ring was a mod
+    /// launcher without anti-cheat.</summary>
     [RelayCommand]
     private async Task Play(GameLibraryRowViewModel? row)
     {
@@ -622,16 +632,41 @@ public sealed partial class LibraryViewModel : ObservableObject
                 GameOpenedToAskPatchDay?.Invoke(g.Id);
                 return;
             }
+            var verdict = await DecideAsync(g);
+            if (verdict.Kind == HomePlayKind.OpenGameView)
+            {
+                _svc.SetActiveGame(g.Id);
+                GameOpenedToLaunch?.Invoke(g.Id);
+                return;
+            }
+            LaunchAndStamp(g, verdict);
         }
         finally { _playChecking.Remove(g.Id); }
-        LaunchAndStamp(g);
     }
 
-    private void LaunchAndStamp(GameEntry g)
+    /// <summary>The probes read the registry's data folder, the save folder and the process list, so they run off
+    /// the UI thread. Anything that throws hands off to the game view, which reports its own failures.</summary>
+    private async Task<HomePlayVerdict> DecideAsync(GameEntry g)
     {
         try
         {
-            if (_svc.Launch(g)) StampLaunch(g.Id);
+            return await Task.Run(() =>
+            {
+                var mode = VanillaLaunch.CurrentMode(Scanner.DataDirForGame(g));
+                var saveDir = SaveLocator.EffectiveSaveDir(g);
+                return HomePlay.Decide(g, mode, _direct.SeamlessFullyInstalled(g), _steam.IsRunning(),
+                    (target, m) => SaveOfferProbe.For(g, saveDir, m, target) is not null);
+            });
+        }
+        catch { return new HomePlayVerdict(HomePlayKind.OpenGameView, null, "couldn't check the launch"); }
+    }
+
+    private void LaunchAndStamp(GameEntry g, HomePlayVerdict verdict)
+    {
+        try
+        {
+            var launched = verdict.Target is { } target ? _svc.Launch(target, g.GameRoot) : _svc.Launch(g);
+            if (launched) StampLaunch(g.Id);
         }
         catch { /* a launch failure surfaces via the game view; the home stays quiet */ }
     }

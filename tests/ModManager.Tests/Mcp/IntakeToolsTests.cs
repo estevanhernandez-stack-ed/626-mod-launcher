@@ -304,6 +304,21 @@ public class IntakeToolsTests : IDisposable
 
     private string Ue4ssZip() => Zip("UE4SS_v3.zip", ("dwmapi.dll", "1"), ("ue4ss/UE4SS.dll", "2"), ("ue4ss/UE4SS-settings.ini", "3"));
 
+    // The dry run used to promise a UE4SS install that the installer then refused for want of a game
+    // exe in Binaries/Win64. Both now ask the same question, so the plan says so up front.
+    [Fact]
+    public void The_dry_run_reports_a_ue4ss_folder_with_no_game_exe_the_way_the_install_refuses_it()
+    {
+        var g = Windrose();
+        File.Delete(Path.Combine(g.GameRoot!, "R5", "Binaries", "Win64", "Windrose-Win64-Shipping.exe"));
+
+        var item = Items(Json(IntakeTools.DryRunIntake("windrose", new[] { Ue4ssZip() }))).Single();
+
+        Assert.Contains("executable", item.GetProperty("problem").GetString(), StringComparison.OrdinalIgnoreCase);
+        var r = Json(IntakeTools.Intake("windrose", new[] { Ue4ssZip() }, allowFrameworks: true));
+        Assert.Empty(r.GetProperty("installed").EnumerateArray());
+    }
+
     // The regression: the plan read "does 626 own UE4SS" before the framework step installed it, so a
     // Lua mod dropped WITH UE4SS was turned away. Before the router it installed.
     [Fact]

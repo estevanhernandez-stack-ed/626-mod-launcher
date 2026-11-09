@@ -2829,3 +2829,18 @@ launcher's framework holding owns the loader again.
 4. **Bring my mods back.** `dwmapi.dll` returns beside the exe; the NEEDS UE4SS chip clears.
 5. **Labels:** in modded mode the Play button reads "Play modded (offline)", and the launch menu lists "Launch offline, no anti-cheat".
 6. **Store build only:** the AC8 launch menu lists the offline target (the seal strips the EAC toggle, not this).
+
+## Library home Play follows the game's mode (HomePlay)
+
+Shipped: Play on the home launches the target the game view's Play would pick for the game's current mode, and
+opens the game view to launch when that Play would ask or guard first (vanilla with no safe way in, a required
+launcher, a save offer, or an exe target on a Steam game with Steam closed). Needs Este present: Elden Ring is an
+EAC title. Elden Ring registered with Seamless Co-op installed (its launcher is the default target).
+
+1. **Modded, Steam running:** home Play on Elden Ring. It launches from the home through Seamless, as before. Quit.
+2. **Modded, Steam closed:** home Play. The game view opens, reads "Starting Steam…", then launches Seamless. Quit.
+3. **Step the mods aside** (Play vanilla in the game view, then quit), go home, home Play. It launches through
+   Steam **with EAC**, not `ersc_launcher.exe`. Before this change it started Seamless. Quit.
+4. **Save offer:** with `ER0000.sl2` holding 0 characters and `.co2` holding some, home Play in vanilla mode opens
+   the game view and shows the save-type offer. Escape: nothing launches.
+5. **Bring my mods back.** The game folder diff is empty, as in the PR #407 smoke.

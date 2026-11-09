@@ -181,6 +181,9 @@ public static class DropRouter
             return new DropItem(path, DropRoute.Framework, Framework: fw,
                 Problem: $"Couldn't install {fw.DisplayName}: no project subfolder found in the game's mod locations. "
                          + "Re-scan the game's mod folders and try again.");
+        if (fw.InstallRoot == "UeProjectBinariesWin64" && !FrameworkInstaller.HasGameExecutable(root))
+            return new DropItem(path, DropRoute.Framework, Framework: fw, FrameworkInstallRoot: root,
+                Problem: FrameworkInstaller.NoGameExecutableMessage(fw));
 
         var files = entries.Select(e => e.Replace('\\', '/')).Where(e => !e.EndsWith('/')).ToList();
         // Checked where the installer will write, so the confirm shows the truth about what it replaces.
