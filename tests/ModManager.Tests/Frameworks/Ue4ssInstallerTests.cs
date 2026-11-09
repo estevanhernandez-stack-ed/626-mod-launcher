@@ -67,7 +67,58 @@ public class Ue4ssInstallerTests : IDisposable
         Assert.Contains("UE4SS.dll", u.ZipSignatureFiles);
         Assert.Contains("UE4SS-settings.ini", u.ZipSignatureFiles);
         Assert.DoesNotContain("dwmapi.dll", u.ZipSignatureFiles); // proxy is a HINT, not a signature
-        Assert.Contains("*-Shipping.exe", u.ForbiddenPaths);
+        // Any top-level exe in Binaries/Win64 is the game: not every title names it -Shipping.exe.
+        Assert.Contains("*.exe", u.ForbiddenPaths);
+    }
+
+    // ── A game exe without the -Shipping suffix (ACE COMBAT 8 ships Game/Binaries/Win64/AceCombat8.exe) ──
+
+    private static readonly string[] Ac8ModLocs = { "Game/Content/Paks" };
+
+    [Fact]
+    public void Install_accepts_a_game_exe_without_the_Shipping_suffix()
+    {
+        var gameRoot = Path.Combine(_tmp, "AC8");
+        var binWin64 = Path.Combine(gameRoot, "Game", "Binaries", "Win64");
+        Directory.CreateDirectory(binWin64);
+        File.WriteAllBytes(Path.Combine(binWin64, "AceCombat8.exe"), new byte[] { 7, 7, 7 });
+
+        var r = FrameworkInstaller.Install(Ue4ssZip(), Ue4ss(), gameRoot, MakeGameData(), Ac8ModLocs);
+
+        Assert.True(File.Exists(Path.Combine(binWin64, "dwmapi.dll")));
+        Assert.Equal(new byte[] { 7, 7, 7 }, File.ReadAllBytes(Path.Combine(binWin64, "AceCombat8.exe")));
+        Assert.Equal(Path.GetFullPath(binWin64), r.InstallPath);
+    }
+
+    [Fact]
+    public void Install_refuses_a_zip_that_would_overwrite_a_non_Shipping_game_exe()
+    {
+        var gameRoot = Path.Combine(_tmp, "AC8");
+        var binWin64 = Path.Combine(gameRoot, "Game", "Binaries", "Win64");
+        Directory.CreateDirectory(binWin64);
+        File.WriteAllBytes(Path.Combine(binWin64, "AceCombat8.exe"), new byte[] { 7, 7, 7 });
+        var hostile = BuildZip(
+            ("dwmapi.dll", new byte[] { 1 }),
+            ("ue4ss/UE4SS.dll", new byte[] { 2 }),
+            ("ue4ss/UE4SS-settings.ini", new byte[] { 3 }),
+            ("AceCombat8.exe", new byte[] { 66 }));
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => FrameworkInstaller.Install(hostile, Ue4ss(), gameRoot, MakeGameData(), Ac8ModLocs));
+        Assert.Contains("forbidden", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new byte[] { 7, 7, 7 }, File.ReadAllBytes(Path.Combine(binWin64, "AceCombat8.exe")));
+        Assert.False(File.Exists(Path.Combine(binWin64, "dwmapi.dll")));
+    }
+
+    [Fact]
+    public void HasGameExecutable_is_true_for_any_exe_and_false_for_an_empty_or_missing_folder()
+    {
+        var bin = Path.Combine(_tmp, "bin");
+        Assert.False(FrameworkInstaller.HasGameExecutable(bin));          // missing
+        Directory.CreateDirectory(bin);
+        Assert.False(FrameworkInstaller.HasGameExecutable(bin));          // empty
+        File.WriteAllBytes(Path.Combine(bin, "AceCombat8.exe"), new byte[] { 1 });
+        Assert.True(FrameworkInstaller.HasGameExecutable(bin));
     }
 
     // ── Resolver ─────────────────────────────────────────────────────────────────────────────────

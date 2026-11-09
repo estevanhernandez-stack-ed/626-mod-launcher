@@ -52,6 +52,21 @@ public static class FrameworkInstaller
     /// Mirrors <c>DirectInjectService.PlayFolder</c>'s shape but lives in Core so the
     /// installer has no App dependency.
     /// </summary>
+    /// <summary>True when <paramref name="installRoot"/> holds an executable for a proxy DLL to load
+    /// beside. Any exe counts: most Unreal games ship <c>&lt;Project&gt;-Win64-Shipping.exe</c>, but
+    /// some don't (ACE COMBAT 8 ships <c>AceCombat8.exe</c>). The drop plan asks this too, so it can't
+    /// promise an install the installer will refuse.</summary>
+    public static bool HasGameExecutable(string installRoot)
+    {
+        try { return Directory.Exists(installRoot) && Directory.EnumerateFiles(installRoot, "*.exe").Any(); }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    public static string NoGameExecutableMessage(KnownFramework framework) =>
+        $"The resolved install folder has no game executable to load {framework.DisplayName} " +
+        "— nothing was changed. (Expected the game's .exe under the project's Binaries/Win64.)";
+
     public static string? ResolveInstallRoot(
         string installRootSymbol, string gameRoot,
         IReadOnlyList<string>? modLocationRelPaths = null)
@@ -109,17 +124,10 @@ public static class FrameworkInstaller
                 "mod locations — nothing was changed. (Re-scan the game's mod folders and try again.)");
 
         // For a project-relative install (UE4SS), the loader proxy must land next to the game exe.
-        // If the resolved Binaries/Win64 has no *-Shipping.exe, the proxy would sit where nothing
-        // chain-loads it — refuse loudly before writing rather than "install" into a dead folder.
-        if (framework.InstallRoot == "UeProjectBinariesWin64")
-        {
-            var hasExe = Directory.Exists(installRoot)
-                && Directory.EnumerateFiles(installRoot, "*-Shipping.exe").Any();
-            if (!hasExe)
-                throw new InvalidOperationException(
-                    $"The resolved install folder has no game executable to load {framework.DisplayName} " +
-                    "— nothing was changed. (Expected a *-Shipping.exe under the project's Binaries/Win64.)");
-        }
+        // If the resolved Binaries/Win64 has no exe, the proxy would sit where nothing chain-loads
+        // it — refuse loudly before writing rather than "install" into a dead folder.
+        if (framework.InstallRoot == "UeProjectBinariesWin64" && !HasGameExecutable(installRoot))
+            throw new InvalidOperationException(NoGameExecutableMessage(framework));
 
         var frameworkDir = Path.Combine(gameDataDir, "frameworks", framework.FrameworkId);
         var backupRoot = Path.Combine(frameworkDir, "backup", DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
