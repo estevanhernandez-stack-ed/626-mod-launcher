@@ -854,6 +854,7 @@ public sealed partial class MainViewModel : ObservableObject
         // After the loop, so the verdict is the reload's own and a caller that bounced off _loading never
         // asks early; the outermost load is the one that reaches here with the final state.
         await AskPatchDayIfPendingAsync();
+        await LaunchIfPendingAsync();
     }
 
     partial void OnActiveGameChanged(GameOption? value)
@@ -1908,6 +1909,20 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The library home opened this game from Play because a patch awaits a choice. The question is
     /// asked once the next load has computed the game's verdict; see <see cref="AskPatchDayIfPendingAsync"/>.</summary>
     public void AskPatchDayOnNextLoad(string gameId) => _pendingPatchDayAskGameId = gameId;
+
+    private string? _pendingLaunchGameId;
+
+    /// <summary>The library's Play handed this game off (<see cref="HomePlay"/>): run this view's Play once the next
+    /// load has the game on screen, with every question and guard it carries.</summary>
+    public void LaunchOnNextLoad(string gameId) => _pendingLaunchGameId = gameId;
+
+    private async Task LaunchIfPendingAsync()
+    {
+        var gameId = _pendingLaunchGameId;
+        _pendingLaunchGameId = null;
+        if (gameId is null || _ctx is null || !string.Equals(_ctx.Game.Id, gameId, StringComparison.Ordinal)) return;
+        await Launch();
+    }
 
     private async Task AskPatchDayIfPendingAsync()
     {
