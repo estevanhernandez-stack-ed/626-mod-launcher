@@ -19,6 +19,8 @@ public sealed record LaunchOption(string Title, string Detail, LaunchOptionKind 
     public string? Bootstrapper { get; init; }  // anti-cheat toggle: the EAC bootstrapper exe (start_protected_game.exe)
     public string? RealExe { get; init; }        // anti-cheat toggle: the real game exe to swap in
     public bool Recommended { get; init; }      // surface a "needs a launch option" highlight
+    public IReadOnlyDictionary<string, string>? Env { get; init; } // internal: environment the process needs
+    public bool SkipsAntiCheat { get; init; }   // internal: starts the game without its anti-cheat (FULL only)
 }
 
 /// <summary>
@@ -35,7 +37,8 @@ public static class LaunchOptions
 #if !FULL
         // STORE SKU (sealed core): the anti-cheat toggle is stripped — never surface it, even if the
         // catalog lists one. Pairs with AntiCheat.cs being absent from the Store binary entirely.
-        return options.Where(o => o.Kind != LaunchOptionKind.AntiCheatToggle).ToArray();
+        // An internal launch that skips anti-cheat is the same class of thing, so it goes too.
+        return options.Where(o => o.Kind != LaunchOptionKind.AntiCheatToggle && !o.SkipsAntiCheat).ToArray();
 #else
         return options;
 #endif
@@ -62,6 +65,28 @@ public static class LaunchOptions
                 RealExe = "eldenring.exe",
                 WorkingSubdir = "Game",
                 Recommended = true,
+            },
+        },
+        // ACE COMBAT 8 — verified on disk 2026-11-08: Game\Binaries\Win64\AceCombat8.exe behind
+        // start_protected_game.exe (EAC) and Denuvo. EAC refuses to start with UE4SS's dwmapi.dll beside the
+        // exe, so modded play is the real exe run directly with -SaveToUserDir: the exe and args of Bandai's
+        // own internal "ACE COMBAT 8 No EAC" launch config in Steam's appinfo (QA branches only, not a public
+        // option). No swap, no file touched. Run without SteamAppId the game exits mid-init, so it carries it.
+        // Play vanilla stays the Steam launch, with UE4SS's proxy stepped aside first.
+        "2288340" => new[]
+        {
+            new LaunchOption(
+                "Play modded (offline, no anti-cheat)",
+                "Starts ACE COMBAT 8 directly, offline, so UE4SS mods load. EasyAntiCheat doesn't run, so stay "
+                + "out of online modes while modded. Play vanilla sets the mod loader aside and "
+                + "starts the game through Steam with anti-cheat, for online play.",
+                LaunchOptionKind.Internal)
+            {
+                Exe = @"Game\Binaries\Win64\AceCombat8.exe",
+                Args = "-SaveToUserDir",
+                WorkingSubdir = @"Game\Binaries\Win64",
+                Env = new Dictionary<string, string> { ["SteamAppId"] = "2288340", ["SteamGameId"] = "2288340" },
+                SkipsAntiCheat = true,
             },
         },
         _ => Array.Empty<LaunchOption>(),

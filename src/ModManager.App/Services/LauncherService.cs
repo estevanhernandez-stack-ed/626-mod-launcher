@@ -170,9 +170,13 @@ public sealed class LauncherService
         var exe = target.Kind == "exe" && !Path.IsPathRooted(target.Target) && !string.IsNullOrEmpty(gameRoot)
             ? Path.Combine(gameRoot, target.Target)
             : target.Target;
-        var psi = new ProcessStartInfo(exe) { UseShellExecute = true };
+        // Environment variables need a direct start: the shell path ignores ProcessStartInfo.Environment.
+        // Only an exe target carries them (ACE COMBAT 8's SteamAppId); everything else keeps the shell start.
+        var withEnv = target.Kind == "exe" && target.Env is { Count: > 0 };
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = !withEnv };
         if (!string.IsNullOrEmpty(target.Args)) psi.Arguments = target.Args;
         if (!string.IsNullOrEmpty(target.WorkingDir)) psi.WorkingDirectory = target.WorkingDir;
+        if (withEnv) foreach (var (k, v) in target.Env!) psi.Environment[k] = v;
         Process.Start(psi);
         return true;
     }
