@@ -2812,3 +2812,18 @@ Baseline on Neb, 2026-11-07: `ER0000.sl2` 0 characters, `ER0000.co2` 3 (Este, le
 8. **Don't ask for this game:** Play vanilla, press it. The game launches vanilla with nothing copied; the next
    Play vanilla asks nothing. Clear `saveOfferDismissed` from `games.json` (or via the service) afterward.
 9. **Bring my mods back** and confirm the game folder diff is empty, as in the PR #407 smoke.
+
+## Library home Play follows the game's mode (HomePlay)
+
+Shipped: Play on the home launches the target the game view's Play would pick for the game's current mode, and
+opens the game view to launch when that Play would ask or guard first (vanilla with no safe way in, a required
+launcher, a save offer, or an exe target on a Steam game with Steam closed). Needs Este present: Elden Ring is an
+EAC title. Elden Ring registered with Seamless Co-op installed (its launcher is the default target).
+
+1. **Modded, Steam running:** home Play on Elden Ring. It launches from the home through Seamless, as before. Quit.
+2. **Modded, Steam closed:** home Play. The game view opens, reads "Starting Steam…", then launches Seamless. Quit.
+3. **Step the mods aside** (Play vanilla in the game view, then quit), go home, home Play. It launches through
+   Steam **with EAC**, not `ersc_launcher.exe`. Before this change it started Seamless. Quit.
+4. **Save offer:** with `ER0000.sl2` holding 0 characters and `.co2` holding some, home Play in vanilla mode opens
+   the game view and shows the save-type offer. Escape: nothing launches.
+5. **Bring my mods back.** The game folder diff is empty, as in the PR #407 smoke.

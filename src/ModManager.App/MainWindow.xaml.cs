@@ -79,6 +79,12 @@ public sealed partial class MainWindow : Window
             ViewModel.AskPatchDayOnNextLoad(gameId);
             HideLibraryForGame();
         };
+        // Play needs the game view's own Play (a question or a guard the home can't do): open the game, launch on load.
+        _libraryVm.GameOpenedToLaunch += gameId =>
+        {
+            ViewModel.LaunchOnNextLoad(gameId);
+            HideLibraryForGame();
+        };
         _libraryVm.AddGameRequested += OnLibraryAddGameRequested;
         _libraryVm.UpdatesRequested += ShowUpdates;
         _libraryView = new LibraryView(_libraryVm);
