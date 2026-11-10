@@ -90,6 +90,32 @@ public class VanillaModeStateTests
     }
 
     [Fact]
+    public void An_Elden_Mod_Loader_held_as_a_direct_inject_ROW_is_not_missing()
+    {
+        // The live shape, which the proxy test above is not: on the real Elden Ring install the loader is the
+        // "DLL mod loader" row, so Play vanilla moved it through the row lane into direct-disabled/<slug>/ and the
+        // stash recorded it under modRows with directInjectProxies empty. The first cut of the fix looked only at
+        // proxies and frameworks, passed every test, and left the chip up on the live retest.
+        var root = TestSupport.TempDir("vmode-");
+        Put(root, "Game/eldenring.exe");
+        Put(root, "Game/dinput8.dll");
+        var game = Game(root, "fromsoft", "Game/mods");
+        var play = DirectInjectListing.PlayFolder(root)!;
+        DirectInject.Disable(play, DirectInjectListing.Holding(game),
+            new DirectInjectMod("DLL mod loader", "loader", "dinput8.dll", new[] { "dinput8.dll" }));
+        var ctx = Scanner.GameContext(game);
+        var stash = new VanillaStash { ModRows = { new StashedModRow { Name = "DLL mod loader", Location = "direct-inject" } } };
+
+        static IEnumerable<string> Missing(IReadOnlyList<FrameworkPresence> p) => p.Where(x => !x.IsPresent).Select(x => x.Dep.Name);
+
+        Assert.Contains("Elden Mod Loader", Missing(FrameworkDeps.Check(ctx)));
+        Assert.DoesNotContain("Elden Mod Loader", Missing(FrameworkDeps.Check(ctx, stash)));
+        // A row the stash does not name is somebody's turned-off mod, not a loader vanilla set aside.
+        var other = new VanillaStash { ModRows = { new StashedModRow { Name = "ReShade", Location = "direct-inject" } } };
+        Assert.Contains("Elden Mod Loader", Missing(FrameworkDeps.Check(ctx, other)));
+    }
+
+    [Fact]
     public void Stepped_aside_silences_the_launch_option_chip_and_nothing_else()
     {
         var c = new GameStateConditions { LaunchOptionsNeeded = true, BanRisk = true, SteppedAside = true };
