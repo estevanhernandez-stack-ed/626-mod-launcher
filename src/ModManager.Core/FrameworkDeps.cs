@@ -204,21 +204,30 @@ public static class FrameworkDeps
     /// <para>A framework is present when EVERY component is satisfied, and a component is satisfied by
     /// ANY of its paths. The old flat any-of rule is the special case where there is one component,
     /// which is why entries that are genuinely lists of alternatives did not have to change.</para>
+    ///
+    /// <para><paramref name="stash"/> is the vanilla stash while mods are stepped aside. Play vanilla moves a
+    /// loader's proxy into a holding folder on purpose, and a disk-only probe then calls the framework missing
+    /// and offers a download for a file the launcher is holding (ACE COMBAT 8's dwmapi.dll, Elden Ring's
+    /// dinput8.dll, found on the 2026-11-09 smoke). A component the stash names and holds counts as present;
+    /// a framework that was never installed is still missing. Same lookup as <see cref="StaleLoaders.Find"/>.</para>
     /// </summary>
-    public static IReadOnlyList<FrameworkPresence> Check(GameContext ctx)
+    public static IReadOnlyList<FrameworkPresence> Check(GameContext ctx, VanillaStash? stash = null)
     {
         var engine = ctx.Game.Engine ?? "";
         var entries = Catalog.Where(d => d.Engine == engine).ToList();
         if (entries.Count == 0) return Array.Empty<FrameworkPresence>();
 
         var roots = ResolveProbeRoots(ctx);
+        var held = StaleLoaders.HeldLookup(ctx, stash);
         var result = new List<FrameworkPresence>();
         foreach (var dep in entries)
         {
             var present = new List<FrameworkComponent>();
             var missing = new List<FrameworkComponent>();
             foreach (var component in dep.Components)
-                (IsAnyPathPresent(component.AnyOf, roots) ? present : missing).Add(component);
+                (IsAnyPathPresent(component.AnyOf, roots)
+                 || (held is not null && component.AnyOf.Any(rel => held(rel) is not null))
+                    ? present : missing).Add(component);
             result.Add(new FrameworkPresence(dep, present, missing));
         }
         return result;

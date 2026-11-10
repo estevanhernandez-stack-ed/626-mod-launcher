@@ -545,6 +545,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         BanRisk = _ctx is not null && BanRiskCatalog.Effective(_ctx.Game) >= GameBanRisk.Medium,
         LaunchOptionsNeeded = LaunchNeedsAttention,
+        SteppedAside = CurrentLaunchMode == LaunchMode.Vanilla,
         // A13's sentence finally has somewhere to go. Until this wave MissingFrameworksSummary was
         // computed on every reload and bound in no XAML file at all.
         MissingFrameworks = HasMissingFrameworks ? MissingFrameworksSummary : null,
@@ -973,7 +974,8 @@ public sealed partial class MainViewModel : ObservableObject
             MissingFrameworks.Clear();
             // One probe, both readings: the missing list the chips key off, and the per-component
             // detail the banner sentence needs. Two calls would be two walks of the same disk.
-            _presences = FrameworkDeps.Check(_ctx);
+            // The stash, so a loader Play vanilla set aside reads as held, not missing (2026-11-09 smoke).
+            _presences = FrameworkDeps.Check(_ctx, VanillaStashStore.Load(_ctx.DataDir));
             foreach (var presence in _presences.Where(p => !p.IsPresent))
                 MissingFrameworks.Add(presence.Dep);
             // Load direct-inject mod config-path overrides once. The resolver consults these to

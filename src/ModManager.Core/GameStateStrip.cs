@@ -73,6 +73,9 @@ public sealed record GameStateConditions
 {
     public bool BanRisk { get; init; }
     public bool LaunchOptionsNeeded { get; init; }
+    /// <summary>True in vanilla mode (<see cref="VanillaLaunch.CurrentMode"/>): the mods are set aside on purpose,
+    /// so a chip that says mods will not load is describing the choice, not a fault.</summary>
+    public bool SteppedAside { get; init; }
     /// <summary>Non-empty when a framework this game needs is missing or half-installed — the sentence
     /// A13 taught the launcher to say, e.g. "UE4SS — loader present, runtime missing".</summary>
     public string? MissingFrameworks { get; init; }
@@ -161,7 +164,9 @@ public static class GameStateStrip
             chips.Add(PatchDayChip(patchDay, c.GameName));
 
         // 2. Nothing loads at all until this is set.
-        if (c.LaunchOptionsNeeded)
+        // Not while stepped aside: in vanilla mode no mod is meant to load, and Seamless Co-op reads as not
+        // installed because it is in holding (Elden Ring, 2026-11-09 smoke).
+        if (c.LaunchOptionsNeeded && !c.SteppedAside)
             chips.Add(new GameStateChip("launch-options", GameStateSeverity.Danger, "LAUNCH OPTION",
                 "This game needs a launch option set before any mod will load.",
                 "Show me", Dismissible: false));

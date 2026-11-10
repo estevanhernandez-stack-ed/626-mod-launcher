@@ -187,8 +187,9 @@ public static class StaleLoaders
         return null;
     }
 
-    /// <summary>Where a top-level file the stash says was stepped aside sits now, or null.</summary>
-    private static Func<string, string?>? HeldLookup(GameContext ctx, VanillaStash? stash)
+    /// <summary>Where a file the stash says was stepped aside sits now, or null. Shared with <see cref="FrameworkDeps.Check"/>,
+    /// so "is this loader set aside" has one answer for the stale chip and the missing chip alike.</summary>
+    internal static Func<string, string?>? HeldLookup(GameContext ctx, VanillaStash? stash)
     {
         if (stash is null) return null;
         var playFolder = DirectInjectListing.PlayFolder(ctx.GameRoot);
@@ -212,6 +213,15 @@ public static class StaleLoaders
                     var p = Path.Combine(ctx.DataDir, "frameworks", id, Frameworks.FrameworkRegistry.DisabledProxyDir, name);
                     if (File.Exists(p)) return p;
                 }
+                // A loader that is a direct-inject ROW (Elden Ring's "DLL mod loader") goes through the row lane, so
+                // the stash records it under modRows and its files keep their play-folder paths inside
+                // direct-disabled/<slug>/ (DirectInject.Disable). Live 2026-11-09: the proxy branch above never saw it.
+                if (topLevel)
+                    foreach (var row in stash.ModRows.Where(r => string.Equals(r.Location, "direct-inject", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var p = Path.Combine(DirectInjectListing.Holding(ctx.Game), EnginePresets.Slugify(row.Name), name);
+                        if (File.Exists(p)) return p;
+                    }
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { }
             return null;

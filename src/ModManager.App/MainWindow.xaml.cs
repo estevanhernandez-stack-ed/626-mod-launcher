@@ -1166,7 +1166,8 @@ public sealed partial class MainWindow : Window
         if (menu.Items.Count > 0 && ViewModel.LaunchTargets.Count > 0)
             menu.Items.Add(new MenuFlyoutSeparator());
 
-        foreach (var target in ViewModel.LaunchTargets)
+        // In vanilla mode only the ways in vanilla Play would use: no mod launcher, nothing that skips anti-cheat.
+        foreach (var target in ModManager.Core.LaunchTargetPicker.MenuTargets(ViewModel.LaunchTargets, ViewModel.CurrentLaunchMode))
         {
             // The per-target list is the MECHANISM picker (Steam / Seamless / ME2) — vanilla vs modded
             // is the top item — so label by how-to-launch, never the target's legacy mode-named label.
