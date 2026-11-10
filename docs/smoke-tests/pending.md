@@ -2822,11 +2822,14 @@ launcher's framework holding owns the loader again.
 1. **Re-detect** AC8. `games.json` shows a default exe target `...\Game\Binaries\Win64\AceCombat8.exe` with
    `args: "-SaveToUserDir"`, `env: { "SteamAppId": "2288340", "SteamGameId": "2288340" }` and
    `skipsAntiCheat: true`, plus the non-default Steam target.
-2. **Play modded** with Steam running. The game boots past the driver-warning dialog to the title screen;
+2. **Play modded** with Steam running. The game shows a "known graphics card issue" prompt; answer **No** and it
+   boots to the title screen;
    `ue4ss\UE4SS.log` shows the mods loading (Parts Overdrive's applied-values line). No EAC splash. Quit.
 3. **Play vanilla.** `dwmapi.dll` moves to the framework holding folder, Steam launches with EAC, and the
    game reaches the title screen with no "Untrusted system file" popup. Quit.
-4. **Bring my mods back.** `dwmapi.dll` returns beside the exe; the NEEDS UE4SS chip clears.
+   While in vanilla mode: no FRAMEWORK chip for UE4SS (its loader is in holding, not missing), and the launch menu
+   lists only "Launch via Steam" under the mode items, not "Launch offline, no anti-cheat".
+4. **Bring my mods back.** `dwmapi.dll` returns beside the exe; still no FRAMEWORK chip.
 5. **Labels:** in modded mode the Play button reads "Play modded (offline)", and the launch menu lists "Launch offline, no anti-cheat".
 6. **Store build only:** the AC8 launch menu lists the offline target (the seal strips the EAC toggle, not this).
 
@@ -2841,6 +2844,8 @@ EAC title. Elden Ring registered with Seamless Co-op installed (its launcher is 
 2. **Modded, Steam closed:** home Play. The game view opens, reads "Starting Steam…", then launches Seamless. Quit.
 3. **Step the mods aside** (Play vanilla in the game view, then quit), go home, home Play. It launches through
    Steam **with EAC**, not `ersc_launcher.exe`. Before this change it started Seamless. Quit.
+   In the game view while vanilla: the FRAMEWORK chip names only what was never installed (Mod Engine 2 here),
+   there is no LAUNCH OPTION chip, and the launch menu has no "Launch via Seamless Co-op".
 4. **Save offer:** with `ER0000.sl2` holding 0 characters and `.co2` holding some, home Play in vanilla mode opens
    the game view and shows the save-type offer. Escape: nothing launches.
 5. **Bring my mods back.** The game folder diff is empty, as in the PR #407 smoke.

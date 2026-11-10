@@ -187,8 +187,9 @@ public static class StaleLoaders
         return null;
     }
 
-    /// <summary>Where a top-level file the stash says was stepped aside sits now, or null.</summary>
-    private static Func<string, string?>? HeldLookup(GameContext ctx, VanillaStash? stash)
+    /// <summary>Where a file the stash says was stepped aside sits now, or null. Shared with <see cref="FrameworkDeps.Check"/>,
+    /// so "is this loader set aside" has one answer for the stale chip and the missing chip alike.</summary>
+    internal static Func<string, string?>? HeldLookup(GameContext ctx, VanillaStash? stash)
     {
         if (stash is null) return null;
         var playFolder = DirectInjectListing.PlayFolder(ctx.GameRoot);

@@ -17,6 +17,15 @@ public static class LaunchTargetPicker
     public static LaunchTarget? Pick(GameEntry game, LaunchMode mode, bool seamlessFullyInstalled)
         => mode == LaunchMode.Vanilla ? PickVanilla(game) : PickModded(game, seamlessFullyInstalled);
 
+    /// <summary>The per-target launch menu for <paramref name="mode"/>. Vanilla drops mod launchers and targets
+    /// that skip anti-cheat, the same rule <see cref="Pick"/> follows: in vanilla mode ACE COMBAT 8's menu offered
+    /// "Launch offline, no anti-cheat" (no EAC and no mods, the worst of both) and Elden Ring's offered Seamless
+    /// with Seamless in holding (2026-11-09 smoke). Modded keeps every target.</summary>
+    public static IReadOnlyList<LaunchTarget> MenuTargets(IReadOnlyList<LaunchTarget> targets, LaunchMode mode)
+        => mode == LaunchMode.Vanilla
+            ? targets.Where(t => !IsModLauncher(t.Target) && !t.SkipsAntiCheat).ToList()
+            : targets;
+
     private static LaunchTarget? PickModded(GameEntry game, bool seamlessFullyInstalled)
     {
         if (seamlessFullyInstalled)
