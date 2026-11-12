@@ -654,7 +654,7 @@ public sealed partial class LibraryViewModel : ObservableObject
             {
                 var mode = VanillaLaunch.CurrentMode(Scanner.DataDirForGame(g));
                 var saveDir = SaveLocator.EffectiveSaveDir(g);
-                return HomePlay.Decide(g, mode, _direct.SeamlessFullyInstalled(g), _steam.IsRunning(),
+                return HomePlay.Decide(g, mode, _direct.SeamlessFullyInstalled(g), _steam.IsReady(),
                     (target, m) => SaveOfferProbe.For(g, saveDir, m, target) is not null);
             });
         }
