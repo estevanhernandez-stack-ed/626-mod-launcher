@@ -38,6 +38,19 @@ core, so check on the packaged bundle, installed side-by-side or from the Store 
 
 Rebuild only if the bundle changes, and re-read its identity and hash.
 
+**Run 2026-11-11 on the 0.28.1.0 bundle, all passing.** Installed side-by-side under a throwaway identity
+(`626LabsLLC.626ModLauncher.Smoke028`, loose-file registration, the Store 0.27.0.0 install untouched):
+
+| Check | Result |
+|---|---|
+| 1. AC8 menu on the sealed build | "Launch offline, no anti-cheat" listed (walked first on the 0.28.0.0 bundle, same seal) |
+| 2. Play modded, Steam closed | steam.exe 0.3 s, signed in 10.5 s, AC8 started 10.7 s; no ownership message; no EAC; UE4SS started all 8 mods |
+| 3. Play vanilla | `dwmapi.dll` in holding, EasyAntiCheat running, no "Untrusted system file"; no FRAMEWORK chip; menu lists only Launch via Steam |
+| 4. Bring my mods back | `dwmapi.dll` back beside the exe, stash cleared |
+
+The 0.28.0.0 bundle failed check 2 ("you don't own this game", launched before sign-in). That is #417, and
+why this submission is 0.28.1.0.
+
 ## What changed for a user
 
 - **ACE COMBAT 8 plays modded** (#413): direct exe launch, offline, no EAC, `-SaveToUserDir` + SteamAppId,
