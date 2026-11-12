@@ -2446,11 +2446,11 @@ public sealed partial class MainViewModel : ObservableObject
         // Steam awareness: an exe launcher (Seamless's ersc_launcher.exe) on a Steam-DRM game
         // silently no-ops if Steam is closed. Auto-start Steam and wait (off the UI thread), or
         // surface a clear message instead of a dead click.
-        if (LaunchGuard.NeedsSteamRunning(_ctx.Game, target) && !_steam.IsRunning())
+        if (LaunchGuard.NeedsSteamRunning(_ctx.Game, target) && !_steam.IsReady())
         {
-            StatusText = "Starting Steam…";
-            var up = await Task.Run(() => _steam.EnsureRunning(TimeSpan.FromSeconds(20)));
-            if (!up) { StatusText = "Couldn't start Steam — open Steam, then launch again."; return; }
+            StatusText = _steam.IsRunning() ? "Waiting for Steam to sign in…" : "Starting Steam…";
+            var up = await Task.Run(() => _steam.EnsureRunning(TimeSpan.FromSeconds(60)));
+            if (!up) { StatusText = _steam.IsRunning() ? "Steam isn't signed in. Sign in, then launch again." : "Couldn't start Steam. Open Steam, then launch again."; return; }
         }
         AutoBackupBeforeLaunch();
         try
