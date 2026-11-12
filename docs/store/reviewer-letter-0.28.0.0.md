@@ -1,25 +1,25 @@
 # Notes for certification — reviewer letter — v0.28.0.0 (ACE COMBAT 8 offline launch, launches without anti-cheat stated)
 
-> **Fill the block from the built bundle, not from master.** Identity, version and capability are read out of
-> the bundle's inner `AppxManifest.xml` after the Store build, and the seal script must report the plugin
-> loader and the EAC-disable mechanism absent and Nexus compiled in. Fields marked `TO FILL` are unknown
-> until then.
+> **Verified against the real package, not against master.** Identity, version and capability below were read
+> out of the built bundle (the inner `AppxManifest.xml`) on 2026-11-11. The seal script reports the plugin
+> loader and the EAC-disable mechanism absent and Nexus compiled in. A byte search of the sealed
+> `ModManager.Core.dll` finds the AC8 offline launch (title, exe path, args, Steam ids): the seal keeps it.
 >
 > ```text
 > File      : src/ModManager.App/AppPackages/ModManager.App_0.28.0.0_Store_Test/
 >             ModManager.App_0.28.0.0_x64_Store.msixbundle
-> Size      : TO FILL
-> SHA-256   : TO FILL
+> Size      : 83.8 MB
+> SHA-256   : 63F25F039BF4C85E786A4748DF52C6E223A42EF51BD4026E6334EAB756643778
 > Identity  : 626LabsLLC.626ModLauncher
 > Publisher : CN=177BCE59-0966-4975-9962-10E36652141F
 > Version   : 0.28.0.0            (application x64)
 > Capability: runFullTrust  — the only one declared; no manifest extensions
 > Target    : Windows.Desktop, min 10.0.17763.0
-> Seal      : TO FILL (expect: OK — plugin loader + EAC-disable absent; Nexus compiled in)
+> Seal      : OK — plugin loader + EAC-disable absent; Nexus compiled in
 > Tests     : 4190 passing (Core, master f2d6ca5)
 > Submodule : external/626-mod-plugins pinned at nexus-v0.14.0 (87a1bdc)
 > Exes      : ModManager.App.exe, RestartAgent.exe (Windows App SDK). No MCP server.
-> Endpoints : none added since 0.27.0.0 (re-diff the host list before pasting)
+> Endpoints : none added since 0.27.0.0 (host list diffed across the source, v0.27.0..f2d6ca5)
 > ```
 >
 > **The honest headline.** One new launch that starts a game without its anti-cheat, and a correction.

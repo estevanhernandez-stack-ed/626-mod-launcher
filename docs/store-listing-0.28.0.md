@@ -7,16 +7,16 @@
 > its anti-cheat (AC8), stated alongside the two Elden Ring launches that always did (Seamless Co-op,
 > Mod Engine 2), and a correction to the 0.27.0.0 letter's "never bypasses" sentence.
 >
-> **Package to upload:** not built yet. Build the Store bundle from master `f2d6ca5` plus the version
-> bump in this branch, then fill the block in the reviewer letter from the bundle itself.
+> **Package to upload:** built 2026-11-11 from `docs/store-0.28.0` (master `f2d6ca5` plus the version
+> bump). Identity, version and capability read out of the bundle; seal OK.
 >
 > ```text
 > File      : src/ModManager.App/AppPackages/ModManager.App_0.28.0.0_Store_Test/
 >             ModManager.App_0.28.0.0_x64_Store.msixbundle
-> Size      : TO FILL
-> SHA-256   : TO FILL
+> Size      : 83.8 MB
+> SHA-256   : 63F25F039BF4C85E786A4748DF52C6E223A42EF51BD4026E6334EAB756643778
 > Version   : 0.28.0.0            (application x64)
-> Seal      : TO FILL — must read plugin loader + EAC-disable absent; Nexus compiled in
+> Seal      : OK — plugin loader + EAC-disable absent; Nexus compiled in
 > Tests     : 4190 passing (Core)
 > Submodule : external/626-mod-plugins pinned at nexus-v0.14.0 (87a1bdc)
 > ```
@@ -62,7 +62,7 @@ anti-cheat, so no feature line contradicts the letter.
 ## Certification notes
 
 Paste the letter block of [`store/reviewer-letter-0.28.0.0.md`](store/reviewer-letter-0.28.0.0.md) after
-filling its `TO FILL` fields. Its anti-cheat section is the reason this submission needs a careful read:
+Its anti-cheat section is the reason this submission needs a careful read:
 it names all three launches that skip anti-cheat and corrects the 0.27.0.0 wording.
 
 ## Screenshots
