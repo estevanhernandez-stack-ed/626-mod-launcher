@@ -1,4 +1,4 @@
-Version 0.28.0
+Version 0.28.1
 
 • ACE COMBAT 8 plays modded. Play modded starts the game directly, offline and without its anti-cheat, because the anti-cheat refuses to start with a mod loader present. Stay out of online modes while modded. Play vanilla sets the loader aside and starts the game through Steam with anti-cheat on, for online play.
 
@@ -7,3 +7,5 @@ Version 0.28.0
 • Play on the home screen now does what Play in the game view would. A game set to play without mods starts without them, and when Play needs to ask you something first, the game view opens and asks.
 
 • Playing without mods no longer looks broken. A loader the launcher set aside used to show as missing, with a link to download it again. It now reads as set aside, and only something you never installed shows as missing. The launch menu also offers only the unmodded ways in while your mods are set aside.
+
+• When Steam is closed and a game needs it, the launcher now waits for Steam to sign in before starting the game, instead of starting it a few seconds early.

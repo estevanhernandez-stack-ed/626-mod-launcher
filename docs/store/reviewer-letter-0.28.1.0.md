@@ -1,4 +1,4 @@
-# Notes for certification — reviewer letter — v0.28.0.0 (ACE COMBAT 8 offline launch, launches without anti-cheat stated)
+# Notes for certification — reviewer letter — v0.28.1.0 (ACE COMBAT 8 offline launch, launches without anti-cheat stated)
 
 > **Verified against the real package, not against master.** Identity, version and capability below were read
 > out of the built bundle (the inner `AppxManifest.xml`) on 2026-11-11. The seal script reports the plugin
@@ -6,20 +6,20 @@
 > `ModManager.Core.dll` finds the AC8 offline launch (title, exe path, args, Steam ids): the seal keeps it.
 >
 > ```text
-> File      : src/ModManager.App/AppPackages/ModManager.App_0.28.0.0_Store_Test/
->             ModManager.App_0.28.0.0_x64_Store.msixbundle
+> File      : src/ModManager.App/AppPackages/ModManager.App_0.28.1.0_Store_Test/
+>             ModManager.App_0.28.1.0_x64_Store.msixbundle
 > Size      : 83.8 MB
-> SHA-256   : 63F25F039BF4C85E786A4748DF52C6E223A42EF51BD4026E6334EAB756643778
+> SHA-256   : 6E3F57E76F6B826B20CF87E8DDC52E1ED40E22418544D97CF27C7BD95E03D5F9
 > Identity  : 626LabsLLC.626ModLauncher
 > Publisher : CN=177BCE59-0966-4975-9962-10E36652141F
-> Version   : 0.28.0.0            (application x64)
+> Version   : 0.28.1.0            (application x64)
 > Capability: runFullTrust  — the only one declared; no manifest extensions
 > Target    : Windows.Desktop, min 10.0.17763.0
 > Seal      : OK — plugin loader + EAC-disable absent; Nexus compiled in
-> Tests     : 4190 passing (Core, master f2d6ca5)
+> Tests     : 4197 passing (Core, master f1d18f9)
 > Submodule : external/626-mod-plugins pinned at nexus-v0.14.0 (87a1bdc)
 > Exes      : ModManager.App.exe, RestartAgent.exe (Windows App SDK). No MCP server.
-> Endpoints : none added since 0.27.0.0 (host list diffed across the source, v0.27.0..f2d6ca5)
+> Endpoints : none added since 0.27.0.0 (host list diffed across the source, v0.27.0..f1d18f9)
 > ```
 >
 > **The honest headline.** One new launch that starts a game without its anti-cheat, and a correction.
@@ -34,7 +34,7 @@
 ```text
 Hello reviewer,
 
-Thank you for your time on version 0.28.0.0.
+Thank you for your time on version 0.28.1.0.
 
 WHAT CHANGED
 
@@ -62,6 +62,11 @@ WHAT CHANGED
 4. While the user is playing without mods, the app no longer reports
    the mod loaders it set aside as missing, and its launch menu offers
    only the unmodded ways to start the game.
+
+5. When a launch needs Steam and Steam is closed, the app starts Steam
+   and now waits until an account has signed in before starting the
+   game. Before, it started the game a few seconds too early and the
+   game reported that the user did not own it.
 
 LAUNCHES THAT START A GAME WITHOUT ITS ANTI-CHEAT
 
@@ -114,9 +119,10 @@ code-loading mechanism is present and that the Nexus integration is
 compiled in rather than downloaded. Both are verified for this build.
 
 The behaviour described above is covered by an automated test suite
-(4190 tests). Each change was also driven end to end on the real games
+(4197 tests). Each change was also driven end to end on the real games
 through Windows UI Automation: ACE COMBAT 8 modded and unmodded, and
-Elden Ring through Seamless Co-op and unmodded. In unmodded play the
+Elden Ring through Seamless Co-op and unmodded, and ACE COMBAT 8 from
+a closed Steam client. In unmodded play the
 anti-cheat process was confirmed running each time.
 
 Thank you again.
