@@ -63,6 +63,8 @@ public sealed record GameStateChip(
         "ban-risk" => GameStateTone.Danger,
         "launch-options" => GameStateTone.Caution,
         "patch-day" => GameStateTone.Caution,
+        // Patch Day's other finding: mods that broke on the update. Amber like it, not the accent OLD LOADER uses.
+        "broke-on-update" => GameStateTone.Caution,
         "framework-missing" => GameStateTone.Notice,
         _ => Severity == GameStateSeverity.Info ? GameStateTone.Quiet : GameStateTone.Accent,
     };

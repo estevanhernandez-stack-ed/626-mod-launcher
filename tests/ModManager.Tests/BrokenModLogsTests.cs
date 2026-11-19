@@ -132,5 +132,6 @@ public class BrokenModLogsTests : IDisposable
         Assert.Equal("broke-on-update", chip.Id);
         Assert.Equal(GameStateSeverity.Warning, chip.Severity);
         Assert.Equal("Set these aside", chip.ActionLabel);
+        Assert.Equal(GameStateTone.Caution, chip.Tone);   // amber, with Patch Day
     }
 }
