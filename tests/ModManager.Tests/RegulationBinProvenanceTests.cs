@@ -191,7 +191,7 @@ public class RegulationBinProvenanceTests : IDisposable
 
         var off = await ModToggle.SetEnabledWithOutcomeAsync(c, row, false);
         Assert.True(off.Applied);
-        Assert.False(File.Exists(RegPath));
+        AssertVanillaInPlace();   // the game's original is back, so the game still starts (#397 audit)
         Assert.False(Row(RowName).Enabled);
         Assert.False(Row(RowName).IsBase);   // held, still the mod's
 
@@ -207,7 +207,7 @@ public class RegulationBinProvenanceTests : IDisposable
 
         var off = Json(await WriteTools.SetModEnabled("er-reg", RowName, enabled: false));
         Assert.True(off.GetProperty("ok").GetBoolean(), off.ToString());
-        Assert.False(File.Exists(RegPath));
+        AssertVanillaInPlace();   // off puts the game's original back
 
         var on = Json(await WriteTools.SetModEnabled("er-reg", RowName, enabled: true));
         Assert.True(on.GetProperty("ok").GetBoolean(), on.ToString());

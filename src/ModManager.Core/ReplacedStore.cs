@@ -41,6 +41,19 @@ public static class ReplacedStore
     private const string ManifestFile = "__626replaced.json";
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
+    /// <summary>The files one batch's manifest records, or none for a missing or torn manifest. Read-only.</summary>
+    public static IReadOnlyList<ReplacedEntry> ReadBatch(string batchDir)
+    {
+        try
+        {
+            var mf = Path.Combine(batchDir, ManifestFile);
+            return File.Exists(mf)
+                ? JsonSerializer.Deserialize<List<ReplacedEntry>>(File.ReadAllText(mf), ReadOptions) ?? new List<ReplacedEntry>()
+                : Array.Empty<ReplacedEntry>();
+        }
+        catch { return Array.Empty<ReplacedEntry>(); }
+    }
+
     /// <summary>Every file recorded in any batch manifest under <paramref name="replacedRoot"/>. A missing
     /// root or a torn manifest yields fewer entries, never an exception: one unreadable batch must not hide
     /// the rest. Read-only.</summary>

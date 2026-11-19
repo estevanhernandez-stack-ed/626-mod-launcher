@@ -18,7 +18,12 @@ public static class DirectInjectListing
     {
         var folder = PlayFolder(game.GameRoot);
         var placed = PlacedBy626(game, folder);
-        return Enabled(folder).Select(d => Row(d, enabled: true, placed))
+        // While a mod that replaced a game file is off, the game's original is back in place under the mod's name. It is
+        // the game's file, already represented by the held row, so it is not listed a second time as an enabled one.
+        var restored = folder is null ? new HashSet<string>() : DirectInject.RestoredEntries(Holding(game), folder);
+        return Enabled(folder)
+            .Where(d => restored.Count == 0 || !d.Entries.All(e => restored.Contains(e.Replace('\\', '/').Trim('/').ToLowerInvariant())))
+            .Select(d => Row(d, enabled: true, placed))
             .Concat(DirectInject.ListDisabled(Holding(game)).Select(d => Row(d, enabled: false, placed)))
             .ToList();
     }
