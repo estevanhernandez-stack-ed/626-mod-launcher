@@ -73,7 +73,7 @@ public static class DirectInject
 
     /// <summary>The catalog label for the bare DLL mod loader — hidden once its individual mods are listed.</summary>
     public const string LoaderName = "DLL mod loader";
-    private const string ModsDir = "mods";
+    internal const string ModsDir = "mods";
 
     /// <summary>DLL proxies the OS auto-loads into ANY process started from the game's exe folder (the
     /// loader-hijack surface — dinput8 et al. are the names Windows probes adjacent to the exe). One of

@@ -407,6 +407,11 @@ public sealed partial class MainViewModel : ObservableObject
     // A17. A version-locked loader older than the game's executable, not yet marked checked against it.
     [ObservableProperty] public partial string? StaleLoaderMessage { get; set; }
 
+    /// <summary>Patch Day: live DLL mods whose own logs say they failed after the game's last update
+    /// (<see cref="BrokenModLogs"/>). Null when none. The rows behind it are in <see cref="_brokenMods"/>.</summary>
+    [ObservableProperty] public partial string? BrokenOnUpdateMessage { get; set; }
+    private IReadOnlyList<BrokenMod> _brokenMods = Array.Empty<BrokenMod>();
+
     // The executable write time "Mark as checked" records.
     private DateTime? _staleLoaderExeUtc;
 
@@ -553,6 +558,7 @@ public sealed partial class MainViewModel : ObservableObject
         SteamUpdated = SteamBuildChanged,
         SteamMessage = SteamBuildMessage,
         StaleLoader = StaleLoaderMessage,
+        BrokenOnUpdate = BrokenOnUpdateMessage,
         LoadOrderPrefixed = LoadOrderPrefixMessage,
         LoadOrderPrefixBreaks = _loadOrderPrefixBreaks,
         LoadOrderPrefixStuck = _loadOrderPrefixStuck,
@@ -624,6 +630,7 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnLaunchNeedsAttentionChanged(bool value) => RebuildStateChips();
     partial void OnCoopLauncherMissingChanged(bool value) => RebuildStateChips();
     partial void OnStaleLoaderMessageChanged(string? value) => RebuildStateChips();
+    partial void OnBrokenOnUpdateMessageChanged(string? value) => RebuildStateChips();
     partial void OnLoadOrderPrefixMessageChanged(string? value) => RebuildStateChips();
 
     /// <summary>Set or clear (Auto = null) a mod's MP-compat override, persist it, refresh the badge + summary.</summary>
@@ -906,6 +913,8 @@ public sealed partial class MainViewModel : ObservableObject
             SetupNeedsAttention = false; // collapse the setup banner when no game is active
             SteamBuildChanged = false; // collapse the build-update banner when no game is active
             StaleLoaderMessage = null;
+            BrokenOnUpdateMessage = null;
+            _brokenMods = Array.Empty<BrokenMod>();
             LoadOrderPrefixMessage = null;
             OnPropertyChanged(nameof(HasTools));
             OnPropertyChanged(nameof(HasMissingTools));
@@ -1154,6 +1163,15 @@ public sealed partial class MainViewModel : ObservableObject
             var stale = await Task.Run(() => StaleLoaders.Find(loaderCtx));
             _staleLoaderExeUtc = stale.Loaders.Count > 0 ? stale.GameExeUtc : null;
             StaleLoaderMessage = stale.Summary(loaderCtx.Game.LoaderCheckedExeUtc);
+
+            // Patch Day: DLL mods whose own logs say they failed after the update (read-only, off the UI thread; a
+            // log can be megabytes, so only its tail is read). Direct-inject only: that is the lane with mods\<Mod>\.
+            // No executable found means no date to tie a failure to (the report's date is then default, year 1).
+            DateTime? exeUtc = stale.GameExePath is null ? null : stale.GameExeUtc;
+            _brokenMods = directInject
+                ? await Task.Run(() => BrokenModLogs.Find(DirectInjectListing.PlayFolder(loaderCtx.GameRoot), exeUtc))
+                : Array.Empty<BrokenMod>();
+            BrokenOnUpdateMessage = BrokenModLogs.Summary(_brokenMods, exeUtc);
 
             // Patch Day. While mods are stepped aside a live scan sees no loaders (their proxies sit in holding
             // folders), so the verdict reads the stash's named proxies by their held files' dates instead (D7).
@@ -2072,6 +2090,23 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) { StatusText = ErrorRemedy.Describe(e); }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>The BROKE ON UPDATE chip's action: turn the failed mods off through the same reversible toggle as their
+    /// rows (moved to holding, nothing deleted), then reload. Only ever on the user's click.</summary>
+    [RelayCommand]
+    private async Task SetAsideBrokenModsAsync()
+    {
+        if (_ctx?.Game is null || _brokenMods.Count == 0) return;
+        var names = _brokenMods.Select(b => b.RowName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rows = _allRows.Select(r => r.Mod).Where(m => m.Enabled && names.Contains(m.Name)).ToList();
+        var game = _ctx.Game;
+        var refused = await Task.Run(() => ModToggle.SetDirectInjectAll(game, rows, on: false));
+        await ReloadModsAsync();
+        var done = rows.Count - refused.Count;
+        StatusText = refused.Count == 0
+            ? $"Set {done} mod{(done == 1 ? "" : "s")} aside until {(done == 1 ? "it is" : "they are")} updated. Turn {(done == 1 ? "it" : "them")} back on any time."
+            : $"Set {done} aside; {string.Join(", ", refused.Select(r => r.Name))} couldn't be moved ({refused[0].Error}).";
     }
 
     [RelayCommand]
