@@ -355,7 +355,10 @@ public static class DirectInject
         // before anything moves, and recorded in the same write, so a crash mid-swap still leaves a record that says
         // which batch the original belongs to.
         var swaps = new List<RestoredOriginal>();
-        foreach (var e in present.Where(e => File.Exists(Path.Combine(playFolder, e))))
+        // Only a file the GAME ships (BaseGameFiles: regulation.bin) has a game original to put back. A stash under a mod's
+        // own name (mods\AdjustTheFov.dll, dinput8.dll) holds an older copy of the MOD, from a reinstall or an update:
+        // swapping that back left the mod live while the list said it was off (Neb, 2026-11-18, all six TechieW DLLs).
+        foreach (var e in present.Where(e => BaseGameFiles.IsDirectInjectGameFileName(e) && File.Exists(Path.Combine(playFolder, e))))
         {
             if (OriginalBatch(playFolder, e) is not { } batch) continue;
             var original = Path.Combine(batch, e);
