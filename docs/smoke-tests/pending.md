@@ -2866,3 +2866,16 @@ throwaway modded `regulation.bin` and Elden Ring; no anti-cheat involved until s
 3. **Turn it on.** The modded file is back in `Game\`; the original is back in its batch.
 4. **Play vanilla** with it on: it steps aside the same way, the original is in place, and the game reaches the
    title screen through Steam with EasyAntiCheat. Bring my mods back: the modded file returns.
+
+## Intake carries companion files (.ba2, .xl)
+
+Shipped: a dropped zip, folder or loose file now brings the companions the scanner lists: a Fallout 4 / Starfield
+plugin's `<Plugin> - Main.ba2` / `- Textures.ba2`, an orphan `.ba2`, a Cyberpunk `.xl` alone or beside its `.archive`.
+Before, only declared extensions installed, so a Fallout 4 mod landed without its archives and an `.xl`-only zip
+installed nothing ("not a mod file"). Cyberpunk is registered on Neb, so it is the live case.
+
+1. Make a zip holding `SmokeTest.xl` (any text) and `README.md`. Drop it onto Cyberpunk 2077. The confirmation lists
+   `SmokeTest.xl` only; after install it is in `archive\pc\mod\` and lists as its own row. README stays out.
+2. Turn it off and on: it moves to holding and back. Uninstall it. Do not launch the game with it installed.
+3. If a Fallout 4 or Starfield install is ever registered: drop a mod zip with `<Plugin>.esp` and its `.ba2` archives;
+   all of them land in `Data\`, the list shows ONE row, and turning it off moves the archives with the plugin.
