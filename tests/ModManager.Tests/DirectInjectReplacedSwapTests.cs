@@ -158,7 +158,8 @@ public class DirectInjectReplacedSwapTests : IDisposable
         DirectInject.Execute(root, DirectInject.ReplacedRoot(root), DirectInject.Plan(root, new[] { Path.Combine(staging, Reg) }),
             new HashSet<string>(new[] { Reg }));
         var c = Scanner.GameContext(game);
-        Assert.Contains(RestorePointEngine.PlanVanillaMoves(c), mf => mf.Rel == Reg);   // the mod: planned
+        // The mod goes through the turn-off (which swaps the original back), not the bare move plan.
+        Assert.Contains(RestorePointEngine.PlanVanillaTurnOffs(c, RestorePointEngine.PlanVanillaMoves(c)), t => t.Name == RowName);
 
         ModToggle.SetDirectInjectEnabled(game, RowName, enabled: false);
 

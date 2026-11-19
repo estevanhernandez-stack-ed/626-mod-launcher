@@ -87,6 +87,11 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — camelCase keys merged one at a time by `AppSettingsFile.WriteKey` in `src/ModManager.Core/AppSettingsFile.cs`, locked, atomic temp+rename, shared with the agent's `apply_theme`; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs` and `AppSettingsFileTests.WriteKey_merges_one_key_and_keeps_every_other_setting`)
 - `ModNameIndex` nexus-name-index.json (`src/ModManager.Core/Discovery/ModNameIndex.cs` — per-game Nexus name cache; written via `AtomicJson` by `ModNameIndexSource`)
 
+- Replaced-store manifest `__626replaced.json` `placedSha256` (`src/ModManager.Core/ReplacedStore.cs` —
+  `ReplacedEntry.PlacedSha256`, the hash of the file 626 put in place, so provenance can tell 626's file from the game's
+  own after a verify or patch; `null` on records from older builds; covered by
+  `ProvenanceByContentTests.The_manifest_records_the_placed_hash_in_camelCase`)
+
 - Direct-inject holding record `__626mod.json` `restored` list (`src/ModManager.Core/DirectInject.cs` — `DisabledMeta.Restored`,
   `[{ entry, batch }]`: the game originals a turn-off swapped back in from `<play>/_626/replaced/<batch>/`, `null` on a
   mod that replaced nothing; written via `AtomicJson`; covered by

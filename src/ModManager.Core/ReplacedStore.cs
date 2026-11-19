@@ -31,8 +31,15 @@ public static class ReplacedStore
         return dest;
     }
 
-    /// <summary>One file preserved in a replaced-versions batch: where it came from + when.</summary>
-    public sealed record ReplacedEntry(string OriginalPath, string RelPath, DateTime TakenUtc);
+    /// <summary>One file preserved in a replaced-versions batch: where it came from + when.
+    /// <para><see cref="PlacedSha256"/> is the hash of the file 626 put in its place, recorded at install. It is what lets
+    /// provenance ask whether the file there NOW is 626's: after Steam's verify or a patch puts the game's own file back,
+    /// the path is still recorded but the file is not the one 626 placed (<see cref="BaseGameFiles.Placed"/>). Null on a
+    /// record from an older build.</para></summary>
+    public sealed record ReplacedEntry(string OriginalPath, string RelPath, DateTime TakenUtc)
+    {
+        public string? PlacedSha256 { get; init; }
+    }
 
     /// <summary>Write the batch manifest (provenance for a future revert) atomically.</summary>
     public static void WriteManifest(string batchDir, IReadOnlyList<ReplacedEntry> entries)
@@ -52,6 +59,23 @@ public static class ReplacedStore
                 : Array.Empty<ReplacedEntry>();
         }
         catch { return Array.Empty<ReplacedEntry>(); }
+    }
+
+    /// <summary>Every recorded file with the batch folder that holds its stashed copy, under <paramref name="replacedRoot"/>.
+    /// Same tolerance as <see cref="ReadAll"/>: a missing root or torn manifest yields fewer entries, never an exception.</summary>
+    public static IReadOnlyList<(ReplacedEntry Entry, string BatchDir)> ReadAllWithBatch(string replacedRoot)
+    {
+        var found = new List<(ReplacedEntry, string)>();
+        if (string.IsNullOrEmpty(replacedRoot) || !Directory.Exists(replacedRoot)) return found;
+        IEnumerable<string> manifests;
+        try { manifests = Directory.EnumerateFiles(replacedRoot, ManifestFile, SearchOption.AllDirectories).ToList(); }
+        catch { return found; }
+        foreach (var mf in manifests)
+        {
+            var dir = Path.GetDirectoryName(mf)!;
+            foreach (var e in ReadBatch(dir)) found.Add((e, dir));
+        }
+        return found;
     }
 
     /// <summary>Every file recorded in any batch manifest under <paramref name="replacedRoot"/>. A missing

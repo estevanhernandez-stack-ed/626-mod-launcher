@@ -215,12 +215,16 @@ public static class BaseGameFiles
     /// 626 or by another tool, has none, and reads as the game's: locked on, never moved. That is the safe
     /// side of the call, because moving it leaves the game without the file either way.
     /// </summary>
-    public static bool IsDirectInjectGameFile(string? entry, Placed placed)
-        => IsDirectInjectGameFileName(entry) && !placed.Claims(entry!);
+    /// <param name="copyRoot">Where the copy being judged sits: null for the live file in the play folder, or a holding
+    /// folder for a held copy. Provenance is about a copy, not a path: while a held 626 mod is off, the game's original can
+    /// be live at the same path, and each must read as what it is.</param>
+    public static bool IsDirectInjectGameFile(string? entry, Placed placed, string? copyRoot = null)
+        => IsDirectInjectGameFileName(entry)
+           && !placed.Claims(entry!, copyRoot is null ? null : Path.Combine(copyRoot, entry!));
 
     /// <summary>A direct-inject row is the game's when any file it owns is (<see cref="IsDirectInjectGameFile"/>).</summary>
-    public static bool IsDirectInjectGameRow(IEnumerable<string> entries, Placed placed)
-        => entries.Any(e => IsDirectInjectGameFile(e, placed));
+    public static bool IsDirectInjectGameRow(IEnumerable<string> entries, Placed placed, string? copyRoot = null)
+        => entries.Any(e => IsDirectInjectGameFile(e, placed, copyRoot));
 
     /// <summary>
     /// What 626 can prove it put in a play folder. Three records, each read only when asked (so a listing with
@@ -237,7 +241,12 @@ public static class BaseGameFiles
         private readonly string? _dataDir;
         private readonly string? _folder;
         private HashSet<string>? _rels;
-        private HashSet<string>? _fulls;
+        // What each recorded replace says about content: the hash of the file 626 placed, where the stashed original is,
+        // and when. Keyed by the replaced file's full path, which both stores record.
+        private Dictionary<string, List<(string? PlacedSha, string StashedCopy, DateTime TakenUtc)>>? _byFull;
+        private DateTime? _exeUtc;
+        private IReadOnlyDictionary<string, IReadOnlySet<string>>? _swappedIn;
+        private readonly Dictionary<string, string?> _hashes = new(StringComparer.OrdinalIgnoreCase);
 
         /// <param name="gameRoot">The game root, which an install record's location path is relative to.</param>
         /// <param name="dataDir">Where install records and the data-folder replaced store live.</param>
@@ -252,20 +261,73 @@ public static class BaseGameFiles
         /// <summary>Nothing is proven: every name the game ships reads as the game's.</summary>
         public static Placed None => new(null, null, null);
 
-        /// <summary>True when 626 placed <paramref name="rel"/> (relative to the play folder).</summary>
-        public bool Claims(string rel)
+        /// <summary>True when the live file at <paramref name="rel"/> (relative to the play folder) is 626's.</summary>
+        public bool Claims(string rel) => Claims(rel, null);
+
+        /// <summary>True when a copy of <paramref name="rel"/> is 626's: <paramref name="copyAbs"/> for a held copy, or the
+        /// live file in the play folder when null.
+        ///
+        /// <para>A record that names the path is necessary, not sufficient. A replace record proves 626 once replaced the
+        /// path, and the file there can since have been put back by Steam's verify or replaced by a patch: read as 626's,
+        /// the game's own file listed as a mod and a return to vanilla moved it (#397 audit; the 2026-11-18 smoke of
+        /// #418). So, by content: the file 626 placed is 626's; a stashed original, or one a held record swapped back in,
+        /// is the game's; and when 626 recorded what it placed and this copy is neither, it is the game's (a patch's new
+        /// version). An install record, or a replace from a build that recorded no hash, still claims by path when the
+        /// content proves nothing either way, as before.</para></summary>
+        public bool Claims(string rel, string? copyAbs)
         {
             if (string.IsNullOrEmpty(_folder) || string.IsNullOrWhiteSpace(rel)) return false;
             Load();
-            if (_rels!.Contains(NormRel(rel))) return true;
-            return FullNorm(Path.Combine(_folder, rel)) is { } full && _fulls!.Contains(full);
+            var norm = NormRel(rel);
+            var full = FullNorm(Path.Combine(_folder, rel));
+            var replaces = full is not null && _byFull!.TryGetValue(full, out var r) ? r : null;
+            // An install record alone claims by path. One that names a REPLACED file goes through the content check like
+            // any replace, whichever store holds the replace (the Scanner lane writes both).
+            var byInstall = _rels!.Contains(norm) && replaces is null;
+            if (replaces is null && !byInstall) return false;
+            var hashRecorded = replaces is not null && replaces.Any(x => x.PlacedSha is { Length: > 0 });
+
+            var copy = copyAbs ?? Path.Combine(_folder, rel);
+            // Unreadable: nothing to compare. With a recorded hash, 626 can't show the file is the one it placed, so it is
+            // the game's (the safe side); with only a path record, the record stands, as before.
+            if (Hash(copy) is not { } sha) return !hashRecorded;
+            if (replaces is not null)
+            {
+                if (replaces.Any(x => string.Equals(x.PlacedSha, sha, StringComparison.OrdinalIgnoreCase))) return true;
+                if (replaces.Any(x => string.Equals(Hash(x.StashedCopy), sha, StringComparison.OrdinalIgnoreCase))) return false;
+            }
+            if (_swappedIn!.TryGetValue(norm.ToLowerInvariant(), out var originals) && originals.Contains(sha)) return false;
+            if (byInstall) return true;
+            // 626 knows what it placed here and this is something else: the game's (verify, or a patch's new version).
+            if (hashRecorded) return false;
+            // A record from before placed hashes: matches nothing known, and the game executable was written after the
+            // replace. That is a patch's file. The worst case is a 626 file reading as the game's and staying on, the
+            // side the laws accept; the other way moves the game's file and the game won't start.
+            if (replaces is not null && _exeUtc is { } exe && exe > replaces.Max(x => x.TakenUtc)) return false;
+            return true;
+        }
+
+        private string? Hash(string path)
+        {
+            if (_hashes.TryGetValue(path, out var known)) return known;
+            string? sha = null;
+            try { if (File.Exists(path)) sha = RestorePoints.FileTally.Sha256(path); }
+            catch { /* unreadable: compare nothing */ }
+            return _hashes[path] = sha;
         }
 
         private void Load()
         {
             if (_rels is not null) return;
             var rels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var fulls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var byFull = new Dictionary<string, List<(string?, string, DateTime)>>(StringComparer.OrdinalIgnoreCase);
+            IReadOnlyDictionary<string, IReadOnlySet<string>> swappedIn = new Dictionary<string, IReadOnlySet<string>>();
+            void Note(string? fullPath, ReplacedStore.ReplacedEntry e, string batchDir)
+            {
+                if (FullNorm(fullPath) is not { } p) return;
+                if (!byFull.TryGetValue(p, out var list)) byFull[p] = list = new List<(string?, string, DateTime)>();
+                list.Add((e.PlacedSha256, Path.Combine(batchDir, e.RelPath), e.TakenUtc));
+            }
             try
             {
                 if (!string.IsNullOrEmpty(_dataDir))
@@ -276,18 +338,29 @@ public static class BaseGameFiles
                             if (rec.LocationPath is { Length: > 0 } where && ModInstallRegistry.SameLocationPath(where, here))
                                 foreach (var f in rec.Files) rels.Add(NormRel(f));
 
-                    foreach (var e in ReplacedStore.ReadAll(Path.Combine(_dataDir, "replaced")))
-                        if (FullNorm(e.OriginalPath) is { } p) fulls.Add(p);
+                    foreach (var (e, batch) in ReplacedStore.ReadAllWithBatch(Path.Combine(_dataDir, "replaced")))
+                        Note(e.OriginalPath, e, batch);
                 }
-                foreach (var e in ReplacedStore.ReadAll(DirectInject.ReplacedRoot(_folder!)))
+                foreach (var (e, batch) in ReplacedStore.ReadAllWithBatch(DirectInject.ReplacedRoot(_folder!)))
                 {
                     if (!string.IsNullOrEmpty(e.RelPath)) rels.Add(NormRel(e.RelPath));
-                    if (FullNorm(e.OriginalPath) is { } p) fulls.Add(p);
+                    // Keyed by where the file sits in THIS play folder, whatever path the record was written with.
+                    Note(Path.Combine(_folder!, e.RelPath), e, batch);
                 }
             }
             catch { /* an unreadable record proves nothing; the file reads as the game's, the safe side */ }
+            // Read apart from the stores, so a failure here never drops a replace record (the unsafe side).
+            try { if (!string.IsNullOrEmpty(_dataDir)) swappedIn = DirectInject.SwappedInOriginalHashes(Path.Combine(_dataDir, "direct-disabled")); }
+            catch { /* no swapped-in hashes known: the stash comparison still applies */ }
+            try
+            {
+                var parent = Path.GetDirectoryName(_folder!);
+                _exeUtc = StaleLoaders.GameExecutable(parent is null ? new[] { _folder! } : new[] { _folder!, parent })?.Utc;
+            }
+            catch { _exeUtc = null; }
             _rels = rels;
-            _fulls = fulls;
+            _byFull = byFull;
+            _swappedIn = swappedIn;
         }
 
         private static string NormRel(string p) => p.Replace('\\', '/').Trim('/');
