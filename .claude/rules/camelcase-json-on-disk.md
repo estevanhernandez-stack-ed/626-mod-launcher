@@ -87,6 +87,11 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — camelCase keys merged one at a time by `AppSettingsFile.WriteKey` in `src/ModManager.Core/AppSettingsFile.cs`, locked, atomic temp+rename, shared with the agent's `apply_theme`; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs` and `AppSettingsFileTests.WriteKey_merges_one_key_and_keeps_every_other_setting`)
 - `ModNameIndex` nexus-name-index.json (`src/ModManager.Core/Discovery/ModNameIndex.cs` — per-game Nexus name cache; written via `AtomicJson` by `ModNameIndexSource`)
 
+- Direct-inject holding record `__626mod.json` `restored` list (`src/ModManager.Core/DirectInject.cs` — `DisabledMeta.Restored`,
+  `[{ entry, batch }]`: the game originals a turn-off swapped back in from `<play>/_626/replaced/<batch>/`, `null` on a
+  mod that replaced nothing; written via `AtomicJson`; covered by
+  `DirectInjectReplacedSwapTests.The_hold_record_names_the_batch_in_camelCase`)
+
 - `ModInstallManifest` per-install records (`src/ModManager.Core/ModInstallRegistry.cs` — written to
   `<dataDir>/installs/<installId>.json` via `AtomicJson`; what an intake actually placed, so a row can
   say which files are its own; optional `locationPath`, where the location was when 626 installed, covered by

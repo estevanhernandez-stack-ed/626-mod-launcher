@@ -647,10 +647,14 @@ public static partial class RestorePointEngine
         // A file the game ships and 626 did not place (Elden Ring's regulation.bin) is the game's, not a mod: it
         // is never planned, so vanilla neither moves it nor seals it as a moved file.
         var placed = new BaseGameFiles.Placed(c.GameRoot, c.DataDir, playFolder);
+        // Nor a game original a held mod's turn-off put back in its place: that file is the game's while the mod is
+        // off, though 626 once replaced the path. Moving it would leave the game with no file, the bug the swap fixed.
+        var restored = DirectInject.RestoredEntries(Path.Combine(c.DataDir, "direct-disabled"), playFolder);
         foreach (var di in DirectInject.Detect(fileNames, dirNames))
             foreach (var rel in di.Entries)
             {
                 if (BaseGameFiles.IsDirectInjectGameFile(rel, placed)) continue;
+                if (restored.Contains(rel.Replace('\\', '/').Trim('/').ToLowerInvariant())) continue;
                 var srcAbs = Path.Combine(playFolder, rel);
                 if (File.Exists(srcAbs)) planned.Add(new MovedFile(rel, new FileInfo(srcAbs).Length, FileTally.Sha256(srcAbs)));
                 else if (Directory.Exists(srcAbs)) planned.Add(new MovedFile(rel, FileTally.ByteSize(srcAbs), null));

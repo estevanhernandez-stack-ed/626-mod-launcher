@@ -2849,3 +2849,20 @@ EAC title. Elden Ring registered with Seamless Co-op installed (its launcher is 
 4. **Save offer:** with `ER0000.sl2` holding 0 characters and `.co2` holding some, home Play in vanilla mode opens
    the game view and shows the save-type offer. Escape: nothing launches.
 5. **Bring my mods back.** The game folder diff is empty, as in the PR #407 smoke.
+
+## Direct-inject: turning off a 626-replaced file puts the game's original back
+
+Shipped: turning off a mod that 626 installed OVER one of the game's own files (Elden Ring's `regulation.bin`)
+moves the game's original back in from `Game\_626\replaced\<batch>\`, and turning it on reverses the swap. Before,
+"off" and Safe Clear's return to vanilla left no `regulation.bin` at all and the game would not start. Needs a
+throwaway modded `regulation.bin` and Elden Ring; no anti-cheat involved until step 4.
+
+1. Note the size and date of `Game\regulation.bin`. Drop a modded `regulation.bin` onto Elden Ring and choose
+   Replace. The row "Modded regulation.bin" reads enabled; `Game\_626\replaced\<new batch>\regulation.bin` is the
+   original.
+2. **Turn it off.** `Game\regulation.bin` is the original again (same size and date as step 1); the batch folder
+   no longer holds it; the mod is in `_626mods\elden-ring\direct-disabled\modded-regulation-bin\`. The list shows
+   ONE "Modded regulation.bin" row, turned off.
+3. **Turn it on.** The modded file is back in `Game\`; the original is back in its batch.
+4. **Play vanilla** with it on: it steps aside the same way, the original is in place, and the game reaches the
+   title screen through Steam with EasyAntiCheat. Bring my mods back: the modded file returns.

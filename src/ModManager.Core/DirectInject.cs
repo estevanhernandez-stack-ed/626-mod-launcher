@@ -136,6 +136,99 @@ public static class DirectInject
         public string Name { get; set; } = "";
         public string Kind { get; set; } = "";
         public List<string> Entries { get; set; } = new();
+        /// <summary>Game files this turn-off put back from the replaced store, so turning the mod on knows to return
+        /// them to their batch. Null on a record from an older build, and on a mod that replaced nothing.</summary>
+        public List<RestoredOriginal>? Restored { get; set; }
+    }
+
+    /// <summary>One original swapped back into the play folder: the entry, the batch folder (its name under
+    /// <see cref="ReplacedRoot"/>) it came out of and goes back into, and its size and SHA-256. The original is known
+    /// by CONTENT: a different file later put at the same path (another mod dropped over it) is not the original, and
+    /// is never hidden, exempted from vanilla, or filed away into the batch as one (reversibility audit, 2026-11-18).</summary>
+    private sealed class RestoredOriginal
+    {
+        public string Entry { get; set; } = "";
+        public string Batch { get; set; } = "";
+        public long Bytes { get; set; }
+        public string Sha256 { get; set; } = "";
+    }
+
+    /// <summary>The batch folder holding the game's own copy of <paramref name="entry"/>. A later batch can hold an older
+    /// version of a MOD (vanilla, then v1, then v2 leaves v1 in the second batch), so the earliest batch is the one that
+    /// holds what was there before 626 touched the path. Except across a game patch: a copy stashed before the game
+    /// executable's last write is the previous version's file, and 1.0's regulation.bin against a 1.1 executable won't
+    /// start. So the earliest batch stashed after that write wins, and the earliest overall only when there is none.
+    /// Null when nothing was replaced there, or the copy is gone.</summary>
+    private static string? OriginalBatch(string playFolder, string entry)
+    {
+        var root = ReplacedRoot(playFolder);
+        if (!Directory.Exists(root)) return null;
+        var rel = NormEntry(entry);
+        string[] batches;
+        try { batches = Directory.GetDirectories(root); }
+        catch { return null; }
+        var candidates = batches
+            .Select(b => (Dir: b, Hit: ReplacedStore.ReadBatch(b).FirstOrDefault(e => NormEntry(e.RelPath) == rel)))
+            .Where(x => x.Hit is not null && File.Exists(Path.Combine(x.Dir, x.Hit.RelPath)))
+            .OrderBy(x => x.Hit!.TakenUtc).ThenBy(x => Path.GetFileName(x.Dir), StringComparer.Ordinal)
+            .ToList();
+        if (candidates.Count == 0) return null;
+        var parent = Path.GetDirectoryName(playFolder);
+        var exe = StaleLoaders.GameExecutable(parent is null ? new[] { playFolder } : new[] { playFolder, parent });
+        var afterPatch = exe is { } e ? candidates.FirstOrDefault(x => x.Hit!.TakenUtc >= e.Utc) : default;
+        return (afterPatch.Dir ?? candidates[0].Dir);
+    }
+
+    private static string NormEntry(string? p) => (p ?? "").Replace('\\', '/').Trim('/').ToLowerInvariant();
+
+    /// <summary>The swap is still in effect: the file in the play folder is the original this record put there.</summary>
+    private static bool InEffect(RestoredOriginal r, string playFolder)
+    {
+        if (r.Batch.Length == 0 || r.Sha256.Length == 0) return false;
+        var live = Path.Combine(playFolder, r.Entry);
+        try
+        {
+            return File.Exists(live) && new FileInfo(live).Length == r.Bytes
+                && string.Equals(RestorePoints.FileTally.Sha256(live), r.Sha256, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    /// <summary>A record that still holds something of its own. One whose entries have all gone home is stale (its delete
+    /// failed, or a crash beat it), and says nothing about the play folder: the same rule <see cref="Disable"/> applies
+    /// before writing over a record.</summary>
+    private static bool StillHolds(string dir, DisabledMeta meta)
+        => (meta.Entries ?? new List<string>()).Any(e => Exists(Path.Combine(dir, e)));
+
+    /// <summary>The play-folder entries where a held mod's turn-off put the game's original back AND that original is
+    /// still the file there, normalized (forward slashes, lower case). While a mod is off these are the game's files: the
+    /// listing does not show them as a second row and a return to vanilla leaves them in place. A record that no longer
+    /// holds anything, or a path now holding a different file, does not count.</summary>
+    public static IReadOnlySet<string> RestoredEntries(string holdingRoot, string playFolder)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrEmpty(holdingRoot) || string.IsNullOrEmpty(playFolder) || !Directory.Exists(holdingRoot)) return set;
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(holdingRoot); }
+        catch { return set; }
+        foreach (var dir in dirs)
+        {
+            var meta = ReadMeta(dir);
+            if (meta?.Restored is not { Count: > 0 } restored || !StillHolds(dir, meta)) continue;
+            foreach (var r in restored)
+                if (InEffect(r, playFolder)) set.Add(NormEntry(r.Entry));
+        }
+        return set;
+    }
+
+    /// <summary>The same, for one held mod: the game files its own turn-off put back that are still in place. Turning that
+    /// mod on reverses the swap, so those files in the way are expected, not a collision.</summary>
+    public static IReadOnlySet<string> RestoredEntries(string holdingRoot, string modName, string playFolder)
+    {
+        var dir = Path.Combine(holdingRoot, EnginePresets.Slugify(modName));
+        var meta = ReadMeta(dir);
+        if (meta?.Restored is not { Count: > 0 } restored || !StillHolds(dir, meta)) return new HashSet<string>();
+        return restored.Where(r => InEffect(r, playFolder)).Select(r => NormEntry(r.Entry)).ToHashSet(StringComparer.Ordinal);
     }
 
     public static IReadOnlyList<DirectInjectMod> Detect(IEnumerable<string> files, IEnumerable<string> dirs)
@@ -227,26 +320,76 @@ public static class DirectInject
                 $"Couldn't turn \"{mod.Name}\" off: an earlier copy of it is already turned off and held. "
                 + "Nothing was moved. Turn that copy on, or remove one of the two, first.");
 
+        // A file 626 put OVER one of the game's own has the original waiting in the replaced store. Turning the mod off
+        // puts it back, or "off" leaves the game with no file at all (Elden Ring's regulation.bin, #397 audit). Found
+        // before anything moves, and recorded in the same write, so a crash mid-swap still leaves a record that says
+        // which batch the original belongs to.
+        var swaps = new List<RestoredOriginal>();
+        foreach (var e in present.Where(e => File.Exists(Path.Combine(playFolder, e))))
+        {
+            if (OriginalBatch(playFolder, e) is not { } batch) continue;
+            var original = Path.Combine(batch, e);
+            try
+            {
+                swaps.Add(new RestoredOriginal
+                {
+                    Entry = e, Batch = Path.GetFileName(batch),
+                    Bytes = new FileInfo(original).Length, Sha256 = RestorePoints.FileTally.Sha256(original),
+                });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Nothing has moved yet. Turning the mod off without its original would leave the game with no file.
+                throw new InvalidOperationException(
+                    $"Couldn't turn \"{mod.Name}\" off: the game's own {e}, kept at {original}, can't be read ({ex.Message}). "
+                    + "Nothing was moved.", ex);
+            }
+        }
+
         var dirExisted = Directory.Exists(dir);
         var metaPath = Path.Combine(dir, MetaFile);
         var moved = new List<string>();
+        var swapped = new List<RestoredOriginal>();
         try
         {
             Directory.CreateDirectory(dir);
-            AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = present });
+            AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta
+            {
+                Name = mod.Name, Kind = mod.Kind, Entries = present, Restored = swaps.Count > 0 ? swaps : null,
+            });
             foreach (var entry in present)
             {
                 MoveAny(Path.Combine(playFolder, entry), Path.Combine(dir, entry));
                 moved.Add(entry);
             }
+            foreach (var s in swaps)
+            {
+                MoveAny(Path.Combine(ReplacedRoot(playFolder), s.Batch, s.Entry), Path.Combine(playFolder, s.Entry));
+                swapped.Add(s);
+            }
         }
         catch (Exception e)
         {
+            // Originals first, back into their batches, so the mod's own files have their names free to return to.
+            var notReturned = new List<RestoredOriginal>();
+            foreach (var s in swapped)
+            {
+                try { MoveAny(Path.Combine(playFolder, s.Entry), Path.Combine(ReplacedRoot(playFolder), s.Batch, s.Entry)); }
+                catch { notReturned.Add(s); /* stays in the game folder: the game still starts, and the record below keeps its batch */ }
+            }
             var stranded = MoveBack(moved, from: dir, to: playFolder);
             if (stranded.Count > 0)
             {
-                // What could not go back stays held and LISTED, so it can be turned on from the app.
-                try { AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta { Name = mod.Name, Kind = mod.Kind, Entries = stranded }); }
+                // What could not go back stays held and LISTED, so it can be turned on from the app. An original that could
+                // not return to its batch stays in the record too, so turning the mod on knows to send it home instead of
+                // reading it as a fresh install in the way.
+                try
+                {
+                    AtomicJson.WriteJsonAtomic(metaPath, new DisabledMeta
+                    {
+                        Name = mod.Name, Kind = mod.Kind, Entries = stranded, Restored = notReturned.Count > 0 ? notReturned : null,
+                    });
+                }
                 catch { /* the message below still names them */ }
             }
             else
@@ -285,16 +428,34 @@ public static class DirectInject
                 $"626 can't turn \"{modName}\" on: the files held under that name belong to \"{meta.Name}\". Nothing was moved.");
 
         var held = meta.Entries.Where(e => Exists(Path.Combine(dir, e))).ToList();
-        var taken = held.Where(e => Exists(Path.Combine(playFolder, e))).ToList();
+        // A game original the turn-off swapped back in occupies the mod's name on purpose; it goes back to its batch
+        // first. Only one that is actually still in the game folder needs moving.
+        var swaps = (meta.Restored ?? new List<RestoredOriginal>())
+            .Where(r => InEffect(r, playFolder))   // by content: a different file at that path is in the way, not the original
+            .ToList();
+        var swapNames = swaps.Select(r => NormEntry(r.Entry)).ToHashSet(StringComparer.Ordinal);
+        var taken = held.Where(e => Exists(Path.Combine(playFolder, e)) && !swapNames.Contains(NormEntry(e))).ToList();
         if (taken.Count > 0)
             throw new HeldCopyCollisionException(
                 $"Couldn't turn \"{meta.Name}\" back on: {Names(taken)} {(taken.Count == 1 ? "is" : "are")} already in "
                 + "the game folder, probably from a fresh install. Nothing was moved. Turn that copy off or remove it, "
                 + "then try again.");
+        // The batch slot an original returns to must be empty, or moving it in would destroy whichever file is there.
+        var refilled = swaps.Where(r => Exists(Path.Combine(ReplacedRoot(playFolder), r.Batch, r.Entry))).Select(r => r.Entry).ToList();
+        if (refilled.Count > 0)
+            throw new HeldCopyCollisionException(
+                $"Couldn't turn \"{meta.Name}\" back on: the game's original {Names(refilled)} can't go back to where 626 keeps it, "
+                + $"because another copy is already there ({ReplacedRoot(playFolder)}). Nothing was moved.");
 
+        var unswapped = new List<RestoredOriginal>();
         var restored = new List<string>();
         try
         {
+            foreach (var s in swaps)
+            {
+                MoveAny(Path.Combine(playFolder, s.Entry), Path.Combine(ReplacedRoot(playFolder), s.Batch, s.Entry));
+                unswapped.Add(s);
+            }
             foreach (var entry in held)
             {
                 MoveAny(Path.Combine(dir, entry), Path.Combine(playFolder, entry));
@@ -304,6 +465,12 @@ public static class DirectInject
         catch (Exception e)
         {
             var stranded = MoveBack(restored, from: playFolder, to: dir);
+            // Then the originals back into the game folder, so a failed turn-on leaves the game able to start.
+            foreach (var s in unswapped)
+            {
+                try { MoveAny(Path.Combine(ReplacedRoot(playFolder), s.Batch, s.Entry), Path.Combine(playFolder, s.Entry)); }
+                catch { /* it stays in its batch, where Restore finds it */ }
+            }
             throw new InvalidOperationException(
                 $"Couldn't turn \"{meta.Name}\" back on ({e.Message}) — is the game running?"
                 + (stranded.Count == 0 ? " It is still turned off." : $" {Names(stranded)} could not be moved back to holding and {(stranded.Count == 1 ? "is" : "are")} in the game folder."), e);

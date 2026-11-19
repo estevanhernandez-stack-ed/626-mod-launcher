@@ -119,7 +119,7 @@ public static class StaleLoaders
     public static (string Path, DateTime Utc)? GameExecutable(GameContext ctx)
         => GameExecutable(FrameworkDeps.ResolveProbeRoots(ctx));
 
-    private static (string Path, DateTime Utc)? GameExecutable(IReadOnlyList<string> roots)
+    internal static (string Path, DateTime Utc)? GameExecutable(IReadOnlyList<string> roots)
     {
         var exes = new List<FileInfo>();
         foreach (var root in roots)

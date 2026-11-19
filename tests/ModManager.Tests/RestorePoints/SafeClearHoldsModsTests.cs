@@ -367,7 +367,8 @@ public class SafeClearHoldsModsTests : IDisposable
 
         Assert.True((await Make(new Provider(new[] { di })).SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
 
-        Assert.False(File.Exists(Path.Combine(play, "regulation.bin")));   // held, as before
+        // The mod is held and the game's original is back in its place, so vanilla can start (#397 audit).
+        Assert.Equal(new byte[] { 4, 4, 4 }, File.ReadAllBytes(Path.Combine(play, "regulation.bin")));
         var ga = Archive(RestorePointManifestStore.Read(RpDir)!, di.Id);
         Assert.DoesNotContain(ga.LeftInPlace ?? Array.Empty<InPlaceNote>(), n => n.Reason.Contains("regulation.bin"));
     }
@@ -389,7 +390,7 @@ public class SafeClearHoldsModsTests : IDisposable
         var orch = Make(p);
 
         Assert.True((await orch.SafeClearAsync(new SafeClearOptions { DefaultEndState = "vanilla" }, Ts, default)).Ok);
-        Assert.False(File.Exists(Path.Combine(play, "regulation.bin")));
+        Assert.Equal(new byte[] { 4, 4, 4 }, File.ReadAllBytes(Path.Combine(play, "regulation.bin")));   // the game's original, back
         Assert.Contains(Archive(RestorePointManifestStore.Read(RpDir)!, di.Id).TurnedOffByClear!, t => t.Name == "Modded regulation.bin");
 
         var restore = await orch.RestoreAsync(Ts, default);

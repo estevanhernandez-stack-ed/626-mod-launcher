@@ -194,7 +194,10 @@ public static class ModToggle
         var held = DirectInject.ListDisabled(holding).FirstOrDefault(m => m.Name == modName);
         if (held is null) return;
         var placed = DirectInjectListing.PlacedBy626(game, folder);
-        var live = held.Entries.FirstOrDefault(e => BaseGameFiles.IsDirectInjectGameFile(e, placed)
+        // A game file this mod's own turn-off swapped back in is expected there: turning on returns it to its batch.
+        var swappedIn = DirectInject.RestoredEntries(holding, modName, folder);
+        var live = held.Entries.FirstOrDefault(e => !swappedIn.Contains(e.Replace('\\', '/').Trim('/').ToLowerInvariant())
+                                                    && BaseGameFiles.IsDirectInjectGameFile(e, placed)
                                                     && (File.Exists(Path.Combine(folder, e)) || Directory.Exists(Path.Combine(folder, e))));
         if (live is null) return;
         throw new HeldCopyCollisionException(
