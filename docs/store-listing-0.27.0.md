@@ -26,13 +26,27 @@
 > The build printed one warning: `mspdbcmf.exe` not found, so no symbols package (`.appxsym`) was made.
 > That affects crash-dump symbolication only, not the package.
 
-## Before upload: the packaged-build smoke
+## Packaged-build smoke: passed 2026-11-08
 
-Patch Day, vanilla mode and the save offer were verified live on debug builds only. Install this
-bundle side-by-side (throwaway identity, `-p:AppxPackageDir=` to a temp folder, never this one) or
-from the Store flight, and on Elden Ring run: Play vanilla, quit at the title screen, Bring my mods
-back (don't launch), then Play modded. Diff the game folder before and after. Rebuild into this folder
-only if the bundle changes, and re-read its identity and hash.
+Run on Neb against the submission bundle's own files, registered under a throwaway identity
+(`626LabsLLC.626ModLauncherSmoke`) with `Add-AppxPackage -Register` in Developer Mode, beside the Store
+0.25.0.0 install. The only signing key with a private half had expired (2026-10-25), and loose
+registration runs byte-identical binaries with real package identity, so no cert was needed. The
+`ModManager.App.dll` hash matched the bundle's.
+
+On Elden Ring:
+
+- **Play vanilla** (`LaunchMenuPlayVanilla`): launched through Steam with EasyAntiCheat. ERSS2, ReShade,
+  `SeamlessCoop\`, `dinput8.dll`, `d3d12.dll`, `dxgi.dll` and every `mods\` DLL set aside.
+  `ersc_launcher.exe` stays, by design: a launch target, inert without `SeamlessCoop\`.
+- **Bring my mods back (don't launch)**: "Your mods are back. Nothing launched." No process started.
+  The game folder diff against the pre-launch snapshot was **empty** (450 files).
+- **Play modded**: launched through Seamless and loaded every mod (the Nov 4 patch errors came from
+  the mods' authors). After exit, only game-written logs and settings differed.
+
+The test package was removed after its private folder was confirmed to hold none of the user's files.
+Found in passing, not blocking: Play modded from modded mode writes no status line, so a previous
+"Nothing launched." stays up while the game runs (filed for the next Patch Day slice).
 
 ## What changed for a user
 
