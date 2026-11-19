@@ -655,6 +655,9 @@ public static partial class RestorePointEngine
             {
                 if (BaseGameFiles.IsDirectInjectGameFile(rel, placed)) continue;
                 if (restored.Contains(rel.Replace('\\', '/').Trim('/').ToLowerInvariant())) continue;
+                // A file 626 put over the game's own, with the original stashed: the turn-off swaps the original back. A bare
+                // move here would leave the game with no file (the #418 bug, in the vanilla path; provenance audit).
+                if (BaseGameFiles.IsDirectInjectGameFileName(rel) && DirectInject.HasStashedOriginal(playFolder, rel)) continue;
                 var srcAbs = Path.Combine(playFolder, rel);
                 if (File.Exists(srcAbs)) planned.Add(new MovedFile(rel, new FileInfo(srcAbs).Length, FileTally.Sha256(srcAbs)));
                 else if (Directory.Exists(srcAbs)) planned.Add(new MovedFile(rel, FileTally.ByteSize(srcAbs), null));

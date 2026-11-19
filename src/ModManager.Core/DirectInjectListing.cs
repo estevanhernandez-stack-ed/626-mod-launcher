@@ -23,8 +23,11 @@ public static class DirectInjectListing
         var restored = folder is null ? new HashSet<string>() : DirectInject.RestoredEntries(Holding(game), folder);
         return Enabled(folder)
             .Where(d => restored.Count == 0 || !d.Entries.All(e => restored.Contains(e.Replace('\\', '/').Trim('/').ToLowerInvariant())))
-            .Select(d => Row(d, enabled: true, placed))
-            .Concat(DirectInject.ListDisabled(Holding(game)).Select(d => Row(d, enabled: false, placed)))
+            .Select(d => Row(d, enabled: true, placed, copyRoot: null))
+            // A held row is judged by its HELD copy: a 626 mod held while the game's original is live at the same path is
+            // still the mod, and a game file an older build moved aside is still the game's.
+            .Concat(DirectInject.ListDisabled(Holding(game))
+                .Select(d => Row(d, enabled: false, placed, copyRoot: Path.Combine(Holding(game), EnginePresets.Slugify(d.Name)))))
             .ToList();
     }
 
@@ -60,12 +63,12 @@ public static class DirectInjectListing
 
     public static string Holding(GameEntry game) => Path.Combine(Scanner.DataDirForGame(game), "direct-disabled");
 
-    private static Mod Row(DirectInjectMod d, bool enabled, BaseGameFiles.Placed placed) => new()
+    private static Mod Row(DirectInjectMod d, bool enabled, BaseGameFiles.Placed placed, string? copyRoot) => new()
     {
         // A catalog row that owns a file the game ships (Elden Ring's regulation.bin) is the game's unless 626
         // placed it: the one game-file mark, so every guard that reads Mod.IsBase applies. Held rows too, so a
         // game file an older build moved aside can come back and can never be turned off again.
-        IsBase = BaseGameFiles.IsDirectInjectGameRow(d.Entries, placed),
+        IsBase = BaseGameFiles.IsDirectInjectGameRow(d.Entries, placed, copyRoot),
         Name = d.Name,
         Base = d.Name,
         Class = d.Kind,                 // chip: GRAPHICS / CO-OP / UPSCALER / DISPLAY / GAMEPLAY / DLL

@@ -179,6 +179,36 @@ public static class DirectInject
         return (afterPatch.Dir ?? candidates[0].Dir);
     }
 
+    /// <summary>True when the replaced store beside the game holds the game's original for <paramref name="entry"/>, so a
+    /// turn-off can swap it back. Vanilla leaves such a file to the turn-off rather than moving it bare.</summary>
+    public static bool HasStashedOriginal(string playFolder, string entry) => OriginalBatch(playFolder, entry) is not null;
+
+    private static string? TryHash(string file)
+    {
+        try { return RestorePoints.FileTally.Sha256(file); }
+        catch { return null; }
+    }
+
+    /// <summary>The hashes of every game original a held record says it swapped back in, by normalized entry. Provenance
+    /// reads these as "this content is the game's", alongside the copies still stashed in the replaced store.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> SwappedInOriginalHashes(string holdingRoot)
+    {
+        var map = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        if (string.IsNullOrEmpty(holdingRoot) || !Directory.Exists(holdingRoot)) return new Dictionary<string, IReadOnlySet<string>>();
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(holdingRoot); }
+        catch { dirs = Array.Empty<string>(); }
+        foreach (var dir in dirs)
+            foreach (var r in ReadMeta(dir)?.Restored ?? new List<RestoredOriginal>())
+                if (r.Sha256.Length > 0)
+                {
+                    var k = NormEntry(r.Entry);
+                    if (!map.TryGetValue(k, out var set)) map[k] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    set.Add(r.Sha256);
+                }
+        return map.ToDictionary(kv => kv.Key, kv => (IReadOnlySet<string>)kv.Value, StringComparer.Ordinal);
+    }
+
     private static string NormEntry(string? p) => (p ?? "").Replace('\\', '/').Trim('/').ToLowerInvariant();
 
     /// <summary>The swap is still in effect: the file in the play folder is the original this record put there.</summary>
@@ -609,7 +639,11 @@ public static class DirectInject
             {
                 backupPath = ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
                 CopyIncoming(col.IncomingSource, col.ExistingPath);
-                manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow));
+                // The placed file's hash: what tells 626's file from the game's own later, when the path is the same.
+                manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow)
+                {
+                    PlacedSha256 = TryHash(col.ExistingPath),
+                });
                 result.Updated.Add(col.RelPath);
             }
             catch (Exception e)

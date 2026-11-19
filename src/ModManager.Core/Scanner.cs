@@ -2222,7 +2222,11 @@ public static class Scanner
             {
                 backupPath = ReplacedStore.Backup(col.ExistingPath, col.RelPath, Batch());
                 CopyPlanned(col.IncomingSource, col.ExistingPath);
-                manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow));
+                // Only where provenance reads it (a file the game also ships, regulation.bin): a pak can be gigabytes.
+                string? placedSha = null;
+                if (BaseGameFiles.IsDirectInjectGameFileName(col.RelPath))
+                    try { placedSha = RestorePoints.FileTally.Sha256(col.ExistingPath); } catch { /* no hash: path-only provenance, as before */ }
+                manifest.Add(new ReplacedStore.ReplacedEntry(col.ExistingPath, col.RelPath, DateTime.UtcNow) { PlacedSha256 = placedSha });
                 result.Updated.Add(col.RelPath);
                 // A replaced file is one we wrote, so the install claims it - and the original is in
                 // the ReplacedStore backup, so the claim stays reversible.
