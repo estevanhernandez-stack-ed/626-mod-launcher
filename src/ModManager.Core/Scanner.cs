@@ -1975,7 +1975,10 @@ public static class Scanner
         {
             if (Directory.Exists(p))
             {
-                foreach (var f in WalkFiles(p)) if (Intake.ClassifyDrop(f, c.Exts) != "skip") outList.Add(f);
+                // Declared files and their companions (Intake.CarriedFiles), plus any archive inside, for the zip branch.
+                var walked = WalkFiles(p).ToList();
+                var carried = Intake.CarriedFiles(walked, c);
+                foreach (var f in walked) if (carried.Contains(f) || Intake.ClassifyDrop(f, c.Exts) == "zip") outList.Add(f);
             }
             else outList.Add(p); // a file (or a missing path) passes through so its reason is reported
         }
@@ -1998,9 +2001,12 @@ public static class Scanner
             return result;
         }
 
-        foreach (var p in ExpandPaths(pathList, c))
+        var expanded = ExpandPaths(pathList, c).ToList();
+        var looseCarried = Intake.CarriedFiles(expanded, c);
+        foreach (var p in expanded)
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
+            if (kind == "skip" && looseCarried.Contains(p)) kind = "mod";
             try
             {
                 if (kind == "mod")
@@ -2012,9 +2018,10 @@ public static class Scanner
                 else if (kind == "zip")
                 {
                     using var zip = Archive.Open(p);
+                    var carriedEntries = Intake.CarriedFiles(zip.EntryNames, c);
                     foreach (var entryName in zip.EntryNames) // file entries only (dirs excluded by the seam)
                     {
-                        if (Intake.ClassifyDrop(entryName, c.Exts) != "mod") continue;
+                        if (!carriedEntries.Contains(entryName)) continue;
                         var name = Path.GetFileName(entryName); // basename neutralizes zip-slip traversal
                         Directory.CreateDirectory(c.DataDir);
                         var tmp = Path.Combine(c.DataDir, "_tmp_" + name);
@@ -2084,9 +2091,12 @@ public static class Scanner
         if (primaryLoc is not null && primaryLoc.Form == "loose-root")
             return LooseMods.LooseRootIntake.Plan(Path.GetFullPath(primaryLoc.Abs), paths);
 
-        foreach (var p in ExpandPaths(paths, c))
+        var expanded = ExpandPaths(paths, c).ToList();
+        var looseCarried = Intake.CarriedFiles(expanded, c);
+        foreach (var p in expanded)
         {
             var kind = Intake.ClassifyDrop(p, c.Exts);
+            if (kind == "skip" && looseCarried.Contains(p)) kind = "mod";   // a companion the scanner lists (.ba2, .xl)
             if (kind == "skip") { unsafeItems.Add(new SkippedItem(Path.GetFileName(p), "not a mod file")); continue; }
             if (kind == "mod")
             {
@@ -2128,9 +2138,12 @@ public static class Scanner
                     continue;
                 }
 
+                // Declared entries and their companions, by the scanner's rules: a Fallout 4 plugin's .ba2 archives, a
+                // Cyberpunk .xl (Intake.CarriedFiles). Placement below is unchanged, so each lands where its mod does.
+                var carriedEntries = Intake.CarriedFiles(zip.EntryNames, c);
                 foreach (var entryName in zip.EntryNames) // file entries only (dirs excluded by the seam)
                 {
-                    if (Intake.ClassifyDrop(entryName, c.Exts) != "mod") continue;
+                    if (!carriedEntries.Contains(entryName)) continue;
                     // Keep the tree the archive declares. A script mod ships its full path inside
                     // (reframework/autorun/...); placing by filename alone dropped 33 CatLib files loose
                     // into the mod folder where none of them resolve, and made two mods' utility/Statics.lua
