@@ -306,3 +306,6 @@ control the smoke harness cannot reach, and it will be found by someone writing 
 with no idea what the control was supposed to be called.
 
 
+
+Added with Patch Day's broken-mod detection: the strip chip `StateChip.broke-on-update` (bound off the Core chip id, like
+every strip chip) and its action through the singleton `StateChipAction`. Not walked on a live tree yet.

@@ -1880,6 +1880,8 @@ public sealed partial class MainWindow : Window
             case "steam-updated": ViewModel.DismissBuildWarningCommand.Execute(null); break;
             // The same kind of action: it records the executable the loaders were checked against.
             case "stale-loader": ViewModel.MarkLoadersCheckedCommand.Execute(null); break;
+            // Sets the mods whose logs failed after the update aside; the reversible toggle, on the user's click only.
+            case "broke-on-update": ViewModel.SetAsideBrokenModsCommand.Execute(null); break;
             // Strips 626's own load-order prefixes back off; reversible, never overwrites.
             case "load-order-prefix": ViewModel.UndoLoadOrderPrefixesCommand.Execute(null); break;
             case "framework-missing": _ = OfferMissingFrameworkAsync(); break;
