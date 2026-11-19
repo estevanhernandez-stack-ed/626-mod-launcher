@@ -273,6 +273,35 @@ public class DirectInjectReplacedSwapTests : IDisposable
     }
 
     [Fact]
+    public void Setting_aside_a_mod_reinstalled_over_itself_really_takes_it_out()
+    {
+        // Live on Neb, 2026-11-18: each TechieW DLL had been reinstalled over itself in May, so the replaced store held an
+        // identical copy. #418's turn-off swapped that "original" back in, the mod stayed live, and the list hid it. A
+        // stash under a MOD's own name holds an older copy of the mod, never the game's file: only a game file swaps.
+        var gameRoot = Path.Combine(_root, "ER");
+        var play = Path.Combine(gameRoot, "Game");
+        Directory.CreateDirectory(Path.Combine(play, "mods"));
+        File.WriteAllText(Path.Combine(play, "eldenring.exe"), "game");
+        File.WriteAllText(Path.Combine(play, "dinput8.dll"), "loader");
+        var dllRel = Path.Combine("mods", "AdjustTheFov.dll");
+        File.WriteAllText(Path.Combine(play, dllRel), "fov");
+        var staging = Path.Combine(_root, "redrop", "mods");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "AdjustTheFov.dll"), "fov");               // the same mod, dropped again
+        var plan = DirectInject.Plan(play, new[] { Path.Combine(_root, "redrop") });
+        DirectInject.Execute(play, DirectInject.ReplacedRoot(play), plan, plan.Collisions.Select(x => x.RelPath).ToHashSet());
+        var game = new GameEntry { Id = "er-fov", GameName = "ER", Engine = "fromsoft", GameRoot = gameRoot, DataDir = Path.Combine(_root, "data") };
+
+        ModToggle.SetDirectInjectEnabled(game, "Adjust The Fov", enabled: false);
+
+        Assert.False(File.Exists(Path.Combine(play, dllRel)));                              // really out
+        var row = Assert.Single(ModListing.Resolve(game), m => m.Name == "Adjust The Fov");
+        Assert.False(row.Enabled);
+        ModToggle.SetDirectInjectEnabled(game, "Adjust The Fov", enabled: true);
+        Assert.Equal("fov", File.ReadAllText(Path.Combine(play, dllRel)));
+    }
+
+    [Fact]
     public void Turning_on_refuses_and_moves_nothing_when_the_batch_slot_was_refilled()
     {
         // Something put a file back into the batch while the mod was off. Moving the original over it would
