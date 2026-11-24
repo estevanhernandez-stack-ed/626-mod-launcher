@@ -30,25 +30,32 @@ public sealed class LaunchVerifier
     /// <summary>Watch the launch and report what loaded. Returns an empty string when there is nothing
     /// worth saying, which is the common case on a healthy launch of a game with no loaders.</summary>
     public async Task<string> WatchAsync(GameContext ctx, DateTime launchedUtc, CancellationToken ct = default)
+        => (await WatchWithOutcomesAsync(ctx, launchedUtc, ct)).Line;
+
+    /// <summary>The same watch, with the per-loader verdicts behind the line, so the caller can stamp a known good setup
+    /// or explain a failure (<see cref="KnownGood"/>). Empty outcomes mean nothing could be checked.</summary>
+    public async Task<(string Line, IReadOnlyList<LoaderOutcome> Outcomes)> WatchWithOutcomesAsync(
+        GameContext ctx, DateTime launchedUtc, CancellationToken ct = default)
     {
+        var none = (string.Empty, (IReadOnlyList<LoaderOutcome>)Array.Empty<LoaderOutcome>());
         try
         {
             var gameRoot = Path.GetFullPath(ctx.GameRoot);
             var proc = await Task.Run(() => WaitForGameProcess(gameRoot, ct), ct);
             if (proc is not null)
             {
-                try { await Task.Delay(MapGrace, ct); } catch (OperationCanceledException) { return ""; }
+                try { await Task.Delay(MapGrace, ct); } catch (OperationCanceledException) { return none; }
             }
 
             var modules = proc is null ? Array.Empty<string>() : ReadModules(proc);
             var evidence = BuildEvidence(ctx, modules);
-            if (evidence.Count == 0) return "";
+            if (evidence.Count == 0) return none;
 
             var outcomes = LaunchVerification.ForAll(launchedUtc, evidence);
-            return LaunchVerification.Summarize(ctx.Game.GameName ?? "The game", outcomes);
+            return (LaunchVerification.Summarize(ctx.Game.GameName ?? "The game", outcomes), outcomes);
         }
-        catch (OperationCanceledException) { return ""; }
-        catch { return ""; }   // diagnosis is a nicety; it never breaks a launch
+        catch (OperationCanceledException) { return none; }
+        catch { return none; }   // diagnosis is a nicety; it never breaks a launch
     }
 
     /// <summary>The running process whose image lives inside the game folder. Identified by LOCATION

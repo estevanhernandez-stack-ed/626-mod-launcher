@@ -2475,9 +2475,21 @@ public sealed partial class MainViewModel : ObservableObject
         var ctx = _ctx;
         if (ctx is null) return;
         var launchedUtc = DateTime.UtcNow;
+        var mode = CurrentLaunchMode;   // the mode this launch ran in, read before anything can change it
         _ = Task.Run(async () =>
         {
-            var line = await new Services.LaunchVerifier().WatchAsync(ctx, launchedUtc);
+            var (line, outcomes) = await new Services.LaunchVerifier().WatchWithOutcomesAsync(ctx, launchedUtc);
+            // "What broke", first slice: a modded launch where every loader ran is stamped as the last known good setup;
+            // one where a loader did not run gets what changed since then on its status line. Read-only, best effort.
+            try
+            {
+                var exeUtc = StaleLoaders.GameExecutable(ctx)?.Utc;
+                if (KnownGood.ShouldStamp(outcomes, mode))
+                    KnownGood.Save(ctx.DataDir, KnownGood.Snapshot(ModListing.Resolve(ctx.Game), exeUtc, DateTime.UtcNow));
+                else
+                    line = KnownGood.Explain(line, outcomes, KnownGood.Load(ctx.DataDir), ModListing.Resolve(ctx.Game), exeUtc);
+            }
+            catch { /* the plain verifier line still shows */ }
             if (string.IsNullOrEmpty(line)) return;
             // Back to the UI thread the same way every other background finisher here does.
             if (_dispatcherQueue is { } dq) dq.TryEnqueue(() => StatusText = line);
