@@ -2880,6 +2880,19 @@ installed nothing ("not a mod file"). Cyberpunk is registered on Neb, so it is t
 3. If a Fallout 4 or Starfield install is ever registered: drop a mod zip with `<Plugin>.esp` and its `.ba2` archives;
    all of them land in `Data\`, the list shows ONE row, and turning it off moves the archives with the plugin.
 
+## Patch Day: mods that broke on the update, from their own logs
+
+Shipped: when live DLL-loader mods (`Game\mods\<Mod>.dll`) logged "Could not find signature!" in their latest run, after
+the game executable's last write and after their own DLL, the state strip shows BROKE ON UPDATE naming them, with "Set
+these aside". Read-only until clicked; the action is the normal reversible toggle. On Neb the six TechieW mods are held
+with Nov 8 failure logs against the Nov 4 exe, which is exactly the case.
+
+1. Turn the six TechieW rows ON (Adjust The Fov, Increase Animation Distance, Remove Chromatic Aberration, Remove
+   Vignette, Skip The Intro, Ultrawide Fix). The strip shows BROKE ON UPDATE: "6 mods failed to start after the game's
+   Nov 4 update: ...".
+2. Click **Set these aside**. All six turn off (moved to holding), the chip clears, the status line says so.
+3. Do not launch the game with them on: they pop the error on every modded launch until their authors update them.
+
 ## What broke, first slice: "since mods last loaded cleanly"
 
 Shipped: after a modded launch where every loader verifiably ran (launch verification: module in the process, or its log

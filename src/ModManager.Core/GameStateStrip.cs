@@ -63,6 +63,8 @@ public sealed record GameStateChip(
         "ban-risk" => GameStateTone.Danger,
         "launch-options" => GameStateTone.Caution,
         "patch-day" => GameStateTone.Caution,
+        // Patch Day's other finding: mods that broke on the update. Amber like it, not the accent OLD LOADER uses.
+        "broke-on-update" => GameStateTone.Caution,
         "framework-missing" => GameStateTone.Notice,
         _ => Severity == GameStateSeverity.Info ? GameStateTone.Quiet : GameStateTone.Accent,
     };
@@ -85,6 +87,9 @@ public sealed record GameStateConditions
     /// <summary>Non-empty when a version-locked loader is older than the game's executable and the user
     /// has not marked it checked against this build (<see cref="StaleLoaders.Summary"/>).</summary>
     public string? StaleLoader { get; init; }
+    /// <summary>Non-empty when live DLL mods logged a failure to start after the game's last update
+    /// (<see cref="BrokenModLogs.Summary"/>).</summary>
+    public string? BrokenOnUpdate { get; init; }
     public bool CoopLauncherMissing { get; init; }
     /// <summary>Non-empty when files in this game's mod folders carry a load-order prefix 626 wrote
     /// (<see cref="LoadOrderUndoPlan.Describe"/>), e.g. "3 plugins carry a load-order prefix from 626.".</summary>
@@ -203,6 +208,12 @@ public static class GameStateStrip
                 // An ACTION like UPDATED's: it records the executable it was checked against, so the next
                 // patch brings it back. A session dismissal would bring it back every launch instead.
                 "Mark as checked", Dismissible: false));
+
+        // 5b2. Mods whose own logs say they failed after the game's update: a fact read off disk, beside the inference
+        // above. Amber like it. The action sets them aside through the reversible toggle; nothing happens unasked.
+        if (!string.IsNullOrWhiteSpace(c.BrokenOnUpdate))
+            chips.Add(new GameStateChip("broke-on-update", GameStateSeverity.Warning, "BROKE ON UPDATE",
+                c.BrokenOnUpdate!.Trim(), "Set these aside", Dismissible: true));
 
         // 5c. 626's own load-order renames, on a game where a renamed file is a missing one (a Bethesda
         // plugin). Mods that will not load, so it sits with the other "may not work" warnings, and it is
