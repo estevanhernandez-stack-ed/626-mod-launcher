@@ -82,6 +82,9 @@ public sealed class LaunchVerifier
         return null;
     }
 
+    // Windows' own folder. A module loaded from here is never a mod loader, whatever its name (LaunchVerification).
+    private static readonly string SystemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+
     private static IReadOnlyList<string> ReadModules(Process proc)
     {
         try
@@ -89,7 +92,7 @@ public sealed class LaunchVerifier
             var names = new List<string>();
             foreach (ProcessModule m in proc.Modules)
             {
-                try { names.Add(m.ModuleName ?? ""); } catch { }
+                try { names.Add(m.FileName ?? m.ModuleName ?? ""); } catch { }   // full path: the system copy of a proxy name is not the loader
             }
             return names;
         }
@@ -122,7 +125,7 @@ public sealed class LaunchVerifier
                 .ToList();
 
             list.Add(new LoaderEvidence(presence.Dep.Name, files, modules,
-                NewestLog(ctx, presence.Dep.LogRelativePaths)));
+                NewestLog(ctx, presence.Dep.LogRelativePaths), SystemRoot));
         }
 
         // Loose-root games keep their loaders as bare proxy DLLs in the game root, and the listing
@@ -140,7 +143,7 @@ public sealed class LaunchVerifier
                 var name = LoaderIdentity.Identified(product)
                     ? LoaderIdentity.Label(file, product, version)
                     : file;
-                list.Add(new LoaderEvidence(name, new[] { file }, modules, null));
+                list.Add(new LoaderEvidence(name, new[] { file }, modules, null, SystemRoot));
             }
         }
 

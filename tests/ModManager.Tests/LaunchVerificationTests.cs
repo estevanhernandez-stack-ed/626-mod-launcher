@@ -140,4 +140,37 @@ public class LaunchVerificationTests
         Assert.Equal("", LaunchVerification.Summarize("Windrose", outcomes));
         Assert.Equal("", LaunchVerification.Summarize("Windrose", null));
     }
+
+    // Found on the AC8 smoke 2026-11-24. UE4SS's loader is dwmapi.dll, and Windows loads its OWN dwmapi.dll from System32
+    // into nearly every game. Matching by filename alone read that as "UE4SS loaded" on every launch, so a loader that
+    // never ran could not be reported. A copy loaded from the Windows folder is never the loader.
+    [Fact]
+    public void A_system_copy_of_the_proxy_name_is_not_proof_the_loader_ran()
+    {
+        var ev = new LoaderEvidence("UE4SS", new[] { "dwmapi.dll", "UE4SS.dll" },
+            new[] { @"C:\Windows\System32\dwmapi.dll", @"C:\Windows\System32\kernel32.dll" },
+            Launch.AddDays(-3), SystemRoot: @"C:\Windows");
+
+        Assert.Equal(LoadVerdict.DidNotRun, LaunchVerification.For(Launch, ev).Verdict);
+    }
+
+    [Fact]
+    public void The_proxy_loaded_from_the_game_still_counts_beside_the_system_copy()
+    {
+        var ev = new LoaderEvidence("UE4SS", new[] { "dwmapi.dll" },
+            new[] { @"c:\windows\system32\DWMAPI.dll", @"E:\Steam\ACE COMBAT 8\Game\Binaries\Win64\dwmapi.dll" },
+            null, SystemRoot: @"C:\Windows\");
+
+        Assert.Equal(LoadVerdict.Ran, LaunchVerification.For(Launch, ev).Verdict);
+    }
+
+    [Fact]
+    public void A_folder_that_only_shares_the_windows_prefix_is_not_the_system()
+    {
+        // C:\WindowsApps is where Store games live, and a loader there is the game's own.
+        var ev = new LoaderEvidence("UE4SS", new[] { "dwmapi.dll" },
+            new[] { @"C:\WindowsApps\Game\dwmapi.dll" }, null, SystemRoot: @"C:\Windows");
+
+        Assert.Equal(LoadVerdict.Ran, LaunchVerification.For(Launch, ev).Verdict);
+    }
 }
