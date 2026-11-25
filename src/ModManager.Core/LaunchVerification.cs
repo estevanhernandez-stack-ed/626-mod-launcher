@@ -25,11 +25,17 @@ public enum LoadVerdict
 /// could not read them (game not running, access denied) — never "it loaded nothing".</param>
 /// <param name="LogWrittenUtc">Last-write time of the loader's own log, or null when it has none or
 /// we could not read it.</param>
+/// <param name="SystemRoot">The Windows folder. A loaded module from inside it never counts as proof. Proxy loaders
+/// borrow system DLL names (<c>dwmapi.dll</c>, <c>dxgi.dll</c>, <c>version.dll</c>), and Windows loads its own copy of
+/// those into nearly every game, so a filename match alone said "UE4SS loaded" on launches where it never ran (AC8
+/// smoke, 2026-11-24). Excluding the system copy, rather than requiring the game folder, keeps loaders that live
+/// elsewhere provable. Null keeps the filename-only match.</param>
 public sealed record LoaderEvidence(
     string Name,
     IReadOnlyList<string> ModuleFileNames,
     IReadOnlyList<string> LoadedModules,
-    DateTime? LogWrittenUtc);
+    DateTime? LogWrittenUtc,
+    string? SystemRoot = null);
 
 /// <summary>One loader's verdict, and the sentence that says it.</summary>
 public sealed record LoaderOutcome(string Name, LoadVerdict Verdict, string Detail);
@@ -69,7 +75,7 @@ public static class LaunchVerification
         // Strongest first: loaded in the process. A module that is mapped has run.
         var loaded = evidence.LoadedModules ?? Array.Empty<string>();
         var wanted = evidence.ModuleFileNames ?? Array.Empty<string>();
-        var hit = wanted.FirstOrDefault(w => loaded.Any(l => SameFile(l, w)));
+        var hit = wanted.FirstOrDefault(w => loaded.Any(l => SameFile(l, w) && !Inside(l, evidence.SystemRoot)));
         if (hit is not null)
             return new LoaderOutcome(name, LoadVerdict.Ran, $"{name} is loaded in the game ({hit}).");
 
@@ -116,4 +122,15 @@ public static class LaunchVerification
     // Modules come back as full paths or bare names depending on where they were read from.
     private static bool SameFile(string a, string b)
         => string.Equals(Path.GetFileName(a ?? ""), Path.GetFileName(b ?? ""), StringComparison.OrdinalIgnoreCase);
+
+    // Whether a module's full path sits under root. No root, or a bare name that cannot be placed, is not inside.
+    // Separators are normalised and the root is closed with one, so "C:\WindowsApps" is not inside "C:\Windows".
+    private static bool Inside(string module, string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root)) return false;
+        if (string.IsNullOrEmpty(module) || !Path.IsPathRooted(module)) return false;
+        static string Norm(string p) => p.Replace('/', '\\').TrimEnd('\\') + "\\";
+        return Norm(module).StartsWith(Norm(root), StringComparison.OrdinalIgnoreCase)
+            && Norm(module).Length > Norm(root).Length;
+    }
 }
