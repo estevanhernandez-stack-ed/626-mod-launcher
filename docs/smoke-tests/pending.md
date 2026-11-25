@@ -2892,3 +2892,16 @@ with Nov 8 failure logs against the Nov 4 exe, which is exactly the case.
    Nov 4 update: ...".
 2. Click **Set these aside**. All six turn off (moved to holding), the chip clears, the status line says so.
 3. Do not launch the game with them on: they pop the error on every modded launch until their authors update them.
+
+## What broke, first slice: "since mods last loaded cleanly"
+
+Shipped: after a modded launch where every loader verifiably ran (launch verification: module in the process, or its log
+advanced), 626 writes `<dataDir>\known-good.json` with the mods that were on and the game exe's date. After a later launch
+where a loader did NOT run, the status line adds "Since mods last loaded cleanly on <date>: the game updated; you turned on
+...; turned off ...; removed ...". Read-only; nothing moves. Any UE4SS game works; ACE COMBAT 8 is the live one.
+
+1. Play modded on AC8 (graphics prompt: No). About a minute in, `E:\SteamLibrary\_626mods\ace-combat-8-wings-of-theve\known-good.json`
+   exists, lists the enabled mods, and carries the exe date. Quit.
+2. Turn one mod on or off. Rename `Game\Binaries\Win64\dwmapi.dll` to `dwmapi.dll.off` by hand (simulates the loader not
+   running), Play modded, quit. The status line names the mod you changed after "Since mods last loaded cleanly on ...".
+3. Rename `dwmapi.dll.off` back and undo the mod change. The next clean launch re-stamps.

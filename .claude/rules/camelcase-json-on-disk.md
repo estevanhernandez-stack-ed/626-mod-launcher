@@ -87,6 +87,11 @@ The string-contains assertion is what protects you — without it, the round-tri
 - `AppSettingsService` app-settings.json (`src/ModManager.App/Services/AppSettingsService.cs` — camelCase keys merged one at a time by `AppSettingsFile.WriteKey` in `src/ModManager.Core/AppSettingsFile.cs`, locked, atomic temp+rename, shared with the agent's `apply_theme`; per-key tolerant loads; covered by `tests/ModManager.App.NexusValidate.Tests/AppSettings*Tests.cs` and `AppSettingsFileTests.WriteKey_merges_one_key_and_keeps_every_other_setting`)
 - `ModNameIndex` nexus-name-index.json (`src/ModManager.Core/Discovery/ModNameIndex.cs` — per-game Nexus name cache; written via `AtomicJson` by `ModNameIndexSource`)
 
+- `KnownGood` known-good.json (`src/ModManager.Core/KnownGood.cs` — per game in the data dir, the setup of the last
+  modded launch where every loader ran: `{ stampedUtc, gameExeUtc, enabled: [{ location, name }] }`, written via
+  `AtomicJson`, read case-insensitively, a torn file reads as none; covered by
+  `KnownGoodTests.It_round_trips_on_disk_as_camelCase_and_a_missing_or_torn_file_reads_as_none`)
+
 - Replaced-store manifest `__626replaced.json` `placedSha256` (`src/ModManager.Core/ReplacedStore.cs` —
   `ReplacedEntry.PlacedSha256`, the hash of the file 626 put in place, so provenance can tell 626's file from the game's
   own after a verify or patch; `null` on records from older builds; covered by
