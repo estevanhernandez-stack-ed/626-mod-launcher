@@ -57,15 +57,33 @@ public sealed class SteamService : IStoreLibrary
         catch { return 0; }
     }
 
-    /// <summary>Running AND signed in, so a game started now can pass its ownership check
+    /// <summary>The running clients and what Steam's registry record says, read together (<see cref="SteamReadiness"/>).</summary>
+    public SteamState State()
+    {
+        int[] clients;
+        try { clients = Process.GetProcessesByName("steam").Select(p => p.Id).ToArray(); }
+        catch { clients = Array.Empty<int>(); }
+        var pid = 0;
+        try
+        {
+            using var k = Win32Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam\ActiveProcess");
+            if (k?.GetValue("pid") is int p) pid = p;
+        }
+        catch { }
+        return new SteamState(clients, pid, ActiveUser());
+    }
+
+    /// <summary>Running AND signed in under the running client, so a game started now can pass its ownership check
     /// (<see cref="SteamReadiness"/>).</summary>
-    public bool IsReady() => SteamReadiness.IsReady(IsRunning(), ActiveUser());
+    public bool IsReady() => SteamReadiness.IsReady(State());
 
     /// <summary>Ensure Steam is up AND signed in, then return true (or false on timeout). Starts Steam via
     /// <c>steam://open/main</c>, which opens the client WITHOUT launching any game, so the caller can run its own
     /// exe target rather than vanilla. Synchronous, so call OFF the UI thread.
     /// <para>It used to return the moment steam.exe existed, about three seconds before sign-in, and ACE COMBAT 8
-    /// launched then reported "you don't own this game" (2026-11-11). It now waits for the signed-in account.</para></summary>
+    /// launched then reported "you don't own this game" (2026-11-11). It then waited for a non-zero account, which a
+    /// forced close leaves behind, so it launched at 1 s on 2026-11-24. It now waits for a fresh sign-in under the
+    /// running client.</para></summary>
     public bool EnsureRunning(TimeSpan timeout)
     {
         if (IsReady()) return true;
@@ -74,7 +92,7 @@ public sealed class SteamService : IStoreLibrary
             try { Process.Start(new ProcessStartInfo("steam://open/main") { UseShellExecute = true }); }
             catch { return false; }
         }
-        return SteamReadiness.WaitUntilReady(IsRunning, ActiveUser, timeout, Thread.Sleep, () => DateTime.UtcNow);
+        return SteamReadiness.WaitForFreshSignIn(State, timeout, Thread.Sleep, () => DateTime.UtcNow);
     }
 
     public IReadOnlyList<InstalledGame> InstalledGames()
